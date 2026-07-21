@@ -198,6 +198,7 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [installPrompt, setInstallPrompt] = useState(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const messageListRef = useRef(null);
   const messageEndRef = useRef(null);
   const activeSessionIdRef = useRef(null);
   const streamingSessionIdRef = useRef(null);
@@ -421,8 +422,17 @@ function App() {
   }, [activeView]);
 
   useEffect(() => {
-    messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isSending]);
+    if (activeView !== "chat") return undefined;
+
+    const animationFrame = window.requestAnimationFrame(() => {
+      const messageList = messageListRef.current;
+      if (!messageList) return;
+
+      messageList.scrollTop = messageList.scrollHeight;
+    });
+
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [activeView, activeSessionId, messages, isSending]);
 
   useEffect(() => {
     function handleInstallPrompt(event) {
@@ -810,7 +820,11 @@ function App() {
   function renderChat() {
     return (
       <>
-        <section className="message-list" aria-live="polite">
+        <section
+          ref={messageListRef}
+          className="message-list"
+          aria-live="polite"
+        >
           {isLoading ? (
             <div className="empty-state">正在加载 DengTa home…</div>
           ) : messages.length === 0 ? (
