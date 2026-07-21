@@ -10,12 +10,14 @@
     "lint": "eslint .",
     "test:companion-interaction": "node test/companion-interaction.test.js",
     "test:settings": "node test/settings.test.js",
+    "test:voice": "node test/voice.test.js",
     "preview": "vite preview"
   },
   "engines": {
     "node": "24.x"
   },
   "dependencies": {
+    "@capacitor-community/text-to-speech": "8.0.2",
     "@capacitor/android": "^8.4.2",
     "@capacitor/core": "^8.4.2",
     "@capacitor/local-notifications": "^8.0.0",

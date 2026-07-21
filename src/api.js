@@ -1,5 +1,5 @@
 const API_BASE_URL = (
-  import.meta.env.VITE_API_URL || "http://localhost:3000"
+  import.meta.env?.VITE_API_URL || "http://localhost:3000"
 ).replace(/\/$/, "");
 
 const RETRYABLE_SERVER_STATUSES = new Set([502, 503, 504]);

@@ -24,6 +24,21 @@ import {
   normalizePromptReceipt,
   normalizeSettingsDraft,
 } from "./settings";
+import {
+  VOICE_MAX_DURATION_MS,
+  VOICE_STATES,
+  VOICE_STATE_LABELS,
+  buildVoiceTurnFormData,
+  createVoiceTurnRequest,
+  formatVoiceConfidence,
+  normalizeVoiceAnalysis,
+  selectRecorderMimeType,
+  speakVoiceText,
+  stopVoiceSpeech,
+  validateVoiceDuration,
+  voiceCaptureErrorMessage,
+  voiceRecordingSupported,
+} from "./voice";
 
 const PUSH_CURSOR_KEY = "dengta_push_cursor";
 const PUSH_SEEN_IDS_KEY = "dengta_push_seen_ids";
@@ -34,6 +49,7 @@ const COMPANION_INTERACTION_RATE_LIMIT = 6;
 const COMPANION_INTERACTION_RATE_WINDOW_MS = 60 * 1000;
 const LOCAL_NOTIFICATION_CHANNEL_ID = "dengta-home-reminders-v1";
 const PROMPT_RECEIPT_STORAGE_KEY = "dengta_prompt_receipt_v1";
+const VOICE_AUTO_SPEAK_KEY = "dengta_voice_auto_speak_enabled";
 
 const initialNotificationTestState = {
   status: "idle",
@@ -106,6 +122,23 @@ function readEmotionUnderstandingSetting() {
   } catch {
     return true;
   }
+}
+
+function readVoiceAutoSpeakSetting() {
+  try {
+    return localStorage.getItem(VOICE_AUTO_SPEAK_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function voiceInputBusy(state) {
+  return [
+    VOICE_STATES.requesting,
+    VOICE_STATES.recording,
+    VOICE_STATES.uploading,
+    VOICE_STATES.thinking,
+  ].includes(state);
 }
 
 function createCompanionInteractionEventId() {
@@ -270,6 +303,13 @@ function App() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [emotionUnderstandingEnabled, setEmotionUnderstandingEnabled] =
     useState(readEmotionUnderstandingSetting);
+  const [voiceState, setVoiceState] = useState(VOICE_STATES.idle);
+  const [voiceElapsedMs, setVoiceElapsedMs] = useState(0);
+  const [voiceError, setVoiceError] = useState("");
+  const [lastVoiceAnalysis, setLastVoiceAnalysis] = useState(null);
+  const [voiceAutoSpeakEnabled, setVoiceAutoSpeakEnabled] = useState(
+    readVoiceAutoSpeakSetting,
+  );
   const [companionStatus, setCompanionStatus] = useState(readCompanionStatus);
   const [companionInteractionStats, setCompanionInteractionStats] = useState(
     readCompanionInteractionStats,
@@ -287,10 +327,23 @@ function App() {
   const companionInteractionInFlightRef = useRef(false);
   const companionReplyTimesRef = useRef([]);
   const isSendingRef = useRef(false);
+  const voiceStateRef = useRef(VOICE_STATES.idle);
+  const voicePointerHeldRef = useRef(false);
+  const voicePointerIdRef = useRef(null);
+  const voiceStreamRef = useRef(null);
+  const voiceRecorderRef = useRef(null);
+  const voiceChunksRef = useRef([]);
+  const voiceStartedAtRef = useRef(0);
+  const voiceElapsedTimerRef = useRef(null);
+  const voiceMaxTimerRef = useRef(null);
+  const voiceRequestRef = useRef(null);
+  const speechRunRef = useRef(0);
+  const voiceLifecycleRef = useRef({ cancel() {}, stopPlayback() {} });
 
   const activeSession = sessions.find(
     (session) => session.id === activeSessionId,
   );
+  const isVoiceInputBusy = voiceInputBusy(voiceState);
 
   useEffect(() => {
     let cancelled = false;
@@ -341,6 +394,56 @@ function App() {
   useEffect(() => {
     isSendingRef.current = isSending;
   }, [isSending]);
+
+  useEffect(() => {
+    voiceStateRef.current = voiceState;
+  }, [voiceState]);
+
+  useEffect(() => {
+    if (
+      activeView !== "chat" &&
+      [VOICE_STATES.requesting, VOICE_STATES.recording].includes(
+        voiceStateRef.current,
+      )
+    ) {
+      voiceLifecycleRef.current.cancel({
+        message: "离开聊天页后，录音已取消，原始语音没有保存或发送。",
+      });
+    }
+    if (
+      activeView !== "chat" &&
+      voiceStateRef.current === VOICE_STATES.speaking
+    ) {
+      void voiceLifecycleRef.current.stopPlayback();
+    }
+  }, [activeView]);
+
+  useEffect(() => {
+    function releaseVoiceWhenPageLeaves() {
+      if (document.visibilityState === "hidden") {
+        voiceLifecycleRef.current.cancel({ updateState: false });
+        void voiceLifecycleRef.current.stopPlayback({ updateState: false });
+      }
+    }
+
+    function releaseVoiceOnPageHide() {
+      voiceLifecycleRef.current.cancel({ updateState: false });
+      voiceRequestRef.current?.abort();
+      voiceRequestRef.current = null;
+      void voiceLifecycleRef.current.stopPlayback({ updateState: false });
+    }
+
+    document.addEventListener("visibilitychange", releaseVoiceWhenPageLeaves);
+    window.addEventListener("pagehide", releaseVoiceOnPageHide);
+    return () => {
+      document.removeEventListener(
+        "visibilitychange",
+        releaseVoiceWhenPageLeaves,
+      );
+      window.removeEventListener("pagehide", releaseVoiceOnPageHide);
+      releaseVoiceOnPageHide();
+    };
+  }, []);
 
   useEffect(
     () => () => window.clearTimeout(companionInteractionTimerRef.current),
@@ -604,6 +707,411 @@ function App() {
     };
   }, []);
 
+  function setVoiceMode(nextState) {
+    voiceStateRef.current = nextState;
+    setVoiceState(nextState);
+  }
+
+  function clearVoiceRecordingTimers() {
+    window.clearInterval(voiceElapsedTimerRef.current);
+    window.clearTimeout(voiceMaxTimerRef.current);
+    voiceElapsedTimerRef.current = null;
+    voiceMaxTimerRef.current = null;
+  }
+
+  function releaseVoiceStream(stream = voiceStreamRef.current) {
+    stream?.getTracks?.().forEach((track) => track.stop());
+    if (voiceStreamRef.current === stream) {
+      voiceStreamRef.current = null;
+    }
+  }
+
+  function setVoiceFailure(errorOrMessage) {
+    const message =
+      typeof errorOrMessage === "string"
+        ? errorOrMessage
+        : voiceCaptureErrorMessage(errorOrMessage);
+    setVoiceError(message);
+    setVoiceMode(VOICE_STATES.error);
+    setNotice(message);
+  }
+
+  function cancelVoiceCapture({ message = "", updateState = true } = {}) {
+    voicePointerHeldRef.current = false;
+    voicePointerIdRef.current = null;
+    clearVoiceRecordingTimers();
+
+    const recorder = voiceRecorderRef.current;
+    voiceRecorderRef.current = null;
+    if (recorder && recorder.state !== "inactive") {
+      try {
+        recorder.stop();
+      } catch {
+        // 录音器已经自行结束时，只需继续释放麦克风。
+      }
+    }
+
+    voiceChunksRef.current = [];
+    releaseVoiceStream();
+    if (updateState) {
+      setVoiceElapsedMs(0);
+      setVoiceMode(VOICE_STATES.idle);
+      if (message) setNotice(message);
+    }
+  }
+
+  async function stopVoicePlayback({ updateState = true } = {}) {
+    speechRunRef.current += 1;
+    await stopVoiceSpeech();
+    if (updateState && voiceStateRef.current === VOICE_STATES.speaking) {
+      setVoiceMode(VOICE_STATES.idle);
+    }
+  }
+
+  async function playAssistantReply(value) {
+    if (!voiceAutoSpeakEnabled || !String(value || "").trim()) return;
+
+    const runId = speechRunRef.current + 1;
+    speechRunRef.current = runId;
+    await stopVoiceSpeech();
+    if (speechRunRef.current !== runId) return;
+
+    setVoiceError("");
+    setVoiceMode(VOICE_STATES.speaking);
+    try {
+      await speakVoiceText(value);
+    } catch (error) {
+      if (speechRunRef.current === runId) {
+        setVoiceFailure(
+          `自动朗读失败：${error?.message || "请检查手机系统语音引擎"}`,
+        );
+      }
+      return;
+    }
+
+    if (speechRunRef.current === runId) {
+      setVoiceMode(VOICE_STATES.idle);
+    }
+  }
+
+  async function submitVoiceBlob(blob, durationMs) {
+    setVoiceError("");
+    setVoiceMode(VOICE_STATES.uploading);
+
+    let sessionId = activeSessionIdRef.current;
+    let voiceSessionId = sessionId;
+    let requestHandle;
+
+    try {
+      if (!sessionId) {
+        const created = await apiRequest("/sessions", {
+          method: "POST",
+          body: JSON.stringify({ title: "语音对话" }),
+        });
+        sessionId = created.session.id;
+        voiceSessionId = sessionId;
+        setSessions((current) =>
+          current.some((item) => item.id === sessionId)
+            ? current
+            : [created.session, ...current],
+        );
+        activeSessionIdRef.current = sessionId;
+        messagesSessionIdRef.current = sessionId;
+        setActiveSessionId(sessionId);
+        setMessages([]);
+      }
+
+      streamingSessionIdRef.current = sessionId;
+      const formData = buildVoiceTurnFormData({
+        blob,
+        sessionId,
+        clientTime: new Date().toLocaleString("zh-CN"),
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        emotionUnderstandingEnabled,
+        companionStatus: companionStatusForRequest(
+          companionStatusRef.current,
+        ),
+      });
+
+      requestHandle = createVoiceTurnRequest(formData, {
+        onUploadComplete() {
+          if (voiceRequestRef.current === requestHandle) {
+            setVoiceMode(VOICE_STATES.thinking);
+          }
+        },
+      });
+      voiceRequestRef.current = requestHandle;
+      const data = await requestHandle.promise;
+
+      const responseSessionId = data.session_id || sessionId;
+      voiceSessionId = responseSessionId;
+      streamingSessionIdRef.current = responseSessionId;
+      const serverUserMessage = data.user_message;
+      const serverAssistantMessage = data.assistant_message;
+      const normalizedAnalysis = normalizeVoiceAnalysis(data.voice_analysis);
+      const transcript =
+        normalizedAnalysis.text ||
+        String(serverUserMessage?.content || "").trim();
+
+      if (!transcript) {
+        throw new Error("服务器没有返回可显示的语音转写，请重新说一次。");
+      }
+      if (
+        !serverAssistantMessage ||
+        serverAssistantMessage.role !== "assistant" ||
+        typeof serverAssistantMessage.content !== "string" ||
+        !serverAssistantMessage.content.trim()
+      ) {
+        throw new Error("服务器没有返回可播放的 AI 回复，请稍后再试。");
+      }
+
+      const voiceAnalysis = {
+        ...normalizedAnalysis,
+        text: transcript,
+        durationMs,
+      };
+      const userMessage = {
+        ...(serverUserMessage || {}),
+        id: serverUserMessage?.id || `voice-user-${Date.now()}`,
+        role: "user",
+        content: transcript,
+        created_at:
+          serverUserMessage?.created_at || new Date().toISOString(),
+        voiceAnalysis,
+      };
+
+      applyPromptReceipt(data.prompt_receipt);
+      if (data.companion_status) {
+        setCompanionStatus((current) =>
+          mergeCompanionStatus(current, data.companion_status),
+        );
+      }
+
+      activeSessionIdRef.current = responseSessionId;
+      setActiveSessionId(responseSessionId);
+      const messagesBelongToSession =
+        messagesSessionIdRef.current === responseSessionId;
+      messagesSessionIdRef.current = responseSessionId;
+      messageLoadTokenRef.current += 1;
+      setMessages((current) => {
+        const next = messagesBelongToSession ? [...current] : [];
+        for (const incoming of [userMessage, serverAssistantMessage]) {
+          const index = next.findIndex((item) => item.id === incoming.id);
+          if (index >= 0) next[index] = incoming;
+          else next.push(incoming);
+        }
+        return next;
+      });
+      setLastVoiceAnalysis(voiceAnalysis);
+      setNotice(
+        `语音已转写。声音情绪线索：${voiceAnalysis.emotion}，${formatVoiceConfidence(voiceAnalysis.confidence)}。这不是心理诊断。`,
+      );
+      try {
+        await refreshSessions(responseSessionId);
+      } catch (error) {
+        console.warn("语音回复已保存，但刷新会话列表失败：", error.message);
+      }
+
+      if (voiceAutoSpeakEnabled) {
+        await playAssistantReply(serverAssistantMessage.content);
+      } else {
+        setVoiceMode(VOICE_STATES.idle);
+      }
+    } catch (error) {
+      if (requestHandle && voiceRequestRef.current !== requestHandle) return;
+      setVoiceFailure(error);
+    } finally {
+      if (voiceRequestRef.current === requestHandle) {
+        voiceRequestRef.current = null;
+      }
+      if (streamingSessionIdRef.current === voiceSessionId) {
+        streamingSessionIdRef.current = null;
+      }
+      if (
+        [VOICE_STATES.uploading, VOICE_STATES.thinking].includes(
+          voiceStateRef.current,
+        )
+      ) {
+        setVoiceMode(VOICE_STATES.idle);
+      }
+    }
+  }
+
+  async function finishVoiceCapture({ send = true } = {}) {
+    const recorder = voiceRecorderRef.current;
+    if (!recorder) return;
+
+    voiceRecorderRef.current = null;
+    clearVoiceRecordingTimers();
+    const durationMs = Math.max(0, Date.now() - voiceStartedAtRef.current);
+
+    try {
+      await new Promise((resolve) => {
+        if (recorder.state === "inactive") {
+          resolve();
+          return;
+        }
+        recorder.addEventListener("stop", resolve, { once: true });
+        recorder.stop();
+      });
+    } catch (error) {
+      releaseVoiceStream();
+      voiceChunksRef.current = [];
+      setVoiceFailure(error);
+      return;
+    }
+
+    releaseVoiceStream();
+    setVoiceElapsedMs(durationMs);
+    if (!send) {
+      voiceChunksRef.current = [];
+      setVoiceMode(VOICE_STATES.idle);
+      return;
+    }
+
+    const durationCheck = validateVoiceDuration(durationMs);
+    if (!durationCheck.ok) {
+      voiceChunksRef.current = [];
+      setVoiceFailure(durationCheck.message);
+      return;
+    }
+
+    const chunks = voiceChunksRef.current;
+    voiceChunksRef.current = [];
+    const mimeType = recorder.mimeType || chunks[0]?.type || "audio/webm";
+    const blob = new Blob(chunks, { type: mimeType });
+    if (blob.size === 0) {
+      setVoiceFailure("没有收到麦克风声音，请检查权限后重试。");
+      return;
+    }
+
+    await submitVoiceBlob(blob, durationMs);
+  }
+
+  async function beginVoiceCapture(event) {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    event.preventDefault();
+
+    if (
+      isSendingRef.current ||
+      companionInteractionInFlightRef.current ||
+      voiceInputBusy(voiceStateRef.current)
+    ) {
+      return;
+    }
+
+    if (!voiceRecordingSupported()) {
+      setVoiceFailure(
+        "当前浏览器或 App 不支持录音。请安装最新版 DengTa home Android App。",
+      );
+      return;
+    }
+
+    try {
+      event.currentTarget.setPointerCapture?.(event.pointerId);
+    } catch {
+      // 某些 WebView 不支持显式指针捕获，pointerup 仍会正常工作。
+    }
+    voicePointerHeldRef.current = true;
+    voicePointerIdRef.current = event.pointerId;
+    setVoiceError("");
+    setNotice("");
+    setLastVoiceAnalysis(null);
+    setVoiceElapsedMs(0);
+
+    if (voiceStateRef.current === VOICE_STATES.speaking) {
+      await stopVoicePlayback();
+    }
+    if (!voicePointerHeldRef.current) return;
+
+    setVoiceMode(VOICE_STATES.requesting);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+        video: false,
+      });
+
+      if (!voicePointerHeldRef.current) {
+        releaseVoiceStream(stream);
+        setVoiceMode(VOICE_STATES.idle);
+        return;
+      }
+
+      voiceStreamRef.current = stream;
+      voiceChunksRef.current = [];
+      const mimeType = selectRecorderMimeType(MediaRecorder);
+      const recorder = new MediaRecorder(
+        stream,
+        mimeType ? { mimeType } : undefined,
+      );
+      voiceRecorderRef.current = recorder;
+      recorder.addEventListener("dataavailable", (chunkEvent) => {
+        if (chunkEvent.data?.size > 0) {
+          voiceChunksRef.current.push(chunkEvent.data);
+        }
+      });
+      recorder.addEventListener("error", (recorderEvent) => {
+        cancelVoiceCapture({ updateState: false });
+        setVoiceFailure(recorderEvent.error || recorderEvent);
+      });
+      recorder.start(250);
+
+      voiceStartedAtRef.current = Date.now();
+      setVoiceMode(VOICE_STATES.recording);
+      voiceElapsedTimerRef.current = window.setInterval(() => {
+        setVoiceElapsedMs(Date.now() - voiceStartedAtRef.current);
+      }, 200);
+      voiceMaxTimerRef.current = window.setTimeout(() => {
+        voicePointerHeldRef.current = false;
+        void finishVoiceCapture({ send: true });
+      }, VOICE_MAX_DURATION_MS);
+      navigator.vibrate?.(18);
+    } catch (error) {
+      cancelVoiceCapture({ updateState: false });
+      setVoiceFailure(error);
+    }
+  }
+
+  function endVoiceCapture(event) {
+    if (
+      voicePointerIdRef.current !== null &&
+      voicePointerIdRef.current !== event.pointerId
+    ) {
+      return;
+    }
+    event.preventDefault();
+    voicePointerHeldRef.current = false;
+    voicePointerIdRef.current = null;
+    try {
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+    } catch {
+      // 指针已经被 WebView 释放时无需再处理。
+    }
+    if (voiceStateRef.current === VOICE_STATES.recording) {
+      void finishVoiceCapture({ send: true });
+    }
+  }
+
+  function updateVoiceAutoSpeak(value) {
+    setVoiceAutoSpeakEnabled(value);
+    try {
+      localStorage.setItem(VOICE_AUTO_SPEAK_KEY, String(value));
+    } catch {
+      // 本地存储不可用时，本次运行仍保持选择。
+    }
+    if (!value) {
+      void stopVoicePlayback();
+    }
+    setNotice(value ? "AI 回复自动朗读已开启。" : "AI 回复自动朗读已关闭。");
+  }
+
+  voiceLifecycleRef.current.cancel = cancelVoiceCapture;
+  voiceLifecycleRef.current.stopPlayback = stopVoicePlayback;
+
   async function refreshSessions(preferredId = activeSessionId) {
     const data = await apiRequest("/sessions");
     const nextSessions = data.sessions || [];
@@ -737,7 +1245,8 @@ function App() {
 
     if (
       companionInteractionInFlightRef.current ||
-      isSendingRef.current
+      isSendingRef.current ||
+      voiceInputBusy(voiceStateRef.current)
     ) {
       scheduleCompanionInteraction(350);
       return;
@@ -855,6 +1364,10 @@ function App() {
         throw new Error("服务器没有返回可保存的互动回复，请稍后再试。");
       }
 
+      if (voiceAutoSpeakEnabled) {
+        void playAssistantReply(assistantMessage.content);
+      }
+
       if (activeSessionIdRef.current === sessionId) {
         const messagesBelongToSession =
           messagesSessionIdRef.current === sessionId;
@@ -921,9 +1434,14 @@ function App() {
     if (
       !text ||
       isSendingRef.current ||
-      companionInteractionInFlightRef.current
+      companionInteractionInFlightRef.current ||
+      voiceInputBusy(voiceStateRef.current)
     ) {
       return;
+    }
+
+    if (voiceStateRef.current === VOICE_STATES.speaking) {
+      void stopVoicePlayback();
     }
 
     setMessage("");
@@ -1025,6 +1543,12 @@ function App() {
                   : item,
               ),
             );
+            if (
+              voiceAutoSpeakEnabled &&
+              event.assistant_message?.content
+            ) {
+              void playAssistantReply(event.assistant_message.content);
+            }
           }
         },
       );
@@ -1226,8 +1750,8 @@ function App() {
     }
     setNotice(
       value
-        ? "文字情绪理解已开启。它只根据聊天文字调整回应，不会做心理诊断。"
-        : "文字情绪理解已关闭。",
+        ? "文字与语音情绪理解已开启。结果只作为回应语气参考，不是心理诊断。"
+        : "情绪理解已关闭；语音仍可转写和聊天。",
     );
   }
 
@@ -1382,6 +1906,17 @@ function App() {
                     {item.role === "user" ? "我" : settings.ai_name || "小灯"}
                   </div>
                   <div className="message-content">{item.content}</div>
+                  {item.voiceAnalysis && (
+                    <div className="voice-message-meta">
+                      <span>🎙 语音转写</span>
+                      <strong>
+                        {item.voiceAnalysis.emotion} ·{" "}
+                        {formatVoiceConfidence(
+                          item.voiceAnalysis.confidence,
+                        )}
+                      </strong>
+                    </div>
+                  )}
                   {item.isStreaming && <span className="stream-caret">♥</span>}
                   <time>{formatTime(item.created_at)}</time>
                 </div>
@@ -1404,13 +1939,18 @@ function App() {
               }}
               placeholder="输入消息，按 Enter 发送…"
               rows="1"
-              disabled={isSending || isCompanionResponding}
+              disabled={
+                isSending || isCompanionResponding || isVoiceInputBusy
+              }
             />
             <button
               className="send-button"
               onClick={sendMessage}
               disabled={
-                !message.trim() || isSending || isCompanionResponding
+                !message.trim() ||
+                isSending ||
+                isCompanionResponding ||
+                isVoiceInputBusy
               }
             >
               {isCompanionResponding
@@ -1420,6 +1960,67 @@ function App() {
                   : "发送"}
             </button>
           </div>
+          <div className={`voice-controls voice-${voiceState}`}>
+            <button
+              className="voice-hold-button"
+              type="button"
+              aria-label="按住说话，松开发送"
+              aria-pressed={voiceState === VOICE_STATES.recording}
+              disabled={
+                isSending ||
+                isCompanionResponding ||
+                [VOICE_STATES.uploading, VOICE_STATES.thinking].includes(
+                  voiceState,
+                )
+              }
+              onPointerDown={beginVoiceCapture}
+              onPointerUp={endVoiceCapture}
+              onPointerCancel={endVoiceCapture}
+              onContextMenu={(event) => event.preventDefault()}
+            >
+              <span className="voice-mic-icon" aria-hidden="true">
+                {voiceState === VOICE_STATES.recording ? "●" : "🎙"}
+              </span>
+              <span>
+                {voiceState === VOICE_STATES.recording
+                  ? `松开发送 · ${(voiceElapsedMs / 1000).toFixed(1)} 秒`
+                  : VOICE_STATE_LABELS[voiceState] || "按住说话"}
+              </span>
+            </button>
+            {voiceState === VOICE_STATES.speaking && (
+              <button
+                className="voice-stop-button"
+                type="button"
+                onClick={() => void stopVoicePlayback()}
+              >
+                停止朗读
+              </button>
+            )}
+            <span className="voice-status-text" role="status" aria-live="polite">
+              最长 60 秒 · 上传后服务端临时文件默认删除
+            </span>
+          </div>
+          {voiceError && (
+            <div className="voice-inline-error" role="alert">
+              {voiceError}
+            </div>
+          )}
+          {lastVoiceAnalysis && (
+            <div className="voice-analysis-card" role="status">
+              <div>
+                <strong>刚才的语音转写</strong>
+                <span>
+                  {lastVoiceAnalysis.emotion} ·{" "}
+                  {formatVoiceConfidence(lastVoiceAnalysis.confidence)}
+                </span>
+              </div>
+              <p>{lastVoiceAnalysis.text}</p>
+              <small>
+                {lastVoiceAnalysis.hint ||
+                  "情绪结果只是声音和文字线索，不是心理诊断；你的自述永远优先。"}
+              </small>
+            </div>
+          )}
           <small>
             {isCompanionResponding
               ? `${settings.ai_name || "小灯"}正在回应刚才的互动`
@@ -1782,15 +2383,15 @@ function App() {
             </div>
           </div>
 
-          <div className="settings-card">
-            <h3>文字情绪理解</h3>
+          <div className="settings-card voice-settings-card">
+            <h3>语音与情绪理解</h3>
             <p className="card-hint">
-              只根据你本轮发送的文字调整回应语气；不做心理诊断、不调用麦克风或摄像头，也不保存模型推测出的情绪。
-              如果理解不对，你可以直接告诉 AI，它必须以你的自述为准。开关只保存在当前设备。
+              文字聊天会参考本轮文字；按住说话时才会申请麦克风并分析转写、语气和声音线索。
+              结果不是心理诊断；如果理解不对，请直接告诉 AI，以你的自述为准。两个开关只保存在当前设备。
             </p>
             <div className="settings-grid">
               <label>
-                功能状态
+                情绪理解
                 <select
                   value={String(emotionUnderstandingEnabled)}
                   onChange={(event) =>
@@ -1801,6 +2402,28 @@ function App() {
                   <option value="true">开启</option>
                 </select>
               </label>
+              <label>
+                自动朗读 AI 回复
+                <select
+                  value={String(voiceAutoSpeakEnabled)}
+                  onChange={(event) =>
+                    updateVoiceAutoSpeak(event.target.value === "true")
+                  }
+                >
+                  <option value="false">关闭</option>
+                  <option value="true">开启</option>
+                </select>
+              </label>
+            </div>
+            <div className="voice-privacy-note">
+              <strong>麦克风与隐私</strong>
+              <p>
+                只有按住聊天页的“按住说话”按钮时才录音；松开后立即发送，最长 60 秒。
+                手机端不会把录音写入相册、本地文件或本地存储，但松开后会上传到 DengTa / HerVoice 服务。
+                语音文件会发送给服务器配置的语音转写服务（例如 Groq Whisper）；转写文字和声学特征会发送给情绪分类模型，再交给 AI 生成回复。
+                服务端请求使用的临时音频文件默认在本次处理结束后删除，不做长期保存。
+                页面隐藏、切换离开聊天页或取消录音时会关闭麦克风轨道；尚未发送的录音会丢弃。摄像头不会被调用。
+              </p>
             </div>
           </div>
 
