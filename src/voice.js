@@ -167,6 +167,7 @@ export function buildVoiceTurnFormData({
   sessionId = "",
   clientTime = "",
   timezone = "",
+  model = "",
   emotionUnderstandingEnabled = true,
   companionStatus = {},
   timestamp = Date.now(),
@@ -186,6 +187,7 @@ export function buildVoiceTurnFormData({
   formData.append("session_id", String(sessionId || ""));
   formData.append("client_time", String(clientTime || ""));
   formData.append("timezone", String(timezone || ""));
+  formData.append("model", String(model || ""));
   formData.append(
     "emotion_understanding_enabled",
     emotionUnderstandingEnabled ? "true" : "false",

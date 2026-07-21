@@ -305,6 +305,22 @@ async function prepareChatAttachmentFile(file) {
   });
 }
 
+function releaseChatRequestAttachments(request) {
+  if (!request || request.attachmentsReleased) return;
+  request.attachments.forEach((item) => revokeAttachmentDraft(item));
+  request.attachmentsReleased = true;
+}
+
+function abortChatRequest(requestRef, reason = "cancelled") {
+  const request = requestRef.current;
+  if (!request || request.controller.signal.aborted) return;
+  request.cancelReason = reason;
+  request.controller.abort(reason);
+  if (reason !== "view-change") {
+    releaseChatRequestAttachments(request);
+  }
+}
+
 function App() {
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);
@@ -386,6 +402,8 @@ function App() {
   const voiceElapsedTimerRef = useRef(null);
   const voiceMaxTimerRef = useRef(null);
   const voiceRequestRef = useRef(null);
+  const chatRequestRef = useRef(null);
+  const componentMountedRef = useRef(true);
   const speechRunRef = useRef(0);
   const voiceLifecycleRef = useRef({ cancel() {}, stopPlayback() {} });
 
@@ -413,7 +431,12 @@ function App() {
     }
 
     async function loadInitialModels(fallbackModel = "") {
-      applyInitialModelCatalog({}, fallbackModel);
+      const pendingSelection = chooseChatModel({
+        models: [],
+        stored: readStoredChatModel(),
+        fallback: fallbackModel,
+      });
+      if (!cancelled) setSelectedChatModel(pendingSelection);
       try {
         const data = await apiRequest("/models");
         applyInitialModelCatalog(data, fallbackModel);
@@ -467,15 +490,19 @@ function App() {
     chatAttachmentsRef.current = chatAttachments;
   }, [chatAttachments]);
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    componentMountedRef.current = true;
+    return () => {
+      componentMountedRef.current = false;
+      abortChatRequest(chatRequestRef, "component-unmount");
+      releaseChatRequestAttachments(chatRequestRef.current);
+      chatRequestRef.current = null;
       chatAttachmentsRef.current.forEach((item) =>
         revokeAttachmentDraft(item),
       );
       chatAttachmentsRef.current = [];
-    },
-    [],
-  );
+    };
+  }, []);
 
   useEffect(() => {
     companionStatusRef.current = companionStatus;
@@ -496,6 +523,9 @@ function App() {
   }, [voiceState]);
 
   useEffect(() => {
+    if (activeView !== "chat") {
+      abortChatRequest(chatRequestRef, "view-change");
+    }
     if (
       activeView !== "chat" &&
       [VOICE_STATES.requesting, VOICE_STATES.recording].includes(
@@ -523,6 +553,7 @@ function App() {
     }
 
     function releaseVoiceOnPageHide() {
+      abortChatRequest(chatRequestRef, "pagehide");
       voiceLifecycleRef.current.cancel({ updateState: false });
       voiceRequestRef.current?.abort();
       voiceRequestRef.current = null;
@@ -923,6 +954,7 @@ function App() {
         sessionId,
         clientTime: new Date().toLocaleString("zh-CN"),
         timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        model: selectedChatModel || settings.model || "",
         emotionUnderstandingEnabled,
         companionStatus: companionStatusForRequest(
           companionStatusRef.current,
@@ -1221,6 +1253,7 @@ function App() {
   }
 
   async function createSession() {
+    abortChatRequest(chatRequestRef, "session-change");
     try {
       const data = await apiRequest("/sessions", {
         method: "POST",
@@ -1239,6 +1272,9 @@ function App() {
   }
 
   function chooseSession(sessionId) {
+    if (sessionId !== activeSessionIdRef.current) {
+      abortChatRequest(chatRequestRef, "session-change");
+    }
     activeSessionIdRef.current = sessionId;
     setActiveSessionId(sessionId);
     setActiveView("chat");
@@ -1594,6 +1630,14 @@ function App() {
     const localUserId = `local-user-${Date.now()}`;
     const localAssistantId = `local-assistant-${Date.now()}`;
     let sendSucceeded = false;
+    abortChatRequest(chatRequestRef, "replaced");
+    const request = {
+      controller: new AbortController(),
+      attachments: attachmentsToSend,
+      attachmentsReleased: false,
+      cancelReason: "",
+    };
+    chatRequestRef.current = request;
     streamThinkingRef.current = {
       statuses: [],
       reasoningSummary: "",
@@ -1610,6 +1654,7 @@ function App() {
               30,
             ),
           }),
+          signal: request.controller.signal,
         });
         sessionId = created.session.id;
         activeSessionIdRef.current = sessionId;
@@ -1653,6 +1698,12 @@ function App() {
           files: attachmentsToSend,
         },
         (event) => {
+          if (
+            request.controller.signal.aborted ||
+            chatRequestRef.current !== request
+          ) {
+            return;
+          }
           if (activeSessionIdRef.current !== sessionId) return;
 
           if (event.type === "meta" && event.user_message) {
@@ -1727,6 +1778,7 @@ function App() {
           }
 
           if (event.type === "done") {
+            sendSucceeded = true;
             applyPromptReceipt(event.prompt_receipt);
             streamThinkingRef.current.assistantMessageId =
               event.assistant_message?.id || "";
@@ -1754,9 +1806,14 @@ function App() {
             }
           }
         },
+        { signal: request.controller.signal },
       );
 
       sendSucceeded = true;
+      releaseChatRequestAttachments(request);
+      if (chatRequestRef.current === request) {
+        chatRequestRef.current = null;
+      }
 
       const history = await apiRequest(`/sessions/${sessionId}/messages`);
       if (activeSessionIdRef.current === sessionId) {
@@ -1787,6 +1844,40 @@ function App() {
       }
       await refreshSessions(activeSessionIdRef.current || sessionId);
     } catch (error) {
+      const requestWasAborted = request.controller.signal.aborted;
+      if (!componentMountedRef.current) {
+        releaseChatRequestAttachments(request);
+        return;
+      }
+
+      if (requestWasAborted) {
+        if (sendSucceeded) {
+          releaseChatRequestAttachments(request);
+          return;
+        }
+        const restoreDraft = request.cancelReason === "view-change";
+        if (restoreDraft) {
+          if (text) setMessage((current) => current || text);
+          const restored = [
+            ...attachmentsToSend,
+            ...chatAttachmentsRef.current,
+          ].slice(0, 4);
+          chatAttachmentsRef.current = restored;
+          setChatAttachments(restored);
+        } else {
+          releaseChatRequestAttachments(request);
+        }
+        setMessages((current) =>
+          current.filter(
+            (item) => item.id !== localUserId && item.id !== localAssistantId,
+          ),
+        );
+        if (restoreDraft) {
+          setNotice("发送已取消，文字和附件已保留，可以返回聊天页后重试。");
+        }
+        return;
+      }
+
       setNotice(error.message);
       if (!sendSucceeded) {
         const restored = [
@@ -1809,14 +1900,20 @@ function App() {
       }
     } finally {
       if (sendSucceeded) {
-        attachmentsToSend.forEach((item) => revokeAttachmentDraft(item));
+        releaseChatRequestAttachments(request);
+      }
+      if (chatRequestRef.current === request) {
+        chatRequestRef.current = null;
       }
       if (streamingSessionIdRef.current === sessionId) {
         streamingSessionIdRef.current = null;
       }
       isSendingRef.current = false;
-      setIsSending(false);
-      if (companionInteractionQueueRef.current.length > 0) {
+      if (componentMountedRef.current) setIsSending(false);
+      if (
+        componentMountedRef.current &&
+        companionInteractionQueueRef.current.length > 0
+      ) {
         scheduleCompanionInteraction(250);
       }
     }
@@ -2723,8 +2820,9 @@ function App() {
                 只有按住聊天页的“按住说话”按钮时才录音；松开后立即发送，最长 60 秒。
                 手机端不会把录音写入相册、本地文件或本地存储，但松开后会上传到 DengTa / HerVoice 服务。
                 语音文件会发送给服务器配置的语音转写服务（例如 Groq Whisper）；转写文字和声学特征会发送给情绪分类模型，再交给 AI 生成回复。
-                服务端请求使用的临时音频文件默认在本次处理结束后删除，不做长期保存。
+                麦克风录音的原文件默认在本次处理结束后删除；通过“附件”选择的文件（包括音频）会随聊天记录私密保存。
                 页面隐藏、切换离开聊天页或取消录音时会关闭麦克风轨道；尚未发送的录音会丢弃。摄像头不会被调用。
+                情绪理解流程基于 HerVoice 开源项目，由 DengTa home 接入并做了服务端安全加固。
               </p>
             </div>
           </div>

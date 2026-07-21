@@ -40,10 +40,14 @@ async function fetchFromApi(path, options = {}) {
         continue;
       }
       return response;
-    } catch {
+    } catch (error) {
+      if (requestOptions.signal?.aborted) {
+        throw error;
+      }
       if (timedOut) {
         throw new Error(
           `等待 AI 回应超过 ${Math.ceil(timeoutMs / 1000)} 秒，本次不会自动重复请求。`,
+          { cause: error },
         );
       }
       if (attempt === retryDelays.length - 1) break;
@@ -113,11 +117,12 @@ export function buildStreamChatFormData(
   return formData;
 }
 
-export async function streamChat(payload, onEvent) {
+export async function streamChat(payload, onEvent, { signal } = {}) {
   const formData = buildStreamChatFormData(payload);
   const response = await fetchFromApi("/chat/stream", {
     method: "POST",
     body: formData,
+    signal,
   });
 
   const contentType = response.headers.get("content-type") || "";
@@ -150,21 +155,28 @@ export async function streamChat(payload, onEvent) {
     }
   }
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
-    lines.forEach(processLine);
-  }
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      lines.forEach(processLine);
+    }
 
-  buffer += decoder.decode();
-  if (buffer.trim()) processLine(buffer);
+    buffer += decoder.decode();
+    if (buffer.trim()) processLine(buffer);
 
-  if (streamError) {
-    throw new Error(streamError);
+    if (streamError) {
+      throw new Error(streamError);
+    }
+  } finally {
+    if (signal?.aborted) {
+      await reader.cancel(signal.reason).catch(() => {});
+    }
+    reader.releaseLock();
   }
 }
 

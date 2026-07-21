@@ -86,12 +86,14 @@ const formData = buildVoiceTurnFormData({
   sessionId: "session-id",
   clientTime: "2026/7/21 20:00:00",
   timezone: "Asia/Shanghai",
+  model: "gpt-5.5",
   emotionUnderstandingEnabled: true,
   companionStatus: { mood: "安心" },
   timestamp: 123,
 });
 assert.equal(formData.get("session_id"), "session-id");
 assert.equal(formData.get("timezone"), "Asia/Shanghai");
+assert.equal(formData.get("model"), "gpt-5.5");
 assert.equal(formData.get("emotion_understanding_enabled"), "true");
 assert.deepEqual(JSON.parse(formData.get("companion_status")), {
   mood: "安心",

@@ -19,7 +19,7 @@ import {
   mergeStreamedAssistantMessage,
   thinkingPanelVisible,
 } from "../src/chat-thinking.js";
-import { buildStreamChatFormData } from "../src/api.js";
+import { buildStreamChatFormData, streamChat } from "../src/api.js";
 
 function fakeFile(name, type, size) {
   return { name, type, size };
@@ -127,6 +127,18 @@ function fakeFile(name, type, size) {
 }
 
 {
+  assert.equal(
+    chooseChatModel({
+      models: [],
+      stored: "gpt-5.4-mini",
+      fallback: "gpt-5.5",
+    }),
+    "gpt-5.4-mini",
+    "模型列表加载期间不能用服务端默认值覆盖设备保存的选择",
+  );
+}
+
+{
   const values = new Map();
   const storage = {
     getItem: (key) => values.get(key) || null,
@@ -196,6 +208,120 @@ function fakeFile(name, type, size) {
   });
   assert.equal(formData.get("model"), "gpt-test");
   assert.equal(formData.getAll("files").length, 2);
+}
+
+{
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  const events = [];
+  let receivedSignal;
+  let released = false;
+  let readCount = 0;
+
+  globalThis.window = {
+    setTimeout: globalThis.setTimeout,
+    clearTimeout: globalThis.clearTimeout,
+  };
+  globalThis.fetch = async (_url, options) => {
+    receivedSignal = options.signal;
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => "text/event-stream" },
+      body: {
+        getReader() {
+          return {
+            async read() {
+              readCount += 1;
+              if (readCount === 1) {
+                return {
+                  done: false,
+                  value: new TextEncoder().encode(
+                    'data: {"type":"text","content":"你好"}\n\n',
+                  ),
+                };
+              }
+              return { done: true, value: undefined };
+            },
+            async cancel() {},
+            releaseLock() {
+              released = true;
+            },
+          };
+        },
+      },
+    };
+  };
+
+  try {
+    const controller = new AbortController();
+    await streamChat({}, (event) => events.push(event), {
+      signal: controller.signal,
+    });
+    assert.equal(receivedSignal, controller.signal);
+    assert.deepEqual(events, [{ type: "text", content: "你好" }]);
+    assert.equal(released, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+}
+
+{
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  let cancelled = false;
+  let released = false;
+
+  globalThis.window = {
+    setTimeout: globalThis.setTimeout,
+    clearTimeout: globalThis.clearTimeout,
+  };
+  globalThis.fetch = async (_url, options) => ({
+    ok: true,
+    status: 200,
+    headers: { get: () => "text/event-stream" },
+    body: {
+      getReader() {
+        return {
+          read() {
+            return new Promise((resolve, reject) => {
+              if (options.signal.aborted) {
+                reject(options.signal.reason);
+                return;
+              }
+              options.signal.addEventListener(
+                "abort",
+                () => reject(options.signal.reason),
+                { once: true },
+              );
+            });
+          },
+          async cancel() {
+            cancelled = true;
+          },
+          releaseLock() {
+            released = true;
+          },
+        };
+      },
+    },
+  });
+
+  try {
+    const controller = new AbortController();
+    const promise = streamChat({}, () => {}, { signal: controller.signal });
+    await Promise.resolve();
+    controller.abort(new DOMException("页面已离开", "AbortError"));
+    await assert.rejects(promise, { name: "AbortError" });
+    assert.equal(cancelled, true);
+    assert.equal(released, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
 }
 
 console.log("聊天附件、模型选择、处理摘要与 multipart 契约测试通过。");
