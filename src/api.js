@@ -2,8 +2,16 @@ const API_BASE_URL = (
   import.meta.env.VITE_API_URL || "http://localhost:3000"
 ).replace(/\/$/, "");
 
+async function fetchFromApi(path, options) {
+  try {
+    return await fetch(`${API_BASE_URL}${path}`, options);
+  } catch {
+    throw new Error("无法连接 DengTa 服务器，请检查手机网络后重试。");
+  }
+}
+
 export async function apiRequest(path, options = {}) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
+  const response = await fetchFromApi(path, {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -25,7 +33,7 @@ export async function apiRequest(path, options = {}) {
 }
 
 export async function streamChat(payload, onEvent) {
-  const response = await fetch(`${API_BASE_URL}/chat/stream`, {
+  const response = await fetchFromApi("/chat/stream", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
