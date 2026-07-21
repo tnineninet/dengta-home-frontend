@@ -2,12 +2,35 @@ const API_BASE_URL = (
   import.meta.env.VITE_API_URL || "http://localhost:3000"
 ).replace(/\/$/, "");
 
-async function fetchFromApi(path, options) {
-  try {
-    return await fetch(`${API_BASE_URL}${path}`, options);
-  } catch {
-    throw new Error("无法连接 DengTa 服务器，请检查手机网络后重试。");
+const RETRYABLE_SERVER_STATUSES = new Set([502, 503, 504]);
+
+function wait(milliseconds) {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
+}
+
+async function fetchFromApi(path, options = {}) {
+  const method = String(options.method || "GET").toUpperCase();
+  const retryDelays = method === "GET" ? [0, 1500, 4000] : [0];
+
+  for (let attempt = 0; attempt < retryDelays.length; attempt += 1) {
+    const delay = retryDelays[attempt];
+    if (delay > 0) await wait(delay);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}${path}`, options);
+      if (
+        attempt < retryDelays.length - 1 &&
+        RETRYABLE_SERVER_STATUSES.has(response.status)
+      ) {
+        continue;
+      }
+      return response;
+    } catch {
+      if (attempt === retryDelays.length - 1) break;
+    }
   }
+
+  throw new Error("无法连接 DengTa 服务器，请检查手机网络后重试。");
 }
 
 export async function apiRequest(path, options = {}) {
