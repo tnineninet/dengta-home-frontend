@@ -269,6 +269,7 @@ function App() {
     if (settings.push_enabled !== true) return undefined;
 
     let cancelled = false;
+    let pollInFlight = false;
     let timerId;
 
     if (!localStorage.getItem(PUSH_CURSOR_KEY)) {
@@ -276,11 +277,12 @@ function App() {
     }
 
     async function pollPushMessages() {
-      if (cancelled || !navigator.onLine) return;
+      if (cancelled || pollInFlight || !navigator.onLine) return;
 
       const since = localStorage.getItem(PUSH_CURSOR_KEY);
       if (!since) return;
 
+      pollInFlight = true;
       try {
         const data = await apiRequest(
           `/api/push/messages?since=${encodeURIComponent(since)}&limit=50`,
@@ -343,6 +345,8 @@ function App() {
         });
       } catch (error) {
         console.warn("主动消息检查失败：", error.message);
+      } finally {
+        pollInFlight = false;
       }
     }
 
