@@ -7,6 +7,7 @@ import OmbreMemories from "./OmbreMemories";
 const PUSH_CURSOR_KEY = "dengta_push_cursor";
 const PUSH_SEEN_IDS_KEY = "dengta_push_seen_ids";
 const PUSH_POLL_INTERVAL_MS = 2 * 60 * 1000;
+const EMOTION_UNDERSTANDING_KEY = "dengta_emotion_understanding_enabled";
 
 const emptySettings = {
   ai_name: "小灯",
@@ -65,6 +66,15 @@ function notificationId(value) {
     hash = (hash * 31 + character.charCodeAt(0)) | 0;
   }
   return (hash & 0x7fffffff) || 1;
+}
+
+function readEmotionUnderstandingSetting() {
+  try {
+    const stored = localStorage.getItem(EMOTION_UNDERSTANDING_KEY);
+    return stored === null ? true : stored === "true";
+  } catch {
+    return true;
+  }
 }
 
 function readFileAsDataUrl(file) {
@@ -199,6 +209,8 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [installPrompt, setInstallPrompt] = useState(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [emotionUnderstandingEnabled, setEmotionUnderstandingEnabled] =
+    useState(readEmotionUnderstandingSetting);
   const messageListRef = useRef(null);
   const messageEndRef = useRef(null);
   const activeSessionIdRef = useRef(null);
@@ -609,6 +621,7 @@ function App() {
           model: settings.model,
           client_time: new Date().toLocaleString("zh-CN"),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          emotion_understanding_enabled: emotionUnderstandingEnabled,
         },
         (event) => {
           if (activeSessionIdRef.current !== sessionId) return;
@@ -738,6 +751,20 @@ function App() {
 
   function updateDraft(field, value) {
     setDraftSettings((current) => ({ ...current, [field]: value }));
+  }
+
+  function updateEmotionUnderstanding(value) {
+    setEmotionUnderstandingEnabled(value);
+    try {
+      localStorage.setItem(EMOTION_UNDERSTANDING_KEY, String(value));
+    } catch {
+      // WebView 禁止本地存储时，本次运行仍然保持开关状态。
+    }
+    setNotice(
+      value
+        ? "文字情绪理解已开启。它只根据聊天文字调整回应，不会做心理诊断。"
+        : "文字情绪理解已关闭。",
+    );
   }
 
   async function loadMoments() {
@@ -1197,6 +1224,28 @@ function App() {
                   }
                   rows="7"
                 />
+              </label>
+            </div>
+          </div>
+
+          <div className="settings-card">
+            <h3>文字情绪理解</h3>
+            <p className="card-hint">
+              只根据你本轮发送的文字调整回应语气；不做心理诊断、不调用麦克风或摄像头，也不保存模型推测出的情绪。
+              如果理解不对，你可以直接告诉 AI，它必须以你的自述为准。开关只保存在当前设备。
+            </p>
+            <div className="settings-grid">
+              <label>
+                功能状态
+                <select
+                  value={String(emotionUnderstandingEnabled)}
+                  onChange={(event) =>
+                    updateEmotionUnderstanding(event.target.value === "true")
+                  }
+                >
+                  <option value="false">关闭</option>
+                  <option value="true">开启</option>
+                </select>
               </label>
             </div>
           </div>
