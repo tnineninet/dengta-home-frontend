@@ -3,6 +3,13 @@ import { Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { apiRequest, streamChat } from "./api";
 import OmbreMemories from "./OmbreMemories";
+import CompanionStatus from "./CompanionStatus";
+import {
+  companionStatusForRequest,
+  mergeCompanionStatus,
+  readCompanionStatus,
+  saveCompanionStatus,
+} from "./companion-status";
 
 const PUSH_CURSOR_KEY = "dengta_push_cursor";
 const PUSH_SEEN_IDS_KEY = "dengta_push_seen_ids";
@@ -211,6 +218,7 @@ function App() {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [emotionUnderstandingEnabled, setEmotionUnderstandingEnabled] =
     useState(readEmotionUnderstandingSetting);
+  const [companionStatus, setCompanionStatus] = useState(readCompanionStatus);
   const messageListRef = useRef(null);
   const messageEndRef = useRef(null);
   const activeSessionIdRef = useRef(null);
@@ -254,6 +262,10 @@ function App() {
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
   }, [activeSessionId]);
+
+  useEffect(() => {
+    saveCompanionStatus(companionStatus);
+  }, [companionStatus]);
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return undefined;
@@ -622,6 +634,7 @@ function App() {
           client_time: new Date().toLocaleString("zh-CN"),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           emotion_understanding_enabled: emotionUnderstandingEnabled,
+          companion_status: companionStatusForRequest(companionStatus),
         },
         (event) => {
           if (activeSessionIdRef.current !== sessionId) return;
@@ -655,6 +668,11 @@ function App() {
           }
 
           if (event.type === "done") {
+            if (event.companion_status) {
+              setCompanionStatus((current) =>
+                mergeCompanionStatus(current, event.companion_status),
+              );
+            }
             setMessages((current) =>
               current.map((item) =>
                 item.id === localAssistantId
@@ -1541,6 +1559,14 @@ function App() {
             ＋ 新对话
           </button>
         </header>
+
+        {activeView === "chat" && (
+          <CompanionStatus
+            aiName={settings.ai_name || "小灯"}
+            status={companionStatus}
+            onChange={setCompanionStatus}
+          />
+        )}
 
         {notice && (
           <div className="notice" role="status">
