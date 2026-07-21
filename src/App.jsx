@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { Capacitor } from "@capacitor/core";
+import { LocalNotifications } from "@capacitor/local-notifications";
 import { apiRequest, streamChat } from "./api";
 import OmbreMemories from "./OmbreMemories";
+
+const PUSH_CURSOR_KEY = "dengta_push_cursor";
+const PUSH_SEEN_IDS_KEY = "dengta_push_seen_ids";
+const PUSH_POLL_INTERVAL_MS = 2 * 60 * 1000;
 
 const emptySettings = {
   ai_name: "小灯",
@@ -42,6 +48,23 @@ function formatDateTime(value) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function readSeenPushIds() {
+  try {
+    const value = JSON.parse(localStorage.getItem(PUSH_SEEN_IDS_KEY) || "[]");
+    return Array.isArray(value) ? value.filter(Boolean).slice(-200) : [];
+  } catch {
+    return [];
+  }
+}
+
+function notificationId(value) {
+  let hash = 0;
+  for (const character of String(value || "")) {
+    hash = (hash * 31 + character.charCodeAt(0)) | 0;
+  }
+  return (hash & 0x7fffffff) || 1;
 }
 
 function readFileAsDataUrl(file) {
@@ -217,6 +240,139 @@ function App() {
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
   }, [activeSessionId]);
+
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return undefined;
+
+    let listener;
+    LocalNotifications.addListener(
+      "localNotificationActionPerformed",
+      (event) => {
+        const sessionId = event.notification.extra?.sessionId;
+        if (!sessionId) return;
+
+        activeSessionIdRef.current = sessionId;
+        setActiveSessionId(sessionId);
+        setActiveView("chat");
+        setIsSidebarOpen(false);
+      },
+    ).then((handle) => {
+      listener = handle;
+    });
+
+    return () => {
+      listener?.remove();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (settings.push_enabled !== true) return undefined;
+
+    let cancelled = false;
+    let timerId;
+
+    if (!localStorage.getItem(PUSH_CURSOR_KEY)) {
+      localStorage.setItem(PUSH_CURSOR_KEY, new Date().toISOString());
+    }
+
+    async function pollPushMessages() {
+      if (cancelled || !navigator.onLine) return;
+
+      const since = localStorage.getItem(PUSH_CURSOR_KEY);
+      if (!since) return;
+
+      try {
+        const data = await apiRequest(
+          `/api/push/messages?since=${encodeURIComponent(since)}&limit=50`,
+        );
+        if (cancelled) return;
+
+        const seenIds = readSeenPushIds();
+        const seenSet = new Set(seenIds);
+        const incoming = (data.messages || []).filter(
+          (item) => item.id && !seenSet.has(item.id),
+        );
+        const allMessages = data.messages || [];
+        const latest = allMessages.at(-1);
+
+        if (latest?.created_at) {
+          localStorage.setItem(PUSH_CURSOR_KEY, latest.created_at);
+        }
+
+        if (incoming.length === 0) return;
+
+        const nextSeenIds = [
+          ...seenIds,
+          ...incoming.map((item) => item.id),
+        ].slice(-200);
+        localStorage.setItem(PUSH_SEEN_IDS_KEY, JSON.stringify(nextSeenIds));
+
+        const currentSessionId = activeSessionIdRef.current;
+        const sessionsData = await apiRequest("/sessions");
+        if (!cancelled) setSessions(sessionsData.sessions || []);
+
+        if (
+          currentSessionId &&
+          !streamingSessionIdRef.current &&
+          incoming.some((item) => item.conversation_id === currentSessionId)
+        ) {
+          const history = await apiRequest(
+            `/sessions/${currentSessionId}/messages`,
+          );
+          if (!cancelled && activeSessionIdRef.current === currentSessionId) {
+            setMessages(history.messages || []);
+          }
+        }
+
+        if (!Capacitor.isNativePlatform()) return;
+
+        let permission = await LocalNotifications.checkPermissions();
+        if (permission.display !== "granted") {
+          permission = await LocalNotifications.requestPermissions();
+        }
+        if (permission.display !== "granted") return;
+
+        await LocalNotifications.schedule({
+          notifications: incoming.map((item, index) => ({
+            id: notificationId(item.id),
+            title: settings.ai_name || "DengTa home",
+            body: item.content,
+            schedule: { at: new Date(Date.now() + 500 + index * 750) },
+            extra: { sessionId: item.conversation_id },
+          })),
+        });
+      } catch (error) {
+        console.warn("主动消息检查失败：", error.message);
+      }
+    }
+
+    async function runAndScheduleNext() {
+      await pollPushMessages();
+      if (!cancelled) {
+        timerId = window.setTimeout(
+          runAndScheduleNext,
+          PUSH_POLL_INTERVAL_MS,
+        );
+      }
+    }
+
+    function pollWhenVisible() {
+      if (document.visibilityState === "visible") {
+        void pollPushMessages();
+      }
+    }
+
+    void runAndScheduleNext();
+    document.addEventListener("visibilitychange", pollWhenVisible);
+    window.addEventListener("online", pollWhenVisible);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timerId);
+      document.removeEventListener("visibilitychange", pollWhenVisible);
+      window.removeEventListener("online", pollWhenVisible);
+    };
+  }, [settings.ai_name, settings.push_enabled]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1090,7 +1246,7 @@ function App() {
                   }
                 >
                   <option value="false">关闭</option>
-                  <option value="true">开启（模块完成后生效）</option>
+                  <option value="true">开启</option>
                 </select>
               </label>
               <label>
