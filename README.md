@@ -1,16 +1,38 @@
-# React + Vite
+# DengTa home frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+DengTa home 的 React + Vite 前端，包含聊天、会话、朋友圈、Supabase 对话摘要、Ombre 记忆浏览和 PWA 安装支持。
 
-Currently, two official plugins are available:
+## 本地运行
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+只使用 CMD：
 
-## React Compiler
+```cmd
+npm install
+npm run dev
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+默认本地后端地址为 `http://localhost:3000`。生产构建使用 `.env.production` 中的线上后端地址。
 
-## Expanding the ESLint configuration
+## 检查
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+```cmd
+npm run lint
+npm run build
+```
+
+## Android
+
+Android 原生壳使用 Capacitor，应用编号为 `home.dengta.app`，最低支持 Android 7。
+
+同步网页资源：
+
+```cmd
+npm run build
+npm run android:sync
+```
+
+`.github/workflows/android-apk.yml` 会在 GitHub Actions 中构建调试版 APK，并上传名为 `DengTa-home-android-debug` 的构建产物。调试版仅用于个人手机测试；正式发布前需要单独配置发布签名。
+
+## 密钥
+
+API Key、Ombre Token、Dashboard 密码和 Supabase Secret 都不得写入本仓库。它们只保存在相应后端部署平台的环境变量中。

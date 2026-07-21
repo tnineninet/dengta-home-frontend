@@ -92,7 +92,11 @@ export default function OmbreMemories() {
         const status = await apiRequest("/api/ombre/status");
         if (cancelled) return;
         setConnection(status);
-        await loadItems("all", "");
+        const memoryData = await apiRequest("/api/ombre/buckets");
+        if (cancelled) return;
+        setItems(memoryData.items || []);
+        setSemanticSearch(memoryData.semanticSearch || "");
+        setLoading(false);
       } catch (connectionError) {
         if (!cancelled) {
           setConnection((current) => ({
