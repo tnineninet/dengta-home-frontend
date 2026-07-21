@@ -1,9 +1,32 @@
 import { useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
-import { apiRequest, streamChat } from "./api";
+import { API_BASE_URL, apiRequest, streamChat } from "./api";
 import OmbreMemories from "./OmbreMemories";
 import CompanionStatus from "./CompanionStatus";
+import {
+  MessageAttachments,
+  SelectedAttachmentStrip,
+  ThinkingPanel,
+} from "./ChatMessageExtras";
+import {
+  createAttachmentDraft,
+  draftsForLocalMessage,
+  revokeAttachmentDraft,
+  validateAttachmentFiles,
+} from "./chat-attachments";
+import {
+  chooseChatModel,
+  normalizeModelsResponse,
+  readStoredChatModel,
+  storeChatModel,
+} from "./chat-models";
+import {
+  attachThinkingTrace,
+  appendReasoningSummary,
+  appendThinkingStatus,
+  mergeStreamedAssistantMessage,
+} from "./chat-thinking";
 import {
   COMPANION_INTERACTION_TYPES,
   enqueueCompanionInteraction,
@@ -184,7 +207,7 @@ function canvasToBlob(canvas, type, quality) {
   });
 }
 
-async function prepareMomentImage(file) {
+async function prepareImageUpload(file) {
   const supportedTypes = [
     "image/jpeg",
     "image/png",
@@ -200,12 +223,10 @@ async function prepareMomentImage(file) {
     if (file.size > 5 * 1024 * 1024) {
       throw new Error("GIF 图片必须小于 5MB。");
     }
-    const dataUrl = await readFileAsDataUrl(file);
     return {
       name: file.name,
       type: file.type,
-      data: dataUrl.split(",")[1] || "",
-      preview: dataUrl,
+      blob: file,
     };
   }
 
@@ -220,24 +241,20 @@ async function prepareMomentImage(file) {
     if (file.size > 5 * 1024 * 1024) {
       throw new Error("这张大图无法压缩，请换一张较小的图片。");
     }
-    const dataUrl = await readFileAsDataUrl(file);
     return {
       name: file.name,
       type: file.type,
-      data: dataUrl.split(",")[1] || "",
-      preview: dataUrl,
+      blob: file,
     };
   }
 
   const longestSide = Math.max(bitmap.width, bitmap.height);
   if (file.size <= 2 * 1024 * 1024 && longestSide <= 1800) {
     bitmap.close?.();
-    const dataUrl = await readFileAsDataUrl(file);
     return {
       name: file.name,
       type: file.type,
-      data: dataUrl.split(",")[1] || "",
-      preview: dataUrl,
+      blob: file,
     };
   }
 
@@ -260,13 +277,32 @@ async function prepareMomentImage(file) {
     throw new Error("图片压缩后仍超过 5MB，请换一张较小的图片。");
   }
 
-  const dataUrl = await readFileAsDataUrl(compressed);
   return {
     name: file.name.replace(/\.[^.]+$/, "") + ".jpg",
     type: "image/jpeg",
+    blob: compressed,
+  };
+}
+
+async function prepareMomentImage(file) {
+  const prepared = await prepareImageUpload(file);
+  const dataUrl = await readFileAsDataUrl(prepared.blob);
+  return {
+    name: prepared.name,
+    type: prepared.type,
     data: dataUrl.split(",")[1] || "",
     preview: dataUrl,
   };
+}
+
+async function prepareChatAttachmentFile(file) {
+  if (!String(file?.type || "").startsWith("image/")) return file;
+  const prepared = await prepareImageUpload(file);
+  if (prepared.blob === file) return file;
+  return new File([prepared.blob], prepared.name, {
+    type: prepared.type,
+    lastModified: Date.now(),
+  });
 }
 
 function App() {
@@ -274,6 +310,12 @@ function App() {
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState("");
+  const [chatAttachments, setChatAttachments] = useState([]);
+  const [availableModels, setAvailableModels] = useState([]);
+  const [selectedChatModel, setSelectedChatModel] = useState(
+    readStoredChatModel,
+  );
+  const [modelsLoadMessage, setModelsLoadMessage] = useState("");
   const [settings, setSettings] = useState(emptySettings);
   const [draftSettings, setDraftSettings] = useState(emptySettings);
   const [activeView, setActiveView] = useState("chat");
@@ -316,6 +358,13 @@ function App() {
   );
   const messageListRef = useRef(null);
   const messageEndRef = useRef(null);
+  const chatFileInputRef = useRef(null);
+  const chatAttachmentsRef = useRef([]);
+  const streamThinkingRef = useRef({
+    statuses: [],
+    reasoningSummary: "",
+    assistantMessageId: "",
+  });
   const activeSessionIdRef = useRef(null);
   const messagesSessionIdRef = useRef(null);
   const messageLoadTokenRef = useRef(0);
@@ -344,9 +393,41 @@ function App() {
     (session) => session.id === activeSessionId,
   );
   const isVoiceInputBusy = voiceInputBusy(voiceState);
+  const activeChatModel = selectedChatModel || settings.model;
 
   useEffect(() => {
     let cancelled = false;
+
+    function applyInitialModelCatalog(data, fallbackModel = "") {
+      if (cancelled) return;
+      const catalog = normalizeModelsResponse(data, fallbackModel);
+      const selected = chooseChatModel({
+        models: catalog.models,
+        stored: readStoredChatModel(),
+        current: catalog.currentModel,
+        fallback: fallbackModel,
+      });
+      setAvailableModels(catalog.models);
+      setSelectedChatModel(selected);
+      if (selected) storeChatModel(selected);
+    }
+
+    async function loadInitialModels(fallbackModel = "") {
+      applyInitialModelCatalog({}, fallbackModel);
+      try {
+        const data = await apiRequest("/models");
+        applyInitialModelCatalog(data, fallbackModel);
+        if (!cancelled) setModelsLoadMessage("");
+      } catch {
+        if (!cancelled) {
+          setModelsLoadMessage(
+            fallbackModel
+              ? "模型列表暂时无法读取，仍会使用当前已保存的模型。"
+              : "模型列表暂时无法读取，将由服务器选择默认模型。",
+          );
+        }
+      }
+    }
 
     async function loadInitialData() {
       try {
@@ -364,6 +445,7 @@ function App() {
         setHasLoadedSettings(true);
         setSessions(nextSessions);
         setActiveSessionId(nextSessions[0]?.id || null);
+        void loadInitialModels(nextSettings.model);
       } catch (error) {
         if (!cancelled) setNotice(error.message);
       } finally {
@@ -380,6 +462,20 @@ function App() {
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
   }, [activeSessionId]);
+
+  useEffect(() => {
+    chatAttachmentsRef.current = chatAttachments;
+  }, [chatAttachments]);
+
+  useEffect(
+    () => () => {
+      chatAttachmentsRef.current.forEach((item) =>
+        revokeAttachmentDraft(item),
+      );
+      chatAttachmentsRef.current = [];
+    },
+    [],
+  );
 
   useEffect(() => {
     companionStatusRef.current = companionStatus;
@@ -1429,10 +1525,53 @@ function App() {
     }
   }
 
+  async function selectChatAttachments(event) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = "";
+    if (files.length === 0) return;
+
+    try {
+      const checked = validateAttachmentFiles(
+        chatAttachmentsRef.current,
+        files,
+      );
+      const preparedFiles = [];
+      for (const file of checked.accepted) {
+        preparedFiles.push(await prepareChatAttachmentFile(file));
+      }
+      const drafts = preparedFiles.map((file) => createAttachmentDraft(file));
+      const next = [...chatAttachmentsRef.current, ...drafts];
+      chatAttachmentsRef.current = next;
+      setChatAttachments(next);
+
+      if (checked.rejected.length > 0) {
+        setNotice(checked.rejected.join("；"));
+      } else {
+        setNotice("");
+      }
+    } catch (error) {
+      setNotice(error.message || "附件处理失败，请换一个文件重试。");
+    }
+  }
+
+  function removeChatAttachment(id) {
+    const removed = chatAttachmentsRef.current.find((item) => item.id === id);
+    if (removed) revokeAttachmentDraft(removed);
+    const next = chatAttachmentsRef.current.filter((item) => item.id !== id);
+    chatAttachmentsRef.current = next;
+    setChatAttachments(next);
+  }
+
+  function selectChatModel(value) {
+    const model = storeChatModel(value);
+    setSelectedChatModel(model);
+  }
+
   async function sendMessage() {
     const text = message.trim();
+    const attachmentsToSend = [...chatAttachmentsRef.current];
     if (
-      !text ||
+      (!text && attachmentsToSend.length === 0) ||
       isSendingRef.current ||
       companionInteractionInFlightRef.current ||
       voiceInputBusy(voiceStateRef.current)
@@ -1445,6 +1584,8 @@ function App() {
     }
 
     setMessage("");
+    chatAttachmentsRef.current = [];
+    setChatAttachments([]);
     isSendingRef.current = true;
     setIsSending(true);
     setNotice("");
@@ -1452,12 +1593,23 @@ function App() {
     let sessionId = activeSessionId;
     const localUserId = `local-user-${Date.now()}`;
     const localAssistantId = `local-assistant-${Date.now()}`;
+    let sendSucceeded = false;
+    streamThinkingRef.current = {
+      statuses: [],
+      reasoningSummary: "",
+      assistantMessageId: "",
+    };
 
     try {
       if (!sessionId) {
         const created = await apiRequest("/sessions", {
           method: "POST",
-          body: JSON.stringify({ title: text.slice(0, 30) }),
+          body: JSON.stringify({
+            title: (text || attachmentsToSend[0]?.name || "附件对话").slice(
+              0,
+              30,
+            ),
+          }),
         });
         sessionId = created.session.id;
         activeSessionIdRef.current = sessionId;
@@ -1476,7 +1628,8 @@ function App() {
         {
           id: localUserId,
           role: "user",
-          content: text,
+          content: text || "（发送了附件）",
+          attachments: draftsForLocalMessage(attachmentsToSend),
           created_at: new Date().toISOString(),
         },
         {
@@ -1492,11 +1645,12 @@ function App() {
         {
           session_id: sessionId,
           message: text,
-          model: settings.model,
+          model: activeChatModel,
           client_time: new Date().toLocaleString("zh-CN"),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           emotion_understanding_enabled: emotionUnderstandingEnabled,
           companion_status: companionStatusForRequest(companionStatus),
+          files: attachmentsToSend,
         },
         (event) => {
           if (activeSessionIdRef.current !== sessionId) return;
@@ -1504,7 +1658,43 @@ function App() {
           if (event.type === "meta" && event.user_message) {
             setMessages((current) =>
               current.map((item) =>
-                item.id === localUserId ? event.user_message : item,
+                item.id === localUserId
+                  ? {
+                      ...event.user_message,
+                      attachments:
+                        event.user_message.attachments || item.attachments,
+                    }
+                  : item,
+              ),
+            );
+          }
+
+          if (event.type === "status") {
+            const statuses = appendThinkingStatus(
+              streamThinkingRef.current.statuses,
+              event.content || event.status || event.stage,
+            );
+            streamThinkingRef.current.statuses = statuses;
+            setMessages((current) =>
+              current.map((item) =>
+                item.id === localAssistantId
+                  ? { ...item, thinkingStatuses: statuses }
+                  : item,
+              ),
+            );
+          }
+
+          if (event.type === "reasoning") {
+            const reasoningSummary = appendReasoningSummary(
+              streamThinkingRef.current.reasoningSummary,
+              event.content,
+            );
+            streamThinkingRef.current.reasoningSummary = reasoningSummary;
+            setMessages((current) =>
+              current.map((item) =>
+                item.id === localAssistantId
+                  ? { ...item, reasoningSummary }
+                  : item,
               ),
             );
           }
@@ -1523,7 +1713,14 @@ function App() {
             setMessages((current) =>
               current.map((item) =>
                 item.id === localAssistantId
-                  ? { ...item, content: event.content, isStreaming: false }
+                  ? {
+                      ...item,
+                      content: event.content,
+                      isStreaming: false,
+                      thinkingStatuses: streamThinkingRef.current.statuses,
+                      reasoningSummary:
+                        streamThinkingRef.current.reasoningSummary,
+                    }
                   : item,
               ),
             );
@@ -1531,6 +1728,8 @@ function App() {
 
           if (event.type === "done") {
             applyPromptReceipt(event.prompt_receipt);
+            streamThinkingRef.current.assistantMessageId =
+              event.assistant_message?.id || "";
             if (event.companion_status) {
               setCompanionStatus((current) =>
                 mergeCompanionStatus(current, event.companion_status),
@@ -1539,7 +1738,11 @@ function App() {
             setMessages((current) =>
               current.map((item) =>
                 item.id === localAssistantId
-                  ? event.assistant_message || { ...item, isStreaming: false }
+                  ? mergeStreamedAssistantMessage(
+                      item,
+                      event.assistant_message,
+                      streamThinkingRef.current,
+                    )
                   : item,
               ),
             );
@@ -1553,27 +1756,61 @@ function App() {
         },
       );
 
+      sendSucceeded = true;
+
       const history = await apiRequest(`/sessions/${sessionId}/messages`);
       if (activeSessionIdRef.current === sessionId) {
+        const historyMessages = history.messages || [];
+        const assistantMessageId =
+          streamThinkingRef.current.assistantMessageId;
+        let traceTargetIndex = assistantMessageId
+          ? historyMessages.findIndex(
+              (item) => item.id === assistantMessageId,
+            )
+          : -1;
+        if (traceTargetIndex < 0) {
+          for (let index = historyMessages.length - 1; index >= 0; index -= 1) {
+            if (historyMessages[index]?.role === "assistant") {
+              traceTargetIndex = index;
+              break;
+            }
+          }
+        }
+        const hydratedMessages = historyMessages.map((item, index) =>
+          index === traceTargetIndex
+            ? attachThinkingTrace(item, streamThinkingRef.current)
+            : item,
+        );
         messageLoadTokenRef.current += 1;
         messagesSessionIdRef.current = sessionId;
-        setMessages(history.messages || []);
+        setMessages(hydratedMessages);
       }
       await refreshSessions(activeSessionIdRef.current || sessionId);
     } catch (error) {
       setNotice(error.message);
-      setMessages((current) =>
-        current.map((item) =>
-          item.id === localAssistantId
-            ? {
-                ...item,
-                content: "连接暂时中断了，请检查后端后再试一次。",
-                isStreaming: false,
-              }
-            : item,
-        ),
-      );
+      if (!sendSucceeded) {
+        const restored = [
+          ...attachmentsToSend,
+          ...chatAttachmentsRef.current,
+        ].slice(0, 4);
+        chatAttachmentsRef.current = restored;
+        setChatAttachments(restored);
+        setMessages((current) =>
+          current.map((item) =>
+            item.id === localAssistantId
+              ? {
+                  ...item,
+                  content: "连接暂时中断了，请检查后端后再试一次。",
+                  isStreaming: false,
+                }
+              : item,
+          ),
+        );
+      }
     } finally {
+      if (sendSucceeded) {
+        attachmentsToSend.forEach((item) => revokeAttachmentDraft(item));
+      }
       if (streamingSessionIdRef.current === sessionId) {
         streamingSessionIdRef.current = null;
       }
@@ -1890,8 +2127,8 @@ function App() {
               <p>
                 现在可以测试聊天、历史记录和流式显示。
                 <br />
-                {settings.model
-                  ? `当前已连接真实模型：${settings.model}`
+                {activeChatModel
+                  ? `当前已连接真实模型：${activeChatModel}`
                   : "尚未填写模型时，会使用安全的演示回复。"}
               </p>
             </div>
@@ -1906,6 +2143,19 @@ function App() {
                     {item.role === "user" ? "我" : settings.ai_name || "小灯"}
                   </div>
                   <div className="message-content">{item.content}</div>
+                  <MessageAttachments
+                    value={item.attachments || item.files}
+                    apiBaseUrl={API_BASE_URL}
+                    onPreview={(url, name) =>
+                      setImageViewer({ url, alt: name })
+                    }
+                  />
+                  {item.role === "assistant" && (
+                    <ThinkingPanel
+                      key={`${item.id}-${item.isStreaming ? "streaming" : "complete"}`}
+                      message={item}
+                    />
+                  )}
                   {item.voiceAnalysis && (
                     <div className="voice-message-meta">
                       <span>🎙 语音转写</span>
@@ -1927,6 +2177,58 @@ function App() {
         </section>
 
         <div className="composer-wrap">
+          <div className="chat-tools-row">
+            <label className="chat-model-picker">
+              <span>本轮模型</span>
+              <select
+                value={selectedChatModel}
+                onChange={(event) => selectChatModel(event.target.value)}
+                disabled={isSending || isCompanionResponding || isVoiceInputBusy}
+              >
+                {availableModels.length === 0 && (
+                  <option value={selectedChatModel || settings.model || ""}>
+                    {activeChatModel || "由服务器自动选择"}
+                  </option>
+                )}
+                {availableModels.map((modelOption) => (
+                  <option value={modelOption.id} key={modelOption.id}>
+                    {modelOption.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <input
+              ref={chatFileInputRef}
+              className="visually-hidden-file-input"
+              type="file"
+              multiple
+              accept="image/*,audio/*,.pdf,.docx,.txt,.md,.csv,.json,.xml"
+              onChange={selectChatAttachments}
+              tabIndex="-1"
+            />
+            <button
+              className="chat-attach-button"
+              type="button"
+              disabled={
+                chatAttachments.length >= 4 ||
+                isSending ||
+                isCompanionResponding ||
+                isVoiceInputBusy
+              }
+              onClick={() => chatFileInputRef.current?.click()}
+            >
+              ＋ 附件
+            </button>
+          </div>
+          {modelsLoadMessage && (
+            <div className="chat-model-note" role="status">
+              {modelsLoadMessage}
+            </div>
+          )}
+          <SelectedAttachmentStrip
+            items={chatAttachments}
+            onRemove={removeChatAttachment}
+          />
           <div className="composer">
             <textarea
               value={message}
@@ -1937,7 +2239,7 @@ function App() {
                   sendMessage();
                 }
               }}
-              placeholder="输入消息，按 Enter 发送…"
+              placeholder="输入消息，或只添加附件后发送…"
               rows="1"
               disabled={
                 isSending || isCompanionResponding || isVoiceInputBusy
@@ -1947,7 +2249,7 @@ function App() {
               className="send-button"
               onClick={sendMessage}
               disabled={
-                !message.trim() ||
+                (!message.trim() && chatAttachments.length === 0) ||
                 isSending ||
                 isCompanionResponding ||
                 isVoiceInputBusy
@@ -2770,7 +3072,7 @@ function App() {
             <p>
               {activeView === "chat"
                 ? `${settings.ai_name || "小灯"} · ${
-                    settings.model || "演示模式"
+                    activeChatModel || "演示模式"
                   }`
                 : "DengTa home"}
             </p>

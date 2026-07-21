@@ -77,11 +77,47 @@ export async function apiRequest(path, options = {}) {
   return data;
 }
 
+export function buildStreamChatFormData(
+  payload = {},
+  FormDataImpl = globalThis.FormData,
+) {
+  if (!FormDataImpl) {
+    throw new Error("当前环境不能发送聊天附件。");
+  }
+
+  const formData = new FormDataImpl();
+  const fields = {
+    message: payload.message,
+    session_id: payload.session_id,
+    client_time: payload.client_time,
+    timezone: payload.timezone,
+    emotion_understanding_enabled:
+      payload.emotion_understanding_enabled === true ? "true" : "false",
+    companion_status:
+      typeof payload.companion_status === "string"
+        ? payload.companion_status
+        : JSON.stringify(payload.companion_status || {}),
+    model: payload.model,
+  };
+
+  Object.entries(fields).forEach(([name, value]) => {
+    formData.append(name, String(value ?? ""));
+  });
+
+  Array.from(payload.files || []).forEach((item) => {
+    const file = item?.file || item;
+    if (!(file instanceof Blob) || file.size === 0) return;
+    formData.append("files", file, file.name || item?.name || "附件");
+  });
+
+  return formData;
+}
+
 export async function streamChat(payload, onEvent) {
+  const formData = buildStreamChatFormData(payload);
   const response = await fetchFromApi("/chat/stream", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: formData,
   });
 
   const contentType = response.headers.get("content-type") || "";
