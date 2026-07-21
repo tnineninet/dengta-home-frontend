@@ -74,3 +74,19 @@ export function chooseChatModel({ models = [], stored = "", current = "", fallba
     .filter(Boolean);
   return candidates.find((item) => available.size === 0 || available.has(item)) || "";
 }
+
+export function reconcileModelCatalog(
+  value,
+  { previous = "", fallback = "" } = {},
+) {
+  const catalog = normalizeModelsResponse(value, fallback);
+  return {
+    ...catalog,
+    selectedModel: chooseChatModel({
+      models: catalog.models,
+      stored: previous,
+      current: catalog.currentModel,
+      fallback,
+    }),
+  };
+}

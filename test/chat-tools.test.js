@@ -10,6 +10,7 @@ import {
   chooseChatModel,
   normalizeModelsResponse,
   readStoredChatModel,
+  reconcileModelCatalog,
   storeChatModel,
 } from "../src/chat-models.js";
 import {
@@ -139,6 +140,20 @@ function fakeFile(name, type, size) {
 }
 
 {
+  const retained = reconcileModelCatalog(
+    { models: ["new-default", "still-valid"], current_model: "new-default" },
+    { previous: "still-valid", fallback: "new-default" },
+  );
+  assert.equal(retained.selectedModel, "still-valid");
+
+  const replaced = reconcileModelCatalog(
+    { models: ["new-default", "another"], current_model: "new-default" },
+    { previous: "removed-model", fallback: "another" },
+  );
+  assert.equal(replaced.selectedModel, "new-default");
+}
+
+{
   const values = new Map();
   const storage = {
     getItem: (key) => values.get(key) || null,
@@ -237,7 +252,7 @@ function fakeFile(name, type, size) {
                 return {
                   done: false,
                   value: new TextEncoder().encode(
-                    'data: {"type":"text","content":"你好"}\n\n',
+                    'data: {"type":"text","content":"你好"}\n\ndata: {"type":"done","ok":true}\n\n',
                   ),
                 };
               }
@@ -255,11 +270,15 @@ function fakeFile(name, type, size) {
 
   try {
     const controller = new AbortController();
-    await streamChat({}, (event) => events.push(event), {
+    const completion = await streamChat({}, (event) => events.push(event), {
       signal: controller.signal,
     });
     assert.equal(receivedSignal, controller.signal);
-    assert.deepEqual(events, [{ type: "text", content: "你好" }]);
+    assert.deepEqual(events, [
+      { type: "text", content: "你好" },
+      { type: "done", ok: true },
+    ]);
+    assert.deepEqual(completion, { type: "done", ok: true });
     assert.equal(released, true);
   } finally {
     globalThis.fetch = originalFetch;
@@ -267,6 +286,67 @@ function fakeFile(name, type, size) {
     else globalThis.window = originalWindow;
   }
 }
+
+
+async function runTerminalStream(events) {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  let readCount = 0;
+
+  globalThis.window = {
+    setTimeout: globalThis.setTimeout,
+    clearTimeout: globalThis.clearTimeout,
+  };
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    headers: { get: () => "text/event-stream" },
+    body: {
+      getReader() {
+        return {
+          async read() {
+            readCount += 1;
+            if (readCount > 1) return { done: true, value: undefined };
+            return {
+              done: false,
+              value: new TextEncoder().encode(
+                events
+                  .map((event) => `data: ${JSON.stringify(event)}\n\n`)
+                  .join(""),
+              ),
+            };
+          },
+          async cancel() {},
+          releaseLock() {},
+        };
+      },
+    },
+  });
+
+  try {
+    return await streamChat({}, () => {});
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+}
+
+await assert.rejects(
+  runTerminalStream([
+    { type: "error", content: "服务端没有提交" },
+    { type: "done", ok: true },
+  ]),
+  /服务端没有提交/,
+);
+await assert.rejects(
+  runTerminalStream([{ type: "done", ok: false, message: "保存失败" }]),
+  /保存失败/,
+);
+await assert.rejects(
+  runTerminalStream([{ type: "text", content: "未完成内容" }]),
+  /没有确认本轮已保存/,
+);
 
 {
   const originalFetch = globalThis.fetch;

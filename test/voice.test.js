@@ -6,6 +6,8 @@ import {
   VOICE_STATE_LABELS,
   buildVoiceTurnFormData,
   formatVoiceConfidence,
+  hydrateStoredVoiceAnalysis,
+  hydrateStoredVoiceMessages,
   localizeVoiceEmotion,
   normalizeVoiceAnalysis,
   selectRecorderMimeType,
@@ -48,6 +50,30 @@ assert.deepEqual(normalized, {
 assert.equal("features" in normalized, false);
 assert.equal(formatVoiceConfidence(0.826), "置信度 83%");
 assert.equal(formatVoiceConfidence("unknown"), "置信度未知");
+
+const storedVoiceMessage = hydrateStoredVoiceAnalysis({
+  id: "voice-message",
+  role: "user",
+  content: "历史转写内容",
+  tool_calls: {
+    is_voice: true,
+    voice_analysis: {
+      emotion: "tired",
+      confidence: 0.7,
+      hint: "语速偏慢",
+    },
+  },
+});
+assert.deepEqual(storedVoiceMessage.voiceAnalysis, {
+  text: "历史转写内容",
+  emotion: "疲惫",
+  confidence: 0.7,
+  hint: "语速偏慢",
+});
+assert.equal(
+  hydrateStoredVoiceMessages([storedVoiceMessage, { id: "plain" }]).length,
+  2,
+);
 assert.equal(localizeVoiceEmotion("happy"), "开心");
 assert.equal(localizeVoiceEmotion("sad"), "难过");
 assert.equal(localizeVoiceEmotion("angry"), "生气");

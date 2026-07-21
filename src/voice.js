@@ -127,6 +127,29 @@ export function normalizeVoiceAnalysis(value) {
   };
 }
 
+export function hydrateStoredVoiceAnalysis(message = {}) {
+  const stored =
+    message.voiceAnalysis ||
+    message.voice_analysis ||
+    message.tool_calls?.voice_analysis;
+  if (!isPlainObject(stored)) return message;
+
+  const analysis = normalizeVoiceAnalysis(stored);
+  return {
+    ...message,
+    voiceAnalysis: {
+      ...analysis,
+      text: analysis.text || cleanDisplayText(message.content, 12_000),
+    },
+  };
+}
+
+export function hydrateStoredVoiceMessages(messages = []) {
+  return Array.isArray(messages)
+    ? messages.map((message) => hydrateStoredVoiceAnalysis(message))
+    : [];
+}
+
 export function formatVoiceConfidence(value) {
   const confidence = normalizedConfidence(value);
   return confidence === null ? "置信度未知" : `置信度 ${Math.round(confidence * 100)}%`;

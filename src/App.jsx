@@ -10,6 +10,7 @@ import {
   ThinkingPanel,
 } from "./ChatMessageExtras";
 import {
+  attachmentKind,
   createAttachmentDraft,
   draftsForLocalMessage,
   revokeAttachmentDraft,
@@ -17,8 +18,8 @@ import {
 } from "./chat-attachments";
 import {
   chooseChatModel,
-  normalizeModelsResponse,
   readStoredChatModel,
+  reconcileModelCatalog,
   storeChatModel,
 } from "./chat-models";
 import {
@@ -54,6 +55,7 @@ import {
   buildVoiceTurnFormData,
   createVoiceTurnRequest,
   formatVoiceConfidence,
+  hydrateStoredVoiceMessages,
   normalizeVoiceAnalysis,
   selectRecorderMimeType,
   speakVoiceText,
@@ -227,6 +229,7 @@ async function prepareImageUpload(file) {
       name: file.name,
       type: file.type,
       blob: file,
+      warning: `${file.name} 是 GIF，为保留动画不会重新编码，文件内可能仍含拍摄设备等元数据。`,
     };
   }
 
@@ -238,26 +241,10 @@ async function prepareImageUpload(file) {
   try {
     bitmap = await createImageBitmap(file);
   } catch {
-    if (file.size > 5 * 1024 * 1024) {
-      throw new Error("这张大图无法压缩，请换一张较小的图片。");
-    }
-    return {
-      name: file.name,
-      type: file.type,
-      blob: file,
-    };
+    throw new Error("这张图片无法安全重新编码。为避免保留照片元数据，请换一张图片。");
   }
 
   const longestSide = Math.max(bitmap.width, bitmap.height);
-  if (file.size <= 2 * 1024 * 1024 && longestSide <= 1800) {
-    bitmap.close?.();
-    return {
-      name: file.name,
-      type: file.type,
-      blob: file,
-    };
-  }
-
   const scale = Math.min(1, 1800 / longestSide);
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(bitmap.width * scale));
@@ -281,6 +268,7 @@ async function prepareImageUpload(file) {
     name: file.name.replace(/\.[^.]+$/, "") + ".jpg",
     type: "image/jpeg",
     blob: compressed,
+    warning: "",
   };
 }
 
@@ -292,17 +280,25 @@ async function prepareMomentImage(file) {
     type: prepared.type,
     data: dataUrl.split(",")[1] || "",
     preview: dataUrl,
+    warning: prepared.warning || "",
   };
 }
 
 async function prepareChatAttachmentFile(file) {
-  if (!String(file?.type || "").startsWith("image/")) return file;
+  if (!String(file?.type || "").startsWith("image/")) {
+    return { file, warning: "" };
+  }
   const prepared = await prepareImageUpload(file);
-  if (prepared.blob === file) return file;
-  return new File([prepared.blob], prepared.name, {
-    type: prepared.type,
-    lastModified: Date.now(),
-  });
+  return {
+    file:
+      prepared.blob === file
+        ? file
+        : new File([prepared.blob], prepared.name, {
+            type: prepared.type,
+            lastModified: Date.now(),
+          }),
+    warning: prepared.warning || "",
+  };
 }
 
 function releaseChatRequestAttachments(request) {
@@ -368,12 +364,18 @@ function App() {
   const [voiceAutoSpeakEnabled, setVoiceAutoSpeakEnabled] = useState(
     readVoiceAutoSpeakSetting,
   );
+  const [voiceService, setVoiceService] = useState({
+    checked: false,
+    available: false,
+    message: "正在检查服务器语音能力…",
+  });
   const [companionStatus, setCompanionStatus] = useState(readCompanionStatus);
   const [companionInteractionStats, setCompanionInteractionStats] = useState(
     readCompanionInteractionStats,
   );
   const messageListRef = useRef(null);
   const messageEndRef = useRef(null);
+  const shouldAutoScrollRef = useRef(true);
   const chatFileInputRef = useRef(null);
   const chatAttachmentsRef = useRef([]);
   const streamThinkingRef = useRef({
@@ -411,6 +413,7 @@ function App() {
     (session) => session.id === activeSessionId,
   );
   const isVoiceInputBusy = voiceInputBusy(voiceState);
+  const voiceServiceAvailable = voiceService.available;
   const activeChatModel = selectedChatModel || settings.model;
 
   useEffect(() => {
@@ -418,16 +421,37 @@ function App() {
 
     function applyInitialModelCatalog(data, fallbackModel = "") {
       if (cancelled) return;
-      const catalog = normalizeModelsResponse(data, fallbackModel);
-      const selected = chooseChatModel({
-        models: catalog.models,
-        stored: readStoredChatModel(),
-        current: catalog.currentModel,
+      const catalog = reconcileModelCatalog(data, {
+        previous: readStoredChatModel(),
         fallback: fallbackModel,
       });
       setAvailableModels(catalog.models);
-      setSelectedChatModel(selected);
-      if (selected) storeChatModel(selected);
+      setSelectedChatModel(catalog.selectedModel);
+      storeChatModel(catalog.selectedModel);
+    }
+
+    async function loadVoiceServiceAvailability() {
+      try {
+        const data = await apiRequest("/health");
+        if (cancelled) return;
+        const available =
+          data?.features?.hervoice_proxy_configured === true;
+        setVoiceService({
+          checked: true,
+          available,
+          message: available
+            ? "语音理解服务已连接。"
+            : "服务器尚未配置语音理解服务。麦克风和音频附件暂不可用；图片与文档仍可正常发送。",
+        });
+      } catch {
+        if (cancelled) return;
+        setVoiceService({
+          checked: true,
+          available: false,
+          message:
+            "暂时无法确认服务器语音能力。为避免录音后发送失败，麦克风和音频附件已停用；图片与文档不受影响。",
+        });
+      }
     }
 
     async function loadInitialModels(fallbackModel = "") {
@@ -477,6 +501,7 @@ function App() {
     }
 
     loadInitialData();
+    void loadVoiceServiceAvailability();
     return () => {
       cancelled = true;
     };
@@ -484,6 +509,7 @@ function App() {
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
+    shouldAutoScrollRef.current = true;
   }, [activeSessionId]);
 
   useEffect(() => {
@@ -523,9 +549,6 @@ function App() {
   }, [voiceState]);
 
   useEffect(() => {
-    if (activeView !== "chat") {
-      abortChatRequest(chatRequestRef, "view-change");
-    }
     if (
       activeView !== "chat" &&
       [VOICE_STATES.requesting, VOICE_STATES.recording].includes(
@@ -658,7 +681,7 @@ function App() {
             `/sessions/${currentSessionId}/messages`,
           );
           if (!cancelled && activeSessionIdRef.current === currentSessionId) {
-            setMessages(history.messages || []);
+            setMessages(hydrateStoredVoiceMessages(history.messages));
           }
         }
 
@@ -744,7 +767,7 @@ function App() {
           messageLoadTokenRef.current === loadToken &&
           activeSessionIdRef.current === activeSessionId
         ) {
-          setMessages(data.messages || []);
+          setMessages(hydrateStoredVoiceMessages(data.messages));
         }
       } catch (error) {
         if (!cancelled) setNotice(error.message);
@@ -774,13 +797,22 @@ function App() {
 
     const animationFrame = window.requestAnimationFrame(() => {
       const messageList = messageListRef.current;
-      if (!messageList) return;
+      if (!messageList || !shouldAutoScrollRef.current) return;
 
       messageList.scrollTop = messageList.scrollHeight;
     });
 
     return () => window.cancelAnimationFrame(animationFrame);
   }, [activeView, activeSessionId, messages, isSending]);
+
+  function trackMessageScroll(event) {
+    const messageList = event.currentTarget;
+    const distanceFromBottom =
+      messageList.scrollHeight -
+      messageList.scrollTop -
+      messageList.clientHeight;
+    shouldAutoScrollRef.current = distanceFromBottom <= 140;
+  }
 
   useEffect(() => {
     function handleInstallPrompt(event) {
@@ -1120,6 +1152,11 @@ function App() {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     event.preventDefault();
 
+    if (!voiceServiceAvailable) {
+      setVoiceFailure(voiceService.message);
+      return;
+    }
+
     if (
       isSendingRef.current ||
       companionInteractionInFlightRef.current ||
@@ -1338,7 +1375,7 @@ function App() {
       messageLoadTokenRef.current === loadToken
     ) {
       messagesSessionIdRef.current = sessionId;
-      setMessages(history.messages || []);
+      setMessages(hydrateStoredVoiceMessages(history.messages));
     }
   }
 
@@ -1567,24 +1604,34 @@ function App() {
     if (files.length === 0) return;
 
     try {
+      const blockedAudioFiles = voiceServiceAvailable
+        ? []
+        : files.filter((file) => attachmentKind(file) === "audio");
+      const selectableFiles = voiceServiceAvailable
+        ? files
+        : files.filter((file) => attachmentKind(file) !== "audio");
       const checked = validateAttachmentFiles(
         chatAttachmentsRef.current,
-        files,
+        selectableFiles,
       );
       const preparedFiles = [];
+      const warnings = [];
       for (const file of checked.accepted) {
-        preparedFiles.push(await prepareChatAttachmentFile(file));
+        const prepared = await prepareChatAttachmentFile(file);
+        preparedFiles.push(prepared.file);
+        if (prepared.warning) warnings.push(prepared.warning);
       }
       const drafts = preparedFiles.map((file) => createAttachmentDraft(file));
       const next = [...chatAttachmentsRef.current, ...drafts];
       chatAttachmentsRef.current = next;
       setChatAttachments(next);
 
-      if (checked.rejected.length > 0) {
-        setNotice(checked.rejected.join("；"));
-      } else {
-        setNotice("");
-      }
+      const messages = [
+        ...(blockedAudioFiles.length > 0 ? [voiceService.message] : []),
+        ...checked.rejected,
+        ...warnings,
+      ];
+      setNotice(messages.join("；"));
     } catch (error) {
       setNotice(error.message || "附件处理失败，请换一个文件重试。");
     }
@@ -1630,6 +1677,7 @@ function App() {
     const localUserId = `local-user-${Date.now()}`;
     const localAssistantId = `local-assistant-${Date.now()}`;
     let sendSucceeded = false;
+    let streamFailed = false;
     abortChatRequest(chatRequestRef, "replaced");
     const request = {
       controller: new AbortController(),
@@ -1761,6 +1809,7 @@ function App() {
           }
 
           if (event.type === "error") {
+            streamFailed = true;
             setMessages((current) =>
               current.map((item) =>
                 item.id === localAssistantId
@@ -1778,7 +1827,10 @@ function App() {
           }
 
           if (event.type === "done") {
-            sendSucceeded = true;
+            if (event.ok === false || streamFailed) {
+              streamFailed = true;
+              return;
+            }
             applyPromptReceipt(event.prompt_receipt);
             streamThinkingRef.current.assistantMessageId =
               event.assistant_message?.id || "";
@@ -1809,6 +1861,9 @@ function App() {
         { signal: request.controller.signal },
       );
 
+      if (streamFailed) {
+        throw new Error("回复没有成功保存，附件仍保留，可稍后重试。");
+      }
       sendSucceeded = true;
       releaseChatRequestAttachments(request);
       if (chatRequestRef.current === request) {
@@ -1833,7 +1888,7 @@ function App() {
             }
           }
         }
-        const hydratedMessages = historyMessages.map((item, index) =>
+        const hydratedMessages = hydrateStoredVoiceMessages(historyMessages).map((item, index) =>
           index === traceTargetIndex
             ? attachThinkingTrace(item, streamThinkingRef.current)
             : item,
@@ -1891,7 +1946,9 @@ function App() {
             item.id === localAssistantId
               ? {
                   ...item,
-                  content: "连接暂时中断了，请检查后端后再试一次。",
+                  content:
+                    error.message ||
+                    "连接暂时中断了，请检查后端后再试一次。",
                   isStreaming: false,
                 }
               : item,
@@ -1940,6 +1997,21 @@ function App() {
       const nextSettings = normalizeSettingsDraft(data.settings);
       setSettings(nextSettings);
       setDraftSettings(nextSettings);
+      try {
+        const modelsData = await apiRequest("/models");
+        const catalog = reconcileModelCatalog(modelsData, {
+          previous: selectedChatModel,
+          fallback: nextSettings.model,
+        });
+        setAvailableModels(catalog.models);
+        setSelectedChatModel(catalog.selectedModel);
+        storeChatModel(catalog.selectedModel);
+        setModelsLoadMessage("");
+      } catch {
+        setModelsLoadMessage(
+          "设置已保存，但新的模型列表暂时无法读取。重新打开 App 后会再次加载。",
+        );
+      }
       const receipt = {
         systemPromptLength: nextSettings.system_prompt.length,
         additionalPromptLength: nextSettings.additional_prompt.length,
@@ -2140,8 +2212,10 @@ function App() {
 
     try {
       const next = [];
+      const warnings = [];
       for (const file of files.slice(0, remaining)) {
         const prepared = await prepareMomentImage(file);
+        if (prepared.warning) warnings.push(prepared.warning);
         next.push({
           id: `${file.name}-${file.lastModified}-${Math.random()}`,
           ...prepared,
@@ -2149,9 +2223,13 @@ function App() {
       }
 
       setMomentImages((current) => [...current, ...next].slice(0, 4));
-      if (files.length > remaining) {
-        setNotice("一条动态最多添加 4 张图片，多余图片没有加入。");
-      }
+      const messages = [
+        ...(files.length > remaining
+          ? ["一条动态最多添加 4 张图片，多余图片没有加入。"]
+          : []),
+        ...warnings,
+      ];
+      setNotice(messages.join("；"));
     } catch (error) {
       setNotice(error.message);
     }
@@ -2200,6 +2278,9 @@ function App() {
   }
 
   function changeView(view) {
+    if (view === "chat" && activeView !== "chat") {
+      shouldAutoScrollRef.current = true;
+    }
     setActiveView(view);
     setIsSidebarOpen(false);
     if (view === "settings") {
@@ -2214,6 +2295,7 @@ function App() {
           ref={messageListRef}
           className="message-list"
           aria-live="polite"
+          onScroll={trackMessageScroll}
         >
           {isLoading ? (
             <div className="empty-state">正在加载 DengTa home…</div>
@@ -2280,7 +2362,11 @@ function App() {
               className="visually-hidden-file-input"
               type="file"
               multiple
-              accept="image/*,audio/*,.pdf,.docx,.txt,.md,.csv,.json,.xml"
+              accept={
+                voiceServiceAvailable
+                  ? "image/*,audio/*,.pdf,.docx,.txt,.md,.csv,.json,.xml"
+                  : "image/*,.pdf,.docx,.txt,.md,.csv,.json,.xml"
+              }
               onChange={selectChatAttachments}
               tabIndex="-1"
             />
@@ -2363,9 +2449,14 @@ function App() {
             <button
               className="voice-hold-button"
               type="button"
-              aria-label="按住说话，松开发送"
+              aria-label={
+                voiceServiceAvailable
+                  ? "按住说话，松开发送"
+                  : "语音服务暂不可用"
+              }
               aria-pressed={voiceState === VOICE_STATES.recording}
               disabled={
+                !voiceServiceAvailable ||
                 isSending ||
                 isCompanionResponding ||
                 [VOICE_STATES.uploading, VOICE_STATES.thinking].includes(
@@ -2381,7 +2472,9 @@ function App() {
                 {voiceState === VOICE_STATES.recording ? "●" : "🎙"}
               </span>
               <span>
-                {voiceState === VOICE_STATES.recording
+                {!voiceServiceAvailable
+                  ? "语音暂不可用"
+                  : voiceState === VOICE_STATES.recording
                   ? `松开发送 · ${(voiceElapsedMs / 1000).toFixed(1)} 秒`
                   : VOICE_STATE_LABELS[voiceState] || "按住说话"}
               </span>
@@ -2396,7 +2489,9 @@ function App() {
               </button>
             )}
             <span className="voice-status-text" role="status" aria-live="polite">
-              最长 60 秒 · 上传后服务端临时文件默认删除
+              {voiceServiceAvailable
+                ? "最长 60 秒 · 上传后服务端临时文件默认删除"
+                : voiceService.message}
             </span>
           </div>
           {voiceError && (

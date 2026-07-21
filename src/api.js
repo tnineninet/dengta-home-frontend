@@ -139,6 +139,7 @@ export async function streamChat(payload, onEvent, { signal } = {}) {
   const decoder = new TextDecoder();
   let buffer = "";
   let streamError = "";
+  let completionEvent = null;
 
   function processLine(rawLine) {
     const line = rawLine.replace(/\r$/, "");
@@ -148,7 +149,16 @@ export async function streamChat(payload, onEvent, { signal } = {}) {
 
     try {
       const event = JSON.parse(json);
-      if (event.type === "error") streamError = event.content || "回复中断。";
+      if (event.type === "error") {
+        streamError = event.content || event.message || "回复中断。";
+      }
+      if (event.type === "done") {
+        completionEvent = event;
+        if (event.ok === false) {
+          streamError =
+            event.content || event.message || streamError || "回复没有成功完成。";
+        }
+      }
       onEvent(event);
     } catch {
       // 半截数据会留在 buffer 中；真正损坏的单条事件忽略即可。
@@ -172,6 +182,12 @@ export async function streamChat(payload, onEvent, { signal } = {}) {
     if (streamError) {
       throw new Error(streamError);
     }
+
+    if (!completionEvent) {
+      throw new Error("回复连接提前结束，服务器没有确认本轮已保存。附件仍保留，可稍后重试。");
+    }
+
+    return completionEvent;
   } finally {
     if (signal?.aborted) {
       await reader.cancel(signal.reason).catch(() => {});
