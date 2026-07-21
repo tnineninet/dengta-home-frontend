@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { apiRequest, streamChat } from "./api";
+import OmbreMemories from "./OmbreMemories";
 
 const emptySettings = {
   ai_name: "小灯",
@@ -909,6 +910,14 @@ function App() {
           <span className="eyebrow">长期记忆</span>
           <h2>留在家里的事情</h2>
           <p>这些摘要会作为真实模型回复时的长期背景。</p>
+        </div>
+        <OmbreMemories />
+        <div className="memory-source-heading local-memory-heading">
+          <div>
+            <span className="eyebrow">SUPABASE</span>
+            <h3>对话摘要</h3>
+          </div>
+          <span className="local-memory-count">{memories.length} 条</span>
         </div>
         <div className="memory-grid">
           {memories.length === 0 ? (
