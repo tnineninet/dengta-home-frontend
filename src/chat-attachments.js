@@ -23,6 +23,68 @@ const DOCUMENT_EXTENSIONS = new Set([
   "xml",
 ]);
 
+const IMAGE_EXTENSION_TYPES = new Map([
+  ["jpg", "image/jpeg"],
+  ["jpeg", "image/jpeg"],
+  ["png", "image/png"],
+  ["webp", "image/webp"],
+  ["gif", "image/gif"],
+]);
+
+const AUDIO_EXTENSION_TYPES = new Map([
+  ["webm", "audio/webm"],
+  ["ogg", "audio/ogg"],
+  ["mp4", "audio/mp4"],
+  ["m4a", "audio/mp4"],
+  ["mp3", "audio/mpeg"],
+  ["wav", "audio/wav"],
+  ["aac", "audio/aac"],
+  ["flac", "audio/flac"],
+  ["3gp", "audio/3gpp"],
+  ["amr", "audio/amr"],
+]);
+
+const AUDIO_EXTENSION_ALLOWED_TYPES = new Map([
+  ["webm", new Set(["audio/webm"])],
+  ["ogg", new Set(["audio/ogg"])],
+  ["mp4", new Set(["audio/mp4"])],
+  ["m4a", new Set(["audio/mp4", "audio/x-m4a"])],
+  ["mp3", new Set(["audio/mpeg"])],
+  ["wav", new Set(["audio/wav", "audio/x-wav"])],
+  ["aac", new Set(["audio/aac"])],
+  ["flac", new Set(["audio/flac"])],
+  ["3gp", new Set(["audio/3gpp"])],
+  ["amr", new Set(["audio/amr"])],
+]);
+
+const DOCUMENT_EXTENSION_TYPES = new Map([
+  ["pdf", "application/pdf"],
+  [
+    "docx",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ],
+  ["txt", "text/plain"],
+  ["md", "text/markdown"],
+  ["csv", "text/csv"],
+  ["json", "application/json"],
+  ["xml", "application/xml"],
+]);
+
+const DOCUMENT_EXTENSION_ALLOWED_TYPES = new Map([
+  ["pdf", new Set(["application/pdf"])],
+  [
+    "docx",
+    new Set([
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ]),
+  ],
+  ["txt", new Set(["text/plain"])],
+  ["md", new Set(["text/markdown", "text/plain"])],
+  ["csv", new Set(["text/csv", "application/csv", "text/plain"])],
+  ["json", new Set(["application/json", "text/json", "text/plain"])],
+  ["xml", new Set(["application/xml", "text/xml", "text/plain"])],
+]);
+
 function cleanText(value, limit = 500) {
   return String(value || "").trim().slice(0, limit);
 }
@@ -32,12 +94,56 @@ function extensionOf(name) {
   return matched?.[1] || "";
 }
 
+export function normalizedAttachmentMimeType(fileLike = {}) {
+  const reported = cleanText(
+    fileLike.type || fileLike.mime_type || fileLike.content_type,
+  ).toLowerCase();
+  if (reported && reported !== "application/octet-stream") return reported;
+
+  const extension = extensionOf(fileLike.name || fileLike.file_name);
+  return (
+    IMAGE_EXTENSION_TYPES.get(extension) ||
+    AUDIO_EXTENSION_TYPES.get(extension) ||
+    DOCUMENT_EXTENSION_TYPES.get(extension) ||
+    reported
+  );
+}
+
+export function normalizeAttachmentFile(file, FileConstructor = globalThis.File) {
+  const normalizedType = normalizedAttachmentMimeType(file);
+  if (
+    !file ||
+    !normalizedType ||
+    file.type === normalizedType ||
+    typeof FileConstructor !== "function"
+  ) {
+    return file;
+  }
+
+  return new FileConstructor([file], file.name, {
+    type: normalizedType,
+    lastModified: file.lastModified || Date.now(),
+  });
+}
+
 export function attachmentKind(fileLike = {}) {
-  const type = cleanText(fileLike.type || fileLike.mime_type).toLowerCase();
-  if (type.startsWith("image/")) return "image";
-  if (type.startsWith("audio/")) return "audio";
-  if (DOCUMENT_MIME_TYPES.has(type)) return "document";
-  if (DOCUMENT_EXTENSIONS.has(extensionOf(fileLike.name || fileLike.file_name))) {
+  const type = normalizedAttachmentMimeType(fileLike);
+  const extension = extensionOf(fileLike.name || fileLike.file_name);
+  if (type.startsWith("image/")) {
+    return IMAGE_EXTENSION_TYPES.get(extension) === type
+      ? "image"
+      : "unsupported";
+  }
+  if (type.startsWith("audio/")) {
+    return AUDIO_EXTENSION_ALLOWED_TYPES.get(extension)?.has(type)
+      ? "audio"
+      : "unsupported";
+  }
+  if (
+    DOCUMENT_MIME_TYPES.has(type) &&
+    DOCUMENT_EXTENSIONS.has(extension) &&
+    DOCUMENT_EXTENSION_ALLOWED_TYPES.get(extension)?.has(type)
+  ) {
     return "document";
   }
   return "unsupported";
@@ -104,7 +210,8 @@ export function validateAttachmentFiles(existing = [], incoming = []) {
 export function createAttachmentDraft(file, urlApi = globalThis.URL) {
   const kind = attachmentKind(file);
   const previewUrl =
-    kind === "image" && typeof urlApi?.createObjectURL === "function"
+    (kind === "image" || kind === "audio") &&
+    typeof urlApi?.createObjectURL === "function"
       ? urlApi.createObjectURL(file)
       : "";
 
@@ -112,7 +219,7 @@ export function createAttachmentDraft(file, urlApi = globalThis.URL) {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     file,
     name: cleanText(file?.name) || "未命名文件",
-    type: cleanText(file?.type) || "application/octet-stream",
+    type: normalizedAttachmentMimeType(file) || "application/octet-stream",
     size: Math.max(0, Number(file?.size || 0)),
     kind,
     previewUrl,
@@ -123,6 +230,27 @@ export function revokeAttachmentDraft(draft, urlApi = globalThis.URL) {
   if (draft?.previewUrl && typeof urlApi?.revokeObjectURL === "function") {
     urlApi.revokeObjectURL(draft.previewUrl);
   }
+}
+
+export function shouldRestoreAttachmentDrafts({
+  requestWasAborted = false,
+  cancelReason = "",
+} = {}) {
+  if (!requestWasAborted) return true;
+  return cancelReason === "view-change";
+}
+
+export function restoreAttachmentDrafts(sent = [], current = [], limit = 4) {
+  const restored = [];
+  const seen = new Set();
+  for (const draft of [...sent, ...current]) {
+    const identity = draft?.id || draft;
+    if (!draft || seen.has(identity)) continue;
+    seen.add(identity);
+    restored.push(draft);
+    if (restored.length >= limit) break;
+  }
+  return restored;
 }
 
 function safeAttachmentUrl(rawValue, kind, apiBaseUrl = "") {
@@ -148,7 +276,11 @@ export function normalizeMessageAttachments(value, apiBaseUrl = "") {
     const name =
       cleanText(source.name || source.file_name || source.filename) ||
       `附件 ${index + 1}`;
-    const type = cleanText(source.type || source.mime_type || source.content_type);
+    const type =
+      normalizedAttachmentMimeType({
+        name,
+        type: source.type || source.mime_type || source.content_type,
+      }) || "application/octet-stream";
     const kind = attachmentKind({ name, type });
     const rawUrl =
       source.previewUrl ||

@@ -1,5 +1,7 @@
 const STATUS_LABELS = {
   accepted: "服务器已接收本轮消息",
+  already_received: "服务器已识别并复用先前保存的消息",
+  generation_in_progress: "消息已保存，AI 仍在处理中",
   reading_attachments: "正在读取附件",
   reading_files: "正在读取附件",
   processing_attachments: "正在安全读取附件",
@@ -9,6 +11,7 @@ const STATUS_LABELS = {
   generating: "正在生成回复",
   calling_model: "正在请求所选模型",
   saving: "正在保存本轮对话",
+  completed: "本轮处理完成",
 };
 
 function removeControlCharacters(value) {
@@ -28,7 +31,7 @@ export function localizedThinkingStatus(value) {
   const text = cleanText(value, 120);
   if (!text) return "";
   const key = text.toLowerCase().replace(/[\s-]+/g, "_");
-  return STATUS_LABELS[key] || text;
+  return STATUS_LABELS[key] || "";
 }
 
 export function appendThinkingStatus(current = [], value) {
@@ -38,23 +41,65 @@ export function appendThinkingStatus(current = [], value) {
   return [...statuses, next].slice(-8);
 }
 
-export function appendReasoningSummary(current = "", value) {
-  const addition = removeControlCharacters(value);
-  if (!addition) return String(current || "");
-  return `${String(current || "")}${addition}`.slice(-20_000);
+export function thinkingPanelVisible(message = {}) {
+  return (
+    Array.isArray(message.thinkingStatuses) &&
+    message.thinkingStatuses.length > 0
+  );
 }
 
-export function thinkingPanelVisible(message = {}) {
-  const hasReasoning = Boolean(String(message.reasoningSummary || "").trim());
-  const hasStatus = Array.isArray(message.thinkingStatuses) && message.thinkingStatuses.length > 0;
-  return hasReasoning || hasStatus;
+export function thinkingPanelCompleted(message = {}) {
+  return (
+    message?.isStreaming !== true && message?.generationInProgress !== true
+  );
+}
+
+function publicMessageFields(message = {}) {
+  const safeMessage = { ...message };
+  delete safeMessage.reasoningSummary;
+  delete safeMessage.reasoning_summary;
+  delete safeMessage.reasoning;
+  delete safeMessage.reasoning_content;
+  delete safeMessage.thinking;
+  delete safeMessage.thinking_content;
+  return safeMessage;
+}
+
+function stageValue(value) {
+  if (typeof value === "string") return value;
+  if (!value || typeof value !== "object") return "";
+  return value.stage || value.status || value.content || "";
+}
+
+function publicStageKey(value) {
+  const text = cleanText(stageValue(value), 120);
+  const key = text.toLowerCase().replace(/[\s-]+/g, "_");
+  return Object.hasOwn(STATUS_LABELS, key) ? key : "";
+}
+
+export function hydrateStoredThinkingTrace(message = {}) {
+  const storedStages = message?.tool_calls?.processing_stages;
+  const source = Array.isArray(storedStages)
+    ? storedStages
+    : message.thinkingStatuses;
+  const thinkingStatuses = Array.isArray(source)
+    ? source.reduce(
+        (current, stage) =>
+          appendThinkingStatus(current, publicStageKey(stage)),
+        [],
+      )
+    : [];
+
+  return {
+    ...publicMessageFields(message),
+    thinkingStatuses,
+  };
 }
 
 export function attachThinkingTrace(message = {}, trace = {}) {
   return {
-    ...message,
+    ...publicMessageFields(message),
     thinkingStatuses: Array.isArray(trace.statuses) ? trace.statuses : [],
-    reasoningSummary: String(trace.reasoningSummary || ""),
   };
 }
 
@@ -69,6 +114,8 @@ export function mergeStreamedAssistantMessage(
       ...serverMessage,
       content: serverMessage?.content ?? localMessage?.content ?? "",
       isStreaming: false,
+      generationInProgress: false,
+      retryAvailable: false,
     },
     trace,
   );

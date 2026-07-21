@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 import {
   CHAT_ATTACHMENT_MAX_FILE_BYTES,
+  attachmentKind,
   createAttachmentDraft,
+  normalizeAttachmentFile,
+  normalizedAttachmentMimeType,
   normalizeMessageAttachments,
   revokeAttachmentDraft,
+  restoreAttachmentDrafts,
+  shouldRestoreAttachmentDrafts,
   validateAttachmentFiles,
 } from "../src/chat-attachments.js";
 import {
@@ -15,15 +20,145 @@ import {
 } from "../src/chat-models.js";
 import {
   attachThinkingTrace,
-  appendReasoningSummary,
   appendThinkingStatus,
   mergeStreamedAssistantMessage,
+  thinkingPanelCompleted,
   thinkingPanelVisible,
 } from "../src/chat-thinking.js";
+import { hydrateChatHistory } from "../src/chat-history.js";
 import { buildStreamChatFormData, streamChat } from "../src/api.js";
+import {
+  canRetryChatClientMessage,
+  chatRequestFingerprint,
+  clearChatClientMessage,
+  createChatClientMessageId,
+  isChatGenerationInProgress,
+  resolveChatClientMessage,
+  restoreChatRetryText,
+  updateChatClientMessage,
+} from "../src/chat-idempotency.js";
 
 function fakeFile(name, type, size) {
   return { name, type, size };
+}
+
+{
+  const fixedId = "0f594d5c-e6d1-4f24-a583-cd5c66f81d75";
+  const fakeCrypto = { randomUUID: () => fixedId };
+  assert.equal(createChatClientMessageId(fakeCrypto), fixedId);
+
+  const request = {
+    sessionId: "session-a",
+    message: "同一条消息",
+    attachments: [
+      {
+        file: {
+          name: "note.txt",
+          type: "text/plain",
+          size: 12,
+          lastModified: 123,
+        },
+      },
+    ],
+  };
+  const first = resolveChatClientMessage(null, request, fakeCrypto);
+  const retry = resolveChatClientMessage(first, request, {
+    randomUUID: () => "3a31c71b-cbed-4bbd-b16f-49e52176bc9b",
+  });
+  assert.equal(retry.clientMessageId, fixedId);
+  assert.equal(retry.reused, true);
+  assert.equal(retry.fingerprint, chatRequestFingerprint(request));
+
+  const changed = resolveChatClientMessage(
+    retry,
+    { ...request, message: "已经修改" },
+    { randomUUID: () => "3a31c71b-cbed-4bbd-b16f-49e52176bc9b" },
+  );
+  assert.equal(
+    changed.clientMessageId,
+    "3a31c71b-cbed-4bbd-b16f-49e52176bc9b",
+  );
+  assert.equal(changed.reused, false);
+  assert.equal(clearChatClientMessage(changed, fixedId), changed);
+  assert.equal(clearChatClientMessage(changed, changed.clientMessageId), null);
+  const committedRetry = updateChatClientMessage(first, fixedId, {
+    userMessageCommitted: true,
+    userMessageId: "saved-user-message",
+    localAssistantId: "local-assistant",
+  });
+  assert.equal(committedRetry.clientMessageId, fixedId);
+  assert.equal(committedRetry.userMessageCommitted, true);
+  assert.equal(committedRetry.userMessageId, "saved-user-message");
+  assert.equal(canRetryChatClientMessage(committedRetry, request), true);
+  assert.equal(
+    resolveChatClientMessage(committedRetry, request, {
+      randomUUID: () => "3a31c71b-cbed-4bbd-b16f-49e52176bc9b",
+    }).clientMessageId,
+    fixedId,
+  );
+  assert.equal(restoreChatRetryText("", "原始文字"), "原始文字");
+  assert.equal(
+    restoreChatRetryText("用户已输入的新草稿", "原始文字"),
+    "用户已输入的新草稿",
+  );
+  assert.equal(
+    isChatGenerationInProgress({ code: "CHAT_GENERATION_IN_PROGRESS" }),
+    true,
+  );
+  assert.equal(
+    isChatGenerationInProgress("这条消息已经保存，AI 仍在处理中。"),
+    true,
+  );
+  assert.equal(isChatGenerationInProgress(new Error("模型失败")), false);
+}
+
+{
+  const androidAudio = fakeFile(
+    "录音.wav",
+    "application/octet-stream",
+    300,
+  );
+  const androidImage = fakeFile("照片.jpg", "", 300);
+  const result = validateAttachmentFiles([], [androidAudio, androidImage]);
+  assert.equal(result.accepted.length, 2);
+  assert.equal(result.rejected.length, 0);
+  assert.equal(attachmentKind(androidAudio), "audio");
+  assert.equal(attachmentKind(androidImage), "image");
+  assert.equal(normalizedAttachmentMimeType(androidAudio), "audio/wav");
+  assert.equal(normalizedAttachmentMimeType(androidImage), "image/jpeg");
+}
+
+{
+  class FakeFile {
+    constructor(parts, name, options = {}) {
+      this.parts = parts;
+      this.name = name;
+      this.type = options.type || "";
+      this.lastModified = options.lastModified || 0;
+      this.size = parts.reduce((total, part) => total + Number(part.size || 0), 0);
+    }
+  }
+
+  for (const [name, expectedType] of [
+    ["说明.txt", "text/plain"],
+    ["笔记.md", "text/markdown"],
+    ["数据.csv", "text/csv"],
+    ["配置.json", "application/json"],
+    ["内容.xml", "application/xml"],
+    ["文档.pdf", "application/pdf"],
+    [
+      "文档.docx",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ],
+  ]) {
+    const original = fakeFile(name, "application/octet-stream", 300);
+    original.lastModified = 123;
+    const normalized = normalizeAttachmentFile(original, FakeFile);
+    assert.equal(normalized.type, expectedType);
+    assert.equal(normalized.name, name);
+    assert.equal(normalized.lastModified, 123);
+    assert.equal(normalized.parts[0], original);
+  }
 }
 
 {
@@ -39,6 +174,25 @@ function fakeFile(name, type, size) {
   ]);
   assert.equal(result.accepted.length, 4);
   assert.equal(result.rejected.length, 0);
+}
+
+{
+  const result = validateAttachmentFiles([], [
+    fakeFile("照片.heic", "image/heic", 100),
+    fakeFile("声音.opus", "audio/ogg", 100),
+    fakeFile("声音.caf", "audio/x-caf", 100),
+    fakeFile("伪装.txt", "application/pdf", 100),
+  ]);
+  assert.equal(result.accepted.length, 0);
+  assert.equal(result.rejected.length, 4);
+  assert.equal(
+    attachmentKind(fakeFile("兼容.wav", "audio/x-wav", 100)),
+    "audio",
+  );
+  assert.equal(
+    attachmentKind(fakeFile("兼容.md", "text/plain", 100)),
+    "document",
+  );
 }
 
 {
@@ -88,20 +242,79 @@ function fakeFile(name, type, size) {
     urlApi,
   );
   assert.equal(draft.previewUrl, "blob:preview");
+  const audioDraft = createAttachmentDraft(
+    fakeFile("语音.webm", "audio/webm", 24),
+    urlApi,
+  );
+  assert.equal(audioDraft.previewUrl, "blob:preview");
   revokeAttachmentDraft(draft, urlApi);
-  assert.deepEqual(calls, ["create", "revoke:blob:preview"]);
+  revokeAttachmentDraft(audioDraft, urlApi);
+  assert.deepEqual(calls, [
+    "create",
+    "create",
+    "revoke:blob:preview",
+    "revoke:blob:preview",
+  ]);
+}
+
+assert.equal(
+  shouldRestoreAttachmentDrafts({ userMessageCommitted: true }),
+  true,
+);
+assert.equal(
+  shouldRestoreAttachmentDrafts({ userMessageCommitted: false }),
+  true,
+);
+assert.equal(
+  shouldRestoreAttachmentDrafts({
+    requestWasAborted: true,
+    cancelReason: "view-change",
+  }),
+  true,
+);
+assert.equal(
+  shouldRestoreAttachmentDrafts({
+    requestWasAborted: true,
+    cancelReason: "view-change",
+    userMessageCommitted: true,
+  }),
+  true,
+);
+
+{
+  const imageFile = { name: "照片.png", type: "image/png", size: 12 };
+  const pdfFile = { name: "资料.pdf", type: "application/pdf", size: 24 };
+  const docxFile = {
+    name: "文档.docx",
+    type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    size: 36,
+  };
+  const imageDraft = { id: "image", file: imageFile };
+  const pdfDraft = { id: "pdf", file: pdfFile };
+  const docxDraft = { id: "docx", file: docxFile };
+  const restored = restoreAttachmentDrafts(
+    [imageDraft, pdfDraft, docxDraft],
+    [imageDraft],
+  );
+  assert.deepEqual(restored, [imageDraft, pdfDraft, docxDraft]);
+  assert.equal(restored[0].file, imageFile);
+  assert.equal(restored[1].file, pdfFile);
+  assert.equal(restored[2].file, docxFile);
 }
 
 {
   const normalized = normalizeMessageAttachments(
     [
       { name: "安全.png", type: "image/png", url: "/files/safe.png" },
+      { name: "语音.webm", type: "audio/webm", url: "/files/voice.webm" },
       { name: "危险.txt", type: "text/plain", url: "javascript:alert(1)" },
     ],
     "https://api.example.com",
   );
   assert.equal(normalized[0].url, "https://api.example.com/files/safe.png");
-  assert.equal(normalized[1].url, "");
+  assert.equal(normalized[1].kind, "audio");
+  assert.equal(normalized[1].url, "https://api.example.com/files/voice.webm");
+  assert.equal(normalized[2].url, "");
 }
 
 {
@@ -167,28 +380,74 @@ function fakeFile(name, type, size) {
 {
   let statuses = appendThinkingStatus([], "reading_attachments");
   statuses = appendThinkingStatus(statuses, "reading_attachments");
+  statuses = appendThinkingStatus(statuses, "private hidden reasoning");
   statuses = appendThinkingStatus(statuses, "generating");
   assert.deepEqual(statuses, ["正在读取附件", "正在生成回复"]);
   assert.equal(
     appendThinkingStatus([], "processing_attachments")[0],
     "正在安全读取附件",
   );
-  assert.equal(appendReasoningSummary("先", "后"), "先后");
   assert.equal(
     thinkingPanelVisible({ isStreaming: false, thinkingStatuses: statuses }),
     true,
   );
   assert.equal(
-    thinkingPanelVisible({ isStreaming: false, reasoningSummary: "摘要" }),
+    thinkingPanelCompleted({ isStreaming: false, generationInProgress: true }),
+    false,
+  );
+  assert.equal(
+    thinkingPanelCompleted({ isStreaming: false, generationInProgress: false }),
     true,
   );
   const historyMessage = attachThinkingTrace(
-    { id: "assistant-1", tool_calls: { resolved_model: "gpt-test" } },
-    { statuses, reasoningSummary: "摘要" },
+    {
+      id: "assistant-1",
+      reasoning: "不应保留",
+      tool_calls: { resolved_model: "gpt-test" },
+    },
+    { statuses },
   );
   assert.deepEqual(historyMessage.tool_calls, {
     resolved_model: "gpt-test",
   });
+  assert.equal("reasoning" in historyMessage, false);
+  assert.deepEqual(historyMessage.thinkingStatuses, statuses);
+
+  const hydratedHistory = hydrateChatHistory([
+    {
+      id: "assistant-history",
+      role: "assistant",
+      content: "完成",
+      reasoning_content: "模型内部原始推理",
+      reasoning_summary: "不应恢复的推理摘要",
+      thinking: "不应恢复的思考字段",
+      tool_calls: {
+        processing_stages: [
+          "accepted",
+          { stage: "calling_model" },
+          "private_chain_of_thought",
+          "completed",
+        ],
+      },
+    },
+    {
+      id: "voice-history",
+      role: "user",
+      content: "语音历史",
+      tool_calls: {
+        voice_analysis: { emotion: "happy", confidence: 0.8 },
+      },
+    },
+  ]);
+  assert.deepEqual(hydratedHistory[0].thinkingStatuses, [
+    "服务器已接收本轮消息",
+    "正在请求所选模型",
+    "本轮处理完成",
+  ]);
+  assert.equal("reasoning_content" in hydratedHistory[0], false);
+  assert.equal("reasoning_summary" in hydratedHistory[0], false);
+  assert.equal("thinking" in hydratedHistory[0], false);
+  assert.equal(hydratedHistory[1].voiceAnalysis.emotion, "开心");
   const mergedMessage = mergeStreamedAssistantMessage(
     { id: "local", content: "流式内容" },
     {
@@ -196,10 +455,12 @@ function fakeFile(name, type, size) {
       content: "最终内容",
       tool_calls: { response_mode: "custom" },
     },
-    { statuses, reasoningSummary: "摘要" },
+    { statuses },
   );
   assert.deepEqual(mergedMessage.tool_calls, { response_mode: "custom" });
   assert.equal(mergedMessage.content, "最终内容");
+  assert.equal(mergedMessage.generationInProgress, false);
+  assert.equal(mergedMessage.retryAvailable, false);
 }
 
 {
@@ -213,6 +474,7 @@ function fakeFile(name, type, size) {
     emotion_understanding_enabled: true,
     companion_status: { mood: "平静" },
     model: "gpt-test",
+    client_message_id: "0f594d5c-e6d1-4f24-a583-cd5c66f81d75",
     files: [{ file: first }, second],
   });
   assert.equal(formData.get("message"), "请看看");
@@ -222,7 +484,22 @@ function fakeFile(name, type, size) {
     mood: "平静",
   });
   assert.equal(formData.get("model"), "gpt-test");
+  assert.equal(
+    formData.get("client_message_id"),
+    "0f594d5c-e6d1-4f24-a583-cd5c66f81d75",
+  );
   assert.equal(formData.getAll("files").length, 2);
+
+  const androidAudio = new File(["RIFFtestWAVE"], "录音.wav", {
+    type: "application/octet-stream",
+    lastModified: 456,
+  });
+  const normalizedAudio = normalizeAttachmentFile(androidAudio);
+  const normalizedFormData = buildStreamChatFormData({
+    files: [normalizedAudio],
+  });
+  assert.equal(normalizedFormData.get("files").type, "audio/wav");
+  assert.equal(normalizedFormData.get("files").name, "录音.wav");
 }
 
 {
@@ -338,6 +615,48 @@ await assert.rejects(
     { type: "done", ok: true },
   ]),
   /服务端没有提交/,
+);
+await assert.rejects(
+  runTerminalStream([
+    { type: "meta", user_message: { id: "saved-user-message" } },
+    {
+      type: "error",
+      code: "CHAT_GENERATION_IN_PROGRESS",
+      content: "这条消息已经保存，AI 仍在处理中。",
+      user_message_committed: true,
+    },
+  ]),
+  (error) => {
+    assert.equal(error.code, "CHAT_GENERATION_IN_PROGRESS");
+    assert.equal(error.userMessageCommitted, true);
+    assert.equal(error.generationInProgress, true);
+    return true;
+  },
+);
+await assert.rejects(
+  runTerminalStream([
+    {
+      type: "error",
+      content: "模型失败",
+      user_message_committed: true,
+    },
+  ]),
+  (error) => {
+    assert.equal(error.message, "模型失败");
+    assert.equal(error.userMessageCommitted, true);
+    return true;
+  },
+);
+await assert.rejects(
+  runTerminalStream([
+    { type: "meta", user_message: { id: "saved-user-message" } },
+    { type: "text", content: "未完成内容" },
+  ]),
+  (error) => {
+    assert.match(error.message, /消息已经保存/);
+    assert.equal(error.userMessageCommitted, true);
+    return true;
+  },
 );
 await assert.rejects(
   runTerminalStream([{ type: "done", ok: false, message: "保存失败" }]),

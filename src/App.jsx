@@ -13,7 +13,10 @@ import {
   attachmentKind,
   createAttachmentDraft,
   draftsForLocalMessage,
+  normalizeAttachmentFile,
   revokeAttachmentDraft,
+  restoreAttachmentDrafts,
+  shouldRestoreAttachmentDrafts,
   validateAttachmentFiles,
 } from "./chat-attachments";
 import {
@@ -23,11 +26,18 @@ import {
   storeChatModel,
 } from "./chat-models";
 import {
-  attachThinkingTrace,
-  appendReasoningSummary,
+  canRetryChatClientMessage,
+  clearChatClientMessage,
+  isChatGenerationInProgress,
+  resolveChatClientMessage,
+  restoreChatRetryText,
+  updateChatClientMessage,
+} from "./chat-idempotency";
+import {
   appendThinkingStatus,
   mergeStreamedAssistantMessage,
 } from "./chat-thinking";
+import { hydrateChatHistory } from "./chat-history";
 import {
   COMPANION_INTERACTION_TYPES,
   enqueueCompanionInteraction,
@@ -55,8 +65,8 @@ import {
   buildVoiceTurnFormData,
   createVoiceTurnRequest,
   formatVoiceConfidence,
-  hydrateStoredVoiceMessages,
   normalizeVoiceAnalysis,
+  resolveVoiceCaptureAfterPermission,
   selectRecorderMimeType,
   speakVoiceText,
   stopVoiceSpeech,
@@ -285,14 +295,15 @@ async function prepareMomentImage(file) {
 }
 
 async function prepareChatAttachmentFile(file) {
-  if (!String(file?.type || "").startsWith("image/")) {
-    return { file, warning: "" };
+  const normalizedFile = normalizeAttachmentFile(file);
+  if (attachmentKind(normalizedFile) !== "image") {
+    return { file: normalizedFile, warning: "" };
   }
-  const prepared = await prepareImageUpload(file);
+  const prepared = await prepareImageUpload(normalizedFile);
   return {
     file:
-      prepared.blob === file
-        ? file
+      prepared.blob === normalizedFile
+        ? normalizedFile
         : new File([prepared.blob], prepared.name, {
             type: prepared.type,
             lastModified: Date.now(),
@@ -360,6 +371,7 @@ function App() {
   const [voiceState, setVoiceState] = useState(VOICE_STATES.idle);
   const [voiceElapsedMs, setVoiceElapsedMs] = useState(0);
   const [voiceError, setVoiceError] = useState("");
+  const [voiceTapToSend, setVoiceTapToSend] = useState(false);
   const [lastVoiceAnalysis, setLastVoiceAnalysis] = useState(null);
   const [voiceAutoSpeakEnabled, setVoiceAutoSpeakEnabled] = useState(
     readVoiceAutoSpeakSetting,
@@ -380,8 +392,6 @@ function App() {
   const chatAttachmentsRef = useRef([]);
   const streamThinkingRef = useRef({
     statuses: [],
-    reasoningSummary: "",
-    assistantMessageId: "",
   });
   const activeSessionIdRef = useRef(null);
   const messagesSessionIdRef = useRef(null);
@@ -397,6 +407,9 @@ function App() {
   const voiceStateRef = useRef(VOICE_STATES.idle);
   const voicePointerHeldRef = useRef(false);
   const voicePointerIdRef = useRef(null);
+  const voiceTapToSendRef = useRef(false);
+  const voiceCaptureRunRef = useRef(0);
+  const voicePermissionReadyRef = useRef(false);
   const voiceStreamRef = useRef(null);
   const voiceRecorderRef = useRef(null);
   const voiceChunksRef = useRef([]);
@@ -405,6 +418,7 @@ function App() {
   const voiceMaxTimerRef = useRef(null);
   const voiceRequestRef = useRef(null);
   const chatRequestRef = useRef(null);
+  const pendingChatClientMessageRef = useRef(null);
   const componentMountedRef = useRef(true);
   const speechRunRef = useRef(0);
   const voiceLifecycleRef = useRef({ cancel() {}, stopPlayback() {} });
@@ -415,6 +429,17 @@ function App() {
   const isVoiceInputBusy = voiceInputBusy(voiceState);
   const voiceServiceAvailable = voiceService.available;
   const activeChatModel = selectedChatModel || settings.model;
+  const chatRetryReady = canRetryChatClientMessage(
+    pendingChatClientMessageRef.current,
+    {
+      sessionId: activeSessionId,
+      message: message.trim(),
+      attachments: chatAttachments,
+    },
+  );
+  const chatRetryIsProcessing =
+    chatRetryReady &&
+    pendingChatClientMessageRef.current?.generationInProgress === true;
 
   useEffect(() => {
     let cancelled = false;
@@ -681,7 +706,7 @@ function App() {
             `/sessions/${currentSessionId}/messages`,
           );
           if (!cancelled && activeSessionIdRef.current === currentSessionId) {
-            setMessages(hydrateStoredVoiceMessages(history.messages));
+            setMessages(hydrateChatHistory(history.messages));
           }
         }
 
@@ -767,7 +792,7 @@ function App() {
           messageLoadTokenRef.current === loadToken &&
           activeSessionIdRef.current === activeSessionId
         ) {
-          setMessages(hydrateStoredVoiceMessages(data.messages));
+          setMessages(hydrateChatHistory(data.messages));
         }
       } catch (error) {
         if (!cancelled) setNotice(error.message);
@@ -871,6 +896,11 @@ function App() {
     setVoiceState(nextState);
   }
 
+  function setVoiceTapToSendMode(enabled) {
+    voiceTapToSendRef.current = enabled;
+    if (componentMountedRef.current) setVoiceTapToSend(enabled);
+  }
+
   function clearVoiceRecordingTimers() {
     window.clearInterval(voiceElapsedTimerRef.current);
     window.clearTimeout(voiceMaxTimerRef.current);
@@ -896,8 +926,10 @@ function App() {
   }
 
   function cancelVoiceCapture({ message = "", updateState = true } = {}) {
+    voiceCaptureRunRef.current += 1;
     voicePointerHeldRef.current = false;
     voicePointerIdRef.current = null;
+    setVoiceTapToSendMode(false);
     clearVoiceRecordingTimers();
 
     const recorder = voiceRecorderRef.current;
@@ -1102,6 +1134,7 @@ function App() {
     if (!recorder) return;
 
     voiceRecorderRef.current = null;
+    setVoiceTapToSendMode(false);
     clearVoiceRecordingTimers();
     const durationMs = Math.max(0, Date.now() - voiceStartedAtRef.current);
 
@@ -1152,6 +1185,17 @@ function App() {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     event.preventDefault();
 
+    if (
+      voiceStateRef.current === VOICE_STATES.recording &&
+      voiceTapToSendRef.current
+    ) {
+      voicePointerHeldRef.current = false;
+      voicePointerIdRef.current = null;
+      setVoiceTapToSendMode(false);
+      void finishVoiceCapture({ send: true });
+      return;
+    }
+
     if (!voiceServiceAvailable) {
       setVoiceFailure(voiceService.message);
       return;
@@ -1172,6 +1216,9 @@ function App() {
       return;
     }
 
+    const captureRun = voiceCaptureRunRef.current + 1;
+    voiceCaptureRunRef.current = captureRun;
+
     try {
       event.currentTarget.setPointerCapture?.(event.pointerId);
     } catch {
@@ -1179,6 +1226,7 @@ function App() {
     }
     voicePointerHeldRef.current = true;
     voicePointerIdRef.current = event.pointerId;
+    setVoiceTapToSendMode(false);
     setVoiceError("");
     setNotice("");
     setLastVoiceAnalysis(null);
@@ -1190,6 +1238,7 @@ function App() {
     if (!voicePointerHeldRef.current) return;
 
     setVoiceMode(VOICE_STATES.requesting);
+    const permissionWasUnconfirmed = !voicePermissionReadyRef.current;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -1199,8 +1248,16 @@ function App() {
         },
         video: false,
       });
-
-      if (!voicePointerHeldRef.current) {
+      if (voiceCaptureRunRef.current !== captureRun) {
+        releaseVoiceStream(stream);
+        return;
+      }
+      voicePermissionReadyRef.current = true;
+      const continuation = resolveVoiceCaptureAfterPermission(
+        voicePointerHeldRef.current,
+        permissionWasUnconfirmed,
+      );
+      if (!continuation.startRecording) {
         releaseVoiceStream(stream);
         setVoiceMode(VOICE_STATES.idle);
         return;
@@ -1226,7 +1283,11 @@ function App() {
       recorder.start(250);
 
       voiceStartedAtRef.current = Date.now();
+      setVoiceTapToSendMode(continuation.tapToSend);
       setVoiceMode(VOICE_STATES.recording);
+      if (continuation.tapToSend) {
+        setNotice("麦克风已授权并开始录音。说完后，再点击一次录音按钮发送。");
+      }
       voiceElapsedTimerRef.current = window.setInterval(() => {
         setVoiceElapsedMs(Date.now() - voiceStartedAtRef.current);
       }, 200);
@@ -1236,6 +1297,7 @@ function App() {
       }, VOICE_MAX_DURATION_MS);
       navigator.vibrate?.(18);
     } catch (error) {
+      if (voiceCaptureRunRef.current !== captureRun) return;
       cancelVoiceCapture({ updateState: false });
       setVoiceFailure(error);
     }
@@ -1256,7 +1318,14 @@ function App() {
     } catch {
       // 指针已经被 WebView 释放时无需再处理。
     }
+    if (
+      voiceStateRef.current === VOICE_STATES.recording &&
+      voiceTapToSendRef.current
+    ) {
+      return;
+    }
     if (voiceStateRef.current === VOICE_STATES.recording) {
+      setVoiceTapToSendMode(false);
       void finishVoiceCapture({ send: true });
     }
   }
@@ -1375,7 +1444,7 @@ function App() {
       messageLoadTokenRef.current === loadToken
     ) {
       messagesSessionIdRef.current = sessionId;
-      setMessages(hydrateStoredVoiceMessages(history.messages));
+      setMessages(hydrateChatHistory(history.messages));
     }
   }
 
@@ -1674,10 +1743,12 @@ function App() {
     setNotice("");
 
     let sessionId = activeSessionId;
-    const localUserId = `local-user-${Date.now()}`;
-    const localAssistantId = `local-assistant-${Date.now()}`;
+    let localUserId = `local-user-${Date.now()}`;
+    let localAssistantId = `local-assistant-${Date.now()}`;
     let sendSucceeded = false;
     let streamFailed = false;
+    let userMessageCommitted = false;
+    let generationInProgress = false;
     abortChatRequest(chatRequestRef, "replaced");
     const request = {
       controller: new AbortController(),
@@ -1688,8 +1759,6 @@ function App() {
     chatRequestRef.current = request;
     streamThinkingRef.current = {
       statuses: [],
-      reasoningSummary: "",
-      assistantMessageId: "",
     };
 
     try {
@@ -1712,27 +1781,74 @@ function App() {
         setActiveSessionId(sessionId);
       }
 
+      const clientMessage = resolveChatClientMessage(
+        pendingChatClientMessageRef.current,
+        {
+          sessionId,
+          message: text,
+          attachments: attachmentsToSend,
+        },
+      );
+      userMessageCommitted = clientMessage.userMessageCommitted === true;
+      if (clientMessage.reused) {
+        localUserId =
+          clientMessage.userMessageId ||
+          clientMessage.localUserId ||
+          localUserId;
+        localAssistantId = clientMessage.localAssistantId || localAssistantId;
+      }
+      pendingChatClientMessageRef.current = {
+        ...clientMessage,
+        localUserId,
+        localAssistantId,
+        generationInProgress: false,
+      };
+      request.clientMessageId = clientMessage.clientMessageId;
+
       streamingSessionIdRef.current = sessionId;
       messageLoadTokenRef.current += 1;
       messagesSessionIdRef.current = sessionId;
 
-      setMessages((current) => [
-        ...current,
-        {
-          id: localUserId,
-          role: "user",
-          content: text || "（发送了附件）",
-          attachments: draftsForLocalMessage(attachmentsToSend),
-          created_at: new Date().toISOString(),
-        },
-        {
+      setMessages((current) => {
+        const next = [...current];
+        const hasUserMessage = next.some(
+          (item) =>
+            item.id === localUserId ||
+            item.id === clientMessage.userMessageId,
+        );
+        if (!hasUserMessage) {
+          next.push({
+            id: localUserId,
+            role: "user",
+            content: text || "（发送了附件）",
+            attachments: draftsForLocalMessage(attachmentsToSend),
+            created_at: new Date().toISOString(),
+          });
+        }
+
+        const assistantDraft = {
           id: localAssistantId,
           role: "assistant",
           content: "",
           created_at: new Date().toISOString(),
           isStreaming: true,
-        },
-      ]);
+          generationInProgress: false,
+          retryAvailable: false,
+          thinkingStatuses: [],
+        };
+        const assistantIndex = next.findIndex(
+          (item) => item.id === localAssistantId,
+        );
+        if (assistantIndex >= 0) {
+          next[assistantIndex] = {
+            ...next[assistantIndex],
+            ...assistantDraft,
+          };
+        } else {
+          next.push(assistantDraft);
+        }
+        return next;
+      });
 
       await streamChat(
         {
@@ -1744,6 +1860,7 @@ function App() {
           emotion_understanding_enabled: emotionUnderstandingEnabled,
           companion_status: companionStatusForRequest(companionStatus),
           files: attachmentsToSend,
+          client_message_id: request.clientMessageId,
         },
         (event) => {
           if (
@@ -1755,6 +1872,17 @@ function App() {
           if (activeSessionIdRef.current !== sessionId) return;
 
           if (event.type === "meta" && event.user_message) {
+            userMessageCommitted = true;
+            pendingChatClientMessageRef.current = updateChatClientMessage(
+              pendingChatClientMessageRef.current,
+              request.clientMessageId,
+              {
+                userMessageCommitted: true,
+                userMessageId: event.user_message.id,
+                localUserId,
+                localAssistantId,
+              },
+            );
             setMessages((current) =>
               current.map((item) =>
                 item.id === localUserId
@@ -1783,21 +1911,6 @@ function App() {
             );
           }
 
-          if (event.type === "reasoning") {
-            const reasoningSummary = appendReasoningSummary(
-              streamThinkingRef.current.reasoningSummary,
-              event.content,
-            );
-            streamThinkingRef.current.reasoningSummary = reasoningSummary;
-            setMessages((current) =>
-              current.map((item) =>
-                item.id === localAssistantId
-                  ? { ...item, reasoningSummary }
-                  : item,
-              ),
-            );
-          }
-
           if (event.type === "text") {
             setMessages((current) =>
               current.map((item) =>
@@ -1809,17 +1922,36 @@ function App() {
           }
 
           if (event.type === "error") {
+            const eventGenerationInProgress =
+              isChatGenerationInProgress(event);
+            generationInProgress =
+              generationInProgress || eventGenerationInProgress;
+            if (event.user_message_committed === true) {
+              userMessageCommitted = true;
+              pendingChatClientMessageRef.current = updateChatClientMessage(
+                pendingChatClientMessageRef.current,
+                request.clientMessageId,
+                { userMessageCommitted: true },
+              );
+            }
             streamFailed = true;
             setMessages((current) =>
               current.map((item) =>
                 item.id === localAssistantId
                   ? {
                       ...item,
-                      content: event.content,
+                      content: eventGenerationInProgress
+                        ? "这条消息已经保存，AI 仍在服务器处理中。"
+                        : event.content,
                       isStreaming: false,
-                      thinkingStatuses: streamThinkingRef.current.statuses,
-                      reasoningSummary:
-                        streamThinkingRef.current.reasoningSummary,
+                      generationInProgress: eventGenerationInProgress,
+                      retryAvailable: true,
+                      thinkingStatuses: eventGenerationInProgress
+                        ? appendThinkingStatus(
+                            streamThinkingRef.current.statuses,
+                            "generation_in_progress",
+                          )
+                        : streamThinkingRef.current.statuses,
                     }
                   : item,
               ),
@@ -1831,9 +1963,11 @@ function App() {
               streamFailed = true;
               return;
             }
+            pendingChatClientMessageRef.current = clearChatClientMessage(
+              pendingChatClientMessageRef.current,
+              request.clientMessageId,
+            );
             applyPromptReceipt(event.prompt_receipt);
-            streamThinkingRef.current.assistantMessageId =
-              event.assistant_message?.id || "";
             if (event.companion_status) {
               setCompanionStatus((current) =>
                 mergeCompanionStatus(current, event.companion_status),
@@ -1862,9 +1996,25 @@ function App() {
       );
 
       if (streamFailed) {
-        throw new Error("回复没有成功保存，附件仍保留，可稍后重试。");
+        const error = new Error(
+          generationInProgress
+            ? "这条消息已经保存，AI 仍在服务器处理中。"
+            : userMessageCommitted
+            ? "AI 回复失败，但你的消息已经保存。"
+            : "回复没有成功保存，附件仍保留，可稍后重试。",
+        );
+        error.userMessageCommitted = userMessageCommitted;
+        if (generationInProgress) {
+          error.code = "CHAT_GENERATION_IN_PROGRESS";
+          error.generationInProgress = true;
+        }
+        throw error;
       }
       sendSucceeded = true;
+      pendingChatClientMessageRef.current = clearChatClientMessage(
+        pendingChatClientMessageRef.current,
+        request.clientMessageId,
+      );
       releaseChatRequestAttachments(request);
       if (chatRequestRef.current === request) {
         chatRequestRef.current = null;
@@ -1872,34 +2022,48 @@ function App() {
 
       const history = await apiRequest(`/sessions/${sessionId}/messages`);
       if (activeSessionIdRef.current === sessionId) {
-        const historyMessages = history.messages || [];
-        const assistantMessageId =
-          streamThinkingRef.current.assistantMessageId;
-        let traceTargetIndex = assistantMessageId
-          ? historyMessages.findIndex(
-              (item) => item.id === assistantMessageId,
-            )
-          : -1;
-        if (traceTargetIndex < 0) {
-          for (let index = historyMessages.length - 1; index >= 0; index -= 1) {
-            if (historyMessages[index]?.role === "assistant") {
-              traceTargetIndex = index;
-              break;
-            }
-          }
-        }
-        const hydratedMessages = hydrateStoredVoiceMessages(historyMessages).map((item, index) =>
-          index === traceTargetIndex
-            ? attachThinkingTrace(item, streamThinkingRef.current)
-            : item,
-        );
         messageLoadTokenRef.current += 1;
         messagesSessionIdRef.current = sessionId;
-        setMessages(hydratedMessages);
+        setMessages(hydrateChatHistory(history.messages));
       }
       await refreshSessions(activeSessionIdRef.current || sessionId);
     } catch (error) {
+      if (sendSucceeded) {
+        if (componentMountedRef.current) {
+          setNotice(
+            `AI 回复已经保存，但刷新聊天记录失败：${error.message || "请稍后重新打开本会话。"}`,
+          );
+        }
+        return;
+      }
       const requestWasAborted = request.controller.signal.aborted;
+      const userMessageWasCommitted =
+        userMessageCommitted || error?.userMessageCommitted === true;
+      const generationStillInProgress =
+        generationInProgress ||
+        error?.generationInProgress === true ||
+        isChatGenerationInProgress(error);
+      const restoreDraft = shouldRestoreAttachmentDrafts({
+        requestWasAborted,
+        cancelReason: request.cancelReason,
+      });
+      if (restoreDraft) {
+        pendingChatClientMessageRef.current = updateChatClientMessage(
+          pendingChatClientMessageRef.current,
+          request.clientMessageId,
+          {
+            userMessageCommitted: userMessageWasCommitted,
+            generationInProgress: generationStillInProgress,
+            localUserId,
+            localAssistantId,
+          },
+        );
+      } else {
+        pendingChatClientMessageRef.current = clearChatClientMessage(
+          pendingChatClientMessageRef.current,
+          request.clientMessageId,
+        );
+      }
       if (!componentMountedRef.current) {
         releaseChatRequestAttachments(request);
         return;
@@ -1910,13 +2074,16 @@ function App() {
           releaseChatRequestAttachments(request);
           return;
         }
-        const restoreDraft = request.cancelReason === "view-change";
         if (restoreDraft) {
-          if (text) setMessage((current) => current || text);
-          const restored = [
-            ...attachmentsToSend,
-            ...chatAttachmentsRef.current,
-          ].slice(0, 4);
+          if (text) {
+            setMessage((current) =>
+              restoreChatRetryText(current, text),
+            );
+          }
+          const restored = restoreAttachmentDrafts(
+            attachmentsToSend,
+            chatAttachmentsRef.current,
+          );
           chatAttachmentsRef.current = restored;
           setChatAttachments(restored);
         } else {
@@ -1933,23 +2100,50 @@ function App() {
         return;
       }
 
-      setNotice(error.message);
+      const retryGuidance = generationStillInProgress
+        ? "这条消息正在服务器处理中，文字和附件已保留。稍后点“检查进度”即可继续使用同一条消息。"
+        : userMessageWasCommitted
+          ? `你的消息${
+              attachmentsToSend.length > 0 ? "和附件" : ""
+            }已经保存。文字和附件仍保留，点“重试”会继续生成，不会重复保存。`
+          : "本轮没有确认保存，文字和附件已保留，可以直接点“重试”。";
+      setNotice(`${error.message || "回复暂时中断。"} ${retryGuidance}`);
       if (!sendSucceeded) {
-        const restored = [
-          ...attachmentsToSend,
-          ...chatAttachmentsRef.current,
-        ].slice(0, 4);
-        chatAttachmentsRef.current = restored;
-        setChatAttachments(restored);
+        if (restoreDraft) {
+          if (text) {
+            setMessage((current) =>
+              restoreChatRetryText(current, text),
+            );
+          }
+          const restored = restoreAttachmentDrafts(
+            attachmentsToSend,
+            chatAttachmentsRef.current,
+          );
+          chatAttachmentsRef.current = restored;
+          setChatAttachments(restored);
+        } else {
+          releaseChatRequestAttachments(request);
+        }
         setMessages((current) =>
           current.map((item) =>
             item.id === localAssistantId
               ? {
                   ...item,
                   content:
-                    error.message ||
+                    (generationStillInProgress
+                      ? "这条消息已经保存，AI 仍在服务器处理中。稍后可以直接检查进度。"
+                      : `${error.message || "AI 回复失败。"}\n\n${retryGuidance}`) ||
                     "连接暂时中断了，请检查后端后再试一次。",
                   isStreaming: false,
+                  generationInProgress: generationStillInProgress,
+                  retryAvailable: restoreDraft,
+                  thinkingStatuses: generationStillInProgress
+                    ? appendThinkingStatus(
+                        item.thinkingStatuses ||
+                          streamThinkingRef.current.statuses,
+                        "generation_in_progress",
+                      )
+                    : item.thinkingStatuses,
                 }
               : item,
           ),
@@ -2356,58 +2550,6 @@ function App() {
         </section>
 
         <div className="composer-wrap">
-          <div className="chat-tools-row">
-            <input
-              ref={chatFileInputRef}
-              className="visually-hidden-file-input"
-              type="file"
-              multiple
-              accept={
-                voiceServiceAvailable
-                  ? "image/*,audio/*,.pdf,.docx,.txt,.md,.csv,.json,.xml"
-                  : "image/*,.pdf,.docx,.txt,.md,.csv,.json,.xml"
-              }
-              onChange={selectChatAttachments}
-              tabIndex="-1"
-            />
-            <button
-              className="chat-attach-button"
-              type="button"
-              disabled={
-                chatAttachments.length >= 4 ||
-                isSending ||
-                isCompanionResponding ||
-                isVoiceInputBusy
-              }
-              onClick={() => chatFileInputRef.current?.click()}
-            >
-              ＋ 附件
-            </button>
-            <label className="chat-model-picker">
-              <span>本轮模型</span>
-              <select
-                value={selectedChatModel}
-                onChange={(event) => selectChatModel(event.target.value)}
-                disabled={isSending || isCompanionResponding || isVoiceInputBusy}
-              >
-                {availableModels.length === 0 && (
-                  <option value={selectedChatModel || settings.model || ""}>
-                    {activeChatModel || "由服务器自动选择"}
-                  </option>
-                )}
-                {availableModels.map((modelOption) => (
-                  <option value={modelOption.id} key={modelOption.id}>
-                    {modelOption.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          {modelsLoadMessage && (
-            <div className="chat-model-note" role="status">
-              {modelsLoadMessage}
-            </div>
-          )}
           <SelectedAttachmentStrip
             items={chatAttachments}
             onRemove={removeChatAttachment}
@@ -2428,30 +2570,93 @@ function App() {
                 isSending || isCompanionResponding || isVoiceInputBusy
               }
             />
-            <button
-              className="send-button"
-              onClick={sendMessage}
-              disabled={
-                (!message.trim() && chatAttachments.length === 0) ||
-                isSending ||
-                isCompanionResponding ||
-                isVoiceInputBusy
-              }
-            >
-              {isCompanionResponding
-                ? "互动回应中"
-                : isSending
-                  ? "回应中"
-                  : "发送"}
-            </button>
+            <div className="composer-toolbar">
+              <input
+                ref={chatFileInputRef}
+                className="visually-hidden-file-input"
+                type="file"
+                multiple
+                accept={
+                  voiceServiceAvailable
+                    ? "image/*,audio/*,.pdf,.docx,.txt,.md,.csv,.json,.xml"
+                    : "image/*,.pdf,.docx,.txt,.md,.csv,.json,.xml"
+                }
+                onChange={selectChatAttachments}
+                tabIndex="-1"
+              />
+              <button
+                className="chat-attach-button"
+                type="button"
+                title="添加图片、文件或语音"
+                aria-label="添加图片、文件或语音"
+                disabled={
+                  chatAttachments.length >= 4 ||
+                  isSending ||
+                  isCompanionResponding ||
+                  isVoiceInputBusy
+                }
+                onClick={() => chatFileInputRef.current?.click()}
+              >
+                ＋
+              </button>
+              <label className="chat-model-picker">
+                <span>模型</span>
+                <select
+                  aria-label="本轮模型"
+                  value={selectedChatModel}
+                  onChange={(event) => selectChatModel(event.target.value)}
+                  disabled={
+                    isSending || isCompanionResponding || isVoiceInputBusy
+                  }
+                >
+                  {availableModels.length === 0 && (
+                    <option value={selectedChatModel || settings.model || ""}>
+                      {activeChatModel || "由服务器自动选择"}
+                    </option>
+                  )}
+                  {availableModels.map((modelOption) => (
+                    <option value={modelOption.id} key={modelOption.id}>
+                      {modelOption.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button
+                className="send-button"
+                onClick={sendMessage}
+                disabled={
+                  (!message.trim() && chatAttachments.length === 0) ||
+                  isSending ||
+                  isCompanionResponding ||
+                  isVoiceInputBusy
+                }
+              >
+                {isCompanionResponding
+                  ? "互动回应中"
+                  : isSending
+                    ? "回应中"
+                    : chatRetryReady
+                      ? chatRetryIsProcessing
+                        ? "检查进度"
+                        : "重试"
+                      : "发送"}
+              </button>
+            </div>
           </div>
+          {modelsLoadMessage && (
+            <div className="chat-model-note" role="status">
+              {modelsLoadMessage}
+            </div>
+          )}
           <div className={`voice-controls voice-${voiceState}`}>
             <button
               className="voice-hold-button"
               type="button"
               aria-label={
                 voiceServiceAvailable
-                  ? "按住说话，松开发送"
+                  ? voiceTapToSend
+                    ? "录音已开始，点击发送"
+                    : "按住说话，松开发送"
                   : "语音服务暂不可用"
               }
               aria-pressed={voiceState === VOICE_STATES.recording}
@@ -2475,7 +2680,9 @@ function App() {
                 {!voiceServiceAvailable
                   ? "语音暂不可用"
                   : voiceState === VOICE_STATES.recording
-                  ? `松开发送 · ${(voiceElapsedMs / 1000).toFixed(1)} 秒`
+                  ? voiceTapToSend
+                    ? `点击发送 · ${(voiceElapsedMs / 1000).toFixed(1)} 秒`
+                    : `松开发送 · ${(voiceElapsedMs / 1000).toFixed(1)} 秒`
                   : VOICE_STATE_LABELS[voiceState] || "按住说话"}
               </span>
             </button>
@@ -2490,7 +2697,9 @@ function App() {
             )}
             <span className="voice-status-text" role="status" aria-live="polite">
               {voiceServiceAvailable
-                ? "最长 60 秒 · 上传后服务端临时文件默认删除"
+                ? voiceTapToSend
+                  ? "首次授权已完成；说完后点击上方按钮发送"
+                  : "最长 60 秒 · 上传后服务端临时文件默认删除"
                 : voiceService.message}
             </span>
           </div>

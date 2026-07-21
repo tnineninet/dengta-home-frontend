@@ -954,7 +954,8 @@ button:disabled {
 }
 
 .message-image-attachment,
-.message-file-attachment {
+.message-file-attachment,
+.message-audio-attachment {
   min-width: 0;
   overflow: hidden;
   border: 1px solid rgba(172, 135, 148, 0.24);
@@ -989,6 +990,25 @@ button:disabled {
   align-items: center;
   gap: 8px;
   padding: 9px;
+}
+
+.message-audio-attachment {
+  grid-column: 1 / -1;
+  padding: 9px;
+}
+
+.message-audio-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.message-audio-attachment audio {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  height: 38px;
 }
 
 .message-file-attachment[aria-disabled="true"] {
@@ -1081,15 +1101,34 @@ button:disabled {
 
 .thinking-panel-body ol {
   margin: 8px 0 0;
-  padding-left: 18px;
+  padding: 0;
   color: #777087;
+  list-style: none;
 }
 
-.thinking-panel-body p {
-  margin: 8px 0 0;
-  overflow-wrap: anywhere;
-  line-height: 1.6;
-  white-space: pre-wrap;
+.thinking-panel-body li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  min-height: 24px;
+}
+
+.thinking-step-marker {
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #9c7a89;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.thinking-panel-body li.is-active .thinking-step-marker {
+  background: #bc6f89;
+  animation: breathe 0.9s ease-in-out infinite;
 }
 
 .message-bubble time {
@@ -1123,6 +1162,9 @@ button:disabled {
 }
 
 .composer-wrap {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   padding: 14px max(26px, calc((100% - 840px) / 2)) 18px;
   border-top: 1px solid var(--line);
   background: rgba(255, 252, 249, 0.92);
@@ -1130,8 +1172,12 @@ button:disabled {
 
 .composer {
   display: flex;
-  align-items: flex-end;
-  gap: 9px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  align-items: stretch;
+  flex-direction: column;
+  gap: 5px;
   padding: 7px;
   border: 1px solid #dfd2d5;
   border-radius: 17px;
@@ -1140,9 +1186,9 @@ button:disabled {
 }
 
 .composer textarea {
+  width: 100%;
   min-height: 42px;
   max-height: 140px;
-  flex: 1;
   resize: none;
   padding: 10px 11px;
   border: 0;
@@ -1167,6 +1213,16 @@ button:disabled {
   border-radius: 12px;
 }
 
+.composer-toolbar {
+  display: grid;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px;
+}
+
 .composer-wrap > small {
   display: block;
   margin-top: 7px;
@@ -1174,18 +1230,11 @@ button:disabled {
   text-align: center;
 }
 
-.chat-tools-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 9px;
-  margin-bottom: 8px;
-}
-
 .chat-model-picker {
   display: flex;
   min-width: 0;
   align-items: center;
+  justify-content: flex-end;
   gap: 7px;
   color: #74636a;
   font-size: 11px;
@@ -1193,7 +1242,7 @@ button:disabled {
 }
 
 .chat-model-picker select {
-  width: min(310px, 46vw);
+  width: min(310px, 40vw);
   min-width: 0;
   padding: 7px 28px 7px 9px;
   overflow: hidden;
@@ -1205,13 +1254,14 @@ button:disabled {
 }
 
 .chat-attach-button {
-  flex: 0 0 auto;
-  min-height: 36px;
-  padding: 7px 11px;
+  width: 42px;
+  height: 42px;
+  padding: 0;
   border: 1px solid #ddcbd1;
   border-radius: 10px;
   color: #795565;
   background: #fff8fa;
+  font-size: 22px;
   font-weight: 700;
 }
 
@@ -1226,13 +1276,16 @@ button:disabled {
 }
 
 .chat-model-note {
-  margin: -2px 0 8px;
+  margin: 6px 4px 0;
   color: #96737f;
   font-size: 10px;
 }
 
 .selected-attachment-strip {
   display: flex;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   gap: 7px;
   margin-bottom: 8px;
   overflow-x: auto;
@@ -2651,26 +2704,27 @@ button:disabled {
     padding: 10px 12px max(10px, env(safe-area-inset-bottom));
   }
 
-  .chat-tools-row {
-    align-items: stretch;
-  }
-
   .chat-model-picker {
     min-width: 0;
-    flex: 1;
-    align-items: stretch;
-    flex-direction: column;
-    gap: 3px;
+    justify-content: stretch;
+    gap: 5px;
+  }
+
+  .chat-model-picker > span {
+    display: none;
   }
 
   .chat-model-picker select {
     width: 100%;
-    min-height: 40px;
+    min-height: 42px;
   }
 
   .chat-attach-button {
     min-height: 44px;
-    align-self: flex-end;
+  }
+
+  .composer-toolbar {
+    grid-template-columns: 44px minmax(0, 1fr) auto;
   }
 
   .thinking-panel summary {

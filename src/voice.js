@@ -179,6 +179,16 @@ export function voiceRecordingSupported(environment = globalThis) {
   );
 }
 
+export function resolveVoiceCaptureAfterPermission(
+  pointerHeld,
+  permissionWasUnconfirmed = false,
+) {
+  return {
+    startRecording: true,
+    tapToSend: permissionWasUnconfirmed || pointerHeld !== true,
+  };
+}
+
 function extensionForMimeType(mimeType) {
   if (mimeType.includes("ogg")) return "ogg";
   if (mimeType.includes("mp4")) return "m4a";

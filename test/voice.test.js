@@ -10,6 +10,7 @@ import {
   hydrateStoredVoiceMessages,
   localizeVoiceEmotion,
   normalizeVoiceAnalysis,
+  resolveVoiceCaptureAfterPermission,
   selectRecorderMimeType,
   validateVoiceDuration,
   voiceCaptureErrorMessage,
@@ -106,6 +107,19 @@ assert.equal(
   true,
 );
 assert.equal(voiceRecordingSupported({ navigator: {} }), false);
+
+assert.deepEqual(resolveVoiceCaptureAfterPermission(true, false), {
+  startRecording: true,
+  tapToSend: false,
+});
+assert.deepEqual(resolveVoiceCaptureAfterPermission(false, false), {
+  startRecording: true,
+  tapToSend: true,
+});
+assert.deepEqual(resolveVoiceCaptureAfterPermission(true, true), {
+  startRecording: true,
+  tapToSend: true,
+});
 
 const formData = buildVoiceTurnFormData({
   blob: new Blob(["voice"], { type: "audio/webm" }),

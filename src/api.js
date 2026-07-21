@@ -1,3 +1,5 @@
+import { isChatGenerationInProgress } from "./chat-idempotency.js";
+
 const API_BASE_URL = (
   import.meta.env?.VITE_API_URL || "http://localhost:3000"
 ).replace(/\/$/, "");
@@ -102,6 +104,7 @@ export function buildStreamChatFormData(
         ? payload.companion_status
         : JSON.stringify(payload.companion_status || {}),
     model: payload.model,
+    client_message_id: payload.client_message_id,
   };
 
   Object.entries(fields).forEach(([name, value]) => {
@@ -138,8 +141,21 @@ export async function streamChat(payload, onEvent, { signal } = {}) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let streamError = "";
+  let streamError = null;
   let completionEvent = null;
+  let userMessageCommitted = false;
+
+  function createStreamError(source) {
+    const message =
+      typeof source === "string"
+        ? source
+        : source?.content || source?.message || "回复中断。";
+    const error = new Error(message);
+    error.userMessageCommitted = userMessageCommitted;
+    if (source?.code) error.code = source.code;
+    error.generationInProgress = isChatGenerationInProgress(source);
+    return error;
+  }
 
   function processLine(rawLine) {
     const line = rawLine.replace(/\r$/, "");
@@ -149,14 +165,19 @@ export async function streamChat(payload, onEvent, { signal } = {}) {
 
     try {
       const event = JSON.parse(json);
+      if (
+        (event.type === "meta" && event.user_message) ||
+        event.user_message_committed === true
+      ) {
+        userMessageCommitted = true;
+      }
       if (event.type === "error") {
-        streamError = event.content || event.message || "回复中断。";
+        streamError = event;
       }
       if (event.type === "done") {
         completionEvent = event;
         if (event.ok === false) {
-          streamError =
-            event.content || event.message || streamError || "回复没有成功完成。";
+          streamError = streamError || event;
         }
       }
       onEvent(event);
@@ -180,11 +201,17 @@ export async function streamChat(payload, onEvent, { signal } = {}) {
     if (buffer.trim()) processLine(buffer);
 
     if (streamError) {
-      throw new Error(streamError);
+      throw createStreamError(streamError);
     }
 
     if (!completionEvent) {
-      throw new Error("回复连接提前结束，服务器没有确认本轮已保存。附件仍保留，可稍后重试。");
+      throw createStreamError(
+        {
+          message: userMessageCommitted
+            ? "回复连接提前结束，但你的消息已经保存。"
+            : "回复连接提前结束，服务器没有确认本轮已保存。附件仍保留，可稍后重试。",
+        },
+      );
     }
 
     return completionEvent;

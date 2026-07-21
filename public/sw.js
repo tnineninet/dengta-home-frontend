@@ -1,4 +1,4 @@
-const CACHE_NAME = "dengta-home-v5";
+const CACHE_NAME = "dengta-home-v6";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",
