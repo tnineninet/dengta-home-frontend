@@ -17,6 +17,13 @@ import {
   saveCompanionInteractionStats,
   saveCompanionStatus,
 } from "./companion-status";
+import {
+  PROMPT_FIELD_LIMITS,
+  createSettingsPayload,
+  emptySettings,
+  normalizePromptReceipt,
+  normalizeSettingsDraft,
+} from "./settings";
 
 const PUSH_CURSOR_KEY = "dengta_push_cursor";
 const PUSH_SEEN_IDS_KEY = "dengta_push_seen_ids";
@@ -25,23 +32,30 @@ const EMOTION_UNDERSTANDING_KEY = "dengta_emotion_understanding_enabled";
 const COMPANION_INTERACTION_DEBOUNCE_MS = 1100;
 const COMPANION_INTERACTION_RATE_LIMIT = 6;
 const COMPANION_INTERACTION_RATE_WINDOW_MS = 60 * 1000;
+const LOCAL_NOTIFICATION_CHANNEL_ID = "dengta-home-reminders-v1";
+const PROMPT_RECEIPT_STORAGE_KEY = "dengta_prompt_receipt_v1";
 
-const emptySettings = {
-  ai_name: "小灯",
-  system_prompt: "",
-  personality: "",
-  provider: "custom",
-  api_url: "",
-  model: "",
-  temperature: 0.7,
-  context_turns: 20,
-  max_tokens: 2048,
-  compression_threshold: 12000,
-  compression_keep: 20,
-  timezone: "Asia/Shanghai",
-  push_enabled: false,
-  max_push_per_day: 7,
+const initialNotificationTestState = {
+  status: "idle",
+  message: "点击后会先检查插件和系统权限，再立即发送一条本地通知。",
 };
+
+function readPromptReceipt() {
+  try {
+    const stored = localStorage.getItem(PROMPT_RECEIPT_STORAGE_KEY);
+    return stored ? normalizePromptReceipt(JSON.parse(stored)) : null;
+  } catch {
+    return null;
+  }
+}
+
+function storePromptReceipt(receipt) {
+  try {
+    localStorage.setItem(PROMPT_RECEIPT_STORAGE_KEY, JSON.stringify(receipt));
+  } catch {
+    // 本地存储不可用时，只影响重启后的回执显示。
+  }
+}
 
 const navItems = [
   { id: "chat", icon: "✦", label: "聊天" },
@@ -240,7 +254,13 @@ function App() {
   const [isSending, setIsSending] = useState(false);
   const [isCompanionResponding, setIsCompanionResponding] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [hasLoadedSettings, setHasLoadedSettings] = useState(false);
+  const [settingsSaveReceipt, setSettingsSaveReceipt] = useState(null);
+  const [lastPromptReceipt, setLastPromptReceipt] = useState(readPromptReceipt);
   const [isTestingNotification, setIsTestingNotification] = useState(false);
+  const [notificationTestState, setNotificationTestState] = useState(
+    initialNotificationTestState,
+  );
   const [isPostingMoment, setIsPostingMoment] = useState(false);
   const [notice, setNotice] = useState("");
   const [dialog, setDialog] = useState(null);
@@ -283,11 +303,12 @@ function App() {
         ]);
 
         if (cancelled) return;
-        const nextSettings = settingsData.settings || emptySettings;
+        const nextSettings = normalizeSettingsDraft(settingsData.settings);
         const nextSessions = sessionsData.sessions || [];
 
         setSettings(nextSettings);
         setDraftSettings(nextSettings);
+        setHasLoadedSettings(true);
         setSessions(nextSessions);
         setActiveSessionId(nextSessions[0]?.id || null);
       } catch (error) {
@@ -816,6 +837,8 @@ function App() {
         timeoutMs: 60 * 1000,
       });
 
+      applyPromptReceipt(data?.prompt_receipt);
+
       if (data.companion_status) {
         setCompanionStatus((current) =>
           mergeCompanionStatus(current, data.companion_status),
@@ -989,6 +1012,7 @@ function App() {
           }
 
           if (event.type === "done") {
+            applyPromptReceipt(event.prompt_receipt);
             if (event.companion_status) {
               setCompanionStatus((current) =>
                 mergeCompanionStatus(current, event.companion_status),
@@ -1039,16 +1063,34 @@ function App() {
 
   async function saveSettings(event) {
     event.preventDefault();
+
+    if (!hasLoadedSettings) {
+      setNotice(
+        "服务器设置尚未加载成功。为防止覆盖现有模型和接口配置，请先恢复网络并重新打开 App。",
+      );
+      return;
+    }
+
     setIsSavingSettings(true);
+    setSettingsSaveReceipt(null);
 
     try {
       const data = await apiRequest("/settings", {
         method: "PUT",
-        body: JSON.stringify(draftSettings),
+        body: JSON.stringify(createSettingsPayload(draftSettings)),
       });
-      setSettings(data.settings);
-      setDraftSettings(data.settings);
-      setNotice("设置已保存。API 密钥仍只保存在后端环境变量中。");
+      const nextSettings = normalizeSettingsDraft(data.settings);
+      setSettings(nextSettings);
+      setDraftSettings(nextSettings);
+      const receipt = {
+        systemPromptLength: nextSettings.system_prompt.length,
+        additionalPromptLength: nextSettings.additional_prompt.length,
+        personalityLength: nextSettings.personality.length,
+      };
+      setSettingsSaveReceipt(receipt);
+      setNotice(
+        `设置已由服务器保存并回读：系统提示词 ${receipt.systemPromptLength} 字，普通补充 ${receipt.additionalPromptLength} 字，人设词 ${receipt.personalityLength} 字。`,
+      );
     } catch (error) {
       setNotice(error.message);
     } finally {
@@ -1057,45 +1099,122 @@ function App() {
   }
 
   async function testLocalNotification() {
+    function updateTestState(status, message) {
+      setNotificationTestState({ status, message });
+      setNotice(message);
+    }
+
     if (!Capacitor.isNativePlatform()) {
-      setNotice("请在安装到 Android 手机的 DengTa home App 中测试通知。");
+      updateTestState(
+        "error",
+        "当前不是 Android App。请在手机上安装的 DengTa home 中测试通知。",
+      );
+      return;
+    }
+
+    if (!Capacitor.isPluginAvailable("LocalNotifications")) {
+      updateTestState(
+        "error",
+        "这个安装包没有加载通知插件，请安装最新版本的 DengTa home 后重试。",
+      );
       return;
     }
 
     setIsTestingNotification(true);
+    setNotificationTestState({
+      status: "checking",
+      message: "正在检查通知权限…",
+    });
 
     try {
       let permission = await LocalNotifications.checkPermissions();
       if (permission.display !== "granted") {
+        setNotificationTestState({
+          status: "requesting",
+          message: "请在系统弹窗中选择“允许通知”…",
+        });
         permission = await LocalNotifications.requestPermissions();
       }
 
       if (permission.display !== "granted") {
-        setNotice("通知权限尚未开启。请在手机系统设置中允许 DengTa home 发送通知。");
+        updateTestState(
+          "error",
+          "通知权限没有开启。请到“手机设置 → 应用 → DengTa home → 通知”，打开“允许通知”后再试。",
+        );
         return;
       }
 
-      await LocalNotifications.schedule({
+      const enabled = await LocalNotifications.areEnabled();
+      if (!enabled.value) {
+        updateTestState(
+          "error",
+          "系统仍在拦截通知。请到“手机设置 → 应用 → DengTa home → 通知”中打开通知总开关。",
+        );
+        return;
+      }
+
+      if (Capacitor.getPlatform() === "android") {
+        setNotificationTestState({
+          status: "preparing",
+          message: "权限已开启，正在准备通知通道…",
+        });
+        await LocalNotifications.createChannel({
+          id: LOCAL_NOTIFICATION_CHANNEL_ID,
+          name: "DengTa home 提醒",
+          description: "AI 伙伴主动消息与应用测试通知",
+          importance: 4,
+          visibility: 1,
+        });
+      }
+
+      setNotificationTestState({
+        status: "sending",
+        message: "正在把测试通知交给手机系统…",
+      });
+      const notificationId = Math.max(
+        1,
+        Math.floor(Date.now() % 2_000_000_000),
+      );
+      const result = await LocalNotifications.schedule({
         notifications: [
           {
-            id: 20260721,
+            id: notificationId,
             title: settings.ai_name || "DengTa home",
             body: "通知连接成功。以后主动消息到达时，会由这里提醒你。",
-            schedule: { at: new Date(Date.now() + 1000) },
+            channelId: LOCAL_NOTIFICATION_CHANNEL_ID,
+            autoCancel: true,
           },
         ],
       });
 
-      setNotice("测试通知已发送，请查看手机通知栏。");
+      if (!result.notifications?.some((item) => item.id === notificationId)) {
+        throw new Error("通知插件没有确认本次发送");
+      }
+
+      updateTestState(
+        "success",
+        "测试通知已发送。请从手机屏幕顶部向下滑，查看通知栏；如果仍看不到，请检查该通知通道是否被静音。",
+      );
     } catch (error) {
-      setNotice(`测试通知失败：${error.message}`);
+      updateTestState(
+        "error",
+        `测试通知失败：${error?.message || "通知插件返回了未知错误"}`,
+      );
     } finally {
       setIsTestingNotification(false);
     }
   }
 
   function updateDraft(field, value) {
+    setSettingsSaveReceipt(null);
     setDraftSettings((current) => ({ ...current, [field]: value }));
+  }
+
+  function applyPromptReceipt(value) {
+    const receipt = normalizePromptReceipt(value, new Date().toISOString());
+    if (!receipt) return;
+    setLastPromptReceipt(receipt);
+    storePromptReceipt(receipt);
   }
 
   function updateEmotionUnderstanding(value) {
@@ -1225,7 +1344,9 @@ function App() {
   function changeView(view) {
     setActiveView(view);
     setIsSidebarOpen(false);
-    if (view === "settings") setDraftSettings(settings);
+    if (view === "settings") {
+      setDraftSettings(normalizeSettingsDraft(settings));
+    }
   }
 
   function renderChat() {
@@ -1549,36 +1670,114 @@ function App() {
         </div>
 
         <form className="settings-form" onSubmit={saveSettings}>
-          <div className="settings-card">
-            <h3>角色</h3>
-            <div className="settings-grid">
-              <label>
-                AI 名称
-                <input
-                  value={draftSettings.ai_name || ""}
-                  onChange={(event) =>
-                    updateDraft("ai_name", event.target.value)
-                  }
-                />
-              </label>
-              <label>
-                人格描述
-                <input
-                  value={draftSettings.personality || ""}
-                  onChange={(event) =>
-                    updateDraft("personality", event.target.value)
-                  }
-                />
-              </label>
-              <label className="full-width">
-                系统提示词
+          <div className="settings-card prompt-settings-card">
+            <div className="prompt-settings-heading">
+              <div>
+                <h3>角色与提示词</h3>
+                <p className="card-hint">
+                  三个输入区各有不同作用。数字越小，优先级越高；发生冲突时，AI
+                  必须先遵守更高优先级的内容。
+                </p>
+              </div>
+              <span className="prompt-compatibility-badge">兼容旧设置</span>
+            </div>
+
+            <label className="prompt-name-field">
+              <span>AI 昵称</span>
+              <small>这里只决定界面里显示的名字，例如“小灯”。</small>
+              <input
+                data-setting-field="ai_name"
+                maxLength={PROMPT_FIELD_LIMITS.ai_name}
+                value={draftSettings.ai_name || ""}
+                onChange={(event) =>
+                  updateDraft("ai_name", event.target.value)
+                }
+                placeholder="例如：小灯"
+              />
+            </label>
+
+            <div className="prompt-layer-list">
+              <label className="prompt-layer highest-priority">
+                <span className="prompt-layer-title">
+                  <span className="prompt-priority-number">1</span>
+                  <span>
+                    <strong>最高优先级系统提示词</strong>
+                    <small>
+                      直接作为模型 system / instructions 发送，必须最先遵守
+                    </small>
+                  </span>
+                  <em>最高优先级</em>
+                </span>
+                <p>
+                  这是三个输入区中优先级最高的一层。写安全边界、长期目标和绝对不能违反的规则；下面的补充提示词和人设都不能推翻它。
+                </p>
                 <textarea
+                  data-setting-field="system_prompt"
+                  maxLength={PROMPT_FIELD_LIMITS.system_prompt}
                   value={draftSettings.system_prompt || ""}
                   onChange={(event) =>
                     updateDraft("system_prompt", event.target.value)
                   }
-                  rows="7"
+                  placeholder="例如：你是 DengTa home 的 AI 伙伴。始终尊重用户边界，不编造已经完成的操作……"
+                  rows="8"
                 />
+                <small className="prompt-field-count">
+                  {(draftSettings.system_prompt || "").length} / {PROMPT_FIELD_LIMITS.system_prompt}
+                </small>
+              </label>
+
+              <label className="prompt-layer additional-priority">
+                <span className="prompt-layer-title">
+                  <span className="prompt-priority-number">2</span>
+                  <span>
+                    <strong>普通补充提示词</strong>
+                    <small>低于系统提示词，补充习惯、偏好和当前要求</small>
+                  </span>
+                  <em>普通优先级</em>
+                </span>
+                <p>
+                  这一层的优先级低于系统提示词。写你希望 AI 平时怎样回答、偏爱什么格式或需要长期补充的要求；发生冲突时，以上面的系统规则为准。
+                </p>
+                <textarea
+                  data-setting-field="additional_prompt"
+                  maxLength={PROMPT_FIELD_LIMITS.additional_prompt}
+                  value={draftSettings.additional_prompt || ""}
+                  onChange={(event) =>
+                    updateDraft("additional_prompt", event.target.value)
+                  }
+                  placeholder="例如：回答尽量使用简体中文；步骤要短；遇到英文按钮时同时解释中文意思……"
+                  rows="6"
+                />
+                <small className="prompt-field-count">
+                  {(draftSettings.additional_prompt || "").length} / {PROMPT_FIELD_LIMITS.additional_prompt}
+                </small>
+              </label>
+
+              <label className="prompt-layer personality-priority">
+                <span className="prompt-layer-title">
+                  <span className="prompt-priority-number">3</span>
+                  <span>
+                    <strong>独立人设词</strong>
+                    <small>只控制性格与语气，不覆盖任何系统规则</small>
+                  </span>
+                  <em>人设层</em>
+                </span>
+                <p>
+                  这里只写性格、关系感和说话语气，不要放 API Key。人设只改变表达方式，不能覆盖系统提示词或普通补充规则。
+                </p>
+                <textarea
+                  data-setting-field="personality"
+                  maxLength={PROMPT_FIELD_LIMITS.personality}
+                  value={draftSettings.personality || ""}
+                  onChange={(event) =>
+                    updateDraft("personality", event.target.value)
+                  }
+                  placeholder="例如：温柔、细心、偶尔俏皮；会自然表达关心，但尊重用户说不……"
+                  rows="5"
+                />
+                <small className="prompt-field-count">
+                  {(draftSettings.personality || "").length} / {PROMPT_FIELD_LIMITS.personality}
+                </small>
               </label>
             </div>
           </div>
@@ -1749,9 +1948,18 @@ function App() {
               </label>
             </div>
             <div className="notification-test-panel">
-              <div>
+              <div className="notification-test-copy">
                 <strong>手机通知验收</strong>
-                <p>在 Android App 中点击后，会申请通知权限并发送一条测试通知。</p>
+                <p>
+                  在 Android App 中点击后，会依次检查插件、系统权限和通知总开关，再立即发送一条测试通知。
+                </p>
+                <p
+                  className={`notification-test-feedback ${notificationTestState.status}`}
+                  role="status"
+                  aria-live="polite"
+                >
+                  {notificationTestState.message}
+                </p>
               </div>
               <button
                 className="notification-test-button"
@@ -1759,10 +1967,55 @@ function App() {
                 disabled={isTestingNotification}
                 onClick={testLocalNotification}
               >
-                {isTestingNotification ? "测试中…" : "发送测试通知"}
+                {isTestingNotification
+                  ? notificationTestState.status === "requesting"
+                    ? "等待授权…"
+                    : notificationTestState.status === "preparing"
+                      ? "准备通道…"
+                      : notificationTestState.status === "sending"
+                        ? "发送中…"
+                        : "检查中…"
+                  : notificationTestState.status === "success"
+                    ? "再发一次"
+                    : notificationTestState.status === "error"
+                      ? "重新测试"
+                      : "发送测试通知"}
               </button>
             </div>
           </div>
+
+          {settingsSaveReceipt && (
+            <div className="settings-save-receipt" role="status">
+              <strong>✓ 服务器已保存并回读</strong>
+              <span>
+                最高优先级系统提示词 {settingsSaveReceipt.systemPromptLength} 字
+              </span>
+              <span>
+                普通补充提示词 {settingsSaveReceipt.additionalPromptLength} 字
+              </span>
+              <span>独立人设词 {settingsSaveReceipt.personalityLength} 字</span>
+            </div>
+          )}
+
+          {lastPromptReceipt && (
+            <div className="prompt-application-receipt" role="status">
+              <strong>最近回复已应用提示词</strong>
+              <span>
+                系统 {lastPromptReceipt.systemPromptChars} 字 / 普通 {lastPromptReceipt.additionalPromptChars} 字 / 人设 {lastPromptReceipt.personalityChars} 字
+              </span>
+              <time dateTime={lastPromptReceipt.appliedAt}>
+                应用时间：{formatDateTime(lastPromptReceipt.appliedAt)}
+              </time>
+              {lastPromptReceipt.settingsUpdatedAt && (
+                <time dateTime={lastPromptReceipt.settingsUpdatedAt}>
+                  设置版本：{formatDateTime(lastPromptReceipt.settingsUpdatedAt)}
+                </time>
+              )}
+              <small>
+                此回执来自模型请求，只显示字数和时间，不显示提示词原文。
+              </small>
+            </div>
+          )}
 
           <div className="save-bar">
             <span>
@@ -1770,8 +2023,15 @@ function App() {
                 ? `当前模型：${settings.model}`
                 : "当前未配置模型，使用演示回复"}
             </span>
-            <button className="primary-button" disabled={isSavingSettings}>
-              {isSavingSettings ? "保存中" : "保存设置"}
+            <button
+              className="primary-button"
+              disabled={isSavingSettings || !hasLoadedSettings}
+            >
+              {isSavingSettings
+                ? "保存中"
+                : hasLoadedSettings
+                  ? "保存设置"
+                  : "等待服务器设置"}
             </button>
           </div>
         </form>

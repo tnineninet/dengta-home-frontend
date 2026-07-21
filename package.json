@@ -9,6 +9,7 @@
     "android:sync": "cap sync android",
     "lint": "eslint .",
     "test:companion-interaction": "node test/companion-interaction.test.js",
+    "test:settings": "node test/settings.test.js",
     "preview": "vite preview"
   },
   "engines": {
