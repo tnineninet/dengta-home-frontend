@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   HOT_ZONES,
   addStatusRecord,
@@ -6,20 +6,34 @@ import {
   companionStatusForRequest,
   formatCountdown,
   formatUpdatedAt,
+  localCompanionInteractionReaction,
   normalizeCompanionStatus,
+  normalizeCompanionInteractionStats,
   remainingAt,
   settleExpiredCountdown,
 } from "./companion-status";
 
-export default function CompanionStatus({ aiName, status, onChange }) {
+export default function CompanionStatus({
+  aiName,
+  status,
+  interactionStats,
+  isResponding = false,
+  onChange,
+  onInteract,
+}) {
   const displayName = String(aiName || "").trim() || "小灯";
   const presenceInitial = Array.from(displayName)[0] || "灯";
   const normalized = useMemo(
     () => normalizeCompanionStatus(status),
     [status],
   );
+  const normalizedInteractionStats = useMemo(
+    () => normalizeCompanionInteractionStats(interactionStats),
+    [interactionStats],
+  );
   const [expanded, setExpanded] = useState(false);
   const [clockNow, setClockNow] = useState(() => Date.now());
+  const interactionCollapseTimerRef = useRef(null);
   const remainingSeconds = remainingAt(normalized.countdown, clockNow);
   const rawCountdownEnd = Date.parse(status?.countdown?.endsAt);
   const countdownExpiredWhileAway =
@@ -76,6 +90,10 @@ export default function CompanionStatus({ aiName, status, onChange }) {
     return () => document.removeEventListener("focusin", collapseForKeyboard);
   }, []);
 
+  useEffect(() => {
+    return () => window.clearTimeout(interactionCollapseTimerRef.current);
+  }, []);
+
   function updateStatus(transform) {
     onChange((currentValue) => {
       const current = companionStatusForRequest(currentValue);
@@ -92,34 +110,55 @@ export default function CompanionStatus({ aiName, status, onChange }) {
   }
 
   function touchZone(zone) {
+    const interactionMeta = onInteract?.(zone.id);
+    window.clearTimeout(interactionCollapseTimerRef.current);
+    interactionCollapseTimerRef.current = window.setTimeout(
+      () => setExpanded(false),
+      1100,
+    );
     updateStatus((current) => {
-      const recentText = new Set(
-        current.recentRecords.map((item) => item.text),
+      const reaction = localCompanionInteractionReaction(
+        zone,
+        interactionMeta || normalizedInteractionStats,
+        current.revision,
       );
-      const startIndex = current.revision % zone.reactions.length;
-      let reaction = zone.reactions[startIndex];
-      for (let offset = 0; offset < zone.reactions.length; offset += 1) {
-        const candidate =
-          zone.reactions[(startIndex + offset) % zone.reactions.length];
-        if (!recentText.has(candidate)) {
-          reaction = candidate;
-          break;
-        }
-      }
+      const streakIntensity = Math.min(
+        8,
+        Math.max(0, reaction.streakCount - 1),
+      );
+      const energyTarget = clamp(
+        zone.energyTarget + Math.round(streakIntensity / 2),
+        0,
+        100,
+      );
+      const pulseTarget = clamp(
+        zone.pulseTarget +
+          Math.sign(zone.pulseDelta) * Math.round(streakIntensity * 0.8),
+        30,
+        220,
+      );
 
       return {
         ...current,
         mood: zone.mood,
         focus: zone.focus,
-        note: reaction,
+        note: reaction.text,
         microState: zone.microState,
-        energyLevel: clamp(current.energyLevel + zone.energyDelta, 0, 100),
-        pulseBpm: clamp(current.pulseBpm + zone.pulseDelta, 30, 220),
+        energyLevel: clamp(
+          Math.round(current.energyLevel * 0.68 + energyTarget * 0.32),
+          0,
+          100,
+        ),
+        pulseBpm: clamp(
+          Math.round(current.pulseBpm * 0.62 + pulseTarget * 0.38),
+          30,
+          220,
+        ),
         hotZones: [
           zone.id,
           ...current.hotZones.filter((id) => id !== zone.id),
         ].slice(0, HOT_ZONES.length),
-        recentRecords: addStatusRecord(current, reaction),
+        recentRecords: addStatusRecord(current, reaction.record),
       };
     });
   }
@@ -317,7 +356,11 @@ export default function CompanionStatus({ aiName, status, onChange }) {
             <div className="status-card-heading compact">
               <div>
                 <span className="status-eyebrow">互动热区</span>
-                <h3>轻轻碰一下，会留下这一刻</h3>
+                <h3>
+                  {isResponding
+                    ? `${displayName}正在回应你的靠近…`
+                    : "轻轻碰一下，会在聊天里回应你"}
+                </h3>
               </div>
             </div>
             <div className="hot-zone-grid">
@@ -325,14 +368,24 @@ export default function CompanionStatus({ aiName, status, onChange }) {
                 <button
                   type="button"
                   key={zone.id}
+                  data-interaction-zone={zone.id}
                   className={
                     normalized.hotZones.includes(zone.id) ? "active" : ""
                   }
                   aria-pressed={normalized.hotZones.includes(zone.id)}
                   onClick={() => touchZone(zone)}
                 >
-                  <span aria-hidden="true">{zone.icon}</span>
-                  {zone.label}
+                  <span className="hot-zone-icon" aria-hidden="true">
+                    {zone.icon}
+                  </span>
+                  <span className="hot-zone-copy">
+                    <strong>{zone.label}</strong>
+                    <small>
+                      {normalizedInteractionStats.counts[zone.id] > 0
+                        ? `累计 ${normalizedInteractionStats.counts[zone.id]} 次`
+                        : "等待第一次"}
+                    </small>
+                  </span>
                 </button>
               ))}
             </div>

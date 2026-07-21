@@ -8,6 +8,7 @@
     "build": "vite build",
     "android:sync": "cap sync android",
     "lint": "eslint .",
+    "test:companion-interaction": "node test/companion-interaction.test.js",
     "preview": "vite preview"
   },
   "engines": {

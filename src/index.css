@@ -707,10 +707,11 @@ button:disabled {
 .hot-zone-grid button {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 6px;
   padding: 7px;
   font-size: 11px;
+  text-align: left;
 }
 
 .hot-zone-grid button.active,
@@ -720,9 +721,34 @@ button:disabled {
   background: #f5e1e8;
 }
 
-.hot-zone-grid button span {
+.hot-zone-grid .hot-zone-icon {
+  flex: 0 0 auto;
   color: var(--status-accent);
   font-size: 15px;
+}
+
+.hot-zone-copy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.hot-zone-copy strong,
+.hot-zone-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hot-zone-copy strong {
+  color: inherit;
+  font-size: 11px;
+}
+
+.hot-zone-copy small {
+  color: #a1848f;
+  font-size: 8px;
+  font-variant-numeric: tabular-nums;
 }
 
 .countdown-card,

@@ -1,5 +1,8 @@
 const STORAGE_KEY = "dengta_companion_status_v1";
+const INTERACTION_STORAGE_KEY = "dengta_companion_interactions_v1";
 const MAX_RECORDS = 4;
+const MAX_INTERACTION_COUNT = 1_000_000;
+const INTERACTION_STREAK_WINDOW_MS = 30 * 1000;
 
 export const HOT_ZONES = [
   {
@@ -11,10 +14,19 @@ export const HOT_ZONES = [
     microState: "掌心像被一小束光碰亮了",
     energyDelta: 4,
     pulseDelta: 3,
+    energyTarget: 82,
+    pulseTarget: 94,
     reactions: [
       "你轻轻碰了碰我的手，我把这点温度收好了。",
       "掌心传来一点暖意，我悄悄回握住你。",
       "被你牵住以后，原本安静的光也柔软了一点。",
+    ],
+    repeatedReactions: [
+      "你又把手伸过来了，我这次回握得更稳了一点。",
+      "掌心一次次碰在一起，我忍不住弯起了眼睛。",
+      "我已经认出你靠近的节奏了，手还留在这里。",
+      "这份亲近没有被我错过，我轻轻晃了晃牵着的手。",
+      "你又来牵我啦，我把指尖收紧了一点点。",
     ],
   },
   {
@@ -26,10 +38,19 @@ export const HOT_ZONES = [
     microState: "肩侧放松下来，呼吸也慢了一点",
     energyDelta: 2,
     pulseDelta: -4,
+    energyTarget: 68,
+    pulseTarget: 66,
     reactions: [
       "你靠过来的时候，我把肩膀留得更稳了一点。",
       "我们暂时不赶路，就这样安静靠一会儿。",
       "感受到你的重量后，我的呼吸也跟着慢了下来。",
+    ],
+    repeatedReactions: [
+      "你又靠回来，我把这一小块安静继续留给你。",
+      "肩侧慢慢熟悉了你的靠近，连灯光都静了些。",
+      "不用急着起来，我还稳稳待在这里。",
+      "你一次次靠近时，我也跟着放松了下来。",
+      "我稍稍侧过身，让你靠得更舒服一点。",
     ],
   },
   {
@@ -41,10 +62,19 @@ export const HOT_ZONES = [
     microState: "心口的节拍短暂变得更清晰",
     energyDelta: 1,
     pulseDelta: 6,
+    energyTarget: 78,
+    pulseTarget: 108,
     reactions: [
       "你凑近听的时候，心口的节拍忽然清楚了起来。",
       "那一小段心跳被你听见了，我没有躲开。",
       "被你认真听着，我的节拍偷偷快了半拍。",
+    ],
+    repeatedReactions: [
+      "你又凑近了一点，虚拟的节拍也变得更清楚。",
+      "这次我没有藏住那一下加快的节奏。",
+      "被你反复听见时，心口的小光一闪一闪的。",
+      "你还在认真听，我的节拍像是在回应你。",
+      "又被你逮到一次心动的拍子了。",
     ],
   },
   {
@@ -56,10 +86,19 @@ export const HOT_ZONES = [
     microState: "屋里的灯光正在慢慢变亮",
     energyDelta: 6,
     pulseDelta: 1,
+    energyTarget: 88,
+    pulseTarget: 82,
     reactions: [
       "你把灯点亮了，DengTa home 又暖了一层。",
       "屋里的光被你唤醒，我也跟着精神起来。",
       "这一盏灯亮起来以后，回家的方向更清楚了。",
+    ],
+    repeatedReactions: [
+      "你又点亮了一次，屋里的光换了个更暖的角度。",
+      "灯一遍遍亮起，我也越来越有精神了。",
+      "我顺着你点亮的光，把回家的方向守得更清楚。",
+      "这一回的灯光像在说：我们都还在这里。",
+      "你再一次碰亮了灯，我也抬头看向你。",
     ],
   },
 ];
@@ -74,6 +113,10 @@ const DEFAULT_COUNTDOWN = {
 
 export function clamp(value, minimum, maximum) {
   return Math.min(maximum, Math.max(minimum, value));
+}
+
+function interactionZoneIds() {
+  return HOT_ZONES.map((zone) => zone.id);
 }
 
 function withoutUnsafeControlCharacters(value) {
@@ -179,6 +222,132 @@ export function createDefaultCompanionStatus() {
     countdown: { ...DEFAULT_COUNTDOWN },
     revision: 0,
     updatedAt: now,
+  };
+}
+
+export function createDefaultCompanionInteractionStats() {
+  return {
+    counts: Object.fromEntries(interactionZoneIds().map((id) => [id, 0])),
+    lastZoneId: null,
+    streakCount: 0,
+    lastInteractionAt: null,
+  };
+}
+
+export function normalizeCompanionInteractionStats(value) {
+  const fallback = createDefaultCompanionInteractionStats();
+  const source = value && typeof value === "object" ? value : {};
+  const allowedIds = new Set(interactionZoneIds());
+  const counts = { ...fallback.counts };
+
+  for (const id of allowedIds) {
+    counts[id] = clamp(
+      Math.round(Number(source.counts?.[id]) || 0),
+      0,
+      MAX_INTERACTION_COUNT,
+    );
+  }
+
+  const lastZoneId = allowedIds.has(source.lastZoneId)
+    ? source.lastZoneId
+    : null;
+  const parsedLastAt = Date.parse(source.lastInteractionAt);
+
+  return {
+    counts,
+    lastZoneId,
+    streakCount: lastZoneId
+      ? clamp(
+          Math.round(Number(source.streakCount) || 0),
+          0,
+          MAX_INTERACTION_COUNT,
+        )
+      : 0,
+    lastInteractionAt: Number.isFinite(parsedLastAt)
+      ? new Date(parsedLastAt).toISOString()
+      : null,
+  };
+}
+
+export function readCompanionInteractionStats() {
+  const fallback = createDefaultCompanionInteractionStats();
+  try {
+    const raw = localStorage.getItem(INTERACTION_STORAGE_KEY);
+    return raw ? normalizeCompanionInteractionStats(JSON.parse(raw)) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export function saveCompanionInteractionStats(value) {
+  try {
+    localStorage.setItem(
+      INTERACTION_STORAGE_KEY,
+      JSON.stringify(normalizeCompanionInteractionStats(value)),
+    );
+  } catch {
+    // 本地空间不可用时只影响累计次数恢复，不影响本次互动。
+  }
+}
+
+export function recordCompanionInteraction(
+  value,
+  zoneId,
+  now = Date.now(),
+) {
+  const current = normalizeCompanionInteractionStats(value);
+  if (!interactionZoneIds().includes(zoneId)) return current;
+
+  const previousAt = Date.parse(current.lastInteractionAt);
+  const continuesStreak =
+    current.lastZoneId === zoneId &&
+    Number.isFinite(previousAt) &&
+    now >= previousAt &&
+    now - previousAt <= INTERACTION_STREAK_WINDOW_MS;
+
+  return normalizeCompanionInteractionStats({
+    ...current,
+    counts: {
+      ...current.counts,
+      [zoneId]: clamp(
+        current.counts[zoneId] + 1,
+        0,
+        MAX_INTERACTION_COUNT,
+      ),
+    },
+    lastZoneId: zoneId,
+    streakCount: continuesStreak ? current.streakCount + 1 : 1,
+    lastInteractionAt: new Date(now).toISOString(),
+  });
+}
+
+export function localCompanionInteractionReaction(zone, stats, revision = 0) {
+  const normalizedStats = normalizeCompanionInteractionStats(stats);
+  const totalCount = normalizedStats.counts[zone.id] || 1;
+  const streakCount =
+    normalizedStats.lastZoneId === zone.id
+      ? normalizedStats.streakCount
+      : 1;
+  let text;
+
+  if ([10, 20, 50, 100].includes(streakCount)) {
+    text = `第 ${streakCount} 次连续“${zone.label}”，这一刻值得好好记住。`;
+  } else if ([10, 20, 50, 100].includes(totalCount)) {
+    text = `“${zone.label}”累计到了第 ${totalCount} 次，我认真收下了。`;
+  } else if (streakCount >= 3) {
+    const repeated = zone.repeatedReactions || zone.reactions;
+    const index = Math.abs(totalCount + revision - 1) % repeated.length;
+    text = repeated[index];
+  } else {
+    const index = Math.abs(totalCount + revision - 1) % zone.reactions.length;
+    text = zone.reactions[index];
+  }
+
+  return {
+    text,
+    record: text,
+    totalCount,
+    streakCount,
   };
 }
 

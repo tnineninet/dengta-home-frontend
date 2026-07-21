@@ -5,9 +5,16 @@ import { apiRequest, streamChat } from "./api";
 import OmbreMemories from "./OmbreMemories";
 import CompanionStatus from "./CompanionStatus";
 import {
+  COMPANION_INTERACTION_TYPES,
+  enqueueCompanionInteraction,
+} from "./companion-interaction";
+import {
   companionStatusForRequest,
   mergeCompanionStatus,
+  readCompanionInteractionStats,
   readCompanionStatus,
+  recordCompanionInteraction,
+  saveCompanionInteractionStats,
   saveCompanionStatus,
 } from "./companion-status";
 
@@ -15,6 +22,9 @@ const PUSH_CURSOR_KEY = "dengta_push_cursor";
 const PUSH_SEEN_IDS_KEY = "dengta_push_seen_ids";
 const PUSH_POLL_INTERVAL_MS = 2 * 60 * 1000;
 const EMOTION_UNDERSTANDING_KEY = "dengta_emotion_understanding_enabled";
+const COMPANION_INTERACTION_DEBOUNCE_MS = 1100;
+const COMPANION_INTERACTION_RATE_LIMIT = 6;
+const COMPANION_INTERACTION_RATE_WINDOW_MS = 60 * 1000;
 
 const emptySettings = {
   ai_name: "小灯",
@@ -82,6 +92,27 @@ function readEmotionUnderstandingSetting() {
   } catch {
     return true;
   }
+}
+
+function createCompanionInteractionEventId() {
+  if (typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (value) =>
+    value.toString(16).padStart(2, "0"),
+  );
+  return [
+    hex.slice(0, 4).join(""),
+    hex.slice(4, 6).join(""),
+    hex.slice(6, 8).join(""),
+    hex.slice(8, 10).join(""),
+    hex.slice(10).join(""),
+  ].join("-");
 }
 
 function readFileAsDataUrl(file) {
@@ -207,6 +238,7 @@ function App() {
   const [commentDrafts, setCommentDrafts] = useState({});
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
+  const [isCompanionResponding, setIsCompanionResponding] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [isTestingNotification, setIsTestingNotification] = useState(false);
   const [isPostingMoment, setIsPostingMoment] = useState(false);
@@ -219,10 +251,22 @@ function App() {
   const [emotionUnderstandingEnabled, setEmotionUnderstandingEnabled] =
     useState(readEmotionUnderstandingSetting);
   const [companionStatus, setCompanionStatus] = useState(readCompanionStatus);
+  const [companionInteractionStats, setCompanionInteractionStats] = useState(
+    readCompanionInteractionStats,
+  );
   const messageListRef = useRef(null);
   const messageEndRef = useRef(null);
   const activeSessionIdRef = useRef(null);
+  const messagesSessionIdRef = useRef(null);
+  const messageLoadTokenRef = useRef(0);
   const streamingSessionIdRef = useRef(null);
+  const companionStatusRef = useRef(companionStatus);
+  const companionInteractionStatsRef = useRef(companionInteractionStats);
+  const companionInteractionQueueRef = useRef([]);
+  const companionInteractionTimerRef = useRef(null);
+  const companionInteractionInFlightRef = useRef(false);
+  const companionReplyTimesRef = useRef([]);
+  const isSendingRef = useRef(false);
 
   const activeSession = sessions.find(
     (session) => session.id === activeSessionId,
@@ -264,8 +308,23 @@ function App() {
   }, [activeSessionId]);
 
   useEffect(() => {
+    companionStatusRef.current = companionStatus;
     saveCompanionStatus(companionStatus);
   }, [companionStatus]);
+
+  useEffect(() => {
+    companionInteractionStatsRef.current = companionInteractionStats;
+    saveCompanionInteractionStats(companionInteractionStats);
+  }, [companionInteractionStats]);
+
+  useEffect(() => {
+    isSendingRef.current = isSending;
+  }, [isSending]);
+
+  useEffect(
+    () => () => window.clearTimeout(companionInteractionTimerRef.current),
+    [],
+  );
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return undefined;
@@ -409,20 +468,33 @@ function App() {
 
     async function loadMessages() {
       if (!activeSessionId) {
+        messagesSessionIdRef.current = null;
+        messageLoadTokenRef.current += 1;
         setMessages([]);
         return;
       }
 
       if (
-        isSending &&
-        streamingSessionIdRef.current === activeSessionId
+        streamingSessionIdRef.current === activeSessionId &&
+        messagesSessionIdRef.current === activeSessionId
       ) {
         return;
       }
 
+      const loadToken = messageLoadTokenRef.current + 1;
+      messageLoadTokenRef.current = loadToken;
+      messagesSessionIdRef.current = activeSessionId;
+      setMessages([]);
+
       try {
         const data = await apiRequest(`/sessions/${activeSessionId}/messages`);
-        if (!cancelled) setMessages(data.messages || []);
+        if (
+          !cancelled &&
+          messageLoadTokenRef.current === loadToken &&
+          activeSessionIdRef.current === activeSessionId
+        ) {
+          setMessages(data.messages || []);
+        }
       } catch (error) {
         if (!cancelled) setNotice(error.message);
       }
@@ -432,7 +504,7 @@ function App() {
     return () => {
       cancelled = true;
     };
-  }, [activeSessionId, isSending]);
+  }, [activeSessionId]);
 
   useEffect(() => {
     if (activeView === "memories") {
@@ -582,11 +654,257 @@ function App() {
     }
   }
 
+  function scheduleCompanionInteraction(
+    delay = COMPANION_INTERACTION_DEBOUNCE_MS,
+  ) {
+    window.clearTimeout(companionInteractionTimerRef.current);
+    companionInteractionTimerRef.current = window.setTimeout(() => {
+      companionInteractionTimerRef.current = null;
+      void processCompanionInteractionQueue();
+    }, delay);
+  }
+
+  async function syncDisplayedMessages(sessionId) {
+    if (!sessionId || activeSessionIdRef.current !== sessionId) return;
+
+    const loadToken = messageLoadTokenRef.current + 1;
+    messageLoadTokenRef.current = loadToken;
+    messagesSessionIdRef.current = sessionId;
+    const history = await apiRequest(`/sessions/${sessionId}/messages`);
+
+    if (
+      activeSessionIdRef.current === sessionId &&
+      messageLoadTokenRef.current === loadToken
+    ) {
+      messagesSessionIdRef.current = sessionId;
+      setMessages(history.messages || []);
+    }
+  }
+
+  function registerCompanionInteraction(zoneId) {
+    if (!COMPANION_INTERACTION_TYPES.includes(zoneId)) {
+      return companionInteractionStatsRef.current;
+    }
+
+    const now = Date.now();
+    const nextStats = recordCompanionInteraction(
+      companionInteractionStatsRef.current,
+      zoneId,
+      now,
+    );
+    companionInteractionStatsRef.current = nextStats;
+    setCompanionInteractionStats(nextStats);
+
+    const sessionId = activeSessionIdRef.current;
+    companionInteractionQueueRef.current = enqueueCompanionInteraction({
+      queue: companionInteractionQueueRef.current,
+      zoneId,
+      stats: nextStats,
+      sessionId,
+      now,
+      eventId: createCompanionInteractionEventId(),
+      debounceMs: COMPANION_INTERACTION_DEBOUNCE_MS,
+      maxBatchSize: 100,
+    });
+
+    scheduleCompanionInteraction();
+    return nextStats;
+  }
+
+  async function processCompanionInteractionQueue() {
+    if (companionInteractionQueueRef.current.length === 0) return;
+
+    if (
+      companionInteractionInFlightRef.current ||
+      isSendingRef.current
+    ) {
+      scheduleCompanionInteraction(350);
+      return;
+    }
+
+    if (!navigator.onLine) {
+      companionInteractionQueueRef.current = [];
+      setNotice(
+        "这次互动已保留在状态记录中；离线时不会调用模型，联网后下一次互动再回应。",
+      );
+      return;
+    }
+
+    const now = Date.now();
+    companionReplyTimesRef.current = companionReplyTimesRef.current.filter(
+      (timestamp) =>
+        now - timestamp < COMPANION_INTERACTION_RATE_WINDOW_MS,
+    );
+    if (
+      companionReplyTimesRef.current.length >=
+      COMPANION_INTERACTION_RATE_LIMIT
+    ) {
+      const oldest = companionReplyTimesRef.current[0];
+      const waitFor = Math.max(
+        500,
+        COMPANION_INTERACTION_RATE_WINDOW_MS - (now - oldest) + 100,
+      );
+      setNotice("互动都收到了，我会把连续的靠近合在一起回应。");
+      scheduleCompanionInteraction(waitFor);
+      return;
+    }
+
+    const interaction = companionInteractionQueueRef.current.shift();
+    companionInteractionInFlightRef.current = true;
+    setIsCompanionResponding(true);
+    setNotice("");
+
+    let sessionId = interaction.sessionId || activeSessionIdRef.current;
+    const localAssistantId = `local-interaction-${Date.now()}`;
+
+    try {
+      if (!sessionId) {
+        const created = await apiRequest("/sessions", {
+          method: "POST",
+          body: JSON.stringify({
+            title: `和${settings.ai_name || "小灯"}的互动`,
+          }),
+        });
+        sessionId = created.session.id;
+        setSessions((current) =>
+          current.some((item) => item.id === sessionId)
+            ? current
+            : [created.session, ...current],
+        );
+        if (!activeSessionIdRef.current) {
+          activeSessionIdRef.current = sessionId;
+          messagesSessionIdRef.current = sessionId;
+          setActiveSessionId(sessionId);
+        }
+      }
+
+      streamingSessionIdRef.current = sessionId;
+      if (activeSessionIdRef.current === sessionId) {
+        const messagesBelongToSession =
+          messagesSessionIdRef.current === sessionId;
+        messageLoadTokenRef.current += 1;
+        messagesSessionIdRef.current = sessionId;
+        setMessages((current) => [
+          ...(messagesBelongToSession ? current : []),
+          {
+            id: localAssistantId,
+            role: "assistant",
+            content: "正在感受刚才的互动…",
+            created_at: new Date().toISOString(),
+            isStreaming: true,
+          },
+        ]);
+      }
+
+      companionReplyTimesRef.current.push(Date.now());
+      const data = await apiRequest("/companion/interact", {
+        method: "POST",
+        body: JSON.stringify({
+          event_id: interaction.eventId,
+          session_id: sessionId,
+          interaction_type: interaction.interactionType,
+          interaction_count: interaction.interactionCount,
+          burst_count: interaction.burstCount,
+          streak_count: interaction.streakCount,
+          interaction_counts: interaction.interactionCounts,
+          batch_counts: interaction.batchCounts,
+          recent_sequence: interaction.recentSequence,
+          companion_status: companionStatusForRequest(
+            companionStatusRef.current,
+          ),
+        }),
+        timeoutMs: 60 * 1000,
+      });
+
+      if (data.companion_status) {
+        setCompanionStatus((current) =>
+          mergeCompanionStatus(current, data.companion_status),
+        );
+      }
+
+      const assistantMessage = data?.assistant_message;
+      if (
+        !assistantMessage ||
+        assistantMessage.role !== "assistant" ||
+        typeof assistantMessage.content !== "string" ||
+        !assistantMessage.content.trim()
+      ) {
+        throw new Error("服务器没有返回可保存的互动回复，请稍后再试。");
+      }
+
+      if (activeSessionIdRef.current === sessionId) {
+        const messagesBelongToSession =
+          messagesSessionIdRef.current === sessionId;
+        messageLoadTokenRef.current += 1;
+        messagesSessionIdRef.current = sessionId;
+        setMessages((current) => {
+          const currentSessionMessages = messagesBelongToSession ? current : [];
+          if (
+            currentSessionMessages.some(
+              (item) => item.id === localAssistantId,
+            )
+          ) {
+            return currentSessionMessages.map((item) =>
+              item.id === localAssistantId ? assistantMessage : item,
+            );
+          }
+          if (
+            currentSessionMessages.some(
+              (item) => item.id === assistantMessage.id,
+            )
+          ) {
+            return currentSessionMessages;
+          }
+          return [...currentSessionMessages, assistantMessage];
+        });
+      }
+
+      await refreshSessions(activeSessionIdRef.current || sessionId);
+    } catch (error) {
+      if (activeSessionIdRef.current === sessionId) {
+        messageLoadTokenRef.current += 1;
+        setMessages((current) =>
+          current.filter((item) => item.id !== localAssistantId),
+        );
+      }
+      setNotice(
+        error.message ||
+          "这次互动已经记下，但刚才没连上模型；不会自动重复请求。",
+      );
+    } finally {
+      if (streamingSessionIdRef.current === sessionId) {
+        streamingSessionIdRef.current = null;
+      }
+      companionInteractionInFlightRef.current = false;
+      setIsCompanionResponding(false);
+      if (activeSessionIdRef.current === sessionId) {
+        void syncDisplayedMessages(sessionId).catch((error) => {
+          console.warn("互动后刷新聊天记录失败：", error.message);
+        });
+      }
+
+      const next = companionInteractionQueueRef.current[0];
+      if (next) {
+        const elapsed = Date.now() - next.lastClickedAt;
+        scheduleCompanionInteraction(
+          Math.max(250, COMPANION_INTERACTION_DEBOUNCE_MS - elapsed),
+        );
+      }
+    }
+  }
+
   async function sendMessage() {
     const text = message.trim();
-    if (!text || isSending) return;
+    if (
+      !text ||
+      isSendingRef.current ||
+      companionInteractionInFlightRef.current
+    ) {
+      return;
+    }
 
     setMessage("");
+    isSendingRef.current = true;
     setIsSending(true);
     setNotice("");
 
@@ -602,12 +920,15 @@ function App() {
         });
         sessionId = created.session.id;
         activeSessionIdRef.current = sessionId;
+        messagesSessionIdRef.current = sessionId;
         streamingSessionIdRef.current = sessionId;
         setSessions((current) => [created.session, ...current]);
         setActiveSessionId(sessionId);
       }
 
       streamingSessionIdRef.current = sessionId;
+      messageLoadTokenRef.current += 1;
+      messagesSessionIdRef.current = sessionId;
 
       setMessages((current) => [
         ...current,
@@ -686,6 +1007,8 @@ function App() {
 
       const history = await apiRequest(`/sessions/${sessionId}/messages`);
       if (activeSessionIdRef.current === sessionId) {
+        messageLoadTokenRef.current += 1;
+        messagesSessionIdRef.current = sessionId;
         setMessages(history.messages || []);
       }
       await refreshSessions(activeSessionIdRef.current || sessionId);
@@ -706,7 +1029,11 @@ function App() {
       if (streamingSessionIdRef.current === sessionId) {
         streamingSessionIdRef.current = null;
       }
+      isSendingRef.current = false;
       setIsSending(false);
+      if (companionInteractionQueueRef.current.length > 0) {
+        scheduleCompanionInteraction(250);
+      }
     }
   }
 
@@ -956,18 +1283,28 @@ function App() {
               }}
               placeholder="输入消息，按 Enter 发送…"
               rows="1"
-              disabled={isSending}
+              disabled={isSending || isCompanionResponding}
             />
             <button
               className="send-button"
               onClick={sendMessage}
-              disabled={!message.trim() || isSending}
+              disabled={
+                !message.trim() || isSending || isCompanionResponding
+              }
             >
-              {isSending ? "回应中" : "发送"}
+              {isCompanionResponding
+                ? "互动回应中"
+                : isSending
+                  ? "回应中"
+                  : "发送"}
             </button>
           </div>
           <small>
-            {isOnline ? "已连接" : "网络已断开，暂时不能聊天"} · 聊天记录保存在 Supabase
+            {isCompanionResponding
+              ? `${settings.ai_name || "小灯"}正在回应刚才的互动`
+              : isOnline
+                ? "已连接"
+                : "网络已断开，暂时不能聊天"} · 聊天记录保存在 Supabase
           </small>
         </div>
       </>
@@ -1564,7 +1901,10 @@ function App() {
           <CompanionStatus
             aiName={settings.ai_name || "小灯"}
             status={companionStatus}
+            interactionStats={companionInteractionStats}
+            isResponding={isCompanionResponding}
             onChange={setCompanionStatus}
+            onInteract={registerCompanionInteraction}
           />
         )}
 

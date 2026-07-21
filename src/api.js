@@ -9,15 +9,30 @@ function wait(milliseconds) {
 }
 
 async function fetchFromApi(path, options = {}) {
-  const method = String(options.method || "GET").toUpperCase();
+  const { timeoutMs = 0, ...requestOptions } = options;
+  const method = String(requestOptions.method || "GET").toUpperCase();
   const retryDelays = method === "GET" ? [0, 1500, 4000] : [0];
 
   for (let attempt = 0; attempt < retryDelays.length; attempt += 1) {
     const delay = retryDelays[attempt];
     if (delay > 0) await wait(delay);
 
+    let timeoutId;
+    let timedOut = false;
+    const controller =
+      timeoutMs > 0 && !requestOptions.signal ? new AbortController() : null;
+
     try {
-      const response = await fetch(`${API_BASE_URL}${path}`, options);
+      if (controller) {
+        timeoutId = window.setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+        }, timeoutMs);
+      }
+      const response = await fetch(`${API_BASE_URL}${path}`, {
+        ...requestOptions,
+        ...(controller ? { signal: controller.signal } : {}),
+      });
       if (
         attempt < retryDelays.length - 1 &&
         RETRYABLE_SERVER_STATUSES.has(response.status)
@@ -26,7 +41,14 @@ async function fetchFromApi(path, options = {}) {
       }
       return response;
     } catch {
+      if (timedOut) {
+        throw new Error(
+          `等待 AI 回应超过 ${Math.ceil(timeoutMs / 1000)} 秒，本次不会自动重复请求。`,
+        );
+      }
       if (attempt === retryDelays.length - 1) break;
+    } finally {
+      window.clearTimeout(timeoutId);
     }
   }
 
