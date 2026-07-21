@@ -2275,25 +2275,6 @@ function App() {
 
         <div className="composer-wrap">
           <div className="chat-tools-row">
-            <label className="chat-model-picker">
-              <span>本轮模型</span>
-              <select
-                value={selectedChatModel}
-                onChange={(event) => selectChatModel(event.target.value)}
-                disabled={isSending || isCompanionResponding || isVoiceInputBusy}
-              >
-                {availableModels.length === 0 && (
-                  <option value={selectedChatModel || settings.model || ""}>
-                    {activeChatModel || "由服务器自动选择"}
-                  </option>
-                )}
-                {availableModels.map((modelOption) => (
-                  <option value={modelOption.id} key={modelOption.id}>
-                    {modelOption.label}
-                  </option>
-                ))}
-              </select>
-            </label>
             <input
               ref={chatFileInputRef}
               className="visually-hidden-file-input"
@@ -2316,6 +2297,25 @@ function App() {
             >
               ＋ 附件
             </button>
+            <label className="chat-model-picker">
+              <span>本轮模型</span>
+              <select
+                value={selectedChatModel}
+                onChange={(event) => selectChatModel(event.target.value)}
+                disabled={isSending || isCompanionResponding || isVoiceInputBusy}
+              >
+                {availableModels.length === 0 && (
+                  <option value={selectedChatModel || settings.model || ""}>
+                    {activeChatModel || "由服务器自动选择"}
+                  </option>
+                )}
+                {availableModels.map((modelOption) => (
+                  <option value={modelOption.id} key={modelOption.id}>
+                    {modelOption.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
           {modelsLoadMessage && (
             <div className="chat-model-note" role="status">
