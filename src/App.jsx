@@ -191,6 +191,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const [isTestingNotification, setIsTestingNotification] = useState(false);
   const [isPostingMoment, setIsPostingMoment] = useState(false);
   const [notice, setNotice] = useState("");
   const [dialog, setDialog] = useState(null);
@@ -694,6 +695,44 @@ function App() {
       setNotice(error.message);
     } finally {
       setIsSavingSettings(false);
+    }
+  }
+
+  async function testLocalNotification() {
+    if (!Capacitor.isNativePlatform()) {
+      setNotice("请在安装到 Android 手机的 DengTa home App 中测试通知。");
+      return;
+    }
+
+    setIsTestingNotification(true);
+
+    try {
+      let permission = await LocalNotifications.checkPermissions();
+      if (permission.display !== "granted") {
+        permission = await LocalNotifications.requestPermissions();
+      }
+
+      if (permission.display !== "granted") {
+        setNotice("通知权限尚未开启。请在手机系统设置中允许 DengTa home 发送通知。");
+        return;
+      }
+
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            id: 20260721,
+            title: settings.ai_name || "DengTa home",
+            body: "通知连接成功。以后主动消息到达时，会由这里提醒你。",
+            schedule: { at: new Date(Date.now() + 1000) },
+          },
+        ],
+      });
+
+      setNotice("测试通知已发送，请查看手机通知栏。");
+    } catch (error) {
+      setNotice(`测试通知失败：${error.message}`);
+    } finally {
+      setIsTestingNotification(false);
     }
   }
 
@@ -1242,7 +1281,7 @@ function App() {
           <div className="settings-card">
             <h3>记忆与主动消息</h3>
             <p className="card-hint">
-              记忆压缩已经启用；主动消息参数会在影子推送模块完成后使用。
+              记忆压缩和影子主动消息均已启用；系统会定时判断是否应该主动联系你。
             </p>
             <div className="settings-grid">
               <label>
@@ -1304,6 +1343,20 @@ function App() {
                   }
                 />
               </label>
+            </div>
+            <div className="notification-test-panel">
+              <div>
+                <strong>手机通知验收</strong>
+                <p>在 Android App 中点击后，会申请通知权限并发送一条测试通知。</p>
+              </div>
+              <button
+                className="notification-test-button"
+                type="button"
+                disabled={isTestingNotification}
+                onClick={testLocalNotification}
+              >
+                {isTestingNotification ? "测试中…" : "发送测试通知"}
+              </button>
             </div>
           </div>
 

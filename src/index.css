@@ -1182,6 +1182,45 @@ button:disabled {
   border-radius: 11px;
 }
 
+.notification-test-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 16px;
+  padding: 14px 15px;
+  border: 1px solid #e5d7db;
+  border-radius: 10px;
+  background: #fffaf9;
+}
+
+.notification-test-panel strong {
+  color: #5c4850;
+  font-size: 13px;
+}
+
+.notification-test-panel p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.notification-test-button {
+  flex: 0 0 auto;
+  min-height: 42px;
+  padding: 9px 14px;
+  border: 1px solid #d7bdc6;
+  border-radius: 10px;
+  color: #74515e;
+  background: #fff;
+}
+
+.notification-test-button:hover {
+  border-color: #bd7890;
+  background: #fff6f8;
+}
+
 .dialog-backdrop {
   position: fixed;
   z-index: 60;
@@ -1400,6 +1439,15 @@ button:disabled {
   .save-bar {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .notification-test-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .notification-test-button {
+    width: 100%;
   }
 
   .mobile-nav {
