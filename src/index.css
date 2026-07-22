@@ -2157,6 +2157,175 @@ button:disabled {
   font-size: 19px;
 }
 
+.service-manager-card {
+  display: grid;
+  gap: 16px;
+}
+
+.service-manager-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.service-manager-heading h3,
+.service-manager-heading .card-hint {
+  margin-bottom: 0;
+}
+
+.service-refresh-button {
+  flex: 0 0 auto;
+  padding: 9px 13px;
+  border: 1px solid #d9c8ce;
+  border-radius: 10px;
+  color: #6b4b57;
+  background: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.service-status-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 11px;
+}
+
+.service-status {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid #e4d9d5;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.service-status-title {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 3px 8px;
+}
+
+.service-status-title strong {
+  color: #4c3b42;
+  font-size: 13px;
+}
+
+.service-status-title em {
+  grid-column: 2;
+  color: #7e6c73;
+  font-size: 10px;
+  font-style: normal;
+}
+
+.service-status-dot {
+  grid-row: 1 / span 2;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #c39a62;
+  box-shadow: 0 0 0 4px rgba(195, 154, 98, 0.12);
+}
+
+.service-status.online .service-status-dot {
+  background: #55a36c;
+  box-shadow: 0 0 0 4px rgba(85, 163, 108, 0.12);
+}
+
+.service-status.error .service-status-dot {
+  background: #c95f65;
+  box-shadow: 0 0 0 4px rgba(201, 95, 101, 0.12);
+}
+
+.service-status.checking .service-status-dot {
+  background: #9d8ca4;
+  animation: service-status-pulse 1.2s ease-in-out infinite;
+}
+
+.service-status p {
+  margin: 10px 0 8px;
+  color: #78676e;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
+.service-status a,
+.service-quick-links a {
+  color: #945b70;
+  font-size: 10px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.service-expiry-panel {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.55fr) minmax(220px, 1fr);
+  gap: 11px;
+  padding: 13px;
+  border: 1px solid #e2d7d3;
+  border-radius: 13px;
+  background: #fffaf8;
+}
+
+.service-expiry-panel label {
+  display: grid;
+  gap: 7px;
+  color: #5d4b52;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.service-expiry-panel input {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid #dfd1d5;
+  border-radius: 9px;
+  color: #45383e;
+  background: #fff;
+}
+
+.service-expiry-message {
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  color: #765f68;
+  font-size: 10px;
+}
+
+.service-expiry-message strong {
+  color: #5b444d;
+  font-size: 11px;
+}
+
+.service-expiry-message.warning,
+.service-expiry-message.expired {
+  color: #a14f56;
+}
+
+.service-expiry-message small {
+  color: #9b8990;
+}
+
+.service-quick-links {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding-top: 2px;
+}
+
+.service-last-checked {
+  color: #96828a;
+  font-size: 10px;
+  text-align: right;
+}
+
+@keyframes service-status-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
 .prompt-settings-heading {
   display: flex;
   align-items: flex-start;
@@ -2837,8 +3006,19 @@ button:disabled {
 
   .memory-grid,
   .ombre-memory-list,
-  .settings-grid {
+  .settings-grid,
+  .service-status-grid,
+  .service-expiry-panel {
     grid-template-columns: 1fr;
+  }
+
+  .service-manager-heading {
+    display: grid;
+  }
+
+  .service-refresh-button {
+    justify-self: start;
+    min-height: 42px;
   }
 
   input,

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { API_BASE_URL, apiRequest, streamChat } from "./api";
@@ -76,6 +76,13 @@ import {
   voiceCaptureErrorMessage,
   voiceRecordingSupported,
 } from "./voice";
+import {
+  SERVICE_LINKS,
+  buildServiceStatusCards,
+  describeGroqExpiry,
+  readGroqExpiryDate,
+  storeGroqExpiryDate,
+} from "./service-status";
 
 const PUSH_CURSOR_KEY = "dengta_push_cursor";
 const PUSH_SEEN_IDS_KEY = "dengta_push_seen_ids";
@@ -443,6 +450,13 @@ function App() {
     expressiveAvailable: false,
     expressiveProvider: "none",
   });
+  const [serviceHealth, setServiceHealth] = useState({
+    checking: true,
+    data: null,
+    error: "",
+    checkedAt: "",
+  });
+  const [groqExpiryDate, setGroqExpiryDate] = useState(readGroqExpiryDate);
   const [companionStatus, setCompanionStatus] = useState(readCompanionStatus);
   const [companionInteractionStats, setCompanionInteractionStats] = useState(
     readCompanionInteractionStats,
@@ -507,6 +521,54 @@ function App() {
     chatRetryReady &&
     pendingChatClientMessageRef.current?.generationInProgress === true;
 
+  const refreshServiceHealth = useCallback(async () => {
+    setServiceHealth((current) => ({
+      ...current,
+      checking: true,
+      error: "",
+    }));
+
+    try {
+      const data = await apiRequest("/health");
+      if (!componentMountedRef.current) return;
+      const available = data?.features?.hervoice_proxy_configured === true;
+      const expressiveAvailable =
+        data?.features?.expressive_tts_configured === true;
+      setVoiceService({
+        checked: true,
+        available,
+        message: available
+          ? "语音理解服务已连接。"
+          : "服务器尚未配置语音理解服务。麦克风和音频附件暂不可用；图片与文档仍可正常发送。",
+        expressiveAvailable,
+        expressiveProvider:
+          data?.features?.expressive_tts_provider || "none",
+      });
+      setServiceHealth({
+        checking: false,
+        data,
+        error: "",
+        checkedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      if (!componentMountedRef.current) return;
+      setVoiceService({
+        checked: true,
+        available: false,
+        message:
+          "暂时无法确认服务器语音能力。为避免录音后发送失败，麦克风和音频附件已停用；图片与文档不受影响。",
+        expressiveAvailable: false,
+        expressiveProvider: "none",
+      });
+      setServiceHealth((current) => ({
+        ...current,
+        checking: false,
+        error: error?.message || "服务器状态检查失败",
+        checkedAt: new Date().toISOString(),
+      }));
+    }
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -519,37 +581,6 @@ function App() {
       setAvailableModels(catalog.models);
       setSelectedChatModel(catalog.selectedModel);
       storeChatModel(catalog.selectedModel);
-    }
-
-    async function loadVoiceServiceAvailability() {
-      try {
-        const data = await apiRequest("/health");
-        if (cancelled) return;
-        const available =
-          data?.features?.hervoice_proxy_configured === true;
-        const expressiveAvailable =
-          data?.features?.expressive_tts_configured === true;
-        setVoiceService({
-          checked: true,
-          available,
-          message: available
-            ? "语音理解服务已连接。"
-            : "服务器尚未配置语音理解服务。麦克风和音频附件暂不可用；图片与文档仍可正常发送。",
-          expressiveAvailable,
-          expressiveProvider:
-            data?.features?.expressive_tts_provider || "none",
-        });
-      } catch {
-        if (cancelled) return;
-        setVoiceService({
-          checked: true,
-          available: false,
-          message:
-            "暂时无法确认服务器语音能力。为避免录音后发送失败，麦克风和音频附件已停用；图片与文档不受影响。",
-          expressiveAvailable: false,
-          expressiveProvider: "none",
-        });
-      }
     }
 
     async function loadInitialModels(fallbackModel = "") {
@@ -599,11 +630,11 @@ function App() {
     }
 
     loadInitialData();
-    void loadVoiceServiceAvailability();
+    void refreshServiceHealth();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshServiceHealth]);
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
@@ -3000,6 +3031,15 @@ function App() {
   }
 
   function renderSettings() {
+    const serviceCards = buildServiceStatusCards({
+      health: serviceHealth.data,
+      settings,
+      hasLoadedSettings,
+      isOnline,
+      error: serviceHealth.error,
+    });
+    const groqExpiry = describeGroqExpiry(groqExpiryDate);
+
     return (
       <section className="feature-page settings-page">
         <div className="section-intro settings-intro">
@@ -3016,6 +3056,95 @@ function App() {
         </div>
 
         <form className="settings-form" onSubmit={saveSettings}>
+          <div className="settings-card service-manager-card">
+            <div className="service-manager-heading">
+              <div>
+                <h3>服务管理与故障检查</h3>
+                <p className="card-hint">
+                  这里只显示安全状态，不显示或保存任何 API Key。密钥、额度和账单仍由对应服务商管理。
+                </p>
+              </div>
+              <button
+                type="button"
+                className="service-refresh-button"
+                disabled={serviceHealth.checking}
+                onClick={() => void refreshServiceHealth()}
+              >
+                {serviceHealth.checking ? "检查中…" : "重新检查"}
+              </button>
+            </div>
+
+            <div className="service-status-grid">
+              {serviceCards.map((service) => (
+                <article
+                  className={`service-status ${service.status}`}
+                  key={service.id}
+                >
+                  <div className="service-status-title">
+                    <span className="service-status-dot" aria-hidden="true" />
+                    <strong>{service.name}</strong>
+                    <em>{service.summary}</em>
+                  </div>
+                  <p>{service.detail}</p>
+                  {service.link && (
+                    <a href={service.link} target="_blank" rel="noreferrer">
+                      {service.linkLabel} ↗
+                    </a>
+                  )}
+                </article>
+              ))}
+            </div>
+
+            <div className="service-expiry-panel">
+              <label>
+                Groq 密钥到期提醒
+                <input
+                  type="date"
+                  value={groqExpiryDate}
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
+                    setGroqExpiryDate(nextValue);
+                    storeGroqExpiryDate(nextValue);
+                  }}
+                />
+              </label>
+              <div className={`service-expiry-message ${groqExpiry.status}`}>
+                <strong>本机提醒</strong>
+                <span>{groqExpiry.text}</span>
+                <small>日期只保存在当前设备，不会上传密钥或付款信息。</small>
+              </div>
+              <div className="service-quick-links">
+                <a
+                  href={SERVICE_LINKS.groqUsage}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Groq 用量
+                </a>
+                <a
+                  href={SERVICE_LINKS.minimax}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  MiniMax 账单
+                </a>
+                <a
+                  href={SERVICE_LINKS.backend}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Render 后端
+                </a>
+              </div>
+            </div>
+
+            <div className="service-last-checked" role="status">
+              {serviceHealth.checkedAt
+                ? `最后检查：${formatDateTime(serviceHealth.checkedAt)}`
+                : "尚未完成第一次检查"}
+            </div>
+          </div>
+
           <div className="settings-card prompt-settings-card">
             <div className="prompt-settings-heading">
               <div>
