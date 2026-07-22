@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   VOICE_MAX_DURATION_MS,
   VOICE_MIN_DURATION_MS,
+  VOICE_PLAYBACK_MODES,
   VOICE_STATES,
   VOICE_STATE_LABELS,
   buildVoiceTurnFormData,
@@ -10,6 +11,8 @@ import {
   hydrateStoredVoiceMessages,
   localizeVoiceEmotion,
   normalizeVoiceAnalysis,
+  normalizeVoicePlaybackMode,
+  requestExpressiveSpeech,
   resolveVoiceCaptureAfterPermission,
   selectRecorderMimeType,
   validateVoiceDuration,
@@ -143,6 +146,39 @@ assert.equal(formData.get("file").type, "audio/webm");
 
 assert.equal(VOICE_STATES.recording, "recording");
 assert.match(VOICE_STATE_LABELS.recording, /松开发送/);
-assert.match(VOICE_STATE_LABELS.speaking, /朗读/);
+assert.match(VOICE_STATE_LABELS.speaking, /播放/);
+assert.equal(
+  normalizeVoicePlaybackMode("expressive"),
+  VOICE_PLAYBACK_MODES.expressive,
+);
+assert.equal(normalizeVoicePlaybackMode("unknown"), VOICE_PLAYBACK_MODES.off);
+
+let expressiveRequest;
+const expressiveSpeech = await requestExpressiveSpeech("assistant-message-id", {
+  async fetchImpl(url, options) {
+    expressiveRequest = { url, options };
+    return {
+      ok: true,
+      status: 200,
+      headers: {
+        get(name) {
+          if (name === "X-DengTa-Voice-Provider") return "minimax";
+          if (name === "X-DengTa-Voice-Emotion") return "happy";
+          return null;
+        },
+      },
+      async blob() {
+        return new Blob(["audio"], { type: "audio/mpeg" });
+      },
+    };
+  },
+});
+assert.match(expressiveRequest.url, /\/voice\/speech$/);
+assert.deepEqual(JSON.parse(expressiveRequest.options.body), {
+  message_id: "assistant-message-id",
+});
+assert.equal(expressiveSpeech.provider, "minimax");
+assert.equal(expressiveSpeech.emotion, "happy");
+assert.equal(expressiveSpeech.blob.type, "audio/mpeg");
 
 console.log("voice helper tests passed");

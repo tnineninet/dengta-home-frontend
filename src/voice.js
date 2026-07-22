@@ -15,13 +15,19 @@ export const VOICE_STATES = Object.freeze({
   error: "error",
 });
 
+export const VOICE_PLAYBACK_MODES = Object.freeze({
+  off: "off",
+  expressive: "expressive",
+  system: "system",
+});
+
 export const VOICE_STATE_LABELS = Object.freeze({
   idle: "按住说话",
   requesting: "等待麦克风授权…",
   recording: "正在听你说话，松开发送",
   uploading: "正在安全上传语音…",
   thinking: "正在理解语音和情绪…",
-  speaking: "AI 正在朗读回复…",
+  speaking: "AI 正在播放回复…",
   error: "语音没有发送，按住可重试",
 });
 
@@ -331,6 +337,117 @@ function browserSpeechAvailable() {
   );
 }
 
+let activeAudioPlayback = null;
+
+export function normalizeVoicePlaybackMode(value) {
+  return Object.values(VOICE_PLAYBACK_MODES).includes(value)
+    ? value
+    : VOICE_PLAYBACK_MODES.off;
+}
+
+export async function requestExpressiveSpeech(
+  messageId,
+  { fetchImpl = globalThis.fetch, timeoutMs = 60_000 } = {},
+) {
+  const safeMessageId = String(messageId || "").trim();
+  if (!safeMessageId) {
+    throw new Error("这条回复还没有可用于自然语音的消息编号。");
+  }
+  if (typeof fetchImpl !== "function") {
+    throw new Error("当前设备不能连接自然语音服务。");
+  }
+
+  const controller = new AbortController();
+  const timer = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    let response;
+    try {
+      response = await fetchImpl(`${API_BASE_URL}/voice/speech`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message_id: safeMessageId }),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        throw new Error("自然语音等待超时。", { cause: error });
+      }
+      throw new Error("暂时无法连接自然语音服务。", { cause: error });
+    }
+
+    if (!response.ok) {
+      let payload = {};
+      try {
+        payload = await response.json();
+      } catch {
+        // 非 JSON 错误响应统一按状态码处理。
+      }
+      throw new Error(
+        cleanDisplayText(payload.message, 240) ||
+          `自然语音暂时不可用（${response.status}）。`,
+      );
+    }
+
+    const blob = await response.blob();
+    if (!(blob instanceof Blob) || blob.size === 0) {
+      throw new Error("自然语音服务没有返回可播放的声音。");
+    }
+    return {
+      blob,
+      provider: response.headers?.get?.("X-DengTa-Voice-Provider") || "cloud",
+      emotion: response.headers?.get?.("X-DengTa-Voice-Emotion") || "",
+    };
+  } finally {
+    globalThis.clearTimeout(timer);
+  }
+}
+
+function playAudioBlob(
+  blob,
+  { AudioImpl = globalThis.Audio, URLImpl = globalThis.URL } = {},
+) {
+  if (typeof AudioImpl !== "function" || typeof URLImpl?.createObjectURL !== "function") {
+    throw new Error("当前设备不能播放云端语音。");
+  }
+
+  return new Promise((resolve, reject) => {
+    const url = URLImpl.createObjectURL(blob);
+    const audio = new AudioImpl();
+    let finished = false;
+
+    function finish(error, stopped = false) {
+      if (finished) return;
+      finished = true;
+      if (activeAudioPlayback?.audio === audio) activeAudioPlayback = null;
+      audio.onended = null;
+      audio.onerror = null;
+      URLImpl.revokeObjectURL?.(url);
+      if (error) reject(error);
+      else resolve({ engine: "cloud", stopped });
+    }
+
+    activeAudioPlayback = {
+      audio,
+      stop() {
+        try {
+          audio.pause?.();
+          audio.currentTime = 0;
+        } catch {
+          // 播放器已经结束时无需再次处理。
+        }
+        finish(null, true);
+      },
+    };
+    audio.preload = "auto";
+    audio.src = url;
+    audio.onended = () => finish();
+    audio.onerror = () => finish(new Error("自然语音播放失败。"));
+    Promise.resolve(audio.play()).catch(() =>
+      finish(new Error("手机阻止了自动播放，请先触碰一次页面后重试。")),
+    );
+  });
+}
+
 function speakWithBrowser(text, options) {
   if (!browserSpeechAvailable()) {
     throw new Error("这台设备没有可用的朗读引擎。");
@@ -355,7 +472,7 @@ function speakWithBrowser(text, options) {
   });
 }
 
-export async function speakVoiceText(
+async function speakWithDevice(
   value,
   { lang = "zh-CN", rate = 1, pitch = 1, volume = 1 } = {},
 ) {
@@ -394,8 +511,60 @@ export async function speakVoiceText(
   );
 }
 
+export async function speakVoiceText(
+  value,
+  {
+    mode = VOICE_PLAYBACK_MODES.system,
+    messageId = "",
+    lang = "zh-CN",
+    rate = 1,
+    pitch = 1,
+    volume = 1,
+  } = {},
+) {
+  const normalizedMode = normalizeVoicePlaybackMode(mode);
+  const text = cleanDisplayText(value, 8_000);
+  if (!text || normalizedMode === VOICE_PLAYBACK_MODES.off) {
+    return { engine: "none" };
+  }
+
+  if (normalizedMode === VOICE_PLAYBACK_MODES.expressive) {
+    let cloudError;
+    try {
+      const speech = await requestExpressiveSpeech(messageId);
+      const playback = await playAudioBlob(speech.blob);
+      return {
+        ...playback,
+        provider: speech.provider,
+        emotion: speech.emotion,
+      };
+    } catch (error) {
+      cloudError = error;
+    }
+
+    try {
+      return {
+        ...(await speakWithDevice(text, { lang, rate, pitch, volume })),
+        fallbackFrom: "expressive",
+        fallbackReason: cleanDisplayText(cloudError?.message, 240),
+      };
+    } catch (deviceError) {
+      throw new Error(
+        `${cleanDisplayText(cloudError?.message, 180) || "自然语音不可用"}；${
+          cleanDisplayText(deviceError?.message, 180) || "系统朗读也不可用"
+        }`,
+        { cause: deviceError },
+      );
+    }
+  }
+
+  return speakWithDevice(text, { lang, rate, pitch, volume });
+}
+
 export async function stopVoiceSpeech() {
   const tasks = [];
+  activeAudioPlayback?.stop?.();
+  activeAudioPlayback = null;
   if (
     Capacitor.isNativePlatform() &&
     Capacitor.isPluginAvailable("TextToSpeech")

@@ -60,12 +60,14 @@ import {
 } from "./settings";
 import {
   VOICE_MAX_DURATION_MS,
+  VOICE_PLAYBACK_MODES,
   VOICE_STATES,
   VOICE_STATE_LABELS,
   buildVoiceTurnFormData,
   createVoiceTurnRequest,
   formatVoiceConfidence,
   normalizeVoiceAnalysis,
+  normalizeVoicePlaybackMode,
   resolveVoiceCaptureAfterPermission,
   selectRecorderMimeType,
   speakVoiceText,
@@ -85,6 +87,7 @@ const COMPANION_INTERACTION_RATE_WINDOW_MS = 60 * 1000;
 const LOCAL_NOTIFICATION_CHANNEL_ID = "dengta-home-reminders-v1";
 const PROMPT_RECEIPT_STORAGE_KEY = "dengta_prompt_receipt_v1";
 const VOICE_AUTO_SPEAK_KEY = "dengta_voice_auto_speak_enabled";
+const VOICE_PLAYBACK_MODE_KEY = "dengta_voice_playback_mode";
 
 const initialNotificationPermissionState = {
   status: "idle",
@@ -212,11 +215,15 @@ function readEmotionUnderstandingSetting() {
   }
 }
 
-function readVoiceAutoSpeakSetting() {
+function readVoicePlaybackMode() {
   try {
-    return localStorage.getItem(VOICE_AUTO_SPEAK_KEY) === "true";
+    const stored = localStorage.getItem(VOICE_PLAYBACK_MODE_KEY);
+    if (stored) return normalizeVoicePlaybackMode(stored);
+    return localStorage.getItem(VOICE_AUTO_SPEAK_KEY) === "true"
+      ? VOICE_PLAYBACK_MODES.expressive
+      : VOICE_PLAYBACK_MODES.off;
   } catch {
-    return false;
+    return VOICE_PLAYBACK_MODES.off;
   }
 }
 
@@ -426,13 +433,15 @@ function App() {
   const [voiceError, setVoiceError] = useState("");
   const [voiceTapToSend, setVoiceTapToSend] = useState(false);
   const [lastVoiceAnalysis, setLastVoiceAnalysis] = useState(null);
-  const [voiceAutoSpeakEnabled, setVoiceAutoSpeakEnabled] = useState(
-    readVoiceAutoSpeakSetting,
+  const [voicePlaybackMode, setVoicePlaybackMode] = useState(
+    readVoicePlaybackMode,
   );
   const [voiceService, setVoiceService] = useState({
     checked: false,
     available: false,
     message: "正在检查服务器语音能力…",
+    expressiveAvailable: false,
+    expressiveProvider: "none",
   });
   const [companionStatus, setCompanionStatus] = useState(readCompanionStatus);
   const [companionInteractionStats, setCompanionInteractionStats] = useState(
@@ -481,6 +490,7 @@ function App() {
   );
   const isVoiceInputBusy = voiceInputBusy(voiceState);
   const voiceServiceAvailable = voiceService.available;
+  const voiceAutoSpeakEnabled = voicePlaybackMode !== VOICE_PLAYBACK_MODES.off;
   const activeChatModel = selectedChatModel || settings.model;
   const chatRetryReady = canRetryChatClientMessage(
     pendingChatClientMessageRef.current,
@@ -517,12 +527,17 @@ function App() {
         if (cancelled) return;
         const available =
           data?.features?.hervoice_proxy_configured === true;
+        const expressiveAvailable =
+          data?.features?.expressive_tts_configured === true;
         setVoiceService({
           checked: true,
           available,
           message: available
             ? "语音理解服务已连接。"
             : "服务器尚未配置语音理解服务。麦克风和音频附件暂不可用；图片与文档仍可正常发送。",
+          expressiveAvailable,
+          expressiveProvider:
+            data?.features?.expressive_tts_provider || "none",
         });
       } catch {
         if (cancelled) return;
@@ -531,6 +546,8 @@ function App() {
           available: false,
           message:
             "暂时无法确认服务器语音能力。为避免录音后发送失败，麦克风和音频附件已停用；图片与文档不受影响。",
+          expressiveAvailable: false,
+          expressiveProvider: "none",
         });
       }
     }
@@ -1020,7 +1037,7 @@ function App() {
     }
   }
 
-  async function playAssistantReply(value) {
+  async function playAssistantReply(value, messageId = "") {
     if (!voiceAutoSpeakEnabled || !String(value || "").trim()) return;
 
     const runId = speechRunRef.current + 1;
@@ -1031,7 +1048,21 @@ function App() {
     setVoiceError("");
     setVoiceMode(VOICE_STATES.speaking);
     try {
-      await speakVoiceText(value);
+      const requestedMode =
+        voicePlaybackMode === VOICE_PLAYBACK_MODES.expressive &&
+        !voiceService.expressiveAvailable
+          ? VOICE_PLAYBACK_MODES.system
+          : voicePlaybackMode;
+      const result = await speakVoiceText(value, {
+        mode: requestedMode,
+        messageId,
+      });
+      if (
+        voicePlaybackMode === VOICE_PLAYBACK_MODES.expressive &&
+        (requestedMode === VOICE_PLAYBACK_MODES.system || result.fallbackFrom)
+      ) {
+        setNotice("自然语音尚未连接，本次已自动使用手机系统朗读。");
+      }
     } catch (error) {
       if (speechRunRef.current === runId) {
         setVoiceFailure(
@@ -1166,7 +1197,10 @@ function App() {
       }
 
       if (voiceAutoSpeakEnabled) {
-        await playAssistantReply(serverAssistantMessage.content);
+        await playAssistantReply(
+          serverAssistantMessage.content,
+          serverAssistantMessage.id,
+        );
       } else {
         setVoiceMode(VOICE_STATES.idle);
       }
@@ -1391,17 +1425,29 @@ function App() {
     }
   }
 
-  function updateVoiceAutoSpeak(value) {
-    setVoiceAutoSpeakEnabled(value);
+  function updateVoicePlaybackMode(value) {
+    const mode = normalizeVoicePlaybackMode(value);
+    setVoicePlaybackMode(mode);
     try {
-      localStorage.setItem(VOICE_AUTO_SPEAK_KEY, String(value));
+      localStorage.setItem(VOICE_PLAYBACK_MODE_KEY, mode);
+      localStorage.setItem(
+        VOICE_AUTO_SPEAK_KEY,
+        String(mode !== VOICE_PLAYBACK_MODES.off),
+      );
     } catch {
       // 本地存储不可用时，本次运行仍保持选择。
     }
-    if (!value) {
+    if (mode === VOICE_PLAYBACK_MODES.off) {
       void stopVoicePlayback();
     }
-    setNotice(value ? "AI 回复自动朗读已开启。" : "AI 回复自动朗读已关闭。");
+    const labels = {
+      [VOICE_PLAYBACK_MODES.off]: "AI 回复自动语音已关闭。",
+      [VOICE_PLAYBACK_MODES.expressive]: voiceService.expressiveAvailable
+        ? "AI 自然语音已开启。"
+        : "已选择自然语音；云端尚未连接时会自动使用手机系统朗读。",
+      [VOICE_PLAYBACK_MODES.system]: "已选择手机系统朗读。",
+    };
+    setNotice(labels[mode]);
   }
 
   voiceLifecycleRef.current.cancel = cancelVoiceCapture;
@@ -1664,7 +1710,7 @@ function App() {
       }
 
       if (voiceAutoSpeakEnabled) {
-        void playAssistantReply(assistantMessage.content);
+        void playAssistantReply(assistantMessage.content, assistantMessage.id);
       }
 
       if (activeSessionIdRef.current === sessionId) {
@@ -2060,7 +2106,10 @@ function App() {
               voiceAutoSpeakEnabled &&
               event.assistant_message?.content
             ) {
-              void playAssistantReply(event.assistant_message.content);
+              void playAssistantReply(
+                event.assistant_message.content,
+                event.assistant_message.id,
+              );
             }
           }
         },
@@ -3099,17 +3148,28 @@ function App() {
                 </select>
               </label>
               <label>
-                自动朗读 AI 回复
+                AI 回答的声音
                 <select
-                  value={String(voiceAutoSpeakEnabled)}
-                  onChange={(event) =>
-                    updateVoiceAutoSpeak(event.target.value === "true")
-                  }
+                  value={voicePlaybackMode}
+                  onChange={(event) => updateVoicePlaybackMode(event.target.value)}
                 >
-                  <option value="false">关闭</option>
-                  <option value="true">开启</option>
+                  <option value={VOICE_PLAYBACK_MODES.off}>关闭</option>
+                  <option value={VOICE_PLAYBACK_MODES.expressive}>
+                    自然云端语音（推荐）
+                  </option>
+                  <option value={VOICE_PLAYBACK_MODES.system}>
+                    手机系统朗读（备用）
+                  </option>
                 </select>
               </label>
+            </div>
+            <div className="voice-privacy-note">
+              <strong>当前发声方式</strong>
+              <p>
+                {voiceService.expressiveAvailable
+                  ? "MiniMax 自然语音已连接：会根据 AI 回复选择较合适的情绪后播放；失败时自动退回手机系统朗读。"
+                  : "MiniMax 自然语音接口已经预留，但服务器还没有密钥；现在选择自然语音时会使用手机系统朗读作为备用。"}
+              </p>
             </div>
             <div className="voice-privacy-note">
               <strong>麦克风与隐私</strong>
