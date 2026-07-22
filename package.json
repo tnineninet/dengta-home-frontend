@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "test": "npm run test:settings && npm run test:companion-interaction && npm run test:voice && npm run test:chat-tools && npm run test:service-status",
+    "test": "npm run test:settings && npm run test:companion-interaction && npm run test:voice && npm run test:chat-tools && npm run test:service-status && npm run test:diary",
     "dev": "vite",
     "build": "vite build",
     "android:sync": "cap sync android",
@@ -14,6 +14,7 @@
     "test:voice": "node test/voice.test.js",
     "test:chat-tools": "node test/chat-tools.test.js",
     "test:service-status": "node test/service-status.test.js",
+    "test:diary": "node test/diary.test.js",
     "preview": "vite preview"
   },
   "engines": {

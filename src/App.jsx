@@ -182,6 +182,7 @@ function storePromptReceipt(receipt) {
 const navItems = [
   { id: "chat", icon: "✦", label: "聊天" },
   { id: "moments", icon: "◌", label: "动态" },
+  { id: "diary", icon: "▤", label: "日记" },
   { id: "memories", icon: "◇", label: "记忆" },
   { id: "settings", icon: "⚙", label: "设置" },
 ];
@@ -3030,6 +3031,16 @@ function App() {
     );
   }
 
+  function renderDiary() {
+    return (
+      <iframe
+        className="diary-frame"
+        src="/secret-crush-diary.html"
+        title="暗恋日记"
+      />
+    );
+  }
+
   function renderSettings() {
     const serviceCards = buildServiceStatusCards({
       health: serviceHealth.data,
@@ -3532,6 +3543,7 @@ function App() {
   const viewTitle = {
     chat: activeSession?.title || "欢迎回家",
     moments: "动态空间",
+    diary: "暗恋日记",
     memories: "长期记忆",
     settings: "设置",
   }[activeView];
@@ -3668,6 +3680,7 @@ function App() {
         <div className="view-content">
           {activeView === "chat" && renderChat()}
           {activeView === "moments" && renderMoments()}
+          {activeView === "diary" && renderDiary()}
           {activeView === "memories" && renderMemories()}
           {activeView === "settings" && renderSettings()}
         </div>

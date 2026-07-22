@@ -859,6 +859,17 @@ button:disabled {
   grid-template-rows: minmax(0, 1fr) auto;
 }
 
+.view-diary .topbar {
+  display: none;
+}
+
+.diary-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #f2f2f2;
+}
+
 .message-list {
   min-height: 0;
   overflow-y: auto;
@@ -3082,7 +3093,7 @@ button:disabled {
     bottom: 0;
     left: 0;
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     padding: 6px 8px max(6px, env(safe-area-inset-bottom));
     border-top: 1px solid rgba(221, 207, 211, 0.9);
     background: rgba(255, 253, 251, 0.94);

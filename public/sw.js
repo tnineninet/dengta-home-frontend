@@ -1,6 +1,7 @@
-const CACHE_NAME = "dengta-home-v7";
+const CACHE_NAME = "dengta-home-v8";
 const APP_SHELL = [
   "/",
+  "/secret-crush-diary.html",
   "/manifest.webmanifest",
   "/app-icon.svg",
   "/app-icon-192.png",
@@ -38,10 +39,10 @@ self.addEventListener("fetch", (event) => {
       fetch(request)
         .then((response) => {
           const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put("/", copy));
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
           return response;
         })
-        .catch(() => caches.match("/")),
+        .catch(async () => (await caches.match(request)) || caches.match("/")),
     );
     return;
   }
