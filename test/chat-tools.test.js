@@ -79,6 +79,16 @@ function fakeFile(name, type, size) {
     "3a31c71b-cbed-4bbd-b16f-49e52176bc9b",
   );
   assert.equal(changed.reused, false);
+  const changedAttachmentMode = resolveChatClientMessage(
+    retry,
+    { ...request, attachmentInstructionMode: "system" },
+    { randomUUID: () => "17c2cb36-635b-43b5-93d1-ea8f21ba9b2a" },
+  );
+  assert.equal(
+    changedAttachmentMode.clientMessageId,
+    "17c2cb36-635b-43b5-93d1-ea8f21ba9b2a",
+  );
+  assert.equal(changedAttachmentMode.reused, false);
   assert.equal(clearChatClientMessage(changed, fixedId), changed);
   assert.equal(clearChatClientMessage(changed, changed.clientMessageId), null);
   const committedRetry = updateChatClientMessage(first, fixedId, {
@@ -472,6 +482,7 @@ assert.equal(
     client_time: "2026-07-21 12:00",
     timezone: "Asia/Shanghai",
     emotion_understanding_enabled: true,
+    attachment_instruction_mode: "system",
     companion_status: { mood: "平静" },
     model: "gpt-test",
     client_message_id: "0f594d5c-e6d1-4f24-a583-cd5c66f81d75",
@@ -480,6 +491,7 @@ assert.equal(
   assert.equal(formData.get("message"), "请看看");
   assert.equal(formData.get("session_id"), "session-1");
   assert.equal(formData.get("emotion_understanding_enabled"), "true");
+  assert.equal(formData.get("attachment_instruction_mode"), "system");
   assert.deepEqual(JSON.parse(formData.get("companion_status")), {
     mood: "平静",
   });

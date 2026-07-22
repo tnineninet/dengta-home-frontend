@@ -29,6 +29,7 @@ export function chatRequestFingerprint({
   sessionId = "",
   message = "",
   attachments = [],
+  attachmentInstructionMode = "untrusted",
 } = {}) {
   const files = Array.from(attachments || []).map((item) => {
     const file = item?.file || item || {};
@@ -42,6 +43,7 @@ export function chatRequestFingerprint({
   return JSON.stringify([
     String(sessionId || ""),
     String(message || ""),
+    attachmentInstructionMode === "system" ? "system" : "untrusted",
     files,
   ]);
 }

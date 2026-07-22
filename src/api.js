@@ -99,6 +99,8 @@ export function buildStreamChatFormData(
     timezone: payload.timezone,
     emotion_understanding_enabled:
       payload.emotion_understanding_enabled === true ? "true" : "false",
+    attachment_instruction_mode:
+      payload.attachment_instruction_mode === "system" ? "system" : "untrusted",
     companion_status:
       typeof payload.companion_status === "string"
         ? payload.companion_status

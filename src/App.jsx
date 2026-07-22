@@ -86,10 +86,71 @@ const LOCAL_NOTIFICATION_CHANNEL_ID = "dengta-home-reminders-v1";
 const PROMPT_RECEIPT_STORAGE_KEY = "dengta_prompt_receipt_v1";
 const VOICE_AUTO_SPEAK_KEY = "dengta_voice_auto_speak_enabled";
 
-const initialNotificationTestState = {
+const initialNotificationPermissionState = {
   status: "idle",
-  message: "点击后会先检查插件和系统权限，再立即发送一条本地通知。",
+  message: "开启主动消息后，Android App 会自动准备通知权限和后台检查。",
 };
+
+async function prepareLocalNotificationPermission() {
+  if (!Capacitor.isNativePlatform()) {
+    return {
+      status: "web",
+      message:
+        "网页会同步主动消息；锁屏通知由安装在手机上的 Android App 接收。",
+    };
+  }
+
+  if (!Capacitor.isPluginAvailable("LocalNotifications")) {
+    return {
+      status: "error",
+      message: "当前安装包缺少通知插件，请安装最新 Android 版本。",
+    };
+  }
+
+  try {
+    let permission = await LocalNotifications.checkPermissions();
+    if (permission.display !== "granted") {
+      permission = await LocalNotifications.requestPermissions();
+    }
+    if (permission.display !== "granted") {
+      return {
+        status: "error",
+        message:
+          "通知权限没有开启。请到“手机设置 → 应用 → DengTa home → 通知”中允许通知。",
+      };
+    }
+
+    const enabled = await LocalNotifications.areEnabled();
+    if (!enabled.value) {
+      return {
+        status: "error",
+        message:
+          "手机系统仍在拦截通知。请到 DengTa home 的系统通知设置中打开总开关。",
+      };
+    }
+
+    if (Capacitor.getPlatform() === "android") {
+      await LocalNotifications.createChannel({
+        id: LOCAL_NOTIFICATION_CHANNEL_ID,
+        name: "DengTa home 主动消息",
+        description: "AI 伙伴在合适时间主动想说的话",
+        importance: 4,
+        visibility: 1,
+      });
+    }
+
+    return {
+      status: "success",
+      message:
+        "主动通知已准备好。App 退到后台后会由手机系统定期检查，不需要再点测试按钮。",
+    };
+  } catch (error) {
+    return {
+      status: "error",
+      message: `通知准备失败：${error?.message || "手机通知插件返回了未知错误"}`,
+    };
+  }
+}
 
 function readPromptReceipt() {
   try {
@@ -140,14 +201,6 @@ function readSeenPushIds() {
   } catch {
     return [];
   }
-}
-
-function notificationId(value) {
-  let hash = 0;
-  for (const character of String(value || "")) {
-    hash = (hash * 31 + character.charCodeAt(0)) | 0;
-  }
-  return (hash & 0x7fffffff) || 1;
 }
 
 function readEmotionUnderstandingSetting() {
@@ -334,6 +387,7 @@ function App() {
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState("");
   const [chatAttachments, setChatAttachments] = useState([]);
+  const [attachmentSafetyEnabled, setAttachmentSafetyEnabled] = useState(true);
   const [availableModels, setAvailableModels] = useState([]);
   const [selectedChatModel, setSelectedChatModel] = useState(
     readStoredChatModel,
@@ -355,9 +409,8 @@ function App() {
   const [hasLoadedSettings, setHasLoadedSettings] = useState(false);
   const [settingsSaveReceipt, setSettingsSaveReceipt] = useState(null);
   const [lastPromptReceipt, setLastPromptReceipt] = useState(readPromptReceipt);
-  const [isTestingNotification, setIsTestingNotification] = useState(false);
-  const [notificationTestState, setNotificationTestState] = useState(
-    initialNotificationTestState,
+  const [notificationPermissionState, setNotificationPermissionState] = useState(
+    initialNotificationPermissionState,
   );
   const [isPostingMoment, setIsPostingMoment] = useState(false);
   const [notice, setNotice] = useState("");
@@ -435,6 +488,9 @@ function App() {
       sessionId: activeSessionId,
       message: message.trim(),
       attachments: chatAttachments,
+      attachmentInstructionMode: attachmentSafetyEnabled
+        ? "untrusted"
+        : "system",
     },
   );
   const chatRetryIsProcessing =
@@ -650,6 +706,26 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!hasLoadedSettings || settings.push_enabled !== true) {
+      setNotificationPermissionState(initialNotificationPermissionState);
+      return undefined;
+    }
+
+    let cancelled = false;
+    setNotificationPermissionState({
+      status: "checking",
+      message: "正在自动检查手机通知权限…",
+    });
+    void prepareLocalNotificationPermission().then((result) => {
+      if (!cancelled) setNotificationPermissionState(result);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasLoadedSettings, settings.push_enabled]);
+
+  useEffect(() => {
     if (settings.push_enabled !== true) return undefined;
 
     let cancelled = false;
@@ -710,23 +786,8 @@ function App() {
           }
         }
 
-        if (!Capacitor.isNativePlatform()) return;
-
-        let permission = await LocalNotifications.checkPermissions();
-        if (permission.display !== "granted") {
-          permission = await LocalNotifications.requestPermissions();
-        }
-        if (permission.display !== "granted") return;
-
-        await LocalNotifications.schedule({
-          notifications: incoming.map((item, index) => ({
-            id: notificationId(item.id),
-            title: settings.ai_name || "DengTa home",
-            body: item.content,
-            schedule: { at: new Date(Date.now() + 500 + index * 750) },
-            extra: { sessionId: item.conversation_id },
-          })),
-        });
+        // 前台只同步聊天记录；Android 原生 WorkManager 负责后台通知，
+        // 避免 WebView 和原生后台任务对同一条消息重复弹窗。
       } catch (error) {
         console.warn("主动消息检查失败：", error.message);
       } finally {
@@ -1712,6 +1773,7 @@ function App() {
     const next = chatAttachmentsRef.current.filter((item) => item.id !== id);
     chatAttachmentsRef.current = next;
     setChatAttachments(next);
+    if (next.length === 0) setAttachmentSafetyEnabled(true);
   }
 
   function selectChatModel(value) {
@@ -1722,6 +1784,9 @@ function App() {
   async function sendMessage() {
     const text = message.trim();
     const attachmentsToSend = [...chatAttachmentsRef.current];
+    const attachmentInstructionMode = attachmentSafetyEnabled
+      ? "untrusted"
+      : "system";
     if (
       (!text && attachmentsToSend.length === 0) ||
       isSendingRef.current ||
@@ -1738,6 +1803,7 @@ function App() {
     setMessage("");
     chatAttachmentsRef.current = [];
     setChatAttachments([]);
+    setAttachmentSafetyEnabled(true);
     isSendingRef.current = true;
     setIsSending(true);
     setNotice("");
@@ -1787,6 +1853,7 @@ function App() {
           sessionId,
           message: text,
           attachments: attachmentsToSend,
+          attachmentInstructionMode,
         },
       );
       userMessageCommitted = clientMessage.userMessageCommitted === true;
@@ -1822,6 +1889,10 @@ function App() {
             role: "user",
             content: text || "（发送了附件）",
             attachments: draftsForLocalMessage(attachmentsToSend),
+            tool_calls:
+              attachmentInstructionMode === "system"
+                ? { attachment_instruction_mode: "system" }
+                : undefined,
             created_at: new Date().toISOString(),
           });
         }
@@ -1858,6 +1929,7 @@ function App() {
           client_time: new Date().toLocaleString("zh-CN"),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           emotion_understanding_enabled: emotionUnderstandingEnabled,
+          attachment_instruction_mode: attachmentInstructionMode,
           companion_status: companionStatusForRequest(companionStatus),
           files: attachmentsToSend,
           client_message_id: request.clientMessageId,
@@ -2086,6 +2158,7 @@ function App() {
           );
           chatAttachmentsRef.current = restored;
           setChatAttachments(restored);
+          setAttachmentSafetyEnabled(attachmentInstructionMode !== "system");
         } else {
           releaseChatRequestAttachments(request);
         }
@@ -2121,6 +2194,7 @@ function App() {
           );
           chatAttachmentsRef.current = restored;
           setChatAttachments(restored);
+          setAttachmentSafetyEnabled(attachmentInstructionMode !== "system");
         } else {
           releaseChatRequestAttachments(request);
         }
@@ -2219,113 +2293,6 @@ function App() {
       setNotice(error.message);
     } finally {
       setIsSavingSettings(false);
-    }
-  }
-
-  async function testLocalNotification() {
-    function updateTestState(status, message) {
-      setNotificationTestState({ status, message });
-      setNotice(message);
-    }
-
-    if (!Capacitor.isNativePlatform()) {
-      updateTestState(
-        "error",
-        "当前不是 Android App。请在手机上安装的 DengTa home 中测试通知。",
-      );
-      return;
-    }
-
-    if (!Capacitor.isPluginAvailable("LocalNotifications")) {
-      updateTestState(
-        "error",
-        "这个安装包没有加载通知插件，请安装最新版本的 DengTa home 后重试。",
-      );
-      return;
-    }
-
-    setIsTestingNotification(true);
-    setNotificationTestState({
-      status: "checking",
-      message: "正在检查通知权限…",
-    });
-
-    try {
-      let permission = await LocalNotifications.checkPermissions();
-      if (permission.display !== "granted") {
-        setNotificationTestState({
-          status: "requesting",
-          message: "请在系统弹窗中选择“允许通知”…",
-        });
-        permission = await LocalNotifications.requestPermissions();
-      }
-
-      if (permission.display !== "granted") {
-        updateTestState(
-          "error",
-          "通知权限没有开启。请到“手机设置 → 应用 → DengTa home → 通知”，打开“允许通知”后再试。",
-        );
-        return;
-      }
-
-      const enabled = await LocalNotifications.areEnabled();
-      if (!enabled.value) {
-        updateTestState(
-          "error",
-          "系统仍在拦截通知。请到“手机设置 → 应用 → DengTa home → 通知”中打开通知总开关。",
-        );
-        return;
-      }
-
-      if (Capacitor.getPlatform() === "android") {
-        setNotificationTestState({
-          status: "preparing",
-          message: "权限已开启，正在准备通知通道…",
-        });
-        await LocalNotifications.createChannel({
-          id: LOCAL_NOTIFICATION_CHANNEL_ID,
-          name: "DengTa home 提醒",
-          description: "AI 伙伴主动消息与应用测试通知",
-          importance: 4,
-          visibility: 1,
-        });
-      }
-
-      setNotificationTestState({
-        status: "sending",
-        message: "正在把测试通知交给手机系统…",
-      });
-      const notificationId = Math.max(
-        1,
-        Math.floor(Date.now() % 2_000_000_000),
-      );
-      const result = await LocalNotifications.schedule({
-        notifications: [
-          {
-            id: notificationId,
-            title: settings.ai_name || "DengTa home",
-            body: "通知连接成功。以后主动消息到达时，会由这里提醒你。",
-            channelId: LOCAL_NOTIFICATION_CHANNEL_ID,
-            autoCancel: true,
-          },
-        ],
-      });
-
-      if (!result.notifications?.some((item) => item.id === notificationId)) {
-        throw new Error("通知插件没有确认本次发送");
-      }
-
-      updateTestState(
-        "success",
-        "测试通知已发送。请从手机屏幕顶部向下滑，查看通知栏；如果仍看不到，请检查该通知通道是否被静音。",
-      );
-    } catch (error) {
-      updateTestState(
-        "error",
-        `测试通知失败：${error?.message || "通知插件返回了未知错误"}`,
-      );
-    } finally {
-      setIsTestingNotification(false);
     }
   }
 
@@ -2523,6 +2490,12 @@ function App() {
                       setImageViewer({ url, alt: name })
                     }
                   />
+                  {item.role === "user" &&
+                    item.tool_calls?.attachment_instruction_mode === "system" && (
+                      <div className="attachment-instruction-badge">
+                        本轮附件已作为系统指令
+                      </div>
+                    )}
                   {item.role === "assistant" && (
                     <ThinkingPanel
                       key={`${item.id}-${item.isStreaming ? "streaming" : "complete"}`}
@@ -2554,6 +2527,26 @@ function App() {
             items={chatAttachments}
             onRemove={removeChatAttachment}
           />
+          {chatAttachments.length > 0 && (
+            <label className="attachment-safety-control">
+              <input
+                type="checkbox"
+                checked={attachmentSafetyEnabled}
+                disabled={isSending || chatRetryReady}
+                onChange={(event) =>
+                  setAttachmentSafetyEnabled(event.target.checked)
+                }
+              />
+              <span>
+                <strong>附件安全隔离</strong>
+                <small>
+                  {attachmentSafetyEnabled
+                    ? "已开启（默认）：附件只作为资料，不会变成系统指令"
+                    : "已关闭：本轮文档或语音文字将作为高优先级附件指令"}
+                </small>
+              </span>
+            </label>
+          )}
           <div className="composer">
             <textarea
               value={message}
@@ -3274,40 +3267,21 @@ function App() {
                 />
               </label>
             </div>
-            <div className="notification-test-panel">
-              <div className="notification-test-copy">
-                <strong>手机通知验收</strong>
-                <p>
-                  在 Android App 中点击后，会依次检查插件、系统权限和通知总开关，再立即发送一条测试通知。
-                </p>
-                <p
-                  className={`notification-test-feedback ${notificationTestState.status}`}
-                  role="status"
-                  aria-live="polite"
-                >
-                  {notificationTestState.message}
-                </p>
-              </div>
-              <button
-                className="notification-test-button"
-                type="button"
-                disabled={isTestingNotification}
-                onClick={testLocalNotification}
+            <div className="notification-feature-panel">
+              <strong>主动通知</strong>
+              <p>
+                AI 会结合时间、最近聊天、记忆和每日上限，偶尔主动留下一两句话；不会每次检查都发送。
+              </p>
+              <p
+                className={`notification-feature-feedback ${notificationPermissionState.status}`}
+                role="status"
+                aria-live="polite"
               >
-                {isTestingNotification
-                  ? notificationTestState.status === "requesting"
-                    ? "等待授权…"
-                    : notificationTestState.status === "preparing"
-                      ? "准备通道…"
-                      : notificationTestState.status === "sending"
-                        ? "发送中…"
-                        : "检查中…"
-                  : notificationTestState.status === "success"
-                    ? "再发一次"
-                    : notificationTestState.status === "error"
-                      ? "重新测试"
-                      : "发送测试通知"}
-              </button>
+                {notificationPermissionState.message}
+              </p>
+              <small>
+                Android 为省电可能把后台检查延后；它不是整点闹钟，但 App 关闭后仍会继续检查。
+              </small>
             </div>
           </div>
 
