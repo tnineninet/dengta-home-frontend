@@ -2530,6 +2530,12 @@ function App() {
     }
   }
 
+  function handleCompanionInteraction(zoneId) {
+    shouldAutoScrollRef.current = true;
+    setActiveView("chat");
+    return registerCompanionInteraction(zoneId);
+  }
+
   function renderChat() {
     return (
       <>
@@ -3666,7 +3672,7 @@ function App() {
             interactionStats={companionInteractionStats}
             isResponding={isCompanionResponding}
             onChange={setCompanionStatus}
-            onInteract={registerCompanionInteraction}
+            onInteract={handleCompanionInteraction}
           />
         )}
 

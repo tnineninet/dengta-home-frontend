@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   HOT_ZONES,
   addStatusRecord,
@@ -33,7 +33,6 @@ export default function CompanionStatus({
   );
   const [expanded, setExpanded] = useState(false);
   const [clockNow, setClockNow] = useState(() => Date.now());
-  const interactionCollapseTimerRef = useRef(null);
   const remainingSeconds = remainingAt(normalized.countdown, clockNow);
   const rawCountdownEnd = Date.parse(status?.countdown?.endsAt);
   const countdownExpiredWhileAway =
@@ -90,10 +89,6 @@ export default function CompanionStatus({
     return () => document.removeEventListener("focusin", collapseForKeyboard);
   }, []);
 
-  useEffect(() => {
-    return () => window.clearTimeout(interactionCollapseTimerRef.current);
-  }, []);
-
   function updateStatus(transform) {
     onChange((currentValue) => {
       const current = companionStatusForRequest(currentValue);
@@ -110,12 +105,8 @@ export default function CompanionStatus({
   }
 
   function touchZone(zone) {
+    setExpanded(false);
     const interactionMeta = onInteract?.(zone.id);
-    window.clearTimeout(interactionCollapseTimerRef.current);
-    interactionCollapseTimerRef.current = window.setTimeout(
-      () => setExpanded(false),
-      1100,
-    );
     updateStatus((current) => {
       const reaction = localCompanionInteractionReaction(
         zone,

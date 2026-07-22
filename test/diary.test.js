@@ -51,7 +51,7 @@ const serviceWorker = await readFile(
   new URL("../public/sw.js", import.meta.url),
   "utf8",
 );
-assert.match(serviceWorker, /dengta-home-v8/);
+assert.match(serviceWorker, /dengta-home-v9/);
 assert.match(serviceWorker, /"\/secret-crush-diary\.html"/);
 assert.match(serviceWorker, /cache\.put\(request, copy\)/);
 
