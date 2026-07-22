@@ -14,13 +14,13 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
-    protected void onResume() {
+    public void onResume() {
         super.onResume();
         PushNotificationWorker.markAppVisible(this);
     }
 
     @Override
-    protected void onPause() {
+    public void onPause() {
         PushNotificationWorker.markAppVisible(this);
         super.onPause();
     }
