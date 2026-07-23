@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { API_BASE_URL } from "./api";
+import {
+  buildCcSwitchBridgeHtml,
+  buildCcSwitchDeepLink,
+  ccSwitchBridgeFileName,
+  ccSwitchTargetsForProtocol,
+} from "./cc-switch-bridge";
 
 const PROTOCOL_OPTIONS = [
   {
@@ -265,6 +271,10 @@ export default function AiProviderCenter() {
   const [draftModels, setDraftModels] = useState([]);
   const [busy, setBusy] = useState("");
   const [feedback, setFeedback] = useState("");
+  const [ccSwitchProfile, setCcSwitchProfile] = useState(null);
+  const [ccSwitchTarget, setCcSwitchTarget] = useState("");
+  const [ccSwitchApiKey, setCcSwitchApiKey] = useState("");
+  const [ccSwitchFeedback, setCcSwitchFeedback] = useState("");
 
   async function refreshStatus() {
     try {
@@ -307,6 +317,71 @@ export default function AiProviderCenter() {
     setProfiles((current) => current.map((profile) => (
       profile.id === id ? { ...profile, [field]: value } : profile
     )));
+  }
+
+  function openCcSwitchBridge(profile) {
+    const target = ccSwitchTargetsForProtocol(profile.protocol)[0];
+    setCcSwitchProfile({ ...profile });
+    setCcSwitchTarget(target.value);
+    setCcSwitchApiKey(profile.credential || "");
+    setCcSwitchFeedback("");
+  }
+
+  function closeCcSwitchBridge() {
+    setCcSwitchProfile(null);
+    setCcSwitchTarget("");
+    setCcSwitchApiKey("");
+    setCcSwitchFeedback("");
+  }
+
+  function currentCcSwitchLink() {
+    return buildCcSwitchDeepLink({
+      name: ccSwitchProfile?.name,
+      protocol: ccSwitchProfile?.protocol,
+      baseUrl: ccSwitchProfile?.base_url,
+      apiKey: ccSwitchApiKey,
+      model: ccSwitchProfile?.default_model,
+      targetApp: ccSwitchTarget,
+    });
+  }
+
+  function launchCcSwitch() {
+    try {
+      const link = currentCcSwitchLink();
+      setCcSwitchFeedback("正在请求打开 CC Switch，请在应用里核对配置并确认导入。");
+      window.location.href = link;
+      window.setTimeout(() => setCcSwitchApiKey(""), 1200);
+    } catch (error) {
+      setCcSwitchFeedback(error.message);
+    }
+  }
+
+  async function copyCcSwitchLink() {
+    try {
+      const link = currentCcSwitchLink();
+      await navigator.clipboard.writeText(link);
+      setCcSwitchFeedback("一次性导入链接已复制。链接包含 API Key，请勿发送给别人，用完后覆盖剪贴板。");
+    } catch (error) {
+      setCcSwitchFeedback(error?.message || "浏览器不允许复制，请直接使用打开按钮。");
+    }
+  }
+
+  function downloadCcSwitchBridge() {
+    try {
+      const html = buildCcSwitchBridgeHtml(ccSwitchProfile, ccSwitchTarget);
+      const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = ccSwitchBridgeFileName(ccSwitchProfile);
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      setCcSwitchFeedback("离线桥接文件已下载，文件内没有 API Key。传到装有 CC Switch 的电脑后直接打开。");
+    } catch (error) {
+      setCcSwitchFeedback(error.message || "生成离线桥接文件失败。");
+    }
   }
 
   async function unlock(event) {
@@ -557,7 +632,72 @@ export default function AiProviderCenter() {
                   <button type="button" className="danger-outline-button" disabled={Boolean(busy)} onClick={() => removeProfile(profile)}>
                     删除
                   </button>
+                  <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => openCcSwitchBridge(profile)}>
+                    交给 CC Switch
+                  </button>
                 </div>
+                {ccSwitchProfile?.id === profile.id && (
+                  <section className="cc-switch-bridge" aria-label="CC Switch 本机桥接">
+                    <div className="cc-switch-bridge-heading">
+                      <div>
+                        <span className="settings-kicker">本机桥接</span>
+                        <strong>导入“{ccSwitchProfile.name}”到 CC Switch</strong>
+                        <small>使用 CC Switch 3.17.0 官方 V1 深度链接；导入前仍需你在 CC Switch 中确认。</small>
+                      </div>
+                      <button type="button" className="text-button" onClick={closeCcSwitchBridge}>关闭</button>
+                    </div>
+                    <div className="cc-switch-bridge-grid">
+                      <label>
+                        目标工具
+                        <select
+                          value={ccSwitchTarget}
+                          onChange={(event) => {
+                            setCcSwitchTarget(event.target.value);
+                            setCcSwitchFeedback("");
+                          }}
+                        >
+                          {ccSwitchTargetsForProtocol(ccSwitchProfile.protocol).map((target) => (
+                            <option value={target.value} key={target.value}>{target.label}</option>
+                          ))}
+                        </select>
+                        <small>{ccSwitchTargetsForProtocol(ccSwitchProfile.protocol).find((target) => target.value === ccSwitchTarget)?.help}</small>
+                      </label>
+                      <label>
+                        本机临时 API Key
+                        <input
+                          type="password"
+                          value={ccSwitchApiKey}
+                          onChange={(event) => {
+                            setCcSwitchApiKey(event.target.value);
+                            setCcSwitchFeedback("");
+                          }}
+                          placeholder="重新粘贴给 CC Switch 使用的网关 Key"
+                          autoComplete="off"
+                          spellCheck="false"
+                        />
+                        <small>只保存在当前页面内存，不提交 DengTa 后端；关闭本面板即清除。</small>
+                      </label>
+                    </div>
+                    {ccSwitchProfile.protocol === "openai-chat" && (
+                      <p className="cc-switch-protocol-note">
+                        这个接口当前是 OpenAI Chat 协议，所以不能直接导入 Codex。若服务商同时支持 Responses，请在 DengTa 新建一个“OpenAI Responses”接口后再导入 Codex。
+                      </p>
+                    )}
+                    <div className="cc-switch-preview">
+                      <span><small>Base URL</small><strong>{ccSwitchProfile.base_url}</strong></span>
+                      <span><small>默认模型</small><strong>{ccSwitchProfile.default_model || "由服务商决定"}</strong></span>
+                    </div>
+                    {ccSwitchFeedback && <p className="provider-feedback" role="status">{ccSwitchFeedback}</p>}
+                    <div className="provider-card-actions">
+                      <button type="button" className="primary-button" onClick={launchCcSwitch}>在本机打开 CC Switch</button>
+                      <button type="button" className="secondary-button" onClick={downloadCcSwitchBridge}>下载无密钥离线桥接文件</button>
+                      <button type="button" className="secondary-button" onClick={copyCcSwitchLink}>复制一次性导入链接</button>
+                    </div>
+                    <p className="cc-switch-security">
+                      不会读取 CC Switch 数据库、OAuth、Cookie、auth.json 或账号 Token。离线文件不含密钥；一次性链接包含密钥，只能自己使用。
+                    </p>
+                  </section>
+                )}
               </article>
             ))}
             {profiles.length === 0 && <p className="provider-empty">还没有保存接口。旧版单接口会继续工作，不会因这里为空而中断聊天。</p>}
@@ -586,6 +726,14 @@ export default function AiProviderCenter() {
           <h4>协议怎么选</h4>
           <p>普通 New API 或写着 OpenAI Compatible 的服务选择“OpenAI Chat 兼容接口”；明确写着 Responses、Codex provider 或 Sub2API Responses 的服务选择“OpenAI Responses”；Claude 与 Gemini 官方原生地址选择各自原生协议。</p>
           <p>ChatGPT、Claude 或其他网页会员不等于官方 API 额度。是否允许通过第三方网关调用，取决于服务条款和你获得的授权；临时账号和不明来源凭据可能随时失效，建议在备注和到期时间里记录来源与有效期。</p>
+          <h4>怎么与 CC Switch 配合</h4>
+          <ol>
+            <li>先在 DengTa 保存一个最终可调用的 Base URL、API Key 和模型名。</li>
+            <li>在该接口卡片底部点击“交给 CC Switch”，重新粘贴一次网关 API Key。</li>
+            <li>电脑上操作时可直接打开 CC Switch；手机上操作时下载无密钥离线桥接文件，再把文件传到电脑。</li>
+            <li>CC Switch 会显示导入预览。确认 Base URL、模型和目标工具无误后再导入并测试。</li>
+          </ol>
+          <p>这里只使用 CC Switch 官方 <code>ccswitch://v1/import</code> 协议，不会直接写入 <code>cc-switch.db</code>。官方下载地址：<a href="https://github.com/farion1231/cc-switch/releases" target="_blank" rel="noreferrer">farion1231/cc-switch Releases</a>。</p>
         </div>
       </details>
     </div>

@@ -2408,7 +2408,9 @@ button:disabled {
 .provider-unlock input:focus,
 .provider-form-grid input:focus,
 .provider-form-grid textarea:focus,
-.provider-form-grid select:focus {
+.provider-form-grid select:focus,
+.cc-switch-bridge input:focus,
+.cc-switch-bridge select:focus {
   border-color: var(--rose);
   box-shadow: 0 0 0 3px rgba(189, 113, 139, 0.12);
 }
@@ -2449,6 +2451,113 @@ button:disabled {
 .provider-profile-list {
   display: grid;
   gap: 13px;
+}
+
+.cc-switch-bridge {
+  display: grid;
+  gap: 14px;
+  margin-top: 2px;
+  padding: 15px;
+  border: 1px solid rgba(95, 79, 84, 0.24);
+  border-radius: 8px;
+  background: #f8f6f3;
+}
+
+.cc-switch-bridge-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cc-switch-bridge-heading > div,
+.cc-switch-bridge-heading strong,
+.cc-switch-bridge-heading small {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+}
+
+.cc-switch-bridge-heading small,
+.cc-switch-bridge-grid small,
+.cc-switch-security {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.cc-switch-bridge-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.cc-switch-bridge-grid label {
+  display: grid;
+  gap: 7px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.cc-switch-bridge input,
+.cc-switch-bridge select {
+  width: 100%;
+  min-height: 43px;
+  padding: 10px 11px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--ink);
+  background: #fff;
+  outline: none;
+}
+
+.cc-switch-preview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.cc-switch-preview span {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+}
+
+.cc-switch-preview small {
+  color: var(--muted);
+}
+
+.cc-switch-preview strong {
+  overflow-wrap: anywhere;
+}
+
+.cc-switch-protocol-note,
+.cc-switch-security {
+  margin: 0;
+  padding: 11px 12px;
+  border-left: 3px solid #a36d7d;
+  background: rgba(241, 219, 227, 0.36);
+  line-height: 1.6;
+}
+
+.cc-switch-security {
+  border-left-color: #8b8582;
+  background: rgba(239, 236, 232, 0.72);
+}
+
+.cc-switch-bridge .text-button {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 680px) {
+  .cc-switch-bridge-grid,
+  .cc-switch-preview {
+    grid-template-columns: 1fr;
+  }
 }
 
 .provider-profile-card.default {

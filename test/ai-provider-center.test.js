@@ -10,6 +10,10 @@ const component = fs.readFileSync(
 );
 const app = fs.readFileSync(path.join(here, "..", "src", "App.jsx"), "utf8");
 const css = fs.readFileSync(path.join(here, "..", "src", "index.css"), "utf8");
+const bridge = fs.readFileSync(
+  path.join(here, "..", "src", "cc-switch-bridge.js"),
+  "utf8",
+);
 
 assert.match(component, /多供应商 API 控制台/);
 assert.match(component, /OpenAI Responses \/ Sub2API \/ Codex 网关/);
@@ -24,15 +28,25 @@ assert.match(component, /OAuth/);
 assert.match(component, /Cookie/);
 assert.match(component, /卡密 JSON/);
 assert.match(component, /不能填/);
+assert.match(component, /交给 CC Switch/);
+assert.match(component, /下载无密钥离线桥接文件/);
+assert.match(component, /ccswitch:\/\/v1\/import/);
+assert.match(component, /不会读取 CC Switch 数据库/);
 assert.match(component, /127\.0\.0\.1/);
 assert.match(component, /管理口令只保存在本次页面内存/);
 assert.doesNotMatch(component, /localStorage/);
 assert.doesNotMatch(component, /refresh[_ -]?token[^\n]*value=/i);
 assert.doesNotMatch(component, /cookie[^\n]*value=/i);
 assert.doesNotMatch(component, /auth\.json[^\n]*type="file"/i);
+assert.match(bridge, /ccswitch:\/\/v1\/import/);
+assert.match(bridge, /enabled: "false"/);
+assert.match(bridge, /API Key/);
+assert.doesNotMatch(bridge, /localStorage/);
+assert.doesNotMatch(bridge, /cc-switch\.db/);
 assert.match(app, /<AiProviderCenter \/>/);
 assert.match(app, /旧版单接口（兼容保留）/);
 assert.match(css, /\.ai-provider-center/);
 assert.match(css, /\.provider-form-grid/);
+assert.match(css, /\.cc-switch-bridge/);
 
 console.log("AI provider center UI tests passed");
