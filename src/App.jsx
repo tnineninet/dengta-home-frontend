@@ -3403,6 +3403,21 @@ function App() {
                 </small>
               </label>
             </div>
+
+            {(draftSettings.system_prompt || "").length >= 6000 && (
+              <div className="prompt-effect-warning" role="note">
+                <strong>提示词遵循度提醒</strong>
+                <p>
+                  当前系统提示词有 {(draftSettings.system_prompt || "").length} 字，内容很长。
+                  它仍会发送给模型，但再叠加历史聊天、长期记忆和运行时信息后，短人设可能被稀释，部分中转模型也可能截断过长上下文。
+                </p>
+                {(draftSettings.personality || "").length <= 20 && (
+                  <p>
+                    当前独立人设只有 {(draftSettings.personality || "").length} 字。建议以后把最重要、最稳定的性格和说话方式写成几条清楚、互不冲突的规则；这里不会自动改动你的原文。
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="settings-card voice-settings-card">
@@ -3637,20 +3652,43 @@ function App() {
 
           {lastPromptReceipt && (
             <div className="prompt-application-receipt" role="status">
-              <strong>最近回复已应用提示词</strong>
-              <span>
-                系统 {lastPromptReceipt.systemPromptChars} 字 / 普通 {lastPromptReceipt.additionalPromptChars} 字 / 人设 {lastPromptReceipt.personalityChars} 字
-              </span>
-              <time dateTime={lastPromptReceipt.appliedAt}>
-                应用时间：{formatDateTime(lastPromptReceipt.appliedAt)}
-              </time>
-              {lastPromptReceipt.settingsUpdatedAt && (
-                <time dateTime={lastPromptReceipt.settingsUpdatedAt}>
-                  设置版本：{formatDateTime(lastPromptReceipt.settingsUpdatedAt)}
+              <strong>
+                {lastPromptReceipt.backendRequestSent
+                  ? "最近一次后端模型请求已发送"
+                  : "最近回复的提示词字数回执"}
+              </strong>
+              <div className="prompt-receipt-details">
+                <span>
+                  三层原文：系统 {lastPromptReceipt.systemPromptChars} 字 / 普通 {lastPromptReceipt.additionalPromptChars} 字 / 人设 {lastPromptReceipt.personalityChars} 字
+                </span>
+                {lastPromptReceipt.backendRequestSent && (
+                  <>
+                    <span>
+                      实际请求：{lastPromptReceipt.systemMessageCount ?? "—"} 个 system 容器 / {lastPromptReceipt.systemInstructionBlocks ?? "—"} 个指令块 / {lastPromptReceipt.systemPayloadChars ?? "—"} 字 system 载荷
+                    </span>
+                    <span>
+                      接口：{lastPromptReceipt.provider || "未知"} · {lastPromptReceipt.model || "未报告模型"} · {lastPromptReceipt.transport || "未知传输格式"}
+                    </span>
+                    <span>
+                      消息：{lastPromptReceipt.conversationMessageCount ?? "—"} 条对话 / {lastPromptReceipt.requestMessageCount ?? "—"} 条请求消息
+                    </span>
+                  </>
+                )}
+              </div>
+              <div className="prompt-receipt-times">
+                <time dateTime={lastPromptReceipt.appliedAt}>
+                  请求时间：{formatDateTime(lastPromptReceipt.appliedAt)}
                 </time>
-              )}
+                {lastPromptReceipt.settingsUpdatedAt && (
+                  <time dateTime={lastPromptReceipt.settingsUpdatedAt}>
+                    设置版本：{formatDateTime(lastPromptReceipt.settingsUpdatedAt)}
+                  </time>
+                )}
+              </div>
               <small>
-                此回执来自模型请求，只显示字数和时间，不显示提示词原文。
+                {lastPromptReceipt.backendRequestSent
+                  ? "这证明 DengTa 后端把这些内容放进了模型请求，但不代表中转站或上游模型一定逐字遵循；供应商隐藏规则仍然更高。回执不会显示提示词原文或密钥。"
+                  : "旧版回执只记录字数。再发送一条聊天消息后，会显示新版的真实请求结构。"}
               </small>
             </div>
           )}

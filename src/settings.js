@@ -116,8 +116,33 @@ export function normalizePromptReceipt(value, fallbackAppliedAt) {
     normalizedIsoTime(source.applied_at) ||
     normalizedIsoTime(fallbackAppliedAt) ||
     new Date().toISOString();
+  const promptContractVersion =
+    textOrFallback(source.prompt_contract_version).trim() || null;
+  const transport = textOrFallback(source.transport).trim() || null;
+  const provider = textOrFallback(source.provider).trim() || null;
+  const model = textOrFallback(source.model).trim() || null;
 
   return {
+    promptContractVersion,
+    backendRequestSent: source.backend_request_sent === true,
+    transport,
+    provider,
+    model,
+    systemInstructionBlocks: firstCharacterCount(source, [
+      "system_instruction_blocks",
+    ]),
+    systemMessageCount: firstCharacterCount(source, [
+      "system_message_count",
+    ]),
+    systemPayloadChars: firstCharacterCount(source, [
+      "system_payload_chars",
+    ]),
+    conversationMessageCount: firstCharacterCount(source, [
+      "conversation_message_count",
+    ]),
+    requestMessageCount: firstCharacterCount(source, [
+      "request_message_count",
+    ]),
     systemPromptChars,
     additionalPromptChars,
     personalityChars,

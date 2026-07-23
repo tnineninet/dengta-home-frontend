@@ -35,6 +35,16 @@ assert.equal(
 assert.equal(payload.personality.length, PROMPT_FIELD_LIMITS.personality);
 
 const receipt = normalizePromptReceipt({
+  prompt_contract_version: "dengta-prompt-contract-v2",
+  backend_request_sent: true,
+  transport: "openai-chat-completions",
+  provider: "openai-compatible",
+  model: "test-model",
+  system_instruction_blocks: 7,
+  system_message_count: 1,
+  system_payload_chars: 560,
+  conversation_message_count: 6,
+  request_message_count: 7,
   system_prompt_chars: 120,
   additional_prompt_chars: 45,
   personality_chars: 18,
@@ -44,6 +54,16 @@ const receipt = normalizePromptReceipt({
 });
 
 assert.deepEqual(receipt, {
+  promptContractVersion: "dengta-prompt-contract-v2",
+  backendRequestSent: true,
+  transport: "openai-chat-completions",
+  provider: "openai-compatible",
+  model: "test-model",
+  systemInstructionBlocks: 7,
+  systemMessageCount: 1,
+  systemPayloadChars: 560,
+  conversationMessageCount: 6,
+  requestMessageCount: 7,
   systemPromptChars: 120,
   additionalPromptChars: 45,
   personalityChars: 18,
