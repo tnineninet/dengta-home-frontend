@@ -31,6 +31,14 @@ export default function CompanionStatus({
     () => normalizeCompanionInteractionStats(interactionStats),
     [interactionStats],
   );
+  const interactionTotal = useMemo(
+    () =>
+      Object.values(normalizedInteractionStats.counts).reduce(
+        (total, count) => total + Number(count || 0),
+        0,
+      ),
+    [normalizedInteractionStats],
+  );
   const [expanded, setExpanded] = useState(false);
   const [clockNow, setClockNow] = useState(() => Date.now());
   const rootRef = useRef(null);
@@ -42,6 +50,18 @@ export default function CompanionStatus({
     Number.isFinite(rawCountdownEnd) &&
     rawCountdownEnd <= clockNow;
   const pulseDuration = `${clamp(60 / normalized.pulseBpm, 0.35, 1.7)}s`;
+  const interactionMeter = clamp(
+    Math.round(Math.log2(interactionTotal + 1) * 16),
+    0,
+    100,
+  );
+  const pulseMeter = clamp(
+    Math.round(((normalized.pulseBpm - 30) / 190) * 100),
+    0,
+    100,
+  );
+  const interactionDisplay =
+    interactionTotal > 999 ? "999+" : String(interactionTotal);
   const thresholdClass =
     normalized.energyLevel >= 85
       ? " high-energy"
@@ -307,55 +327,71 @@ export default function CompanionStatus({
 
       {expanded && (
         <div ref={panelRef} className="status-panel">
-          <div className="status-panel-grid">
-            <section className="status-card status-story-card">
-              <div className="status-card-heading">
-                <div>
-                  <span className="status-eyebrow">此刻</span>
-                  <h3>{normalized.microState}</h3>
-                </div>
-                <span>{formatUpdatedAt(normalized.updatedAt, clockNow)}</span>
+          <section className="status-signal-hero">
+            <div className="status-signal-kicker">
+              <span className="status-live-indicator" aria-hidden="true" />
+              <span>LIVE COMPANION SIGNAL</span>
+              <time>{formatUpdatedAt(normalized.updatedAt, clockNow)}</time>
+            </div>
+            <div className="status-signal-title">
+              <div>
+                <span className="status-eyebrow">此刻心绪</span>
+                <h2>{normalized.microState}</h2>
               </div>
-              <p>{normalized.note}</p>
-              <dl className="status-facts">
-                <div>
-                  <dt>心情</dt>
-                  <dd>{normalized.mood}</dd>
-                </div>
-                <div>
-                  <dt>所在</dt>
-                  <dd>{normalized.place}</dd>
-                </div>
-                <div>
-                  <dt>在意</dt>
-                  <dd>{normalized.focus}</dd>
-                </div>
-              </dl>
-            </section>
+              <span className="status-signal-state">{normalized.mood}</span>
+            </div>
+            <p>{normalized.note}</p>
+            <dl className="status-facts">
+              <div>
+                <dt>所在</dt>
+                <dd>{normalized.place}</dd>
+              </div>
+              <div>
+                <dt>在意</dt>
+                <dd>{normalized.focus}</dd>
+              </div>
+              <div>
+                <dt>同步</dt>
+                <dd>{isResponding ? "正在回应" : "陪伴在线"}</dd>
+              </div>
+            </dl>
+          </section>
 
-            <section className="status-card status-vitals-card">
-              <span className="status-eyebrow">实时氛围数值</span>
-              <div className="vital-heading">
+          <section className="status-vitals-grid" aria-label="实时氛围数值">
+            <article className="status-vital-tile energy">
+              <div className="status-vital-heading">
                 <span>能量</span>
-                <strong>{normalized.energyLevel}%</strong>
+                <small>{normalized.mood}</small>
               </div>
-              <div className="energy-track" aria-hidden="true">
+              <strong>{normalized.energyLevel}%</strong>
+              <div className="status-vital-track" aria-hidden="true">
                 <span style={{ width: `${normalized.energyLevel}%` }} />
               </div>
-              <div className="pulse-readout">
-                <span className="pulse-heart" aria-hidden="true">
-                  ♥
-                </span>
-                <span>
-                  <small>虚拟心率</small>
-                  <strong>{normalized.pulseBpm} BPM</strong>
-                </span>
+            </article>
+            <article className="status-vital-tile resonance">
+              <div className="status-vital-heading">
+                <span>互动共鸣</span>
+                <small>累计触碰</small>
               </div>
-              <small className="status-disclaimer">
-                这是 AI 角色的界面氛围值，不是手机传感器或健康数据。
-              </small>
-            </section>
-          </div>
+              <strong>{interactionDisplay}<em>次</em></strong>
+              <div className="status-vital-track" aria-hidden="true">
+                <span style={{ width: `${interactionMeter}%` }} />
+              </div>
+            </article>
+            <article className="status-vital-tile pulse">
+              <div className="status-vital-heading">
+                <span>心动节拍</span>
+                <small>虚拟氛围</small>
+              </div>
+              <strong>{normalized.pulseBpm}<em>BPM</em></strong>
+              <div className="status-vital-track" aria-hidden="true">
+                <span style={{ width: `${pulseMeter}%` }} />
+              </div>
+            </article>
+          </section>
+          <small className="status-disclaimer">
+            以上是 AI 角色的界面氛围值，不是手机传感器或健康数据。
+          </small>
 
           <section className="status-card status-interaction-card">
             <div className="status-card-heading compact">
@@ -448,7 +484,12 @@ export default function CompanionStatus({
               {normalized.recentRecords.length > 0 ? (
                 <ul>
                   {normalized.recentRecords.map((record, index) => (
-                    <li key={`${record.createdAt}-${index}`}>{record.text}</li>
+                    <li key={`${record.createdAt}-${index}`}>
+                      <time>
+                        {formatUpdatedAt(record.createdAt, clockNow)}
+                      </time>
+                      <span>{record.text}</span>
+                    </li>
                   ))}
                 </ul>
               ) : (

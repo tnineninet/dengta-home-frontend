@@ -48,6 +48,36 @@ assert.match(
   /\.status-panel\s*\{[^}]*max-height:[^}]*overflow-y:\s*auto/s,
   "expanded status content must use an independent scroll container",
 );
+assert.match(
+  css,
+  /@media \(max-width: 820px\)[\s\S]*?\.companion-status\.expanded\s*\{[^}]*flex-shrink:\s*1[^}]*\}[\s\S]*?\.view-chat \.view-content\s*\{[^}]*min-height:\s*min-content[^}]*flex-shrink:\s*0/s,
+  "mobile status must yield height to the complete chat composer above navigation",
+);
+assert.match(
+  status,
+  /LIVE COMPANION SIGNAL/,
+  "expanded status must expose the live companion signal heading",
+);
+assert.match(
+  status,
+  /status-vital-tile energy[\s\S]*status-vital-tile resonance[\s\S]*status-vital-tile pulse/,
+  "expanded status must show energy, interaction resonance and pulse tiles",
+);
+assert.match(
+  status,
+  /formatUpdatedAt\(record\.createdAt, clockNow\)/,
+  "recent status records must expose readable timestamps",
+);
+assert.match(
+  css,
+  /\.status-vitals-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3,/s,
+  "the live signal metrics must keep three stable columns",
+);
+assert.match(
+  css,
+  /\.status-vital-tile\s*\{[^}]*min-height:\s*112px/s,
+  "desktop metric tiles must reserve a stable height",
+);
 
 const interactionHandler = app.match(
   /function handleCompanionInteraction\(zoneId\)\s*\{([\s\S]*?)\n\s*\}/,
