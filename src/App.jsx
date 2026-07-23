@@ -5,6 +5,7 @@ import { API_BASE_URL, apiRequest, streamChat } from "./api";
 import OmbreMemories from "./OmbreMemories";
 import CompanionStatus from "./CompanionStatus";
 import McpDeviceCenter, { DeviceActionReceipts } from "./McpDeviceCenter";
+import AiProviderCenter from "./AiProviderCenter";
 import {
   MessageAttachments,
   SelectedAttachmentStrip,
@@ -3476,10 +3477,10 @@ function App() {
             </div>
           </div>
 
-          <div className="settings-card">
-            <h3>唯一的活动接口</h3>
+          <div className="settings-card legacy-provider-card">
+            <h3>旧版单接口（兼容保留）</h3>
             <p className="card-hint">
-              以后换 Gemini、Claude、GPT 或中转站，只改这里，不改聊天页面。
+              这里继续保留，避免已有配置突然失效。新增或切换多个服务商时，请使用下方“多供应商 API 控制台”；启用默认接口后会真实覆盖这里的地址、模型与密钥。
             </p>
             <div className="settings-grid">
               <label>
@@ -3718,6 +3719,7 @@ function App() {
             </span>
           </div>
         </form>
+        <AiProviderCenter />
         <McpDeviceCenter />
       </section>
     );

@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "test": "npm run test:settings && npm run test:companion-interaction && npm run test:reply-suggestions && npm run test:voice && npm run test:chat-tools && npm run test:service-status && npm run test:diary && npm run test:mobile-layout && npm run test:ombre-mcp-ui && npm run test:mcp-device-center",
+    "test": "npm run test:settings && npm run test:companion-interaction && npm run test:reply-suggestions && npm run test:voice && npm run test:chat-tools && npm run test:service-status && npm run test:diary && npm run test:mobile-layout && npm run test:ombre-mcp-ui && npm run test:mcp-device-center && npm run test:ai-provider-center",
     "dev": "vite",
     "build": "vite build",
     "android:sync": "cap sync android",
@@ -19,6 +19,7 @@
     "test:mobile-layout": "node test/mobile-layout.test.js",
     "test:ombre-mcp-ui": "node test/ombre-mcp-ui.test.js",
     "test:mcp-device-center": "node test/mcp-device-center.test.js",
+    "test:ai-provider-center": "node test/ai-provider-center.test.js",
     "preview": "vite preview"
   },
   "engines": {
