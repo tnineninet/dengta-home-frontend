@@ -1981,6 +1981,64 @@ button:disabled {
   background: #9e8d93;
 }
 
+.ombre-mcp-strip {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 12px 0 14px;
+  padding: 11px 13px;
+  border: 1px solid #e2d7d9;
+  border-radius: 12px;
+  color: #6f5b63;
+  background: #fffaf9;
+}
+
+.ombre-mcp-dot {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: #b6a7ac;
+}
+
+.ombre-mcp-strip > div,
+.ombre-mcp-strip strong,
+.ombre-mcp-strip small {
+  display: block;
+  min-width: 0;
+}
+
+.ombre-mcp-strip strong {
+  font-size: 12px;
+}
+
+.ombre-mcp-strip small {
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+  color: #8f7c83;
+  line-height: 1.5;
+}
+
+.ombre-mcp-strip.connected {
+  border-color: #bcd9c8;
+  background: #f5fbf7;
+}
+
+.ombre-mcp-strip.connected .ombre-mcp-dot {
+  background: #4f956f;
+  box-shadow: 0 0 0 4px rgba(79, 149, 111, 0.12);
+}
+
+.ombre-mcp-strip.unavailable {
+  border-color: #dfb7b2;
+  background: #fff8f7;
+}
+
+.ombre-mcp-strip.unavailable .ombre-mcp-dot {
+  background: #bd6b62;
+}
+
 .ombre-status.connected > span { background: #4f956f; }
 .ombre-status.unavailable > span { background: #bd6b62; }
 

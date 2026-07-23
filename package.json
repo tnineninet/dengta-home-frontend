@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "test": "npm run test:settings && npm run test:companion-interaction && npm run test:voice && npm run test:chat-tools && npm run test:service-status && npm run test:diary && npm run test:mobile-layout",
+    "test": "npm run test:settings && npm run test:companion-interaction && npm run test:voice && npm run test:chat-tools && npm run test:service-status && npm run test:diary && npm run test:mobile-layout && npm run test:ombre-mcp-ui",
     "dev": "vite",
     "build": "vite build",
     "android:sync": "cap sync android",
@@ -16,6 +16,7 @@
     "test:service-status": "node test/service-status.test.js",
     "test:diary": "node test/diary.test.js",
     "test:mobile-layout": "node test/mobile-layout.test.js",
+    "test:ombre-mcp-ui": "node test/ombre-mcp-ui.test.js",
     "preview": "vite preview"
   },
   "engines": {

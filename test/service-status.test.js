@@ -15,6 +15,8 @@ const cards = buildServiceStatusCards({
       hervoice_proxy_configured: true,
       expressive_tts_configured: false,
       expressive_tts_provider: "none",
+      ombre_mcp_client: true,
+      ombre_mcp_configured: false,
     },
   },
   settings: {
@@ -32,6 +34,7 @@ assert.equal(cards.find((item) => item.id === "database").status, "online");
 assert.equal(cards.find((item) => item.id === "provider").status, "online");
 assert.equal(cards.find((item) => item.id === "groq").status, "online");
 assert.equal(cards.find((item) => item.id === "minimax").status, "pending");
+assert.equal(cards.find((item) => item.id === "ombre-mcp").status, "pending");
 
 const fixedNow = new Date("2026-07-23T00:00:00Z");
 assert.equal(describeGroqExpiry("", fixedNow).status, "unknown");

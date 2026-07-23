@@ -91,6 +91,25 @@ export function buildServiceStatusCards({
       SERVICE_LINKS.minimax,
       "查看 MiniMax 账单",
     ),
+    statusCard(
+      "ombre-mcp",
+      "Ombre MCP 记忆",
+      features.ombre_mcp_configured === true
+        ? "online"
+        : features.ombre_mcp_client === true
+          ? "pending"
+          : "checking",
+      features.ombre_mcp_configured === true
+        ? "服务器地址已配置"
+        : features.ombre_mcp_client === true
+          ? "客户端已就绪，等待服务器"
+          : "等待后端更新",
+      features.ombre_mcp_configured === true
+        ? "请到“记忆”页面查看真实握手结果和服务器工具目录。"
+        : "以后只需在后端填写 OMBRE_BRAIN_URL；令牌只保存在 Render，不会进入手机或网页。",
+      "",
+      "",
+    ),
   ];
 }
 

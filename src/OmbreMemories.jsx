@@ -34,6 +34,7 @@ function typeLabel(type) {
 
 export default function OmbreMemories() {
   const [connection, setConnection] = useState(null);
+  const [mcpConnection, setMcpConnection] = useState(null);
   const [items, setItems] = useState([]);
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
@@ -79,6 +80,16 @@ export default function OmbreMemories() {
       try {
         const config = await apiRequest("/api/ombre/config");
         if (cancelled) return;
+        const mcpStatus = await apiRequest("/api/ombre/mcp/status").catch(
+          (mcpError) => ({
+            ...(config.mcp || {}),
+            available: false,
+            message: mcpError.message,
+            tools: [],
+          }),
+        );
+        if (cancelled) return;
+        setMcpConnection({ ...(config.mcp || {}), ...mcpStatus });
         if (!config.configured) {
           setConnection({
             ...config,
@@ -150,6 +161,16 @@ export default function OmbreMemories() {
     : connection?.configured
       ? "unavailable"
       : "unconfigured";
+  const mcpStatusClass = mcpConnection?.available
+    ? "connected"
+    : mcpConnection?.configured
+      ? "unavailable"
+      : mcpConnection
+        ? "unconfigured"
+        : "checking";
+  const mcpTools = Array.isArray(mcpConnection?.tools)
+    ? mcpConnection.tools.slice(0, 6)
+    : [];
 
   return (
     <section className="ombre-memory-section" aria-labelledby="ombre-title">
@@ -165,6 +186,22 @@ export default function OmbreMemories() {
             : connection?.configured
               ? "连接不可用"
               : "未连接服务器"}
+        </div>
+      </div>
+
+      <div className={`ombre-mcp-strip ${mcpStatusClass}`}>
+        <span className="ombre-mcp-dot" aria-hidden="true" />
+        <div>
+          <strong>MCP 记忆协议</strong>
+          <small>
+            {mcpConnection?.available
+              ? `已握手${mcpTools.length ? ` · ${mcpTools.join(" / ")}` : ""}`
+              : mcpConnection?.configured
+                ? mcpConnection.message || "服务器已填写，但握手暂时失败"
+                : mcpConnection
+                  ? "客户端已准备，等待 OMBRE_BRAIN_URL"
+                  : "正在检查 MCP 客户端…"}
+          </small>
         </div>
       </div>
 
