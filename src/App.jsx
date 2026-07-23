@@ -4,6 +4,7 @@ import { LocalNotifications } from "@capacitor/local-notifications";
 import { API_BASE_URL, apiRequest, streamChat } from "./api";
 import OmbreMemories from "./OmbreMemories";
 import CompanionStatus from "./CompanionStatus";
+import McpDeviceCenter, { DeviceActionReceipts } from "./McpDeviceCenter";
 import {
   MessageAttachments,
   SelectedAttachmentStrip,
@@ -462,6 +463,8 @@ function App() {
   const [companionInteractionStats, setCompanionInteractionStats] = useState(
     readCompanionInteractionStats,
   );
+  const [companionStatusCollapseToken, setCompanionStatusCollapseToken] =
+    useState(0);
   const messageListRef = useRef(null);
   const messageEndRef = useRef(null);
   const shouldAutoScrollRef = useRef(true);
@@ -2532,6 +2535,7 @@ function App() {
 
   function handleCompanionInteraction(zoneId) {
     shouldAutoScrollRef.current = true;
+    setCompanionStatusCollapseToken((current) => current + 1);
     setActiveView("chat");
     return registerCompanionInteraction(zoneId);
   }
@@ -2584,10 +2588,13 @@ function App() {
                       </div>
                     )}
                   {item.role === "assistant" && (
-                    <ThinkingPanel
-                      key={`${item.id}-${item.isStreaming ? "streaming" : "complete"}`}
-                      message={item}
-                    />
+                    <>
+                      <ThinkingPanel
+                        key={`${item.id}-${item.isStreaming ? "streaming" : "complete"}`}
+                        message={item}
+                      />
+                      <DeviceActionReceipts actions={item.tool_calls?.mcp_actions} />
+                    </>
                   )}
                   {item.voiceAnalysis && (
                     <div className="voice-message-meta">
@@ -3542,6 +3549,7 @@ function App() {
             </button>
           </div>
         </form>
+        <McpDeviceCenter />
       </section>
     );
   }
@@ -3667,6 +3675,7 @@ function App() {
 
         {activeView === "chat" && (
           <CompanionStatus
+            key={`companion-status-${companionStatusCollapseToken}`}
             aiName={settings.ai_name || "小灯"}
             status={companionStatus}
             interactionStats={companionInteractionStats}

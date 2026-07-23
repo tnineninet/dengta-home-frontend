@@ -2227,6 +2227,313 @@ button:disabled {
   font-size: 19px;
 }
 
+.mcp-device-center {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+  border: 1px solid rgba(201, 174, 184, 0.52);
+  background: rgba(255, 253, 251, 0.86);
+}
+
+.mcp-device-heading,
+.mcp-connection-title,
+.mcp-list-heading,
+.mcp-form-actions,
+.mcp-card-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mcp-device-heading h3,
+.mcp-device-heading p,
+.mcp-connection-form h4,
+.mcp-list-heading h4,
+.mcp-tutorial h4 {
+  margin: 0;
+}
+
+.mcp-safety-note,
+.mcp-setup-required,
+.mcp-feedback,
+.mcp-discovery-result,
+.mcp-empty {
+  padding: 13px 14px;
+  border-radius: 12px;
+  line-height: 1.6;
+}
+
+.mcp-safety-note {
+  border: 1px solid #d7dfcf;
+  color: #53624c;
+  background: #f7faf4;
+}
+
+.mcp-setup-required {
+  border: 1px solid #ead0aa;
+  color: #74593a;
+  background: #fff8ee;
+}
+
+.mcp-safety-note p,
+.mcp-setup-required p {
+  margin: 5px 0 0;
+}
+
+.mcp-setup-required code,
+.mcp-tutorial code {
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: rgba(96, 75, 84, 0.08);
+  overflow-wrap: anywhere;
+}
+
+.mcp-unlock-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 11px;
+}
+
+.mcp-unlock-form label,
+.mcp-form-grid label {
+  display: grid;
+  gap: 6px;
+  color: #644e57;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.mcp-unlock-form small,
+.mcp-form-grid small,
+.mcp-enable-toggle small,
+.mcp-tool-list small,
+.mcp-connection-title small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.mcp-unlock-form input,
+.mcp-form-grid input,
+.mcp-form-grid select,
+.mcp-tool-list select {
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid #dfd1d5;
+  border-radius: 10px;
+  outline: 0;
+  color: var(--ink);
+  background: #fff;
+}
+
+.mcp-unlock-form input:focus,
+.mcp-form-grid input:focus,
+.mcp-form-grid select:focus,
+.mcp-tool-list select:focus {
+  border-color: #bd7890;
+  box-shadow: 0 0 0 3px rgba(189, 120, 144, 0.12);
+}
+
+.mcp-unlock-form button,
+.mcp-form-actions button,
+.mcp-card-actions button {
+  min-height: 42px;
+  padding: 8px 14px;
+  border-radius: 10px;
+}
+
+.mcp-feedback {
+  color: #664d58;
+  background: #f7edf1;
+}
+
+.mcp-connection-form,
+.mcp-connection-list {
+  display: grid;
+  gap: 13px;
+  padding-top: 4px;
+}
+
+.mcp-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.mcp-form-grid .full-width {
+  grid-column: 1 / -1;
+}
+
+.mcp-form-actions {
+  justify-content: flex-end;
+}
+
+.mcp-discovery-result {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #cdddcf;
+  color: #4d6452;
+  background: #f5faf6;
+  overflow-wrap: anywhere;
+}
+
+.mcp-list-heading {
+  align-items: center;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.mcp-list-heading span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.mcp-empty {
+  border: 1px dashed #ddcfd4;
+  color: var(--muted);
+  text-align: center;
+}
+
+.mcp-connection-card {
+  display: grid;
+  gap: 13px;
+  padding: 15px;
+  border: 1px solid #e0d4d7;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.mcp-connection-title > div {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.mcp-connection-title small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mcp-enable-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 11px;
+  border-radius: 10px;
+  background: #f8f2f4;
+}
+
+.mcp-enable-toggle input {
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+}
+
+.mcp-enable-toggle span,
+.mcp-tool-list label > span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.mcp-credential-update {
+  display: grid;
+  gap: 6px;
+  color: #644e57;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mcp-credential-update input {
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid #dfd1d5;
+  border-radius: 10px;
+  outline: 0;
+  background: #fff;
+}
+
+.mcp-tool-list {
+  display: grid;
+  gap: 8px;
+}
+
+.mcp-tool-list label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(190px, 0.45fr);
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid #f0e7ea;
+}
+
+.mcp-tool-list strong {
+  overflow-wrap: anywhere;
+}
+
+.mcp-card-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.danger-outline-button {
+  border: 1px solid #d69bab;
+  color: #9b5269;
+  background: #fff;
+}
+
+.mcp-tutorial {
+  border: 1px solid #dfd3d6;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.mcp-tutorial summary {
+  padding: 13px 14px;
+  color: #654f58;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.mcp-tutorial > div {
+  padding: 0 15px 15px;
+  border-top: 1px solid #efe7e9;
+  color: #65555b;
+  line-height: 1.7;
+}
+
+.mcp-tutorial h4 {
+  margin-top: 15px;
+}
+
+.mcp-tutorial ol,
+.mcp-tutorial p {
+  margin: 8px 0 0;
+}
+
+.device-action-receipts {
+  display: grid;
+  gap: 5px;
+  margin-top: 9px;
+  padding: 9px 10px;
+  border: 1px solid #cfddcf;
+  border-radius: 10px;
+  color: #506151;
+  background: #f5faf5;
+  font-size: 10px;
+}
+
+.device-action-receipts span.failed {
+  color: #9b5850;
+}
+
+.device-action-receipts small {
+  color: #7b8a7c;
+}
+
 .service-manager-card {
   display: grid;
   gap: 16px;
@@ -2844,6 +3151,10 @@ button:disabled {
     padding-bottom: var(--mobile-nav-reserved-height);
   }
 
+  .view-content {
+    margin-bottom: 18px;
+  }
+
   .topbar {
     padding: max(12px, env(safe-area-inset-top)) 14px 12px;
   }
@@ -3078,7 +3389,36 @@ button:disabled {
   .ombre-memory-list,
   .settings-grid,
   .service-status-grid,
-  .service-expiry-panel {
+  .service-expiry-panel,
+  .mcp-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .mcp-form-grid .full-width {
+    grid-column: auto;
+  }
+
+  .mcp-device-heading,
+  .mcp-unlock-form,
+  .mcp-connection-title,
+  .mcp-list-heading,
+  .mcp-tool-list label {
+    grid-template-columns: 1fr;
+  }
+
+  .mcp-device-heading,
+  .mcp-connection-title,
+  .mcp-list-heading {
+    display: grid;
+  }
+
+  .mcp-tool-list label {
+    align-items: stretch;
+  }
+
+  .mcp-form-actions,
+  .mcp-card-actions {
+    display: grid;
     grid-template-columns: 1fr;
   }
 
