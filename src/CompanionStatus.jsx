@@ -104,6 +104,12 @@ export default function CompanionStatus({
     panelRef.current?.scrollTo({ top: 0 });
 
     function closeFromOutside(event) {
+      if (
+        event.target instanceof Element &&
+        event.target.closest(".composer-wrap, .mobile-nav")
+      ) {
+        return;
+      }
       if (!rootRef.current?.contains(event.target)) {
         setExpanded(false);
       }

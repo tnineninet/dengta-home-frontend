@@ -34,7 +34,6 @@ const IMAGE_EXTENSION_TYPES = new Map([
 const AUDIO_EXTENSION_TYPES = new Map([
   ["webm", "audio/webm"],
   ["ogg", "audio/ogg"],
-  ["mp4", "audio/mp4"],
   ["m4a", "audio/mp4"],
   ["mp3", "audio/mpeg"],
   ["wav", "audio/wav"],
@@ -47,7 +46,6 @@ const AUDIO_EXTENSION_TYPES = new Map([
 const AUDIO_EXTENSION_ALLOWED_TYPES = new Map([
   ["webm", new Set(["audio/webm"])],
   ["ogg", new Set(["audio/ogg"])],
-  ["mp4", new Set(["audio/mp4"])],
   ["m4a", new Set(["audio/mp4", "audio/x-m4a"])],
   ["mp3", new Set(["audio/mpeg"])],
   ["wav", new Set(["audio/wav", "audio/x-wav"])],
@@ -55,6 +53,18 @@ const AUDIO_EXTENSION_ALLOWED_TYPES = new Map([
   ["flac", new Set(["audio/flac"])],
   ["3gp", new Set(["audio/3gpp"])],
   ["amr", new Set(["audio/amr"])],
+]);
+
+const VIDEO_EXTENSION_TYPES = new Map([
+  ["mp4", "video/mp4"],
+  ["mov", "video/quicktime"],
+  ["webm", "video/webm"],
+]);
+
+const VIDEO_EXTENSION_ALLOWED_TYPES = new Map([
+  ["mp4", new Set(["video/mp4"])],
+  ["mov", new Set(["video/quicktime"])],
+  ["webm", new Set(["video/webm"])],
 ]);
 
 const DOCUMENT_EXTENSION_TYPES = new Map([
@@ -103,6 +113,7 @@ export function normalizedAttachmentMimeType(fileLike = {}) {
   const extension = extensionOf(fileLike.name || fileLike.file_name);
   return (
     IMAGE_EXTENSION_TYPES.get(extension) ||
+    VIDEO_EXTENSION_TYPES.get(extension) ||
     AUDIO_EXTENSION_TYPES.get(extension) ||
     DOCUMENT_EXTENSION_TYPES.get(extension) ||
     reported
@@ -137,6 +148,11 @@ export function attachmentKind(fileLike = {}) {
   if (type.startsWith("audio/")) {
     return AUDIO_EXTENSION_ALLOWED_TYPES.get(extension)?.has(type)
       ? "audio"
+      : "unsupported";
+  }
+  if (type.startsWith("video/")) {
+    return VIDEO_EXTENSION_ALLOWED_TYPES.get(extension)?.has(type)
+      ? "video"
       : "unsupported";
   }
   if (
@@ -175,7 +191,7 @@ export function validateAttachmentFiles(existing = [], incoming = []) {
 
     if (attachmentKind(file) === "unsupported") {
       rejected.push(
-        `${cleanText(file?.name) || "未命名文件"}：暂不支持这种文件，只能选择图片、文档或音频`,
+        `${cleanText(file?.name) || "未命名文件"}：暂不支持这种文件，只能选择图片、视频、文档或音频`,
       );
       continue;
     }
@@ -210,7 +226,7 @@ export function validateAttachmentFiles(existing = [], incoming = []) {
 export function createAttachmentDraft(file, urlApi = globalThis.URL) {
   const kind = attachmentKind(file);
   const previewUrl =
-    (kind === "image" || kind === "audio") &&
+    (kind === "image" || kind === "audio" || kind === "video") &&
     typeof urlApi?.createObjectURL === "function"
       ? urlApi.createObjectURL(file)
       : "";

@@ -14,8 +14,10 @@ assert.match(component, /允许 AI 自动执行/);
 assert.match(component, /Home Assistant/);
 assert.match(component, /\/api\/mcp/);
 assert.match(component, /stdio MCP/);
-assert.match(component, /MCP_ENCRYPTION_KEY/);
+assert.match(component, /只有选择 Bearer 或 API Key 时才需要服务器加密密钥/);
 assert.match(component, /添加 MCP 时不需要再输入管理口令/);
+assert.match(component, /auth_type: "none"/);
+assert.match(component, /不需要授权（默认）/);
 assert.match(component, /mcpRequest\("\/api\/mcp\/connections\/manage"\)/);
 assert.doesNotMatch(component, /X-MCP-Admin-Secret/);
 assert.doesNotMatch(component, /isValidAdminSecret/);
@@ -27,7 +29,8 @@ assert.doesNotMatch(
   /key=\{`companion-status-\$\{companionStatusCollapseToken\}`\}/,
   "companion status must not be remounted after an interaction",
 );
-assert.match(css, /\.view-content\s*\{[^}]*margin-bottom:\s*18px/s);
+assert.match(css, /\.view-content\s*\{[^}]*overflow:\s*hidden/s);
+assert.match(css, /@media[\s\S]*?\.view-content\s*\{[^}]*margin-bottom:\s*0/s);
 assert.match(css, /\.mcp-tool-list/);
 
 console.log("MCP device center UI tests passed");

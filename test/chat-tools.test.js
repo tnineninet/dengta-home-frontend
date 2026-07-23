@@ -180,10 +180,11 @@ function fakeFile(name, type, size) {
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       200,
     ),
-    fakeFile("录音.webm", "audio/webm", 300),
+    fakeFile("片段.mp4", "video/mp4", 300),
   ]);
   assert.equal(result.accepted.length, 4);
   assert.equal(result.rejected.length, 0);
+  assert.equal(attachmentKind(result.accepted[3]), "video");
 }
 
 {
@@ -257,11 +258,19 @@ function fakeFile(name, type, size) {
     urlApi,
   );
   assert.equal(audioDraft.previewUrl, "blob:preview");
+  const videoDraft = createAttachmentDraft(
+    fakeFile("片段.mp4", "video/mp4", 36),
+    urlApi,
+  );
+  assert.equal(videoDraft.previewUrl, "blob:preview");
   revokeAttachmentDraft(draft, urlApi);
   revokeAttachmentDraft(audioDraft, urlApi);
+  revokeAttachmentDraft(videoDraft, urlApi);
   assert.deepEqual(calls, [
     "create",
     "create",
+    "create",
+    "revoke:blob:preview",
     "revoke:blob:preview",
     "revoke:blob:preview",
   ]);

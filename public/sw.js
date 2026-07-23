@@ -1,7 +1,6 @@
-const CACHE_NAME = "dengta-home-v9";
+const CACHE_NAME = "dengta-home-v10";
 const APP_SHELL = [
   "/",
-  "/secret-crush-diary.html",
   "/manifest.webmanifest",
   "/app-icon.svg",
   "/app-icon-192.png",

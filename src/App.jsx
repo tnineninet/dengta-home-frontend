@@ -6,6 +6,7 @@ import OmbreMemories from "./OmbreMemories";
 import CompanionStatus from "./CompanionStatus";
 import McpDeviceCenter, { DeviceActionReceipts } from "./McpDeviceCenter";
 import AiProviderCenter from "./AiProviderCenter";
+import CompanionDiary from "./CompanionDiary";
 import {
   MessageAttachments,
   SelectedAttachmentStrip,
@@ -91,6 +92,7 @@ import {
 const PUSH_CURSOR_KEY = "dengta_push_cursor";
 const PUSH_SEEN_IDS_KEY = "dengta_push_seen_ids";
 const PUSH_POLL_INTERVAL_MS = 2 * 60 * 1000;
+const MOMENTS_POLL_INTERVAL_MS = 15 * 1000;
 const EMOTION_UNDERSTANDING_KEY = "dengta_emotion_understanding_enabled";
 const COMPANION_INTERACTION_DEBOUNCE_MS = 1100;
 const COMPANION_INTERACTION_RATE_LIMIT = 6;
@@ -207,6 +209,17 @@ function formatDateTime(value) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function formatMomentReplyStatus(item, aiName) {
+  if (item?.reply_status !== "pending") return "";
+  const dueAt = Date.parse(item.reply_due_at);
+  if (!Number.isFinite(dueAt) || dueAt <= Date.now()) {
+    return `${aiName} 正在看这条动态…`;
+  }
+  const seconds = Math.max(1, Math.ceil((dueAt - Date.now()) / 1000));
+  if (seconds < 60) return `${aiName} 正在过来 · 约 ${seconds} 秒`;
+  return `${aiName} 正在过来 · 约 ${Math.ceil(seconds / 60)} 分钟`;
 }
 
 function readSeenPushIds() {
@@ -446,6 +459,7 @@ function App() {
   const [voiceError, setVoiceError] = useState("");
   const [voiceTapToSend, setVoiceTapToSend] = useState(false);
   const [lastVoiceAnalysis, setLastVoiceAnalysis] = useState(null);
+  const [isComposerMenuOpen, setIsComposerMenuOpen] = useState(false);
   const [voicePlaybackMode, setVoicePlaybackMode] = useState(
     readVoicePlaybackMode,
   );
@@ -472,6 +486,8 @@ function App() {
   const messageInputRef = useRef(null);
   const shouldAutoScrollRef = useRef(true);
   const chatFileInputRef = useRef(null);
+  const chatImageInputRef = useRef(null);
+  const chatVideoInputRef = useRef(null);
   const chatAttachmentsRef = useRef([]);
   const streamThinkingRef = useRef({
     statuses: [],
@@ -943,8 +959,25 @@ function App() {
     }
 
     if (activeView === "moments") {
-      loadMoments();
+      void loadMoments();
+      const refreshTimer = window.setInterval(() => {
+        if (document.visibilityState === "visible") {
+          void loadMoments({ silent: true });
+        }
+      }, MOMENTS_POLL_INTERVAL_MS);
+      const refreshWhenVisible = () => {
+        if (document.visibilityState === "visible") {
+          void loadMoments({ silent: true });
+        }
+      };
+      document.addEventListener("visibilitychange", refreshWhenVisible);
+      return () => {
+        window.clearInterval(refreshTimer);
+        document.removeEventListener("visibilitychange", refreshWhenVisible);
+      };
     }
+
+    return undefined;
   }, [activeView]);
 
   useEffect(() => {
@@ -1519,6 +1552,7 @@ function App() {
 
   async function createSession() {
     abortChatRequest(chatRequestRef, "session-change");
+    setIsComposerMenuOpen(false);
     try {
       const data = await apiRequest("/sessions", {
         method: "POST",
@@ -1540,6 +1574,7 @@ function App() {
     if (sessionId !== activeSessionIdRef.current) {
       abortChatRequest(chatRequestRef, "session-change");
     }
+    setIsComposerMenuOpen(false);
     activeSessionIdRef.current = sessionId;
     setActiveSessionId(sessionId);
     setActiveView("chat");
@@ -2504,13 +2539,13 @@ function App() {
     );
   }
 
-  async function loadMoments() {
+  async function loadMoments({ silent = false } = {}) {
     try {
       const data = await apiRequest("/moments");
       setMomentsAvailable(data.available);
       setMoments(data.entries || []);
     } catch (error) {
-      setNotice(error.message);
+      if (!silent) setNotice(error.message);
     }
   }
 
@@ -2534,6 +2569,9 @@ function App() {
       });
       setMomentDraft("");
       setMomentImages([]);
+      setNotice(
+        `${settings.ai_name || "小灯"} 已经收到这条动态，稍后会按当下的记忆和人设自然回应。`,
+      );
       await loadMoments();
     } catch (error) {
       setNotice(error.message);
@@ -2624,6 +2662,7 @@ function App() {
     if (view === "chat" && activeView !== "chat") {
       shouldAutoScrollRef.current = true;
     }
+    setIsComposerMenuOpen(false);
     setActiveView(view);
     setIsSidebarOpen(false);
   }
@@ -2722,6 +2761,14 @@ function App() {
         </section>
 
         <div className="composer-wrap">
+          {isComposerMenuOpen && (
+            <button
+              type="button"
+              className="composer-tool-scrim"
+              aria-label="关闭更多功能"
+              onClick={() => setIsComposerMenuOpen(false)}
+            />
+          )}
           {replySuggestions.length > 0 && (
             <div className="reply-suggestions" aria-label="可以这样回复">
               {replySuggestions.map((suggestion, index) => (
@@ -2788,28 +2835,52 @@ function App() {
                 className="visually-hidden-file-input"
                 type="file"
                 multiple
-                accept={
-                  voiceServiceAvailable
-                    ? "image/*,audio/*,.pdf,.docx,.txt,.md,.csv,.json,.xml"
-                    : "image/*,.pdf,.docx,.txt,.md,.csv,.json,.xml"
-                }
-                onChange={selectChatAttachments}
+                accept=".pdf,.docx,.txt,.md,.csv,.json,.xml"
+                onChange={(event) => {
+                  setIsComposerMenuOpen(false);
+                  void selectChatAttachments(event);
+                }}
+                tabIndex="-1"
+              />
+              <input
+                ref={chatImageInputRef}
+                className="visually-hidden-file-input"
+                type="file"
+                multiple
+                accept="image/*"
+                onChange={(event) => {
+                  setIsComposerMenuOpen(false);
+                  void selectChatAttachments(event);
+                }}
+                tabIndex="-1"
+              />
+              <input
+                ref={chatVideoInputRef}
+                className="visually-hidden-file-input"
+                type="file"
+                multiple
+                accept="video/mp4,video/webm,video/quicktime"
+                onChange={(event) => {
+                  setIsComposerMenuOpen(false);
+                  void selectChatAttachments(event);
+                }}
                 tabIndex="-1"
               />
               <button
-                className="chat-attach-button"
+                className={`chat-attach-button${isComposerMenuOpen ? " active" : ""}`}
                 type="button"
-                title="添加图片、文件或语音"
-                aria-label="添加图片、文件或语音"
+                title="更多功能"
+                aria-label="打开更多功能"
+                aria-expanded={isComposerMenuOpen}
                 disabled={
                   chatAttachments.length >= 4 ||
                   isSending ||
                   isCompanionResponding ||
                   isVoiceInputBusy
                 }
-                onClick={() => chatFileInputRef.current?.click()}
+                onClick={() => setIsComposerMenuOpen((current) => !current)}
               >
-                ＋
+                +
               </button>
               <label className="chat-model-picker">
                 <span>模型</span>
@@ -2855,85 +2926,119 @@ function App() {
               </button>
             </div>
           </div>
+          {isComposerMenuOpen && (
+            <section className="composer-tool-menu" aria-label="更多输入功能">
+              <div className="composer-tool-grid">
+                <button
+                  type="button"
+                  onClick={() => chatImageInputRef.current?.click()}
+                >
+                  <span aria-hidden="true">▧</span>
+                  <strong>图片</strong>
+                  <small>相册或拍照</small>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => chatVideoInputRef.current?.click()}
+                >
+                  <span aria-hidden="true">▶</span>
+                  <strong>视频</strong>
+                  <small>MP4 / WebM / MOV</small>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => chatFileInputRef.current?.click()}
+                >
+                  <span aria-hidden="true">▤</span>
+                  <strong>文件</strong>
+                  <small>PDF、文档与文本</small>
+                </button>
+              </div>
+              <div className={`voice-controls voice-${voiceState}`}>
+                <button
+                  className="voice-hold-button"
+                  type="button"
+                  aria-label={
+                    voiceServiceAvailable
+                      ? voiceTapToSend
+                        ? "录音已开始，点击发送"
+                        : "按住说话，松开发送"
+                      : "语音服务暂不可用"
+                  }
+                  aria-pressed={voiceState === VOICE_STATES.recording}
+                  disabled={
+                    !voiceServiceAvailable ||
+                    isSending ||
+                    isCompanionResponding ||
+                    [VOICE_STATES.uploading, VOICE_STATES.thinking].includes(
+                      voiceState,
+                    )
+                  }
+                  onPointerDown={beginVoiceCapture}
+                  onPointerUp={endVoiceCapture}
+                  onPointerCancel={endVoiceCapture}
+                  onContextMenu={(event) => event.preventDefault()}
+                >
+                  <span className="voice-mic-icon" aria-hidden="true">
+                    {voiceState === VOICE_STATES.recording ? "●" : "🎙"}
+                  </span>
+                  <span>
+                    {!voiceServiceAvailable
+                      ? "语音暂不可用"
+                      : voiceState === VOICE_STATES.recording
+                        ? voiceTapToSend
+                          ? `点击发送 · ${(voiceElapsedMs / 1000).toFixed(1)} 秒`
+                          : `松开发送 · ${(voiceElapsedMs / 1000).toFixed(1)} 秒`
+                        : VOICE_STATE_LABELS[voiceState] || "按住说话"}
+                  </span>
+                </button>
+                {voiceState === VOICE_STATES.speaking && (
+                  <button
+                    className="voice-stop-button"
+                    type="button"
+                    onClick={() => void stopVoicePlayback()}
+                  >
+                    停止朗读
+                  </button>
+                )}
+                <span
+                  className="voice-status-text"
+                  role="status"
+                  aria-live="polite"
+                >
+                  {voiceServiceAvailable
+                    ? voiceTapToSend
+                      ? "说完后再次点击即可发送"
+                      : "最长 60 秒，松开后发送"
+                    : voiceService.message}
+                </span>
+              </div>
+              {voiceError && (
+                <div className="voice-inline-error" role="alert">
+                  {voiceError}
+                </div>
+              )}
+              {lastVoiceAnalysis && (
+                <div className="voice-analysis-card" role="status">
+                  <div>
+                    <strong>刚才的语音转写</strong>
+                    <span>
+                      {lastVoiceAnalysis.emotion} ·{" "}
+                      {formatVoiceConfidence(lastVoiceAnalysis.confidence)}
+                    </span>
+                  </div>
+                  <p>{lastVoiceAnalysis.text}</p>
+                  <small>
+                    {lastVoiceAnalysis.hint ||
+                      "情绪结果只是声音与文字线索，不是心理诊断；你的自述永远优先。"}
+                  </small>
+                </div>
+              )}
+            </section>
+          )}
           {modelsLoadMessage && (
             <div className="chat-model-note" role="status">
               {modelsLoadMessage}
-            </div>
-          )}
-          <div className={`voice-controls voice-${voiceState}`}>
-            <button
-              className="voice-hold-button"
-              type="button"
-              aria-label={
-                voiceServiceAvailable
-                  ? voiceTapToSend
-                    ? "录音已开始，点击发送"
-                    : "按住说话，松开发送"
-                  : "语音服务暂不可用"
-              }
-              aria-pressed={voiceState === VOICE_STATES.recording}
-              disabled={
-                !voiceServiceAvailable ||
-                isSending ||
-                isCompanionResponding ||
-                [VOICE_STATES.uploading, VOICE_STATES.thinking].includes(
-                  voiceState,
-                )
-              }
-              onPointerDown={beginVoiceCapture}
-              onPointerUp={endVoiceCapture}
-              onPointerCancel={endVoiceCapture}
-              onContextMenu={(event) => event.preventDefault()}
-            >
-              <span className="voice-mic-icon" aria-hidden="true">
-                {voiceState === VOICE_STATES.recording ? "●" : "🎙"}
-              </span>
-              <span>
-                {!voiceServiceAvailable
-                  ? "语音暂不可用"
-                  : voiceState === VOICE_STATES.recording
-                  ? voiceTapToSend
-                    ? `点击发送 · ${(voiceElapsedMs / 1000).toFixed(1)} 秒`
-                    : `松开发送 · ${(voiceElapsedMs / 1000).toFixed(1)} 秒`
-                  : VOICE_STATE_LABELS[voiceState] || "按住说话"}
-              </span>
-            </button>
-            {voiceState === VOICE_STATES.speaking && (
-              <button
-                className="voice-stop-button"
-                type="button"
-                onClick={() => void stopVoicePlayback()}
-              >
-                停止朗读
-              </button>
-            )}
-            <span className="voice-status-text" role="status" aria-live="polite">
-              {voiceServiceAvailable
-                ? voiceTapToSend
-                  ? "首次授权已完成；说完后点击上方按钮发送"
-                  : "最长 60 秒 · 上传后服务端临时文件默认删除"
-                : voiceService.message}
-            </span>
-          </div>
-          {voiceError && (
-            <div className="voice-inline-error" role="alert">
-              {voiceError}
-            </div>
-          )}
-          {lastVoiceAnalysis && (
-            <div className="voice-analysis-card" role="status">
-              <div>
-                <strong>刚才的语音转写</strong>
-                <span>
-                  {lastVoiceAnalysis.emotion} ·{" "}
-                  {formatVoiceConfidence(lastVoiceAnalysis.confidence)}
-                </span>
-              </div>
-              <p>{lastVoiceAnalysis.text}</p>
-              <small>
-                {lastVoiceAnalysis.hint ||
-                  "情绪结果只是声音和文字线索，不是心理诊断；你的自述永远优先。"}
-              </small>
             </div>
           )}
           <small>
@@ -2964,8 +3069,25 @@ function App() {
 
     return (
       <section className="feature-page moments-page">
+        <header className="moments-journal-hero">
+          <img
+            src="/assets/moments-paper-banner.webp"
+            alt=""
+            aria-hidden="true"
+          />
+          <div>
+            <span>Moments · little things we keep</span>
+            <h2>我们悄悄留下的日常</h2>
+            <p>
+              这里会记住真实发生过的对话、靠近和回应。AI
+              伴侣也可以按自己的感受发布动态。
+            </p>
+          </div>
+        </header>
         <form className="moment-composer" onSubmit={postMoment}>
-          <div className="avatar">我</div>
+          <div className="moment-avatar user-avatar" aria-hidden="true">
+            我
+          </div>
           <div className="moment-compose-main">
             <textarea
               value={momentDraft}
@@ -3002,7 +3124,7 @@ function App() {
                 />
               </label>
               <span>{momentImages.length}/4</span>
-              <button type="button" onClick={loadMoments}>
+              <button type="button" onClick={() => void loadMoments()}>
                 刷新动态
               </button>
             </div>
@@ -3025,9 +3147,17 @@ function App() {
             moments.map((item) => (
               <article className="moment-card" key={item.id}>
                 <header>
-                  <div className="avatar">
-                    {item.author === "assistant" ? "灯" : "我"}
-                  </div>
+                  {item.author === "assistant" ? (
+                    <img
+                      className="moment-avatar"
+                      src="/assets/xiaodeng-handdrawn-avatar.webp"
+                      alt=""
+                    />
+                  ) : (
+                    <div className="moment-avatar user-avatar" aria-hidden="true">
+                      我
+                    </div>
+                  )}
                   <div>
                     <strong>
                       {item.author === "assistant"
@@ -3068,10 +3198,11 @@ function App() {
                       {item.user_liked ? "♥ 已喜欢" : "♡ 喜欢"}
                     </button>
                   ) : (
-                    <span>
-                      {item.reply_status === "pending"
-                        ? `等待 ${settings.ai_name || "小灯"} 路过…`
-                        : ""}
+                    <span className="moment-reply-status">
+                      {formatMomentReplyStatus(
+                        item,
+                        settings.ai_name || "小灯",
+                      )}
                     </span>
                   )}
                 </div>
@@ -3171,10 +3302,9 @@ function App() {
 
   function renderDiary() {
     return (
-      <iframe
-        className="diary-frame"
-        src="/secret-crush-diary.html"
-        title="暗恋日记"
+      <CompanionDiary
+        aiName={settings.ai_name || "小灯"}
+        onNotice={setNotice}
       />
     );
   }
@@ -3839,8 +3969,14 @@ function App() {
                 : "DengTa home"}
             </p>
           </div>
-          <button className="new-chat-top" onClick={createSession}>
-            ＋ 新对话
+          <button
+            className="new-chat-top"
+            aria-label="新对话"
+            title="新对话"
+            onClick={createSession}
+          >
+            <span aria-hidden="true">＋</span>
+            <span className="new-chat-label">新对话</span>
           </button>
         </header>
 

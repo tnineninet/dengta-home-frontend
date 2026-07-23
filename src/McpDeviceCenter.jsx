@@ -4,7 +4,7 @@ import { API_BASE_URL } from "./api";
 const EMPTY_DRAFT = {
   name: "",
   endpoint: "",
-  auth_type: "bearer",
+  auth_type: "none",
   auth_header: "X-API-Key",
   credential: "",
   protocol_version: "2025-03-26",
@@ -200,8 +200,8 @@ export default function McpDeviceCenter() {
 
       {!status.checking && !status.configured && (
         <div className="mcp-setup-required">
-          <strong>还差一个服务器加密密钥</strong>
-          <p>在 Render 后端添加 <code>MCP_ENCRYPTION_KEY</code>（至少 32 位）并重新部署。它只用于加密保存设备 Token；添加 MCP 时不需要再输入管理口令。</p>
+          <strong>无需授权的 MCP 可以直接添加</strong>
+          <p>只有选择 Bearer 或 API Key 时才需要服务器加密密钥；Token 绝不会明文保存。添加 MCP 时不需要再输入管理口令。</p>
         </div>
       )}
 
@@ -233,9 +233,9 @@ export default function McpDeviceCenter() {
               <label>
                 授权方式
                 <select value={draft.auth_type} onChange={(event) => updateDraft("auth_type", event.target.value)}>
+                  <option value="none">不需要授权（默认）</option>
                   <option value="bearer">Bearer 访问令牌</option>
                   <option value="custom_header">自定义请求头</option>
-                  <option value="none">不需要授权</option>
                 </select>
               </label>
               {draft.auth_type === "custom_header" && (

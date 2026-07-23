@@ -11,6 +11,7 @@ import {
 function attachmentIcon(kind) {
   if (kind === "image") return "图";
   if (kind === "audio") return "声";
+  if (kind === "video") return "影";
   return "文";
 }
 
@@ -21,7 +22,8 @@ export function SelectedAttachmentStrip({ items, onRemove }) {
     <div className="selected-attachment-strip" aria-label="待发送附件">
       {items.map((item) => (
         <div className="selected-attachment" key={item.id}>
-          {item.kind === "image" && item.previewUrl ? (
+          {(item.kind === "image" || item.kind === "video") &&
+          item.previewUrl ? (
             <img src={item.previewUrl} alt="" />
           ) : (
             <span className={`attachment-kind ${item.kind}`} aria-hidden="true">
@@ -79,6 +81,19 @@ export function MessageAttachments({ value, apiBaseUrl, onPreview }) {
               src={item.url}
               aria-label={`播放语音 ${item.name}`}
             />
+          </div>
+        ) : item.kind === "video" && item.url ? (
+          <div className="message-video-attachment" key={item.id}>
+            <video
+              controls
+              preload="metadata"
+              src={item.url}
+              aria-label={`播放视频 ${item.name}`}
+            />
+            <span className="attachment-copy">
+              <strong>{item.name}</strong>
+              <small>{formatAttachmentSize(item.size)}</small>
+            </span>
           </div>
         ) : (
           <a

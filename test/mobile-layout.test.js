@@ -44,14 +44,29 @@ assert.match(
   "status panel must close when the user clicks outside it",
 );
 assert.match(
+  status,
+  /closest\("\.composer-wrap, \.mobile-nav"\)/,
+  "using the composer or mobile navigation must not collapse the status panel",
+);
+assert.match(
   css,
   /\.status-panel\s*\{[^}]*max-height:[^}]*overflow-y:\s*auto/s,
   "expanded status content must use an independent scroll container",
 );
 assert.match(
   css,
-  /@media \(max-width: 820px\)[\s\S]*?\.companion-status\.expanded\s*\{[^}]*flex-shrink:\s*1[^}]*\}[\s\S]*?\.view-chat \.view-content\s*\{[^}]*min-height:\s*min-content[^}]*flex-shrink:\s*0/s,
-  "mobile status must yield height to the complete chat composer above navigation",
+  /@media \(max-width: 820px\)[\s\S]*?\.view-chat \.view-content\s*\{[^}]*min-height:\s*0[^}]*flex:\s*1 1 auto/s,
+  "mobile chat content must remain a shrinkable region above navigation",
+);
+assert.doesNotMatch(
+  css,
+  /\.main-panel\.view-chat:has\(\.companion-status\.expanded\) \.message-list\s*\{[^}]*height:\s*0/s,
+  "expanded status must not collapse the message scroller to zero height",
+);
+assert.match(
+  css,
+  /\.view-chat \.view-content\s*\{[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\)\s+auto/s,
+  "chat must reserve an independent row for the composer",
 );
 assert.match(
   status,
@@ -78,6 +93,11 @@ assert.match(
   /\.status-vital-tile\s*\{[^}]*min-height:\s*112px/s,
   "desktop metric tiles must reserve a stable height",
 );
+assert.match(
+  css,
+  /\.status-pulse-bg\s*\{[^}]*opacity:\s*0\.68/s,
+  "the heartbeat trace must remain visible on mobile displays",
+);
 
 const interactionHandler = app.match(
   /function handleCompanionInteraction\(zoneId\)\s*\{([\s\S]*?)\n\s*\}/,
@@ -97,6 +117,31 @@ assert.match(
   app,
   /onInteract=\{handleCompanionInteraction\}/,
   "the status panel must use the chat-aware interaction handler",
+);
+assert.match(
+  app,
+  /className="composer-tool-menu"/,
+  "voice and attachment actions must live in the expandable composer menu",
+);
+assert.match(
+  app,
+  /function changeView\(view\)[\s\S]*?setIsComposerMenuOpen\(false\)[\s\S]*?setActiveView\(view\)/,
+  "the composer tool menu must close when navigating away from chat",
+);
+assert.match(
+  css,
+  /\.new-chat-label\s*\{[^}]*display:\s*none/s,
+  "the compact mobile new-chat button must hide its text label",
+);
+assert.match(
+  app,
+  /accept="video\/mp4,video\/webm,video\/quicktime"/,
+  "the composer menu must provide a dedicated video picker",
+);
+assert.equal(
+  (app.match(/className="voice-hold-button"/g) || []).length,
+  1,
+  "the hold-to-talk control must not remain duplicated below the composer",
 );
 assert.doesNotMatch(
   app,
