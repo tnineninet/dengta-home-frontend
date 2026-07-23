@@ -10,16 +10,8 @@ const EMPTY_DRAFT = {
   protocol_version: "2025-03-26",
 };
 
-function isValidAdminSecret(value) {
-  const normalized = String(value || "").trim();
-  return normalized.length >= 24
-    && normalized.length <= 256
-    && /^[\x21-\x7e]+$/.test(normalized);
-}
-
-async function mcpRequest(path, { adminSecret = "", method = "GET", body } = {}) {
+async function mcpRequest(path, { method = "GET", body } = {}) {
   const headers = { Accept: "application/json" };
-  if (adminSecret) headers["X-MCP-Admin-Secret"] = String(adminSecret).trim();
   if (body !== undefined) headers["Content-Type"] = "application/json";
   let response;
   try {
@@ -57,9 +49,8 @@ export function DeviceActionReceipts({ actions }) {
 
 export default function McpDeviceCenter() {
   const [status, setStatus] = useState({ checking: true });
-  const [adminSecret, setAdminSecret] = useState("");
   const [connections, setConnections] = useState([]);
-  const [unlocked, setUnlocked] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const [draft, setDraft] = useState(EMPTY_DRAFT);
   const [discovery, setDiscovery] = useState(null);
   const [busy, setBusy] = useState("");
@@ -69,6 +60,10 @@ export default function McpDeviceCenter() {
     mcpRequest("/api/mcp/connections/status")
       .then((data) => setStatus({ ...data, checking: false }))
       .catch((error) => setStatus({ checking: false, available: false, message: error.message }));
+    mcpRequest("/api/mcp/connections/manage")
+      .then((data) => setConnections(data.connections || []))
+      .catch((error) => setFeedback(error.message))
+      .finally(() => setLoaded(true));
   }, []);
 
   const enabledTools = useMemo(
@@ -84,37 +79,11 @@ export default function McpDeviceCenter() {
     setDiscovery(null);
   }
 
-  async function unlock(event) {
-    event.preventDefault();
-    const normalizedAdminSecret = adminSecret.trim();
-    if (!isValidAdminSecret(normalizedAdminSecret)) {
-      setUnlocked(false);
-      setFeedback("管理口令格式不正确：请粘贴 Render 中至少 24 位的英文、数字或符号口令，不要输入中文说明。");
-      return;
-    }
-    setBusy("unlock");
-    setFeedback("");
-    try {
-      const data = await mcpRequest("/api/mcp/connections/manage", {
-        adminSecret: normalizedAdminSecret,
-      });
-      setConnections(data.connections || []);
-      setUnlocked(true);
-      setFeedback("设备管理已在本次页面中解锁；口令不会保存到手机本地。 ");
-    } catch (error) {
-      setUnlocked(false);
-      setFeedback(error.message);
-    } finally {
-      setBusy("");
-    }
-  }
-
   async function discover() {
     setBusy("discover");
     setFeedback("");
     try {
       const data = await mcpRequest("/api/mcp/connections/manage/discover", {
-        adminSecret,
         method: "POST",
         body: draft,
       });
@@ -134,7 +103,6 @@ export default function McpDeviceCenter() {
     setFeedback("");
     try {
       const data = await mcpRequest("/api/mcp/connections/manage", {
-        adminSecret,
         method: "POST",
         body: draft,
       });
@@ -158,7 +126,6 @@ export default function McpDeviceCenter() {
     setFeedback("");
     try {
       const data = await mcpRequest(`/api/mcp/connections/manage/${connection.id}`, {
-        adminSecret,
         method: "PUT",
         body: {
           name: connection.name,
@@ -184,7 +151,6 @@ export default function McpDeviceCenter() {
     setFeedback("");
     try {
       const data = await mcpRequest(`/api/mcp/connections/manage/${connection.id}/test`, {
-        adminSecret,
         method: "POST",
       });
       editConnection(connection.id, () => data.connection);
@@ -202,7 +168,6 @@ export default function McpDeviceCenter() {
     setFeedback("");
     try {
       await mcpRequest(`/api/mcp/connections/manage/${connection.id}`, {
-        adminSecret,
         method: "DELETE",
       });
       setConnections((current) => current.filter((item) => item.id !== connection.id));
@@ -235,31 +200,16 @@ export default function McpDeviceCenter() {
 
       {!status.checking && !status.configured && (
         <div className="mcp-setup-required">
-          <strong>还差一次服务器初始化</strong>
-          <p>在 Render 后端添加 <code>MCP_ADMIN_SECRET</code>（至少 24 位）和 <code>MCP_ENCRYPTION_KEY</code>（至少 32 位），再重新部署。它们只保护设备配置，不会给整个 App 增加登录页面。</p>
+          <strong>还差一个服务器加密密钥</strong>
+          <p>在 Render 后端添加 <code>MCP_ENCRYPTION_KEY</code>（至少 32 位）并重新部署。它只用于加密保存设备 Token；添加 MCP 时不需要再输入管理口令。</p>
         </div>
       )}
 
-      <form className="mcp-unlock-form" onSubmit={unlock}>
-        <label>
-          设备管理口令
-          <input
-            type="password"
-            autoComplete="off"
-            value={adminSecret}
-            onChange={(event) => setAdminSecret(event.target.value)}
-            placeholder="与 Render 的 MCP_ADMIN_SECRET 相同"
-          />
-          <small>只保存在当前打开的页面内；刷新或退出后需要重输。</small>
-        </label>
-        <button className="secondary-button" disabled={busy === "unlock" || !adminSecret.trim()}>
-          {busy === "unlock" ? "检查中" : unlocked ? "重新读取" : "打开设备管理"}
-        </button>
-      </form>
-
       {feedback && <div className="mcp-feedback" role="status">{feedback}</div>}
 
-      {unlocked && (
+      {!loaded ? (
+        <div className="mcp-empty">正在读取 MCP 连接…</div>
+      ) : (
         <>
           <form className="mcp-connection-form" onSubmit={createConnection}>
             <h4>添加一个 MCP 连接</h4>
