@@ -10,9 +10,16 @@ const EMPTY_DRAFT = {
   protocol_version: "2025-03-26",
 };
 
+function isValidAdminSecret(value) {
+  const normalized = String(value || "").trim();
+  return normalized.length >= 24
+    && normalized.length <= 256
+    && /^[\x21-\x7e]+$/.test(normalized);
+}
+
 async function mcpRequest(path, { adminSecret = "", method = "GET", body } = {}) {
   const headers = { Accept: "application/json" };
-  if (adminSecret) headers["X-MCP-Admin-Secret"] = adminSecret;
+  if (adminSecret) headers["X-MCP-Admin-Secret"] = String(adminSecret).trim();
   if (body !== undefined) headers["Content-Type"] = "application/json";
   let response;
   try {
@@ -79,10 +86,18 @@ export default function McpDeviceCenter() {
 
   async function unlock(event) {
     event.preventDefault();
+    const normalizedAdminSecret = adminSecret.trim();
+    if (!isValidAdminSecret(normalizedAdminSecret)) {
+      setUnlocked(false);
+      setFeedback("管理口令格式不正确：请粘贴 Render 中至少 24 位的英文、数字或符号口令，不要输入中文说明。");
+      return;
+    }
     setBusy("unlock");
     setFeedback("");
     try {
-      const data = await mcpRequest("/api/mcp/connections/manage", { adminSecret });
+      const data = await mcpRequest("/api/mcp/connections/manage", {
+        adminSecret: normalizedAdminSecret,
+      });
       setConnections(data.connections || []);
       setUnlocked(true);
       setFeedback("设备管理已在本次页面中解锁；口令不会保存到手机本地。 ");
