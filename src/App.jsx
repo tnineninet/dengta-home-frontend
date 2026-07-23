@@ -58,7 +58,9 @@ import {
   emptySettings,
   normalizePromptReceipt,
   normalizeSettingsDraft,
+  settingsPayloadFingerprint,
 } from "./settings";
+import { createReplySuggestions } from "./chat-reply-suggestions";
 import {
   VOICE_MAX_DURATION_MS,
   VOICE_PLAYBACK_MODES,
@@ -421,8 +423,9 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const [isCompanionResponding, setIsCompanionResponding] = useState(false);
-  const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [hasLoadedSettings, setHasLoadedSettings] = useState(false);
+  const [settingsAutosaveState, setSettingsAutosaveState] = useState("idle");
+  const [settingsSaveError, setSettingsSaveError] = useState("");
   const [settingsSaveReceipt, setSettingsSaveReceipt] = useState(null);
   const [lastPromptReceipt, setLastPromptReceipt] = useState(readPromptReceipt);
   const [notificationPermissionState, setNotificationPermissionState] = useState(
@@ -463,10 +466,9 @@ function App() {
   const [companionInteractionStats, setCompanionInteractionStats] = useState(
     readCompanionInteractionStats,
   );
-  const [companionStatusCollapseToken, setCompanionStatusCollapseToken] =
-    useState(0);
   const messageListRef = useRef(null);
   const messageEndRef = useRef(null);
+  const messageInputRef = useRef(null);
   const shouldAutoScrollRef = useRef(true);
   const chatFileInputRef = useRef(null);
   const chatAttachmentsRef = useRef([]);
@@ -499,6 +501,13 @@ function App() {
   const voiceRequestRef = useRef(null);
   const chatRequestRef = useRef(null);
   const pendingChatClientMessageRef = useRef(null);
+  const draftSettingsRef = useRef(draftSettings);
+  const confirmedSettingsRef = useRef(settings);
+  const latestDraftFingerprintRef = useRef("");
+  const lastSavedSettingsFingerprintRef = useRef("");
+  const settingsAutosaveTimerRef = useRef(null);
+  const pendingSettingsSaveRef = useRef(null);
+  const settingsSaveInFlightRef = useRef(false);
   const componentMountedRef = useRef(true);
   const speechRunRef = useRef(0);
   const voiceLifecycleRef = useRef({ cancel() {}, stopPlayback() {} });
@@ -619,10 +628,16 @@ function App() {
         if (cancelled) return;
         const nextSettings = normalizeSettingsDraft(settingsData.settings);
         const nextSessions = sessionsData.sessions || [];
+        const settingsFingerprint = settingsPayloadFingerprint(nextSettings);
 
+        confirmedSettingsRef.current = nextSettings;
+        draftSettingsRef.current = nextSettings;
+        latestDraftFingerprintRef.current = settingsFingerprint;
+        lastSavedSettingsFingerprintRef.current = settingsFingerprint;
         setSettings(nextSettings);
         setDraftSettings(nextSettings);
         setHasLoadedSettings(true);
+        setSettingsAutosaveState("saved");
         setSessions(nextSessions);
         setActiveSessionId(nextSessions[0]?.id || null);
         void loadInitialModels(nextSettings.model);
@@ -660,6 +675,7 @@ function App() {
         revokeAttachmentDraft(item),
       );
       chatAttachmentsRef.current = [];
+      window.clearTimeout(settingsAutosaveTimerRef.current);
     };
   }, []);
 
@@ -2328,9 +2344,7 @@ function App() {
     }
   }
 
-  async function saveSettings(event) {
-    event.preventDefault();
-
+  function scheduleSettingsAutosave(value, { immediate = false } = {}) {
     if (!hasLoadedSettings) {
       setNotice(
         "服务器设置尚未加载成功。为防止覆盖现有模型和接口配置，请先恢复网络并重新打开 App。",
@@ -2338,51 +2352,134 @@ function App() {
       return;
     }
 
-    setIsSavingSettings(true);
+    const payload = createSettingsPayload(value);
+    const fingerprint = settingsPayloadFingerprint(payload);
+    latestDraftFingerprintRef.current = fingerprint;
+    window.clearTimeout(settingsAutosaveTimerRef.current);
+
+    if (
+      fingerprint === lastSavedSettingsFingerprintRef.current &&
+      !settingsSaveInFlightRef.current
+    ) {
+      setSettingsAutosaveState("saved");
+      setSettingsSaveError("");
+      return;
+    }
+
+    setSettingsAutosaveState("pending");
+    setSettingsSaveError("");
     setSettingsSaveReceipt(null);
+
+    const enqueue = () => {
+      if (
+        fingerprint === lastSavedSettingsFingerprintRef.current &&
+        !settingsSaveInFlightRef.current
+      ) {
+        setSettingsAutosaveState("saved");
+        return;
+      }
+      pendingSettingsSaveRef.current = { payload, fingerprint };
+      void flushSettingsSaveQueue();
+    };
+
+    if (immediate) {
+      enqueue();
+      return;
+    }
+
+    settingsAutosaveTimerRef.current = window.setTimeout(enqueue, 800);
+  }
+
+  async function flushSettingsSaveQueue() {
+    if (settingsSaveInFlightRef.current) return;
+    const queued = pendingSettingsSaveRef.current;
+    if (!queued) return;
+
+    pendingSettingsSaveRef.current = null;
+    settingsSaveInFlightRef.current = true;
+    setSettingsAutosaveState("saving");
+    setSettingsSaveError("");
 
     try {
       const data = await apiRequest("/settings", {
         method: "PUT",
-        body: JSON.stringify(createSettingsPayload(draftSettings)),
+        body: JSON.stringify(queued.payload),
       });
       const nextSettings = normalizeSettingsDraft(data.settings);
+      const savedFingerprint = settingsPayloadFingerprint(nextSettings);
+      const previousSettings = confirmedSettingsRef.current;
+      const connectionChanged =
+        previousSettings.provider !== nextSettings.provider ||
+        previousSettings.api_url !== nextSettings.api_url ||
+        previousSettings.model !== nextSettings.model;
+
+      confirmedSettingsRef.current = nextSettings;
+      lastSavedSettingsFingerprintRef.current = savedFingerprint;
       setSettings(nextSettings);
-      setDraftSettings(nextSettings);
-      try {
-        const modelsData = await apiRequest("/models");
-        const catalog = reconcileModelCatalog(modelsData, {
-          previous: selectedChatModel,
-          fallback: nextSettings.model,
-        });
-        setAvailableModels(catalog.models);
-        setSelectedChatModel(catalog.selectedModel);
-        storeChatModel(catalog.selectedModel);
-        setModelsLoadMessage("");
-      } catch {
-        setModelsLoadMessage(
-          "设置已保存，但新的模型列表暂时无法读取。重新打开 App 后会再次加载。",
-        );
+
+      if (latestDraftFingerprintRef.current === queued.fingerprint) {
+        draftSettingsRef.current = nextSettings;
+        latestDraftFingerprintRef.current = savedFingerprint;
+        setDraftSettings(nextSettings);
+        setSettingsAutosaveState("saved");
+      } else {
+        setSettingsAutosaveState("pending");
       }
+
       const receipt = {
         systemPromptLength: nextSettings.system_prompt.length,
         additionalPromptLength: nextSettings.additional_prompt.length,
         personalityLength: nextSettings.personality.length,
       };
       setSettingsSaveReceipt(receipt);
-      setNotice(
-        `设置已由服务器保存并回读：系统提示词 ${receipt.systemPromptLength} 字，普通补充 ${receipt.additionalPromptLength} 字，人设词 ${receipt.personalityLength} 字。`,
-      );
+
+      if (connectionChanged) {
+        try {
+          const modelsData = await apiRequest("/models");
+          const catalog = reconcileModelCatalog(modelsData, {
+            previous: selectedChatModel,
+            fallback: nextSettings.model,
+          });
+          setAvailableModels(catalog.models);
+          setSelectedChatModel(catalog.selectedModel);
+          storeChatModel(catalog.selectedModel);
+          setModelsLoadMessage("");
+        } catch {
+          setModelsLoadMessage(
+            "设置已保存，但新的模型列表暂时无法读取。重新打开 App 后会再次加载。",
+          );
+        }
+      }
     } catch (error) {
+      if (latestDraftFingerprintRef.current === queued.fingerprint) {
+        setSettingsAutosaveState("error");
+        setSettingsSaveError(error.message || "自动保存失败");
+      } else {
+        setSettingsAutosaveState("pending");
+      }
       setNotice(error.message);
     } finally {
-      setIsSavingSettings(false);
+      settingsSaveInFlightRef.current = false;
+      if (pendingSettingsSaveRef.current) {
+        void flushSettingsSaveQueue();
+      }
     }
   }
 
+  function saveSettings(event) {
+    event.preventDefault();
+    scheduleSettingsAutosave(draftSettingsRef.current, { immediate: true });
+  }
+
   function updateDraft(field, value) {
+    const nextDraft = {
+      ...draftSettingsRef.current,
+      [field]: value,
+    };
+    draftSettingsRef.current = nextDraft;
     setSettingsSaveReceipt(null);
-    setDraftSettings((current) => ({ ...current, [field]: value }));
+    setDraftSettings(nextDraft);
+    scheduleSettingsAutosave(nextDraft);
   }
 
   function applyPromptReceipt(value) {
@@ -2528,19 +2625,26 @@ function App() {
     }
     setActiveView(view);
     setIsSidebarOpen(false);
-    if (view === "settings") {
-      setDraftSettings(normalizeSettingsDraft(settings));
-    }
   }
 
   function handleCompanionInteraction(zoneId) {
-    shouldAutoScrollRef.current = true;
-    setCompanionStatusCollapseToken((current) => current + 1);
-    setActiveView("chat");
     return registerCompanionInteraction(zoneId);
   }
 
   function renderChat() {
+    const latestMessage = messages.at(-1);
+    const replySuggestions =
+      latestMessage?.role === "assistant" &&
+      !latestMessage.isStreaming &&
+      !isSending &&
+      !isCompanionResponding &&
+      !isVoiceInputBusy
+        ? createReplySuggestions({
+            assistantText: latestMessage.content,
+            mood: companionStatus.mood,
+          })
+        : [];
+
     return (
       <>
         <section
@@ -2617,6 +2721,25 @@ function App() {
         </section>
 
         <div className="composer-wrap">
+          {replySuggestions.length > 0 && (
+            <div className="reply-suggestions" aria-label="可以这样回复">
+              {replySuggestions.map((suggestion, index) => (
+                <button
+                  type="button"
+                  key={suggestion}
+                  onClick={() => {
+                    setMessage(suggestion);
+                    window.requestAnimationFrame(() =>
+                      messageInputRef.current?.focus(),
+                    );
+                  }}
+                >
+                  <span>{String.fromCharCode(65 + index)}</span>
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          )}
           <SelectedAttachmentStrip
             items={chatAttachments}
             onRemove={removeChatAttachment}
@@ -2643,6 +2766,7 @@ function App() {
           )}
           <div className="composer">
             <textarea
+              ref={messageInputRef}
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               onKeyDown={(event) => {
@@ -3532,21 +3656,28 @@ function App() {
           )}
 
           <div className="save-bar">
-            <span>
-              {settings.model
-                ? `当前模型：${settings.model}`
-                : "当前未配置模型，使用演示回复"}
+            <span className={`autosave-status ${settingsAutosaveState}`}>
+              <strong>
+                {settingsAutosaveState === "pending"
+                  ? "等待自动保存"
+                  : settingsAutosaveState === "saving"
+                    ? "正在自动保存"
+                    : settingsAutosaveState === "error"
+                      ? "自动保存失败"
+                      : hasLoadedSettings
+                        ? "已自动保存"
+                        : "等待服务器设置"}
+              </strong>
+              <small>
+                {settingsSaveError ||
+                  (settings.model
+                    ? `当前模型：${settings.model}`
+                    : "当前未配置模型，使用演示回复")}
+              </small>
             </span>
-            <button
-              className="primary-button"
-              disabled={isSavingSettings || !hasLoadedSettings}
-            >
-              {isSavingSettings
-                ? "保存中"
-                : hasLoadedSettings
-                  ? "保存设置"
-                  : "等待服务器设置"}
-            </button>
+            <span className="autosave-hint">
+              修改后会自动保存，不需要滑到这里操作
+            </span>
           </div>
         </form>
         <McpDeviceCenter />
@@ -3675,7 +3806,6 @@ function App() {
 
         {activeView === "chat" && (
           <CompanionStatus
-            key={`companion-status-${companionStatusCollapseToken}`}
             aiName={settings.ai_name || "小灯"}
             status={companionStatus}
             interactionStats={companionInteractionStats}

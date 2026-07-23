@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   HOT_ZONES,
   addStatusRecord,
@@ -33,6 +33,8 @@ export default function CompanionStatus({
   );
   const [expanded, setExpanded] = useState(false);
   const [clockNow, setClockNow] = useState(() => Date.now());
+  const rootRef = useRef(null);
+  const panelRef = useRef(null);
   const remainingSeconds = remainingAt(normalized.countdown, clockNow);
   const rawCountdownEnd = Date.parse(status?.countdown?.endsAt);
   const countdownExpiredWhileAway =
@@ -77,17 +79,29 @@ export default function CompanionStatus({
   ]);
 
   useEffect(() => {
-    function collapseForKeyboard(event) {
-      if (
-        window.innerWidth <= 820 &&
-        event.target instanceof HTMLTextAreaElement
-      ) {
+    if (!expanded) return undefined;
+
+    panelRef.current?.scrollTo({ top: 0 });
+
+    function closeFromOutside(event) {
+      if (!rootRef.current?.contains(event.target)) {
         setExpanded(false);
       }
     }
-    document.addEventListener("focusin", collapseForKeyboard);
-    return () => document.removeEventListener("focusin", collapseForKeyboard);
-  }, []);
+
+    function closeFromEscape(event) {
+      if (event.key === "Escape") {
+        setExpanded(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", closeFromOutside);
+    document.addEventListener("keydown", closeFromEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeFromOutside);
+      document.removeEventListener("keydown", closeFromEscape);
+    };
+  }, [expanded]);
 
   function updateStatus(transform) {
     onChange((currentValue) => {
@@ -105,7 +119,6 @@ export default function CompanionStatus({
   }
 
   function touchZone(zone) {
-    setExpanded(false);
     const interactionMeta = onInteract?.(zone.id);
     updateStatus((current) => {
       const reaction = localCompanionInteractionReaction(
@@ -238,6 +251,7 @@ export default function CompanionStatus({
 
   return (
     <section
+      ref={rootRef}
       className={`companion-status${expanded ? " expanded" : ""}${thresholdClass}`}
       style={{ "--status-pulse-duration": pulseDuration }}
       aria-label={`${displayName}的动态状态`}
@@ -292,7 +306,7 @@ export default function CompanionStatus({
       </button>
 
       {expanded && (
-        <div className="status-panel">
+        <div ref={panelRef} className="status-panel">
           <div className="status-panel-grid">
             <section className="status-card status-story-card">
               <div className="status-card-heading">

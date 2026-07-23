@@ -66,6 +66,10 @@ export function createSettingsPayload(value) {
   };
 }
 
+export function settingsPayloadFingerprint(value) {
+  return JSON.stringify(createSettingsPayload(value));
+}
+
 function boundedCharacterCount(value) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) return null;

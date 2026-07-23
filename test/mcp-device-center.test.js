@@ -21,7 +21,11 @@ assert.match(component, /管理口令格式不正确/);
 assert.match(component, /不要输入中文说明/);
 assert.doesNotMatch(component, /localStorage/);
 assert.match(app, /DeviceActionReceipts/);
-assert.match(app, /key=\{`companion-status-\$\{companionStatusCollapseToken\}`\}/);
+assert.doesNotMatch(
+  app,
+  /key=\{`companion-status-\$\{companionStatusCollapseToken\}`\}/,
+  "companion status must not be remounted after an interaction",
+);
 assert.match(css, /\.view-content\s*\{[^}]*margin-bottom:\s*18px/s);
 assert.match(css, /\.mcp-tool-list/);
 

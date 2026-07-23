@@ -3545,3 +3545,508 @@ button:disabled {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* DengTa night interface: matches the restrained charcoal mobile reference. */
+:root {
+  color: #eee8ea;
+  background: #0c0b0c;
+  --ink: #eee8ea;
+  --muted: #a79ca0;
+  --line: #393235;
+  --paper: #191719;
+  --rose: #cf7899;
+  --rose-deep: #e2a0b7;
+  --rose-soft: #3b252e;
+  --night: #111011;
+}
+
+body,
+.app-shell,
+.main-panel,
+.view-content,
+.message-list,
+.feature-page {
+  color: var(--ink);
+  background: #0f0e0f;
+}
+
+.app-shell,
+.sidebar,
+.brand-icon,
+.welcome-mark,
+.feature-symbol,
+.avatar,
+.companion-status,
+.status-presence,
+.send-button,
+.primary-button,
+.moment-composer > button {
+  background-image: none;
+}
+
+.sidebar {
+  border-right: 1px solid #322b2e;
+  color: #f4eef0;
+  background-color: #151315;
+  box-shadow: none;
+}
+
+.brand-icon {
+  color: #f2dce4;
+  background-color: #542f3d;
+  box-shadow: none;
+}
+
+.brand small,
+.session-heading,
+.sidebar-footer {
+  color: #9e9297;
+}
+
+.primary-nav button,
+.session-select,
+.session-actions button {
+  color: #cfc4c8;
+}
+
+.primary-nav button:hover,
+.primary-nav button.active,
+.session-item:hover,
+.session-item.active {
+  color: #fff;
+  background: #2b2226;
+}
+
+.topbar {
+  border-color: #373033;
+  color: var(--ink);
+  background: rgba(20, 18, 19, 0.96);
+  backdrop-filter: blur(16px);
+}
+
+.topbar h1,
+.empty-state h2,
+.settings-card h3,
+.status-card-heading h3,
+.countdown-card h3 {
+  color: #f1eaed;
+}
+
+.topbar p,
+.empty-state,
+.centered-feature p {
+  color: var(--muted);
+}
+
+.menu-button,
+.new-chat-top,
+.install-button {
+  border-color: #473b40;
+  color: #dec8d0;
+  background: #1b181a;
+}
+
+.companion-status {
+  overflow: hidden;
+  border-color: #573643;
+  border-radius: 12px;
+  background-color: #181517;
+  box-shadow: none;
+}
+
+.companion-status.expanded,
+.companion-status.high-energy,
+.companion-status.low-energy {
+  max-height: none;
+  overflow: hidden;
+  border-color: #75475a;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
+}
+
+.status-summary {
+  color: var(--ink);
+  background: #181517;
+}
+
+.status-presence {
+  border: 1px solid #75475a;
+  background-color: #432733;
+  box-shadow: none;
+}
+
+.status-name-line strong {
+  color: #f1e9ec;
+}
+
+.status-mood,
+.status-mini-vitals > span {
+  border-color: #5b3b47;
+  color: #e8b9c9;
+  background: #2c2025;
+}
+
+.status-glance,
+.status-card-heading > span,
+.status-disclaimer {
+  color: #a89ba0;
+}
+
+.status-chevron {
+  color: #e2a0b7;
+  background: #282125;
+}
+
+.status-panel {
+  max-height: min(55vh, 540px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: #684152 #211b1e;
+  scrollbar-width: thin;
+}
+
+.status-card {
+  border-color: #43373c;
+  border-radius: 8px;
+  background: #1d1a1c;
+}
+
+.status-eyebrow {
+  color: #d48ba4;
+}
+
+.status-story-card > p,
+.status-facts dd,
+.pulse-readout,
+.hot-zone-copy strong,
+.countdown-card {
+  color: #e7dfe2;
+}
+
+.status-facts div,
+.hot-zone-grid button,
+.countdown-actions button,
+.countdown-card select,
+.status-record-card li,
+.status-record-empty {
+  border-color: #473a3f;
+  color: #cfc3c7;
+  background: #242022;
+}
+
+.hot-zone-grid button.active {
+  border-color: #a75c78;
+  color: #f2d9e2;
+  background: #3b252e;
+}
+
+.energy-track,
+.countdown-progress {
+  background: #31292c;
+}
+
+.notice {
+  border-color: #6b5130;
+  color: #e8c38d;
+  background: #2a2117;
+}
+
+.welcome-mark,
+.feature-symbol,
+.avatar {
+  color: #f7edf1;
+  background-color: #6c3b4d;
+  box-shadow: none;
+}
+
+.message-row.assistant .message-bubble {
+  border-color: #393235;
+  color: #ece6e8;
+  background: #1a1819;
+  box-shadow: none;
+}
+
+.message-row.user .message-bubble {
+  color: #f3e9ed;
+  background: #4a2a37;
+  box-shadow: none;
+}
+
+.message-role {
+  color: #d990aa;
+}
+
+.message-bubble time,
+.attachment-copy small {
+  color: #93878c;
+}
+
+.thinking-panel {
+  border-color: #443a3e;
+  color: #c9bec2;
+  background: #201d1f;
+}
+
+.thinking-panel-body {
+  border-color: #393235;
+}
+
+.thinking-panel summary small,
+.thinking-panel-body ol {
+  color: #9e9297;
+}
+
+.composer-wrap {
+  border-color: #373033;
+  background: rgba(18, 16, 17, 0.97);
+}
+
+.reply-suggestions {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  gap: 8px;
+  margin-bottom: 9px;
+  overflow-x: auto;
+  padding: 1px 1px 4px;
+  scrollbar-width: none;
+}
+
+.reply-suggestions::-webkit-scrollbar {
+  display: none;
+}
+
+.reply-suggestions button {
+  display: inline-flex;
+  min-width: max-content;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 11px;
+  border: 1px solid #5d3a48;
+  border-radius: 8px;
+  color: #e8dce1;
+  background: #211a1d;
+  text-align: left;
+}
+
+.reply-suggestions button:hover,
+.reply-suggestions button:focus-visible {
+  border-color: #b96584;
+  background: #32222a;
+}
+
+.reply-suggestions button span {
+  display: grid;
+  width: 21px;
+  height: 21px;
+  flex: 0 0 21px;
+  place-items: center;
+  border-radius: 50%;
+  color: #f5e5eb;
+  background: #6a394b;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.composer {
+  border-color: #43383c;
+  border-radius: 10px;
+  background: #181617;
+  box-shadow: none;
+}
+
+.composer textarea,
+.moment-composer textarea {
+  color: #f0e9ec;
+}
+
+.composer textarea::placeholder,
+.moment-composer textarea::placeholder,
+.settings-grid input::placeholder,
+.settings-grid textarea::placeholder {
+  color: #756c70;
+}
+
+.chat-model-picker {
+  color: #b9adb2;
+}
+
+.chat-model-picker select,
+.chat-attach-button,
+.voice-hold-button,
+.voice-stop-button {
+  border-color: #493c41;
+  color: #d9cbd0;
+  background: #211d1f;
+}
+
+.send-button,
+.primary-button,
+.moment-composer > button {
+  color: #fff;
+  background-color: #80445b;
+  box-shadow: none;
+}
+
+.selected-attachment,
+.attachment-safety-control,
+.voice-analysis-card,
+.voice-privacy-note {
+  border-color: #44383d;
+  color: #cfc4c8;
+  background: #1d1a1c;
+}
+
+.moment-composer,
+.moment-card,
+.memory-card,
+.settings-card,
+.empty-card,
+.mcp-device-center,
+.service-status,
+.service-expiry-panel,
+.prompt-layer,
+.notification-feature-panel {
+  border-color: #3e3639;
+  border-radius: 8px;
+  color: var(--ink);
+  background: #191719;
+  box-shadow: none;
+}
+
+.settings-grid input,
+.settings-grid textarea,
+.settings-grid select,
+.mcp-unlock-form input,
+.mcp-form-grid input,
+.mcp-form-grid select,
+.mcp-tool-list select,
+.service-expiry-panel input,
+.prompt-layer textarea,
+.dialog-card input {
+  border-color: #473b40;
+  color: #eee7e9;
+  background: #111011;
+}
+
+.settings-grid label,
+.mcp-unlock-form label,
+.mcp-form-grid label,
+.prompt-layer-title strong {
+  color: #d9cdd1;
+}
+
+.card-hint,
+.prompt-layer > p,
+.voice-privacy-note p,
+.notification-feature-panel p,
+.notification-feature-panel small {
+  color: var(--muted);
+}
+
+.save-bar {
+  position: sticky;
+  z-index: 6;
+  top: -1px;
+  order: -1;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid #493841;
+  border-radius: 8px;
+  color: #cfc4c8;
+  background: rgba(27, 23, 25, 0.96);
+  backdrop-filter: blur(14px);
+}
+
+.autosave-status {
+  display: grid;
+  gap: 2px;
+}
+
+.autosave-status strong {
+  color: #8fd0aa;
+  font-size: 12px;
+}
+
+.autosave-status small,
+.autosave-hint {
+  color: #9e9297;
+  font-size: 10px;
+}
+
+.autosave-status.pending strong,
+.autosave-status.saving strong {
+  color: #e8c38d;
+}
+
+.autosave-status.error strong {
+  color: #ef9b97;
+}
+
+.settings-save-receipt {
+  border-color: #365341;
+  color: #a9d4b7;
+  background: #15231a;
+}
+
+.prompt-application-receipt {
+  border-color: #4d405a;
+  color: #c9bfda;
+  background: #1d1922;
+}
+
+.mobile-nav {
+  border-color: #393235;
+  background: rgba(19, 17, 18, 0.98);
+}
+
+.mobile-nav button {
+  color: #8e8387;
+}
+
+.mobile-nav button.active {
+  color: #f0bfd0;
+  background: #3a252e;
+}
+
+.dialog-backdrop,
+.ombre-detail-backdrop {
+  background: rgba(0, 0, 0, 0.68);
+}
+
+.dialog-card,
+.ombre-detail-sheet {
+  border-color: #44383d;
+  color: var(--ink);
+  background: #191719;
+}
+
+@media (max-width: 820px), (max-height: 500px) and (max-width: 900px) {
+  .companion-status.expanded {
+    max-height: none;
+  }
+
+  .status-panel {
+    max-height: min(48vh, 460px);
+  }
+
+  .reply-suggestions {
+    margin-bottom: 7px;
+  }
+
+  .reply-suggestions button {
+    max-width: min(82vw, 330px);
+    min-width: min-content;
+    white-space: normal;
+  }
+
+  .save-bar {
+    align-items: flex-start;
+    flex-direction: row;
+  }
+
+  .autosave-hint {
+    max-width: 130px;
+    text-align: right;
+  }
+}

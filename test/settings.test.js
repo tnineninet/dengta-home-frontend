@@ -4,6 +4,7 @@ import {
   createSettingsPayload,
   normalizePromptReceipt,
   normalizeSettingsDraft,
+  settingsPayloadFingerprint,
 } from "../src/settings.js";
 
 const legacy = normalizeSettingsDraft({
@@ -82,5 +83,17 @@ const preservedConnection = createSettingsPayload({
 assert.equal(preservedConnection.provider, "openai-compatible");
 assert.equal(preservedConnection.api_url, "https://example.invalid/v1");
 assert.equal(preservedConnection.model, "test-model");
+
+assert.equal(
+  settingsPayloadFingerprint(preservedConnection),
+  settingsPayloadFingerprint({ ...preservedConnection }),
+);
+assert.notEqual(
+  settingsPayloadFingerprint(preservedConnection),
+  settingsPayloadFingerprint({
+    ...preservedConnection,
+    personality: "新的输入必须形成新的自动保存版本",
+  }),
+);
 
 console.log("frontend settings tests passed");
