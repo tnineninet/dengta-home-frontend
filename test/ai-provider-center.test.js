@@ -23,6 +23,47 @@ const bridge = fs.readFileSync(
   "utf8",
 );
 
+function sourceSection(start, end) {
+  const startIndex = component.indexOf(start);
+  const endIndex = component.indexOf(end, startIndex + start.length);
+  assert.notEqual(startIndex, -1, `missing source section: ${start}`);
+  assert.notEqual(endIndex, -1, `missing source section end: ${end}`);
+  return component.slice(startIndex, endIndex);
+}
+
+const refreshProfilesSource = sourceSection(
+  "async function refreshProfiles()",
+  "async function refreshProfilesAfterProbeFailure()",
+);
+const failedProbeRefreshSource = sourceSection(
+  "async function refreshProfilesAfterProbeFailure()",
+  "useEffect(() =>",
+);
+const editProfileSource = sourceSection(
+  "function editProfile(",
+  "function openCcSwitchBridge(",
+);
+const createProfileSource = sourceSection(
+  "async function createProfile(",
+  "async function saveProfile(",
+);
+const saveProfileSource = sourceSection(
+  "async function saveProfile(",
+  "async function testProfile(",
+);
+const testProfileSource = sourceSection(
+  "async function testProfile(",
+  "async function makeDefault(",
+);
+const makeDefaultSource = sourceSection(
+  "async function makeDefault(",
+  "async function removeProfile(",
+);
+const removeProfileSource = sourceSection(
+  "async function removeProfile(",
+  "return (",
+);
+
 assert.match(component, /多供应商 API 控制台/);
 assert.match(component, /OpenAI Responses \/ Sub2API \/ Codex 网关/);
 assert.match(component, /Claude \/ Anthropic 原生接口/);
@@ -54,6 +95,30 @@ assert.doesNotMatch(component, /profile\.last_error/);
 assert.doesNotMatch(component, /refresh[_ -]?token[^\n]*value=/i);
 assert.doesNotMatch(component, /cookie[^\n]*value=/i);
 assert.doesNotMatch(component, /auth\.json[^\n]*type="file"/i);
+assert.match(refreshProfilesSource, /\/api\/ai-providers\/manage/);
+assert.match(refreshProfilesSource, /Array\.isArray\(data\.profiles\)/);
+assert.match(refreshProfilesSource, /setProfiles\(nextProfiles\)/);
+assert.match(failedProbeRefreshSource, /await refreshProfiles\(\)/);
+assert.match(
+  editProfileSource,
+  /field === "is_default" && value === true[\s\S]*?is_default: false/,
+);
+for (const mutationSource of [
+  createProfileSource,
+  saveProfileSource,
+  testProfileSource,
+  makeDefaultSource,
+  removeProfileSource,
+]) {
+  assert.match(mutationSource, /await refreshProfiles\(\)/);
+}
+assert.doesNotMatch(createProfileSource, /setProfiles\(/);
+assert.doesNotMatch(saveProfileSource, /setProfiles\(/);
+assert.doesNotMatch(makeDefaultSource, /setProfiles\(/);
+assert.match(
+  testProfileSource,
+  /catch \(error\) \{[\s\S]*?await refreshProfilesAfterProbeFailure\(\);[\s\S]*?setFeedback\(error\.message\)/,
+);
 assert.match(bridge, /ccswitch:\/\/v1\/import/);
 assert.match(bridge, /enabled: "false"/);
 assert.match(bridge, /API Key/);

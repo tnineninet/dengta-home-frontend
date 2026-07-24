@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { loadEntrypointCssCascade } from "./helpers/effective-css.js";
 
-const css = fs.readFileSync(new URL("../src/index.css", import.meta.url), "utf8");
+const mobileViewport = { width: 390, height: 844, reducedMotion: false };
+const cssCascade = loadEntrypointCssCascade(
+  new URL("../src/main.jsx", import.meta.url),
+  mobileViewport,
+);
+const css = cssCascade.source;
 const app = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
 const status = fs.readFileSync(
   new URL("../src/CompanionStatus.jsx", import.meta.url),
@@ -20,21 +26,82 @@ function sourceBetween(startMarker, endMarker) {
   return app.slice(start, end);
 }
 
-assert.match(
-  css,
-  /--mobile-nav-reserved-height:\s*calc\(72px\s*\+\s*env\(safe-area-inset-bottom\)\)/,
+assert.deepEqual(
+  cssCascade.stylesheets.map((stylesheet) => stylesheet.name),
+  ["index.css", "cozy-theme.css"],
+  "layout tests must use the same stylesheet order as the application entrypoint",
+);
+
+const rootLayout = cssCascade.declarations(":root");
+const mainPanelLayout = cssCascade.declarations(".main-panel");
+const mobileNavLayout = cssCascade.declarations(".mobile-nav");
+const chatContentLayout = cssCascade.declarations(".view-chat .view-content");
+const expandedChatContentLayout = cssCascade.declarations(
+  ".main-panel.view-chat:has(.companion-status.expanded) .view-content",
+);
+const messageListLayout = cssCascade.declarations(".message-list");
+const composerLayout = cssCascade.declarations(".composer-wrap");
+const expandedStatusLayout = cssCascade.declarations(
+  ".companion-status.expanded",
+);
+const statusPanelLayout = cssCascade.declarations(".status-panel");
+
+assert.equal(
+  rootLayout["--mobile-nav-reserved-height"]?.value,
+  "calc(72px + env(safe-area-inset-bottom))",
   "mobile nav must expose one shared reserved height",
 );
-assert.match(
-  css,
-  /\.main-panel\s*\{[^}]*padding-bottom:\s*var\(--mobile-nav-reserved-height\)/s,
+assert.equal(
+  mainPanelLayout["padding-bottom"]?.value,
+  "var(--mobile-nav-reserved-height)",
   "chat layout must reserve the full mobile nav height",
 );
-assert.match(
-  css,
-  /\.mobile-nav\s*\{[^}]*height:\s*var\(--mobile-nav-reserved-height\)/s,
+assert.equal(
+  mobileNavLayout.height?.value,
+  "var(--mobile-nav-reserved-height)",
   "mobile nav and chat reservation must use the same height",
 );
+assert.equal(mainPanelLayout.height?.value, "var(--app-height)");
+assert.equal(mobileNavLayout.position?.value, "fixed");
+assert.equal(mobileNavLayout.bottom?.value, "0");
+assert.equal(mobileNavLayout.display?.value, "grid");
+assert.equal(
+  composerLayout.padding?.value,
+  "9px 10px max(9px, env(safe-area-inset-bottom))",
+  "the 390px composer must include the later cozy-theme mobile override",
+);
+assert.equal(
+  chatContentLayout["grid-template-rows"]?.value,
+  "minmax(0, 1fr) auto",
+  "chat must reserve an independent row for the composer",
+);
+assert.equal(chatContentLayout["min-height"]?.value, "0");
+assert.equal(chatContentLayout.flex?.value, "1 1 auto");
+assert.equal(messageListLayout["min-height"]?.value, "0");
+assert.equal(messageListLayout["overflow-y"]?.value, "auto");
+assert.equal(
+  messageListLayout.padding?.value,
+  "18px 12px",
+  "the 390px message scroller must include the later cozy-theme mobile override",
+);
+assert.equal(expandedStatusLayout.display?.value, "flex");
+assert.equal(expandedStatusLayout["min-height"]?.value, "160px");
+assert.equal(
+  expandedStatusLayout["max-height"]?.value,
+  "min(48vh, 460px)",
+  "the expanded status must stay bounded at 390x844",
+);
+assert.equal(expandedStatusLayout["flex-direction"]?.value, "column");
+assert.equal(statusPanelLayout["min-height"]?.value, "0");
+assert.equal(statusPanelLayout.flex?.value, "1 1 auto");
+assert.equal(statusPanelLayout["overflow-y"]?.value, "auto");
+assert.equal(
+  statusPanelLayout["max-height"]?.value,
+  "min(50vh, 500px)",
+  "expanded status content must scroll inside its mobile boundary",
+);
+assert.equal(expandedChatContentLayout["min-height"]?.value, "0");
+assert.equal(expandedChatContentLayout.flex?.value, "1 1 auto");
 
 const touchZone = status.match(
   /function touchZone\(zone\)\s*\{([\s\S]*?)\n\s*\}/,
@@ -57,13 +124,23 @@ assert.match(
 );
 assert.match(
   status,
+  /event\.key === "Escape"[\s\S]*?setExpanded\(false\)/,
+  "status panel must close from the keyboard without changing views",
+);
+assert.match(
+  status,
   /closest\("\.composer-wrap, \.mobile-nav"\)/,
   "using the composer or mobile navigation must not collapse the status panel",
 );
 assert.match(
-  css,
-  /\.status-panel\s*\{[^}]*max-height:[^}]*overflow-y:\s*auto/s,
-  "expanded status content must use an independent scroll container",
+  status,
+  /if \(!expanded\) return undefined;[\s\S]*?panelRef\.current\?\.scrollTo\(\{ top: 0 \}\)/,
+  "opening the status panel must reset its independent scroll position",
+);
+assert.match(
+  status,
+  /aria-expanded=\{expanded\}[\s\S]*?onClick=\{\(\) =>\s*setExpanded\(\(current\) => !current\)\}/,
+  "the status summary must explicitly toggle open and closed",
 );
 assert.match(
   css,
@@ -76,11 +153,6 @@ assert.doesNotMatch(
   "expanded status must not collapse the message scroller to zero height",
 );
 assert.match(
-  css,
-  /\.view-chat \.view-content\s*\{[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\)\s+auto/s,
-  "chat must reserve an independent row for the composer",
-);
-assert.match(
   status,
   /LIVE COMPANION SIGNAL/,
   "expanded status must expose the live companion signal heading",
@@ -91,9 +163,14 @@ assert.match(
   "collapsed status must expose the latest companion reaction",
 );
 assert.match(
-  css,
-  /\.status-reaction-preview\s*\{[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap/s,
+  cssCascade.declarations(".status-reaction-preview")["text-overflow"]?.value ||
+    "",
+  /^ellipsis$/,
   "collapsed reaction must stay readable without resizing the mobile header",
+);
+assert.equal(
+  cssCascade.declarations(".status-reaction-preview")["white-space"]?.value,
+  "nowrap",
 );
 assert.match(
   status,
@@ -106,18 +183,19 @@ assert.match(
   "recent status records must expose readable timestamps",
 );
 assert.match(
-  css,
-  /\.status-vitals-grid\s*\{[^}]*grid-template-columns:\s*repeat\(3,/s,
+  cssCascade.declarations(".status-vitals-grid")["grid-template-columns"]
+    ?.value || "",
+  /^repeat\(3,/,
   "the live signal metrics must keep three stable columns",
 );
-assert.match(
-  css,
-  /\.status-vital-tile\s*\{[^}]*min-height:\s*112px/s,
-  "desktop metric tiles must reserve a stable height",
+assert.equal(
+  cssCascade.declarations(".status-vital-tile")["min-height"]?.value,
+  "96px",
+  "mobile metric tiles must reserve a stable height",
 );
-assert.match(
-  css,
-  /\.status-pulse-bg\s*\{[^}]*opacity:\s*0\.68/s,
+assert.equal(
+  cssCascade.declarations(".status-pulse-bg").opacity?.value,
+  "1",
   "the heartbeat trace must remain visible on mobile displays",
 );
 
@@ -221,6 +299,11 @@ assert.ok(
         "companionInteractionQueueRef.current.shift()",
       ),
   "companion interactions must not consume an event before settings are saved",
+);
+assert.doesNotMatch(
+  companionInteractionSource,
+  /applyPromptReceipt/,
+  "companion interactions must not overwrite the latest main-chat prompt receipt",
 );
 const changeViewSource = sourceBetween(
   "function changeView(view)",

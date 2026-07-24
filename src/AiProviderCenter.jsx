@@ -315,6 +315,24 @@ export default function AiProviderCenter() {
     }
   }
 
+  async function refreshProfiles() {
+    const data = await aiProviderRequest("/api/ai-providers/manage", {
+      adminSecret,
+    });
+    const nextProfiles = Array.isArray(data.profiles) ? data.profiles : [];
+    setProfiles(nextProfiles);
+    return nextProfiles;
+  }
+
+  async function refreshProfilesAfterProbeFailure() {
+    try {
+      await refreshProfiles();
+    } catch {
+      // Preserve the probe error; a list refresh failure must not hide it.
+    }
+    await refreshStatus();
+  }
+
   useEffect(() => {
     let active = true;
     aiProviderRequest("/api/ai-providers/status")
@@ -344,9 +362,13 @@ export default function AiProviderCenter() {
   }
 
   function editProfile(id, field, value) {
-    setProfiles((current) => current.map((profile) => (
-      profile.id === id ? { ...profile, [field]: value } : profile
-    )));
+    setProfiles((current) => current.map((profile) => {
+      if (profile.id === id) return { ...profile, [field]: value };
+      if (field === "is_default" && value === true) {
+        return { ...profile, is_default: false };
+      }
+      return profile;
+    }));
   }
 
   function openCcSwitchBridge(profile) {
@@ -463,12 +485,12 @@ export default function AiProviderCenter() {
     setBusy("create");
     setFeedback("");
     try {
-      const data = await aiProviderRequest("/api/ai-providers/manage", {
+      await aiProviderRequest("/api/ai-providers/manage", {
         adminSecret,
         method: "POST",
         body: providerPayload(draft),
       });
-      setProfiles((current) => [data.profile, ...current.filter((item) => item.id !== data.profile.id)]);
+      await refreshProfiles();
       setDraft({ ...EMPTY_PROVIDER_DRAFT });
       setDraftModels([]);
       setFeedback("接口已加密保存。启用并设为下次聊天首选后，新的聊天请求才会优先使用它。");
@@ -484,14 +506,12 @@ export default function AiProviderCenter() {
     setBusy("save-" + profile.id);
     setFeedback("");
     try {
-      const data = await aiProviderRequest("/api/ai-providers/manage/" + profile.id, {
+      await aiProviderRequest("/api/ai-providers/manage/" + profile.id, {
         adminSecret,
         method: "PUT",
         body: providerPayload(profile),
       });
-      setProfiles((current) => current.map((item) => (
-        item.id === profile.id ? data.profile : item
-      )));
+      await refreshProfiles();
       setFeedback("接口设置已保存，并会用于下一次新的模型请求。");
       await refreshStatus();
     } catch (error) {
@@ -509,12 +529,11 @@ export default function AiProviderCenter() {
         "/api/ai-providers/manage/" + profile.id + "/test",
         { adminSecret, method: "POST" },
       );
-      setProfiles((current) => current.map((item) => (
-        item.id === profile.id ? data.profile : item
-      )));
+      await refreshProfiles();
       setFeedback("模型目录可读取，发现 " + (data.models?.length || 0) + " 个模型。");
       await refreshStatus();
     } catch (error) {
+      await refreshProfilesAfterProbeFailure();
       setFeedback(error.message);
     } finally {
       setBusy("");
@@ -525,14 +544,11 @@ export default function AiProviderCenter() {
     setBusy("default-" + profile.id);
     setFeedback("");
     try {
-      const data = await aiProviderRequest(
+      await aiProviderRequest(
         "/api/ai-providers/manage/" + profile.id + "/default",
         { adminSecret, method: "POST" },
       );
-      setProfiles((current) => current.map((item) => ({
-        ...item,
-        is_default: item.id === data.profile.id,
-      })));
+      await refreshProfiles();
       setFeedback("下次聊天首选已更新；这不表示接口正在运行，新的聊天请求才会使用它。");
       await refreshStatus();
     } catch (error) {
@@ -551,7 +567,7 @@ export default function AiProviderCenter() {
         adminSecret,
         method: "DELETE",
       });
-      setProfiles((current) => current.filter((item) => item.id !== profile.id));
+      await refreshProfiles();
       setFeedback("接口及其加密密钥已删除。");
       await refreshStatus();
     } catch (error) {

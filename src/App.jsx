@@ -1893,8 +1893,6 @@ function App() {
         timeoutMs: 60 * 1000,
       });
 
-      applyPromptReceipt(data?.prompt_receipt);
-
       if (data.companion_status) {
         setCompanionStatus((current) =>
           mergeCompanionStatus(current, data.companion_status, {
