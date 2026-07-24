@@ -26,7 +26,7 @@ export function describeExpressiveTts(features = {}) {
       detail:
         "AI 回复可使用云端情绪语音；实际费用由 MiniMax 套餐或余额决定。",
       settingsText:
-        "MiniMax 自然语音已连接：会根据 AI 回复选择较合适的情绪后播放；失败时自动退回手机系统朗读。",
+        "MiniMax 自然语音已连接：会根据 AI 回复选择较合适的情绪后播放；云端失败时本轮只显示文字。",
     };
   }
 
@@ -38,7 +38,7 @@ export function describeExpressiveTts(features = {}) {
       detail:
         "还缺 Voice Design 返回的 Voice ID；生成前不会调用 MiniMax，也不会影响文字聊天和语音理解。",
       settingsText:
-        "MiniMax 密钥已安全连接，正在等待 Voice Design 生成音色；在 Voice ID 配置完成前会使用手机系统朗读。",
+        "MiniMax 密钥已安全连接，正在等待 Voice Design 生成音色；在 Voice ID 配置完成前只显示文字。",
     };
   }
 
@@ -48,20 +48,20 @@ export function describeExpressiveTts(features = {}) {
       status: "pending",
       summary: "服务器语音配置不完整",
       detail:
-        "请检查 MiniMax API Key 与 Voice ID；当前使用手机朗读备用，不会影响文字聊天和语音理解。",
+        "请检查 MiniMax API Key 与 Voice ID；当前只显示文字，不会影响文字聊天和语音理解。",
       settingsText:
-        "MiniMax 服务器配置还不完整；现在选择自然语音时会使用手机系统朗读作为备用。",
+        "MiniMax 服务器配置还不完整；现在选择自然语音时本轮只显示文字。",
     };
   }
 
   return {
     stage: "legacy_pending",
     status: "pending",
-    summary: "尚未配置，使用手机朗读备用",
+    summary: "尚未配置自然语音",
     detail:
       "服务器未返回细分配置状态；当前不会产生 MiniMax 费用，也不会影响文字聊天和语音理解。",
     settingsText:
-      "MiniMax 自然语音接口已经预留，但服务器尚未报告完整配置；现在会使用手机系统朗读作为备用。",
+      "MiniMax 自然语音接口已经预留，但服务器尚未报告完整配置；当前只显示文字。",
   };
 }
 

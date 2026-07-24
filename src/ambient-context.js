@@ -2,6 +2,20 @@ export const SHANGHAI_TIME_ZONE = "Asia/Shanghai";
 export const AMBIENT_LOCATION_CACHE_KEY =
   "dengta_home_ambient_location_v1";
 export const AMBIENT_LOCATION_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+export const AMBIENT_WEATHER_CACHE_KEY =
+  "dengta_home_ambient_weather_v1";
+export const AMBIENT_WEATHER_CACHE_TTL_MS = 30 * 60 * 1000;
+export const AMBIENT_WEATHER_REFRESH_CHECK_MS = 5 * 60 * 1000;
+export const AMBIENT_PREFERENCES_KEY =
+  "dengta_home_ambient_preferences_v1";
+export const AMBIENT_SWIPE_THRESHOLD_PX = 40;
+
+const DEFAULT_AMBIENT_PREFERENCES = Object.freeze({
+  enabled: false,
+  minimized: false,
+  side: "right",
+  permissionDenied: false,
+});
 
 const WEATHER_CODE_LABELS = Object.freeze({
   0: "晴朗",
@@ -41,6 +55,107 @@ function getStorage(storage) {
   } catch {
     return null;
   }
+}
+
+export function normalizeAmbientPreferences(value) {
+  return Object.freeze({
+    enabled: value?.enabled === true,
+    minimized: value?.minimized === true,
+    side: value?.side === "left" ? "left" : "right",
+    permissionDenied: value?.permissionDenied === true,
+  });
+}
+
+export function readAmbientPreferences(storage) {
+  const target = getStorage(storage);
+  if (!target) {
+    return {
+      state: "unavailable",
+      preferences: DEFAULT_AMBIENT_PREFERENCES,
+    };
+  }
+
+  try {
+    const raw = target.getItem(AMBIENT_PREFERENCES_KEY);
+    if (!raw) {
+      return { state: "missing", preferences: DEFAULT_AMBIENT_PREFERENCES };
+    }
+    return {
+      state: "ready",
+      preferences: normalizeAmbientPreferences(JSON.parse(raw)),
+    };
+  } catch {
+    try {
+      target.removeItem(AMBIENT_PREFERENCES_KEY);
+    } catch {
+      // Storage restrictions must not break the rest of the chat interface.
+    }
+    return { state: "invalid", preferences: DEFAULT_AMBIENT_PREFERENCES };
+  }
+}
+
+export function storeAmbientPreferences(value, storage) {
+  const target = getStorage(storage);
+  if (!target) return false;
+
+  try {
+    target.setItem(
+      AMBIENT_PREFERENCES_KEY,
+      JSON.stringify(normalizeAmbientPreferences(value)),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function resolveAmbientSwipe({
+  startX,
+  startY,
+  endX,
+  endY,
+  side = "right",
+  threshold = AMBIENT_SWIPE_THRESHOLD_PX,
+}) {
+  const deltaX = Number(endX) - Number(startX);
+  const deltaY = Number(endY) - Number(startY);
+  const minimum = Math.max(1, Number(threshold) || AMBIENT_SWIPE_THRESHOLD_PX);
+  if (!Number.isFinite(deltaX) || !Number.isFinite(deltaY)) return null;
+
+  const horizontal =
+    Math.abs(deltaX) >= minimum && Math.abs(deltaX) >= Math.abs(deltaY);
+  if (horizontal) {
+    return Object.freeze({
+      minimized: true,
+      side: deltaX < 0 ? "left" : "right",
+    });
+  }
+
+  if (deltaY <= -minimum && Math.abs(deltaY) > Math.abs(deltaX)) {
+    return Object.freeze({
+      minimized: true,
+      side: side === "left" ? "left" : "right",
+    });
+  }
+  return null;
+}
+
+export function resolveAmbientStartupAction({
+  preferences,
+  weatherState,
+  coordinateState,
+  online = true,
+  weatherServiceAvailable = true,
+}) {
+  const normalized = normalizeAmbientPreferences(preferences);
+  if (!normalized.enabled) return "idle";
+  if (normalized.permissionDenied) return "permission-blocked";
+  if (weatherState === "fresh") return "use-cache";
+  if (!weatherServiceAvailable) return "service-unavailable";
+  if (!online) return "offline";
+  return coordinateState === "fresh"
+    ? "load-weather"
+    : "request-location";
 }
 
 function finiteCoordinate(value, min, max) {
@@ -115,19 +230,87 @@ export function readCachedCoordinates(
       return { state: "invalid", coordinates: null };
     }
 
-    if (now - storedAt > maxAge || storedAt > now + 60_000) {
+    if (storedAt > now + 60_000) {
       clearCachedCoordinates(target);
-      return { state: "expired", coordinates: null };
+      return { state: "invalid", coordinates: null };
     }
 
+    const ageMs = Math.max(0, now - storedAt);
     return {
-      state: "fresh",
+      // Keep the rounded, kilometre-level position as a display fallback.
+      // Once stale, the app asks the already-authorized OS location service for
+      // a fresh coarse position before updating weather.
+      state: ageMs <= maxAge ? "fresh" : "stale",
       coordinates,
-      ageMs: Math.max(0, now - storedAt),
+      ageMs,
     };
   } catch {
     clearCachedCoordinates(target);
     return { state: "invalid", coordinates: null };
+  }
+}
+
+export function clearCachedWeather(storage) {
+  try {
+    getStorage(storage)?.removeItem(AMBIENT_WEATHER_CACHE_KEY);
+  } catch {
+    // Storage restrictions must not break the rest of the chat interface.
+  }
+}
+
+export function storeCachedWeather(value, storage, storedAt = Date.now()) {
+  const weather = normalizeWeather(value);
+  const target = getStorage(storage);
+  if (!weather || !target) return false;
+
+  try {
+    target.setItem(
+      AMBIENT_WEATHER_CACHE_KEY,
+      JSON.stringify({ weather, storedAt }),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function readCachedWeather(
+  storage,
+  now = Date.now(),
+  maxAge = AMBIENT_WEATHER_CACHE_TTL_MS,
+) {
+  const target = getStorage(storage);
+  if (!target) return { state: "unavailable", weather: null };
+
+  try {
+    const raw = target.getItem(AMBIENT_WEATHER_CACHE_KEY);
+    if (!raw) return { state: "missing", weather: null };
+
+    const parsed = JSON.parse(raw);
+    const weather = normalizeWeather(parsed?.weather);
+    const storedAt = Number(parsed?.storedAt);
+    if (!weather || !Number.isFinite(storedAt)) {
+      clearCachedWeather(target);
+      return { state: "invalid", weather: null };
+    }
+
+    const ageMs = Math.max(0, now - storedAt);
+    const requestedMaxAge = Number(maxAge);
+    const allowedAge =
+      Number.isFinite(requestedMaxAge) && requestedMaxAge >= 0
+        ? requestedMaxAge
+        : AMBIENT_WEATHER_CACHE_TTL_MS;
+    const fresh =
+      storedAt <= now + 60_000 &&
+      ageMs <= allowedAge;
+    return {
+      state: fresh ? "fresh" : "stale",
+      weather,
+      ageMs,
+    };
+  } catch {
+    clearCachedWeather(target);
+    return { state: "invalid", weather: null };
   }
 }
 

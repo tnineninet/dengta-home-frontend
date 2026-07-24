@@ -8,6 +8,10 @@ const cssCascade = loadEntrypointCssCascade(
   mobileViewport,
 );
 const css = cssCascade.source;
+const shortLandscapeCascade = loadEntrypointCssCascade(
+  new URL("../src/main.jsx", import.meta.url),
+  { width: 844, height: 390, reducedMotion: false },
+);
 const app = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
 const status = fs.readFileSync(
   new URL("../src/CompanionStatus.jsx", import.meta.url),
@@ -45,6 +49,16 @@ const expandedStatusLayout = cssCascade.declarations(
   ".companion-status.expanded",
 );
 const statusPanelLayout = cssCascade.declarations(".status-panel");
+const presenceStackLayout = cssCascade.declarations(".chat-presence-stack");
+const keyboardRootLayout = cssCascade.declarations(
+  ':root[data-keyboard-open="true"]',
+);
+const keyboardNavLayout = cssCascade.declarations(
+  ':root[data-keyboard-open="true"] .mobile-nav',
+);
+const keyboardPresenceLayout = cssCascade.declarations(
+  ':root[data-keyboard-open="true"] .chat-presence-stack',
+);
 
 assert.equal(
   rootLayout["--mobile-nav-reserved-height"]?.value,
@@ -76,7 +90,7 @@ assert.equal(
   "chat must reserve an independent row for the composer",
 );
 assert.equal(chatContentLayout["min-height"]?.value, "0");
-assert.equal(chatContentLayout.flex?.value, "1 1 auto");
+assert.equal(chatContentLayout.flex?.value, "1 1 0%");
 assert.equal(messageListLayout["min-height"]?.value, "0");
 assert.equal(messageListLayout["overflow-y"]?.value, "auto");
 assert.equal(
@@ -85,13 +99,26 @@ assert.equal(
   "the 390px message scroller must include the later cozy-theme mobile override",
 );
 assert.equal(expandedStatusLayout.display?.value, "flex");
-assert.equal(expandedStatusLayout["min-height"]?.value, "160px");
+assert.equal(
+  expandedStatusLayout.height?.value,
+  "clamp(320px, 50vh, 500px)",
+);
+assert.equal(
+  expandedStatusLayout["min-height"]?.value,
+  "clamp(320px, 50vh, 500px)",
+);
 assert.equal(
   expandedStatusLayout["max-height"]?.value,
-  "min(48vh, 460px)",
-  "the expanded status must stay bounded at 390x844",
+  "clamp(320px, 50vh, 500px)",
+  "the expanded status must keep a stable mobile height",
+);
+assert.equal(
+  expandedStatusLayout.flex?.value,
+  "0 0 clamp(320px, 50vh, 500px)",
+  "reply suggestions must not shrink the expanded status",
 );
 assert.equal(expandedStatusLayout["flex-direction"]?.value, "column");
+assert.equal(presenceStackLayout.flex?.value, "0 0 auto");
 assert.equal(statusPanelLayout["min-height"]?.value, "0");
 assert.equal(statusPanelLayout.flex?.value, "1 1 auto");
 assert.equal(statusPanelLayout["overflow-y"]?.value, "auto");
@@ -101,7 +128,67 @@ assert.equal(
   "expanded status content must scroll inside its mobile boundary",
 );
 assert.equal(expandedChatContentLayout["min-height"]?.value, "0");
-assert.equal(expandedChatContentLayout.flex?.value, "1 1 auto");
+assert.equal(expandedChatContentLayout.flex?.value, "1 1 0%");
+assert.equal(
+  keyboardRootLayout["--mobile-nav-reserved-height"]?.value,
+  "0px",
+  "the keyboard must release the mobile navigation reservation",
+);
+assert.equal(
+  keyboardNavLayout.display?.value,
+  "none",
+  "the keyboard must hide the fixed mobile navigation",
+);
+assert.equal(
+  keyboardPresenceLayout.display?.value,
+  "none",
+  "the keyboard must visually hide, but not unmount, the presence stack",
+);
+assert.ok(
+  Number.parseInt(composerLayout["z-index"]?.value || "0", 10) >
+    Number.parseInt(presenceStackLayout["z-index"]?.value || "0", 10),
+  "the add menu must render above the status and weather stack",
+);
+
+const landscapeExpandedStatus = shortLandscapeCascade.declarations(
+  ".companion-status.expanded",
+);
+assert.equal(
+  shortLandscapeCascade.declarations(":root")[
+    "--mobile-nav-reserved-height"
+  ]?.value,
+  "calc(52px + env(safe-area-inset-bottom))",
+  "short landscape navigation must stay usable without covering the composer toolbar",
+);
+assert.equal(
+  landscapeExpandedStatus.height?.value,
+  "min(46vh, 180px)",
+  "short landscape screens must use a useful overlay without consuming composer space",
+);
+assert.equal(
+  landscapeExpandedStatus["max-height"]?.value,
+  "min(46vh, 180px)",
+);
+assert.equal(landscapeExpandedStatus.position?.value, "fixed");
+assert.equal(
+  landscapeExpandedStatus.top?.value,
+  "max(8px, env(safe-area-inset-top))",
+);
+assert.equal(landscapeExpandedStatus.left?.value, "10px");
+assert.equal(landscapeExpandedStatus.right?.value, "10px");
+assert.equal(
+  shortLandscapeCascade.declarations(
+    ".main-panel.view-chat:has(.companion-status.expanded) .topbar",
+  ).visibility?.value,
+  "hidden",
+);
+assert.equal(
+  shortLandscapeCascade.declarations(
+    ".main-panel.view-chat:has(.companion-status.expanded) .ambient-context-badge",
+  ).display?.value,
+  "none",
+  "weather stays mounted but yields its pixels while status is expanded on a short landscape screen",
+);
 
 const touchZone = status.match(
   /function touchZone\(zone\)\s*\{([\s\S]*?)\n\s*\}/,
@@ -199,24 +286,30 @@ assert.equal(
   "the heartbeat trace must remain visible on mobile displays",
 );
 
-const interactionHandler = app.match(
-  /function handleCompanionInteraction\(zoneId\)\s*\{([\s\S]*?)\n\s*\}/,
-)?.[1];
-assert.ok(interactionHandler, "chat-aware interaction handler must exist");
-assert.doesNotMatch(
-  interactionHandler,
-  /setActiveView|shouldAutoScrollRef|CollapseToken/,
-  "status interaction must not navigate, scroll chat, or remount the panel",
+assert.match(
+  app,
+  /const handleCompanionInteraction = useCallback\(\s*\(zoneId\) => companionInteractionHandlerRef\.current\?\.\(zoneId\),\s*\[\],\s*\)/,
+  "the status panel must receive a stable interaction callback",
 );
 assert.match(
-  interactionHandler,
-  /registerCompanionInteraction\(zoneId\)/,
-  "status interaction must still be recorded and answered",
+  app,
+  /companionInteractionHandlerRef\.current = registerCompanionInteraction/,
+  "the stable callback must forward to the current chat-aware interaction handler",
 );
 assert.match(
   app,
   /onInteract=\{handleCompanionInteraction\}/,
   "the status panel must use the chat-aware interaction handler",
+);
+assert.match(
+  app,
+  /active=\{activeView === "chat"\}/,
+  "leaving chat must reset only the status panel while weather stays mounted",
+);
+assert.match(
+  status,
+  /if \(active\) return undefined;[\s\S]*?requestAnimationFrame[\s\S]*?setExpanded\(false\);[\s\S]*?scrollTo\(\{ top: 0 \}\)/,
+  "an inactive status panel must close and reset its private scroll position",
 );
 assert.match(
   app,
@@ -307,7 +400,7 @@ assert.doesNotMatch(
 );
 const changeViewSource = sourceBetween(
   "function changeView(view)",
-  "function handleCompanionInteraction",
+  "function renderChat()",
 );
 assert.match(
   changeViewSource,
@@ -368,6 +461,16 @@ assert.match(
   androidManifest,
   /android\.permission\.ACCESS_FINE_LOCATION/,
   "Capacitor geolocation also requires fine location on Android 11 and older",
+);
+assert.match(
+  androidManifest,
+  /android:windowSoftInputMode="adjustResize"/,
+  "Android must resize the app for the keyboard while CSS hides mobile navigation",
+);
+assert.match(
+  app,
+  /const rawGap = Math\.max\(0, fullHeight - viewport\.height\)/,
+  "keyboard detection must not let visualViewport offsetTop cancel the height loss",
 );
 
 console.log("mobile layout regression tests passed");

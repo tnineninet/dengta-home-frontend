@@ -1,13 +1,23 @@
 import assert from "node:assert/strict";
 import {
   AMBIENT_LOCATION_CACHE_KEY,
+  AMBIENT_PREFERENCES_KEY,
+  AMBIENT_WEATHER_CACHE_KEY,
   buildAmbientContext,
+  clearCachedWeather,
   describeGeolocationError,
   formatShanghaiClock,
+  normalizeAmbientPreferences,
   normalizeCoordinates,
   normalizeWeather,
+  readAmbientPreferences,
   readCachedCoordinates,
+  readCachedWeather,
+  resolveAmbientStartupAction,
+  resolveAmbientSwipe,
+  storeAmbientPreferences,
   storeCachedCoordinates,
+  storeCachedWeather,
 } from "../src/ambient-context.js";
 import {
   STICKER_CATALOG,
@@ -55,8 +65,62 @@ assert.deepEqual(
   readCachedCoordinates(storage, 2_000, 10_000).coordinates,
   { latitude: 31.23, longitude: 121.47, accuracy: 18 },
 );
-assert.equal(readCachedCoordinates(storage, 12_000, 10_000).state, "expired");
-assert.equal(values.has(AMBIENT_LOCATION_CACHE_KEY), false);
+assert.deepEqual(readCachedCoordinates(storage, 12_000, 10_000), {
+  state: "stale",
+  coordinates: {
+    latitude: 31.23,
+    longitude: 121.47,
+    accuracy: 18,
+  },
+  ageMs: 11_000,
+});
+assert.equal(
+  values.has(AMBIENT_LOCATION_CACHE_KEY),
+  true,
+  "stale rounded coordinates must remain available without another prompt",
+);
+
+assert.deepEqual(normalizeAmbientPreferences(null), {
+  enabled: false,
+  minimized: false,
+  side: "right",
+  permissionDenied: false,
+});
+assert.equal(readAmbientPreferences(storage).state, "missing");
+assert.equal(
+  storeAmbientPreferences(
+    {
+      enabled: true,
+      minimized: true,
+      side: "left",
+      permissionDenied: true,
+    },
+    storage,
+  ),
+  true,
+);
+assert.deepEqual(readAmbientPreferences(storage), {
+  state: "ready",
+  preferences: {
+    enabled: true,
+    minimized: true,
+    side: "left",
+    permissionDenied: true,
+  },
+});
+values.set(
+  AMBIENT_PREFERENCES_KEY,
+  JSON.stringify({ enabled: "yes", side: "bottom" }),
+);
+assert.deepEqual(readAmbientPreferences(storage).preferences, {
+  enabled: false,
+  minimized: false,
+  side: "right",
+  permissionDenied: false,
+});
+values.set(AMBIENT_PREFERENCES_KEY, "{bad-json");
+assert.equal(readAmbientPreferences(storage).state, "invalid");
+assert.equal(values.has(AMBIENT_PREFERENCES_KEY), false);
 
 values.set(AMBIENT_LOCATION_CACHE_KEY, "{bad-json");
 assert.equal(readCachedCoordinates(storage).state, "invalid");
@@ -82,6 +146,120 @@ assert.deepEqual(weather, {
   updatedAt: "2026-07-23T19:00",
 });
 assert.equal(normalizeWeather({ current: {} }), null);
+
+assert.equal(storeCachedWeather(weather, storage, 5_000), true);
+assert.deepEqual(readCachedWeather(storage, 5_500, 1_000), {
+  state: "fresh",
+  weather,
+  ageMs: 500,
+});
+assert.deepEqual(readCachedWeather(storage, 7_000, 1_000), {
+  state: "stale",
+  weather,
+  ageMs: 2_000,
+});
+assert.equal(
+  values.has(AMBIENT_WEATHER_CACHE_KEY),
+  true,
+  "stale weather must remain available for an immediate restore",
+);
+clearCachedWeather(storage);
+assert.equal(values.has(AMBIENT_WEATHER_CACHE_KEY), false);
+values.set(AMBIENT_WEATHER_CACHE_KEY, "{bad-json");
+assert.equal(readCachedWeather(storage).state, "invalid");
+assert.equal(values.has(AMBIENT_WEATHER_CACHE_KEY), false);
+
+assert.deepEqual(
+  resolveAmbientSwipe({
+    startX: 100,
+    startY: 100,
+    endX: 48,
+    endY: 104,
+    side: "right",
+  }),
+  { minimized: true, side: "left" },
+);
+assert.deepEqual(
+  resolveAmbientSwipe({
+    startX: 100,
+    startY: 100,
+    endX: 151,
+    endY: 97,
+    side: "left",
+  }),
+  { minimized: true, side: "right" },
+);
+assert.deepEqual(
+  resolveAmbientSwipe({
+    startX: 100,
+    startY: 100,
+    endX: 103,
+    endY: 50,
+    side: "left",
+  }),
+  { minimized: true, side: "left" },
+);
+assert.equal(
+  resolveAmbientSwipe({
+    startX: 100,
+    startY: 100,
+    endX: 125,
+    endY: 90,
+    side: "right",
+  }),
+  null,
+);
+
+assert.equal(
+  resolveAmbientStartupAction({
+    preferences: { enabled: false },
+    weatherState: "missing",
+    coordinateState: "missing",
+  }),
+  "idle",
+);
+assert.equal(
+  resolveAmbientStartupAction({
+    preferences: { enabled: true, permissionDenied: true },
+    weatherState: "stale",
+    coordinateState: "missing",
+  }),
+  "permission-blocked",
+  "a persisted OS denial must not trigger another automatic prompt",
+);
+assert.equal(
+  resolveAmbientStartupAction({
+    preferences: { enabled: true },
+    weatherState: "fresh",
+    coordinateState: "missing",
+  }),
+  "use-cache",
+);
+assert.equal(
+  resolveAmbientStartupAction({
+    preferences: { enabled: true },
+    weatherState: "stale",
+    coordinateState: "fresh",
+  }),
+  "load-weather",
+);
+assert.equal(
+  resolveAmbientStartupAction({
+    preferences: { enabled: true },
+    weatherState: "stale",
+    coordinateState: "stale",
+  }),
+  "request-location",
+  "stale coordinates must be refreshed through the already-authorized OS location service",
+);
+assert.equal(
+  resolveAmbientStartupAction({
+    preferences: { enabled: true },
+    weatherState: "stale",
+    coordinateState: "missing",
+  }),
+  "request-location",
+);
 
 const context = buildAmbientContext({
   clock,

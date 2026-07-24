@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { DeviceActionReceipts } from "./McpDeviceCenter";
 import { MessageAttachments, ThinkingPanel } from "./ChatMessageExtras";
 import { getStickerById } from "./sticker-catalog";
@@ -7,7 +8,15 @@ const ASSISTANT_AVATAR =
   "/assets/characters/xiaodeng-bear-avatar.jpg";
 const USER_AVATAR = "/assets/characters/taotao-cat-avatar.jpg";
 
-export default function ChatMessage({
+function formatMessageTime(value) {
+  if (!value) return "刚刚";
+  return new Intl.DateTimeFormat("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+function ChatMessage({
   item,
   aiName = "小灯",
   userName = "桃桃",
@@ -82,9 +91,11 @@ export default function ChatMessage({
               ♥
             </span>
           )}
-          <time>{item.formattedTime}</time>
+          <time>{item.formattedTime || formatMessageTime(item.created_at)}</time>
         </div>
       </div>
     </article>
   );
 }
+
+export default memo(ChatMessage);

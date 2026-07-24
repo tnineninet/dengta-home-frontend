@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
 import {
   VOICE_MAX_DURATION_MS,
   VOICE_MIN_DURATION_MS,
@@ -161,7 +162,26 @@ assert.equal(
   normalizeVoicePlaybackMode("expressive"),
   VOICE_PLAYBACK_MODES.expressive,
 );
+assert.equal(normalizeVoicePlaybackMode("system"), VOICE_PLAYBACK_MODES.off);
 assert.equal(normalizeVoicePlaybackMode("unknown"), VOICE_PLAYBACK_MODES.off);
+
+const voiceSource = fs.readFileSync(
+  new URL("../src/voice.js", import.meta.url),
+  "utf8",
+);
+const appSource = fs.readFileSync(
+  new URL("../src/App.jsx", import.meta.url),
+  "utf8",
+);
+const packageSource = fs.readFileSync(
+  new URL("../package.json", import.meta.url),
+  "utf8",
+);
+assert.doesNotMatch(
+  `${voiceSource}\n${appSource}\n${packageSource}`,
+  /speechSynthesis|SpeechSynthesisUtterance|TextToSpeech|capacitor-community\/text-to-speech/,
+  "device and browser system reading paths must stay removed",
+);
 
 let expressiveRequest;
 const expressiveSpeech = await requestExpressiveSpeech("65", {

@@ -101,10 +101,17 @@ body {
 
 .chat-presence-stack {
   position: relative;
+  z-index: 10;
   display: flex;
   min-width: 0;
-  flex: 0 1 auto;
+  min-height: auto;
+  flex: 0 0 auto;
   flex-direction: column;
+  isolation: isolate;
+}
+
+.chat-presence-stack.is-hidden {
+  display: none;
 }
 
 .companion-status {
@@ -384,9 +391,12 @@ body {
 }
 
 .ambient-context-badge {
+  position: relative;
+  z-index: 3;
   display: grid;
   width: min(560px, calc(100% - 24px));
   min-width: 0;
+  flex: 0 0 auto;
   grid-template-columns: auto 1px minmax(0, 1fr);
   align-items: center;
   gap: 12px;
@@ -872,11 +882,26 @@ body {
 
 @media (max-width: 820px), (max-height: 500px) and (max-width: 900px) {
   .chat-presence-stack {
+    min-height: auto;
+    flex: 0 0 auto;
+  }
+
+  .view-content,
+  .view-chat .view-content,
+  .main-panel.view-chat:has(.companion-status.expanded) .view-content {
     min-height: 0;
+    flex: 1 1 0%;
   }
 
   .companion-status {
     margin: 8px 10px 0;
+  }
+
+  .companion-status.expanded {
+    height: clamp(320px, 50vh, 500px);
+    min-height: clamp(320px, 50vh, 500px);
+    max-height: clamp(320px, 50vh, 500px);
+    flex: 0 0 clamp(320px, 50vh, 500px);
   }
 
   .ambient-context-badge {
@@ -887,6 +912,7 @@ body {
   .message-list {
     padding: 18px 12px;
     background-position: center bottom;
+    scroll-behavior: auto;
   }
 
   .message-row {
@@ -922,6 +948,46 @@ body {
     right: 10px;
     left: 10px;
   }
+
+  .topbar,
+  .ambient-context-badge,
+  .composer-wrap,
+  .mobile-nav {
+    backdrop-filter: none;
+  }
+
+  .companion-status,
+  .companion-status::before {
+    animation: none;
+  }
+
+  .companion-status::before {
+    mix-blend-mode: normal;
+  }
+
+  .companion-status::after {
+    filter: none;
+    opacity: 0.24;
+  }
+
+  .feature-page,
+  .message-row {
+    animation-duration: 0.14s;
+  }
+}
+
+:root[data-keyboard-open="true"] {
+  --mobile-nav-reserved-height: 0px;
+}
+
+@media (max-width: 820px), (max-height: 500px) and (max-width: 900px) {
+  :root[data-keyboard-open="true"] .chat-presence-stack {
+    display: none;
+  }
+
+  :root[data-keyboard-open="true"] .mobile-nav {
+    display: none;
+  }
 }
 
 @media (max-width: 420px) {
@@ -950,5 +1016,90 @@ body {
     width: 150px;
     height: 150px;
     border-radius: 36px;
+  }
+}
+
+@media (max-height: 500px) and (max-width: 900px) {
+  :root {
+    --mobile-nav-reserved-height: calc(52px + env(safe-area-inset-bottom));
+  }
+
+  .topbar {
+    padding: 4px 12px;
+  }
+
+  .topbar p {
+    display: none;
+  }
+
+  .menu-button,
+  .new-chat-top {
+    width: 40px;
+    height: 40px;
+  }
+
+  .status-summary {
+    min-height: 52px;
+    padding: 4px 10px;
+  }
+
+  .status-presence {
+    width: 40px;
+    height: 40px;
+  }
+
+  .ambient-context-badge {
+    gap: 8px;
+    margin: 4px 10px 0;
+    padding: 4px 9px;
+  }
+
+  .ambient-context-date,
+  .ambient-context-status {
+    display: none;
+  }
+
+  .ambient-context-time time {
+    font-size: 15px;
+  }
+
+  .mobile-nav {
+    padding: 3px 8px max(3px, env(safe-area-inset-bottom));
+  }
+
+  .mobile-nav button {
+    gap: 0;
+    padding: 2px 3px;
+  }
+
+  .mobile-nav span {
+    font-size: 15px;
+  }
+
+  .mobile-nav small {
+    font-size: 9px;
+  }
+
+  .companion-status.expanded {
+    position: fixed;
+    z-index: 12;
+    top: max(8px, env(safe-area-inset-top));
+    right: 10px;
+    left: 10px;
+    width: auto;
+    height: min(46vh, 180px);
+    min-height: min(46vh, 180px);
+    max-height: min(46vh, 180px);
+    margin: 0;
+    flex-basis: auto;
+  }
+
+  .main-panel.view-chat:has(.companion-status.expanded)
+    .ambient-context-badge {
+    display: none;
+  }
+
+  .main-panel.view-chat:has(.companion-status.expanded) .topbar {
+    visibility: hidden;
   }
 }

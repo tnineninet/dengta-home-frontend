@@ -1,5 +1,3 @@
-import { Capacitor } from "@capacitor/core";
-import { TextToSpeech } from "@capacitor-community/text-to-speech";
 import { API_BASE_URL } from "./api.js";
 
 export const VOICE_MAX_DURATION_MS = 60_000;
@@ -18,7 +16,6 @@ export const VOICE_STATES = Object.freeze({
 export const VOICE_PLAYBACK_MODES = Object.freeze({
   off: "off",
   expressive: "expressive",
-  system: "system",
 });
 
 export const VOICE_STATE_LABELS = Object.freeze({
@@ -340,12 +337,6 @@ export function createVoiceTurnRequest(
   };
 }
 
-function browserSpeechAvailable() {
-  return Boolean(
-    globalThis.speechSynthesis && typeof globalThis.SpeechSynthesisUtterance === "function",
-  );
-}
-
 let activeAudioPlayback = null;
 
 export function normalizeVoicePlaybackMode(value) {
@@ -471,78 +462,11 @@ function playAudioBlob(
   });
 }
 
-function speakWithBrowser(text, options) {
-  if (!browserSpeechAvailable()) {
-    throw new Error("这台设备没有可用的朗读引擎。");
-  }
-
-  return new Promise((resolve, reject) => {
-    const utterance = new globalThis.SpeechSynthesisUtterance(text);
-    utterance.lang = options.lang;
-    utterance.rate = options.rate;
-    utterance.pitch = options.pitch;
-    utterance.volume = options.volume;
-    utterance.onend = () => resolve({ engine: "browser" });
-    utterance.onerror = (event) => {
-      if (event.error === "canceled" || event.error === "interrupted") {
-        resolve({ engine: "browser", stopped: true });
-        return;
-      }
-      reject(new Error("浏览器朗读失败，请检查系统语音引擎。"));
-    };
-    globalThis.speechSynthesis.cancel();
-    globalThis.speechSynthesis.speak(utterance);
-  });
-}
-
-async function speakWithDevice(
-  value,
-  { lang = "zh-CN", rate = 1, pitch = 1, volume = 1 } = {},
-) {
-  const text = cleanDisplayText(value, 8_000);
-  if (!text) return { engine: "none" };
-
-  let nativeError;
-  if (
-    Capacitor.isNativePlatform() &&
-    Capacitor.isPluginAvailable("TextToSpeech")
-  ) {
-    try {
-      await TextToSpeech.stop().catch(() => undefined);
-      await TextToSpeech.speak({
-        text,
-        lang,
-        rate,
-        pitch,
-        volume,
-        category: "ambient",
-        queueStrategy: 1,
-      });
-      return { engine: "native" };
-    } catch (error) {
-      nativeError = error;
-    }
-  }
-
-  if (browserSpeechAvailable()) {
-    return speakWithBrowser(text, { lang, rate, pitch, volume });
-  }
-
-  throw new Error(
-    cleanDisplayText(nativeError?.message, 240) ||
-      "这台设备没有可用的中文朗读引擎。",
-  );
-}
-
 export async function speakVoiceText(
   value,
   {
-    mode = VOICE_PLAYBACK_MODES.system,
+    mode = VOICE_PLAYBACK_MODES.off,
     messageId = "",
-    lang = "zh-CN",
-    rate = 1,
-    pitch = 1,
-    volume = 1,
     sessionId = "",
     speechToken = "",
   } = {},
@@ -553,52 +477,19 @@ export async function speakVoiceText(
     return { engine: "none" };
   }
 
-  if (normalizedMode === VOICE_PLAYBACK_MODES.expressive) {
-    let cloudError;
-    try {
-      const speech = await requestExpressiveSpeech(messageId, {
-        sessionId,
-        speechToken,
-      });
-      const playback = await playAudioBlob(speech.blob);
-      return {
-        ...playback,
-        provider: speech.provider,
-        emotion: speech.emotion,
-      };
-    } catch (error) {
-      cloudError = error;
-    }
-
-    try {
-      return {
-        ...(await speakWithDevice(text, { lang, rate, pitch, volume })),
-        fallbackFrom: "expressive",
-        fallbackReason: cleanDisplayText(cloudError?.message, 240),
-      };
-    } catch (deviceError) {
-      throw new Error(
-        `${cleanDisplayText(cloudError?.message, 180) || "自然语音不可用"}；${
-          cleanDisplayText(deviceError?.message, 180) || "系统朗读也不可用"
-        }`,
-        { cause: deviceError },
-      );
-    }
-  }
-
-  return speakWithDevice(text, { lang, rate, pitch, volume });
+  const speech = await requestExpressiveSpeech(messageId, {
+    sessionId,
+    speechToken,
+  });
+  const playback = await playAudioBlob(speech.blob);
+  return {
+    ...playback,
+    provider: speech.provider,
+    emotion: speech.emotion,
+  };
 }
 
 export async function stopVoiceSpeech() {
-  const tasks = [];
   activeAudioPlayback?.stop?.();
   activeAudioPlayback = null;
-  if (
-    Capacitor.isNativePlatform() &&
-    Capacitor.isPluginAvailable("TextToSpeech")
-  ) {
-    tasks.push(TextToSpeech.stop().catch(() => undefined));
-  }
-  globalThis.speechSynthesis?.cancel?.();
-  await Promise.all(tasks);
 }

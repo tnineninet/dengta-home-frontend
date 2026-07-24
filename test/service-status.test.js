@@ -37,7 +37,7 @@ assert.equal(cards.find((item) => item.id === "groq").status, "online");
 assert.equal(cards.find((item) => item.id === "minimax").status, "pending");
 assert.equal(
   cards.find((item) => item.id === "minimax").summary,
-  "尚未配置，使用手机朗读备用",
+  "尚未配置自然语音",
 );
 assert.equal(cards.find((item) => item.id === "ombre-mcp").status, "pending");
 
@@ -74,7 +74,20 @@ const legacyVoice = describeExpressiveTts({
   expressive_tts_configured: false,
 });
 assert.equal(legacyVoice.stage, "legacy_pending");
-assert.equal(legacyVoice.summary, "尚未配置，使用手机朗读备用");
+assert.equal(legacyVoice.summary, "尚未配置自然语音");
+assert.doesNotMatch(
+  JSON.stringify([
+    describeExpressiveTts({
+      expressive_tts_configured: true,
+      expressive_tts_api_key_configured: true,
+      expressive_tts_voice_configured: true,
+    }),
+    awaitingVoice,
+    missingKey,
+    legacyVoice,
+  ]),
+  /手机系统朗读|手机朗读备用/,
+);
 
 const fixedNow = new Date("2026-07-23T00:00:00Z");
 assert.equal(describeGroqExpiry("", fixedNow).status, "unknown");

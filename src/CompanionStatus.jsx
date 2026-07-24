@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import {
   HOT_ZONES,
   addStatusRecord,
@@ -13,7 +13,8 @@ import {
   settleExpiredCountdown,
 } from "./companion-status";
 
-export default function CompanionStatus({
+function CompanionStatus({
+  active = true,
   aiName,
   status,
   interactionStats,
@@ -97,6 +98,15 @@ export default function CompanionStatus({
     onChange,
     remainingSeconds,
   ]);
+
+  useEffect(() => {
+    if (active) return undefined;
+    const animationFrame = window.requestAnimationFrame(() => {
+      setExpanded(false);
+      panelRef.current?.scrollTo({ top: 0 });
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [active]);
 
   useEffect(() => {
     if (!expanded) return undefined;
@@ -517,3 +527,5 @@ export default function CompanionStatus({
     </section>
   );
 }
+
+export default memo(CompanionStatus);

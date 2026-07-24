@@ -64,7 +64,7 @@ import {
   settingsNeedsUnifiedPromptMigration,
   settingsPayloadFingerprint,
 } from "./settings";
-import { createReplySuggestions } from "./chat-reply-suggestions";
+import { readReplySuggestions } from "./chat-reply-suggestions";
 import { SHANGHAI_TIME_ZONE } from "./ambient-context";
 import {
   VOICE_MAX_DURATION_MS,
@@ -98,12 +98,11 @@ const PUSH_SEEN_IDS_KEY = "dengta_push_seen_ids";
 const PUSH_POLL_INTERVAL_MS = 2 * 60 * 1000;
 const MOMENTS_POLL_INTERVAL_MS = 15 * 1000;
 const EMOTION_UNDERSTANDING_KEY = "dengta_emotion_understanding_enabled";
-const COMPANION_INTERACTION_DEBOUNCE_MS = 1100;
+const COMPANION_INTERACTION_DEBOUNCE_MS = 220;
 const COMPANION_INTERACTION_RATE_LIMIT = 6;
 const COMPANION_INTERACTION_RATE_WINDOW_MS = 60 * 1000;
 const LOCAL_NOTIFICATION_CHANNEL_ID = "dengta-home-reminders-v1";
 const PROMPT_RECEIPT_STORAGE_KEY = "dengta_prompt_receipt_v1";
-const VOICE_AUTO_SPEAK_KEY = "dengta_voice_auto_speak_enabled";
 const VOICE_PLAYBACK_MODE_KEY = "dengta_voice_playback_mode";
 
 function shanghaiClientTime(value = new Date()) {
@@ -204,14 +203,6 @@ const navItems = [
   { id: "settings", icon: "⚙", label: "设置" },
 ];
 
-function formatTime(value) {
-  if (!value) return "刚刚";
-  return new Intl.DateTimeFormat("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
-}
-
 function formatDateTime(value) {
   if (!value) return "刚刚";
   return new Intl.DateTimeFormat("zh-CN", {
@@ -254,10 +245,7 @@ function readEmotionUnderstandingSetting() {
 function readVoicePlaybackMode() {
   try {
     const stored = localStorage.getItem(VOICE_PLAYBACK_MODE_KEY);
-    if (stored) return normalizeVoicePlaybackMode(stored);
-    return localStorage.getItem(VOICE_AUTO_SPEAK_KEY) === "true"
-      ? VOICE_PLAYBACK_MODES.expressive
-      : VOICE_PLAYBACK_MODES.off;
+    return normalizeVoicePlaybackMode(stored);
   } catch {
     return VOICE_PLAYBACK_MODES.off;
   }
@@ -516,6 +504,7 @@ function App() {
   const environmentContextRef = useRef({});
   const turnContextRef = useRef("");
   const companionInteractionStatsRef = useRef(companionInteractionStats);
+  const companionInteractionHandlerRef = useRef(null);
   const companionInteractionQueueRef = useRef([]);
   const companionInteractionTimerRef = useRef(null);
   const companionInteractionInFlightRef = useRef(false);
@@ -554,7 +543,9 @@ function App() {
   );
   const isVoiceInputBusy = voiceInputBusy(voiceState);
   const voiceServiceAvailable = voiceService.available;
-  const voiceAutoSpeakEnabled = voicePlaybackMode !== VOICE_PLAYBACK_MODES.off;
+  const voiceAutoSpeakEnabled =
+    voicePlaybackMode === VOICE_PLAYBACK_MODES.expressive &&
+    voiceService.expressiveAvailable;
   const activeChatModel = selectedChatModel || settings.model;
   const chatRetryReady = canRetryChatClientMessage(
     pendingChatClientMessageRef.current,
@@ -585,6 +576,15 @@ function App() {
     environmentContextRef.current =
       context && typeof context === "object" ? context : {};
   }, []);
+
+  const handleImagePreview = useCallback((url, alt) => {
+    setImageViewer({ url, alt });
+  }, []);
+
+  const handleCompanionInteraction = useCallback(
+    (zoneId) => companionInteractionHandlerRef.current?.(zoneId),
+    [],
+  );
 
   const refreshServiceHealth = useCallback(async () => {
     setServiceHealth((current) => ({
@@ -1097,26 +1097,60 @@ function App() {
     const viewport = window.visualViewport;
     if (!viewport) return undefined;
 
-    let fullHeight = window.innerHeight;
+    const root = document.documentElement;
+    let fullHeight = Math.max(
+      window.innerHeight,
+      viewport.height + viewport.offsetTop,
+    );
+    let viewportWidth = viewport.width || window.innerWidth;
+
+    function editableElementIsFocused() {
+      const activeElement = document.activeElement;
+      return Boolean(
+        activeElement instanceof HTMLElement &&
+          (activeElement.matches("input, textarea, select") ||
+            activeElement.isContentEditable),
+      );
+    }
+
     function fitViewport() {
-      if (viewport.height > fullHeight - 60) {
-        fullHeight = Math.max(viewport.height, window.innerHeight);
+      const visibleBottom = viewport.height + viewport.offsetTop;
+      const nextViewportWidth = viewport.width || window.innerWidth;
+      if (Math.abs(nextViewportWidth - viewportWidth) > 48) {
+        viewportWidth = nextViewportWidth;
+        fullHeight = Math.max(window.innerHeight, visibleBottom);
       }
-      const keyboardGap = fullHeight - viewport.height;
-      const height = keyboardGap > 60 ? viewport.height : fullHeight;
-      document.documentElement.style.setProperty(
+      const rawGap = Math.max(0, fullHeight - viewport.height);
+      const keyboardOpen = editableElementIsFocused() && rawGap > 100;
+
+      if (!keyboardOpen && rawGap <= 100) {
+        fullHeight = Math.max(fullHeight, visibleBottom, window.innerHeight);
+      }
+
+      root.dataset.keyboardOpen = keyboardOpen ? "true" : "false";
+      const height = keyboardOpen ? viewport.height : fullHeight;
+      root.style.setProperty(
         "--app-height",
         `${Math.round(height)}px`,
       );
-      if (keyboardGap <= 60 && window.scrollY) window.scrollTo(0, 0);
+      if (!keyboardOpen && window.scrollY) window.scrollTo(0, 0);
     }
 
     fitViewport();
     viewport.addEventListener("resize", fitViewport);
     viewport.addEventListener("scroll", fitViewport);
+    window.addEventListener("resize", fitViewport);
+    window.addEventListener("orientationchange", fitViewport);
+    document.addEventListener("focusin", fitViewport);
+    document.addEventListener("focusout", fitViewport);
     return () => {
       viewport.removeEventListener("resize", fitViewport);
       viewport.removeEventListener("scroll", fitViewport);
+      window.removeEventListener("resize", fitViewport);
+      window.removeEventListener("orientationchange", fitViewport);
+      document.removeEventListener("focusin", fitViewport);
+      document.removeEventListener("focusout", fitViewport);
+      delete root.dataset.keyboardOpen;
     };
   }, []);
 
@@ -1204,27 +1238,16 @@ function App() {
     setVoiceError("");
     setVoiceMode(VOICE_STATES.speaking);
     try {
-      const requestedMode =
-        voicePlaybackMode === VOICE_PLAYBACK_MODES.expressive &&
-        !voiceService.expressiveAvailable
-          ? VOICE_PLAYBACK_MODES.system
-          : voicePlaybackMode;
-      const result = await speakVoiceText(value, {
-        mode: requestedMode,
+      await speakVoiceText(value, {
+        mode: VOICE_PLAYBACK_MODES.expressive,
         messageId,
         sessionId,
         speechToken,
       });
-      if (
-        voicePlaybackMode === VOICE_PLAYBACK_MODES.expressive &&
-        (requestedMode === VOICE_PLAYBACK_MODES.system || result.fallbackFrom)
-      ) {
-        setNotice("自然语音尚未连接，本次已自动使用手机系统朗读。");
-      }
     } catch (error) {
       if (speechRunRef.current === runId) {
         setVoiceFailure(
-          `自动朗读失败：${error?.message || "请检查手机系统语音引擎"}`,
+          `自然语音播放失败，本轮只显示文字：${error?.message || "请稍后重试"}`,
         );
       }
       return;
@@ -1609,10 +1632,7 @@ function App() {
     setVoicePlaybackMode(mode);
     try {
       localStorage.setItem(VOICE_PLAYBACK_MODE_KEY, mode);
-      localStorage.setItem(
-        VOICE_AUTO_SPEAK_KEY,
-        String(mode !== VOICE_PLAYBACK_MODES.off),
-      );
+      localStorage.removeItem("dengta_voice_auto_speak_enabled");
     } catch {
       // 本地存储不可用时，本次运行仍保持选择。
     }
@@ -1623,8 +1643,7 @@ function App() {
       [VOICE_PLAYBACK_MODES.off]: "AI 回复自动语音已关闭。",
       [VOICE_PLAYBACK_MODES.expressive]: voiceService.expressiveAvailable
         ? "AI 自然语音已开启。"
-        : "已选择自然语音；云端尚未连接时会自动使用手机系统朗读。",
-      [VOICE_PLAYBACK_MODES.system]: "已选择手机系统朗读。",
+        : "已选择自然语音；云端尚未连接时只显示文字。",
     };
     setNotice(labels[mode]);
   }
@@ -1769,6 +1788,8 @@ function App() {
     scheduleCompanionInteraction();
     return nextStats;
   }
+
+  companionInteractionHandlerRef.current = registerCompanionInteraction;
 
   async function processCompanionInteractionQueue() {
     if (companionInteractionQueueRef.current.length === 0) return;
@@ -2933,10 +2954,6 @@ function App() {
     setIsSidebarOpen(false);
   }
 
-  function handleCompanionInteraction(zoneId) {
-    return registerCompanionInteraction(zoneId);
-  }
-
   function renderChat() {
     const latestMessage = messages.at(-1);
     const replySuggestions =
@@ -2945,10 +2962,7 @@ function App() {
       !isSending &&
       !isCompanionResponding &&
       !isVoiceInputBusy
-        ? createReplySuggestions({
-            assistantText: latestMessage.content,
-            mood: companionStatus.mood,
-          })
+        ? readReplySuggestions(latestMessage)
         : [];
 
     return (
@@ -2979,17 +2993,12 @@ function App() {
             messages.map((item) => (
               <ChatMessage
                 key={item.id}
-                item={{
-                  ...item,
-                  formattedTime: formatTime(item.created_at),
-                }}
+                item={item}
                 aiName={settings.ai_name || "小灯"}
                 userName="桃桃"
                 companionMood={companionStatus.mood}
                 apiBaseUrl={API_BASE_URL}
-                onPreview={(url, name) =>
-                  setImageViewer({ url, alt: name })
-                }
+                onPreview={handleImagePreview}
               />
             ))
           )}
@@ -3827,9 +3836,6 @@ function App() {
                   <option value={VOICE_PLAYBACK_MODES.expressive}>
                     自然云端语音（推荐）
                   </option>
-                  <option value={VOICE_PLAYBACK_MODES.system}>
-                    手机系统朗读（备用）
-                  </option>
                 </select>
               </label>
             </div>
@@ -4259,25 +4265,29 @@ function App() {
           </button>
         </header>
 
-        {activeView === "chat" && (
-          <div className="chat-presence-stack">
-            <CompanionStatus
-              aiName={settings.ai_name || "小灯"}
-              status={companionStatus}
-              interactionStats={companionInteractionStats}
-              intimateExpressionEnabled={
-                settings.intimate_expression_enabled === true
-              }
-              isResponding={isCompanionResponding}
-              onChange={setCompanionStatus}
-              onInteract={handleCompanionInteraction}
-            />
-            <AmbientContextBadge
-              onLoadWeather={loadAmbientWeather}
-              onContextChange={handleAmbientContextChange}
-            />
-          </div>
-        )}
+        <div
+          className={`chat-presence-stack${
+            activeView === "chat" ? "" : " is-hidden"
+          }`}
+          aria-hidden={activeView === "chat" ? undefined : "true"}
+        >
+          <CompanionStatus
+            active={activeView === "chat"}
+            aiName={settings.ai_name || "小灯"}
+            status={companionStatus}
+            interactionStats={companionInteractionStats}
+            intimateExpressionEnabled={
+              settings.intimate_expression_enabled === true
+            }
+            isResponding={isCompanionResponding}
+            onChange={setCompanionStatus}
+            onInteract={handleCompanionInteraction}
+          />
+          <AmbientContextBadge
+            onLoadWeather={loadAmbientWeather}
+            onContextChange={handleAmbientContextChange}
+          />
+        </div>
 
         {notice && (
           <div className="notice" role="status">
