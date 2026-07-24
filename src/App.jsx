@@ -543,6 +543,7 @@ function App() {
   const settingsAutosaveTimerRef = useRef(null);
   const pendingSettingsSaveRef = useRef(null);
   const settingsSaveInFlightRef = useRef(false);
+  const settingsSaveRunRef = useRef(null);
   const settingsMigrationPendingRef = useRef(false);
   const componentMountedRef = useRef(true);
   const speechRunRef = useRef(0);
@@ -1247,6 +1248,12 @@ function App() {
     let requestHandle;
 
     try {
+      if (!(await flushLatestSettingsDraft())) {
+        throw new Error(
+          "最新角色设置还没有保存成功，语音没有发送。请恢复网络后再试一次。",
+        );
+      }
+
       if (!sessionId) {
         const created = await apiRequest("/sessions", {
           method: "POST",
@@ -1802,6 +1809,13 @@ function App() {
       return;
     }
 
+    if (!(await flushLatestSettingsDraft())) {
+      setNotice(
+        "互动已经记下了，但最新角色设置还没有保存成功；恢复网络后再碰一下，我会按新设置回应。",
+      );
+      return;
+    }
+
     const interaction = companionInteractionQueueRef.current.shift();
     // The model reacts from before this batch; optimistic revisions only guard
     // the UI against responses that finish after a newer local interaction.
@@ -2041,6 +2055,17 @@ function App() {
       return;
     }
 
+    isSendingRef.current = true;
+    setIsSending(true);
+    if (!(await flushLatestSettingsDraft())) {
+      isSendingRef.current = false;
+      if (componentMountedRef.current) setIsSending(false);
+      setNotice(
+        "最新角色设置还没有保存成功，这条消息没有发送。请恢复网络后重试。",
+      );
+      return;
+    }
+
     if (voiceStateRef.current === VOICE_STATES.speaking) {
       void stopVoicePlayback();
     }
@@ -2049,8 +2074,6 @@ function App() {
     chatAttachmentsRef.current = [];
     setChatAttachments([]);
     setAttachmentSafetyEnabled(true);
-    isSendingRef.current = true;
-    setIsSending(true);
     setNotice("");
 
     let sessionId = activeSessionId;
@@ -2558,6 +2581,7 @@ function App() {
     const fingerprint = settingsPayloadFingerprint(payload);
     latestDraftFingerprintRef.current = fingerprint;
     window.clearTimeout(settingsAutosaveTimerRef.current);
+    settingsAutosaveTimerRef.current = null;
 
     if (
       fingerprint === lastSavedSettingsFingerprintRef.current &&
@@ -2573,6 +2597,7 @@ function App() {
     setSettingsSaveReceipt(null);
 
     const enqueue = () => {
+      settingsAutosaveTimerRef.current = null;
       if (
         fingerprint === lastSavedSettingsFingerprintRef.current &&
         !settingsSaveInFlightRef.current
@@ -2592,82 +2617,128 @@ function App() {
     settingsAutosaveTimerRef.current = window.setTimeout(enqueue, 800);
   }
 
-  async function flushSettingsSaveQueue() {
-    if (settingsSaveInFlightRef.current) return;
-    const queued = pendingSettingsSaveRef.current;
-    if (!queued) return;
+  function flushSettingsSaveQueue() {
+    if (settingsSaveRunRef.current) return settingsSaveRunRef.current;
+    if (!pendingSettingsSaveRef.current) {
+      return Promise.resolve(
+        latestDraftFingerprintRef.current ===
+          lastSavedSettingsFingerprintRef.current,
+      );
+    }
 
-    pendingSettingsSaveRef.current = null;
-    settingsSaveInFlightRef.current = true;
-    setSettingsAutosaveState("saving");
-    setSettingsSaveError("");
+    const run = (async () => {
+      while (pendingSettingsSaveRef.current) {
+        const queued = pendingSettingsSaveRef.current;
+        pendingSettingsSaveRef.current = null;
+        settingsSaveInFlightRef.current = true;
+        setSettingsAutosaveState("saving");
+        setSettingsSaveError("");
 
-    try {
-      const data = await apiRequest("/settings", {
-        method: "PUT",
-        body: JSON.stringify(queued.payload),
-      });
-      const nextSettings = normalizeSettingsDraft(data.settings);
-      const savedFingerprint = settingsPayloadFingerprint(nextSettings);
-      const previousSettings = confirmedSettingsRef.current;
-      const connectionChanged =
-        previousSettings.provider !== nextSettings.provider ||
-        previousSettings.api_url !== nextSettings.api_url ||
-        previousSettings.model !== nextSettings.model;
-
-      confirmedSettingsRef.current = nextSettings;
-      lastSavedSettingsFingerprintRef.current = savedFingerprint;
-      setSettings(nextSettings);
-
-      if (latestDraftFingerprintRef.current === queued.fingerprint) {
-        draftSettingsRef.current = nextSettings;
-        latestDraftFingerprintRef.current = savedFingerprint;
-        setDraftSettings(nextSettings);
-        setSettingsAutosaveState("saved");
-      } else {
-        setSettingsAutosaveState("pending");
-      }
-
-      const receipt = {
-        unifiedSystemPromptLength:
-          nextSettings.unified_system_prompt.length,
-        promptMode: nextSettings.prompt_mode,
-        intimateExpressionEnabled:
-          nextSettings.intimate_expression_enabled === true,
-      };
-      setSettingsSaveReceipt(receipt);
-
-      if (connectionChanged) {
         try {
-          const modelsData = await apiRequest("/models");
-          const catalog = reconcileModelCatalog(modelsData, {
-            previous: selectedChatModel,
-            fallback: nextSettings.model,
+          const data = await apiRequest("/settings", {
+            method: "PUT",
+            body: JSON.stringify(queued.payload),
           });
-          setAvailableModels(catalog.models);
-          setSelectedChatModel(catalog.selectedModel);
-          storeChatModel(catalog.selectedModel);
-          setModelsLoadMessage("");
-        } catch {
-          setModelsLoadMessage(
-            "设置已保存，但新的模型列表暂时无法读取。重新打开 App 后会再次加载。",
-          );
+          const nextSettings = normalizeSettingsDraft(data.settings);
+          const savedFingerprint = settingsPayloadFingerprint(nextSettings);
+          const previousSettings = confirmedSettingsRef.current;
+          const connectionChanged =
+            previousSettings.provider !== nextSettings.provider ||
+            previousSettings.api_url !== nextSettings.api_url ||
+            previousSettings.model !== nextSettings.model;
+
+          confirmedSettingsRef.current = nextSettings;
+          lastSavedSettingsFingerprintRef.current = savedFingerprint;
+          setSettings(nextSettings);
+
+          if (latestDraftFingerprintRef.current === queued.fingerprint) {
+            draftSettingsRef.current = nextSettings;
+            latestDraftFingerprintRef.current = savedFingerprint;
+            setDraftSettings(nextSettings);
+            setSettingsAutosaveState("saved");
+          } else {
+            setSettingsAutosaveState("pending");
+          }
+
+          const receipt = {
+            unifiedSystemPromptLength:
+              nextSettings.unified_system_prompt.length,
+            promptMode: nextSettings.prompt_mode,
+            intimateExpressionEnabled:
+              nextSettings.intimate_expression_enabled === true,
+          };
+          setSettingsSaveReceipt(receipt);
+
+          if (connectionChanged) {
+            try {
+              const modelsData = await apiRequest("/models");
+              const catalog = reconcileModelCatalog(modelsData, {
+                previous: selectedChatModel,
+                fallback: nextSettings.model,
+              });
+              setAvailableModels(catalog.models);
+              setSelectedChatModel(catalog.selectedModel);
+              storeChatModel(catalog.selectedModel);
+              setModelsLoadMessage("");
+            } catch {
+              setModelsLoadMessage(
+                "设置已保存，但新的模型列表暂时无法读取。重新打开 App 后会再次加载。",
+              );
+            }
+          }
+        } catch (error) {
+          if (latestDraftFingerprintRef.current === queued.fingerprint) {
+            setSettingsAutosaveState("error");
+            setSettingsSaveError(error.message || "自动保存失败");
+          } else {
+            setSettingsAutosaveState("pending");
+          }
+          setNotice(error.message);
+        } finally {
+          settingsSaveInFlightRef.current = false;
         }
       }
-    } catch (error) {
-      if (latestDraftFingerprintRef.current === queued.fingerprint) {
-        setSettingsAutosaveState("error");
-        setSettingsSaveError(error.message || "自动保存失败");
-      } else {
-        setSettingsAutosaveState("pending");
-      }
-      setNotice(error.message);
-    } finally {
-      settingsSaveInFlightRef.current = false;
+
+      return (
+        latestDraftFingerprintRef.current ===
+        lastSavedSettingsFingerprintRef.current
+      );
+    })();
+
+    settingsSaveRunRef.current = run.finally(() => {
+      settingsSaveRunRef.current = null;
       if (pendingSettingsSaveRef.current) {
         void flushSettingsSaveQueue();
       }
+    });
+    return settingsSaveRunRef.current;
+  }
+
+  async function flushLatestSettingsDraft() {
+    if (!hasLoadedSettings) return true;
+
+    const payload = createSettingsPayload(draftSettingsRef.current);
+    const fingerprint = settingsPayloadFingerprint(payload);
+    latestDraftFingerprintRef.current = fingerprint;
+    window.clearTimeout(settingsAutosaveTimerRef.current);
+    settingsAutosaveTimerRef.current = null;
+
+    if (
+      fingerprint === lastSavedSettingsFingerprintRef.current &&
+      !settingsSaveInFlightRef.current &&
+      !pendingSettingsSaveRef.current
+    ) {
+      return true;
     }
+
+    pendingSettingsSaveRef.current = { payload, fingerprint };
+    setSettingsAutosaveState("pending");
+    setSettingsSaveError("");
+    const saved = await flushSettingsSaveQueue();
+    return (
+      saved &&
+      fingerprint === lastSavedSettingsFingerprintRef.current
+    );
   }
 
   function saveSettings(event) {
@@ -2851,6 +2922,11 @@ function App() {
   }
 
   function changeView(view) {
+    if (activeView === "settings" && view !== "settings") {
+      scheduleSettingsAutosave(draftSettingsRef.current, {
+        immediate: true,
+      });
+    }
     if (view === "chat" && activeView !== "chat") {
       shouldAutoScrollRef.current = true;
     }

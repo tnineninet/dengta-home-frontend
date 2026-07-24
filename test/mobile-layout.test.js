@@ -12,6 +12,14 @@ const androidManifest = fs.readFileSync(
   "utf8",
 );
 
+function sourceBetween(startMarker, endMarker) {
+  const start = app.indexOf(startMarker);
+  const end = app.indexOf(endMarker, start + startMarker.length);
+  assert.ok(start >= 0, `missing source marker: ${startMarker}`);
+  assert.ok(end > start, `missing source marker: ${endMarker}`);
+  return app.slice(start, end);
+}
+
 assert.match(
   css,
   /--mobile-nav-reserved-height:\s*calc\(72px\s*\+\s*env\(safe-area-inset-bottom\)\)/,
@@ -171,6 +179,57 @@ assert.match(
   app,
   /pendingSettingsSaveRef/,
   "autosaves must queue newer edits instead of racing requests",
+);
+assert.match(
+  app,
+  /settingsSaveRunRef/,
+  "callers must be able to await the active settings save queue",
+);
+assert.match(
+  app,
+  /while \(pendingSettingsSaveRef\.current\)/,
+  "the settings queue must finish newer drafts before resolving",
+);
+const sendMessageSource = sourceBetween(
+  "async function sendMessage()",
+  "function scheduleSettingsAutosave",
+);
+assert.ok(
+  sendMessageSource.indexOf("await flushLatestSettingsDraft()") >= 0 &&
+    sendMessageSource.indexOf("await flushLatestSettingsDraft()") <
+      sendMessageSource.indexOf('setMessage("")'),
+  "text chat must save the latest role settings before consuming the draft",
+);
+const submitVoiceSource = sourceBetween(
+  "async function submitVoiceBlob",
+  "async function finishVoiceCapture",
+);
+assert.ok(
+  submitVoiceSource.indexOf("await flushLatestSettingsDraft()") >= 0 &&
+    submitVoiceSource.indexOf("await flushLatestSettingsDraft()") <
+      submitVoiceSource.indexOf('apiRequest("/sessions"'),
+  "voice chat must save the latest role settings before its first request",
+);
+const companionInteractionSource = sourceBetween(
+  "async function processCompanionInteractionQueue()",
+  "async function selectChatAttachments",
+);
+assert.ok(
+  companionInteractionSource.indexOf("await flushLatestSettingsDraft()") >= 0 &&
+    companionInteractionSource.indexOf("await flushLatestSettingsDraft()") <
+      companionInteractionSource.indexOf(
+        "companionInteractionQueueRef.current.shift()",
+      ),
+  "companion interactions must not consume an event before settings are saved",
+);
+const changeViewSource = sourceBetween(
+  "function changeView(view)",
+  "function handleCompanionInteraction",
+);
+assert.match(
+  changeViewSource,
+  /activeView === "settings"[\s\S]*scheduleSettingsAutosave\(draftSettingsRef\.current,[\s\S]*immediate: true/,
+  "leaving settings must start an immediate save",
 );
 assert.doesNotMatch(
   app,
