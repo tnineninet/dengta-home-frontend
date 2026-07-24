@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   buildServiceStatusCards,
+  describeExpressiveTts,
   describeGroqExpiry,
   readGroqExpiryDate,
   storeGroqExpiryDate,
@@ -34,7 +35,46 @@ assert.equal(cards.find((item) => item.id === "database").status, "online");
 assert.equal(cards.find((item) => item.id === "provider").status, "online");
 assert.equal(cards.find((item) => item.id === "groq").status, "online");
 assert.equal(cards.find((item) => item.id === "minimax").status, "pending");
+assert.equal(
+  cards.find((item) => item.id === "minimax").summary,
+  "尚未配置，使用手机朗读备用",
+);
 assert.equal(cards.find((item) => item.id === "ombre-mcp").status, "pending");
+
+const awaitingVoice = describeExpressiveTts({
+  expressive_tts_configured: false,
+  expressive_tts_api_key_configured: true,
+  expressive_tts_voice_configured: false,
+  expressive_tts_provider: "minimax",
+});
+assert.equal(awaitingVoice.stage, "awaiting_voice");
+assert.equal(awaitingVoice.status, "pending");
+assert.equal(awaitingVoice.summary, "密钥已就绪，等待生成音色");
+assert.match(awaitingVoice.settingsText, /Voice Design/);
+
+const readyVoice = describeExpressiveTts({
+  expressive_tts_configured: true,
+  expressive_tts_api_key_configured: true,
+  expressive_tts_voice_configured: true,
+  expressive_tts_provider: "minimax",
+});
+assert.equal(readyVoice.stage, "ready");
+assert.equal(readyVoice.status, "online");
+assert.equal(readyVoice.summary, "已连接 minimax");
+
+const missingKey = describeExpressiveTts({
+  expressive_tts_configured: false,
+  expressive_tts_api_key_configured: false,
+  expressive_tts_voice_configured: false,
+});
+assert.equal(missingKey.stage, "incomplete");
+assert.match(missingKey.settingsText, /配置还不完整/);
+
+const legacyVoice = describeExpressiveTts({
+  expressive_tts_configured: false,
+});
+assert.equal(legacyVoice.stage, "legacy_pending");
+assert.equal(legacyVoice.summary, "尚未配置，使用手机朗读备用");
 
 const fixedNow = new Date("2026-07-23T00:00:00Z");
 assert.equal(describeGroqExpiry("", fixedNow).status, "unknown");

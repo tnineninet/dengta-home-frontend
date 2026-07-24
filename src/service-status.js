@@ -12,6 +12,59 @@ function statusCard(id, name, status, summary, detail, link, linkLabel) {
   return { id, name, status, summary, detail, link, linkLabel };
 }
 
+export function describeExpressiveTts(features = {}) {
+  const configured = features.expressive_tts_configured === true;
+  const apiKeyConfigured = features.expressive_tts_api_key_configured;
+  const voiceConfigured = features.expressive_tts_voice_configured;
+  const provider = features.expressive_tts_provider || "MiniMax";
+
+  if (configured) {
+    return {
+      stage: "ready",
+      status: "online",
+      summary: `已连接 ${provider}`,
+      detail:
+        "AI 回复可使用云端情绪语音；实际费用由 MiniMax 套餐或余额决定。",
+      settingsText:
+        "MiniMax 自然语音已连接：会根据 AI 回复选择较合适的情绪后播放；失败时自动退回手机系统朗读。",
+    };
+  }
+
+  if (apiKeyConfigured === true && voiceConfigured !== true) {
+    return {
+      stage: "awaiting_voice",
+      status: "pending",
+      summary: "密钥已就绪，等待生成音色",
+      detail:
+        "还缺 Voice Design 返回的 Voice ID；生成前不会调用 MiniMax，也不会影响文字聊天和语音理解。",
+      settingsText:
+        "MiniMax 密钥已安全连接，正在等待 Voice Design 生成音色；在 Voice ID 配置完成前会使用手机系统朗读。",
+    };
+  }
+
+  if (apiKeyConfigured === false || voiceConfigured === true) {
+    return {
+      stage: "incomplete",
+      status: "pending",
+      summary: "服务器语音配置不完整",
+      detail:
+        "请检查 MiniMax API Key 与 Voice ID；当前使用手机朗读备用，不会影响文字聊天和语音理解。",
+      settingsText:
+        "MiniMax 服务器配置还不完整；现在选择自然语音时会使用手机系统朗读作为备用。",
+    };
+  }
+
+  return {
+    stage: "legacy_pending",
+    status: "pending",
+    summary: "尚未配置，使用手机朗读备用",
+    detail:
+      "服务器未返回细分配置状态；当前不会产生 MiniMax 费用，也不会影响文字聊天和语音理解。",
+    settingsText:
+      "MiniMax 自然语音接口已经预留，但服务器尚未报告完整配置；现在会使用手机系统朗读作为备用。",
+  };
+}
+
 export function buildServiceStatusCards({
   health,
   settings,
@@ -26,6 +79,7 @@ export function buildServiceStatusCards({
     backendOnline &&
     providerValid &&
     Boolean(settings?.api_url && settings?.model);
+  const expressiveTts = describeExpressiveTts(features);
 
   return [
     statusCard(
@@ -81,13 +135,9 @@ export function buildServiceStatusCards({
     statusCard(
       "minimax",
       "MiniMax 自然语音",
-      features.expressive_tts_configured === true ? "online" : "pending",
-      features.expressive_tts_configured === true
-        ? `已连接 ${features.expressive_tts_provider || "MiniMax"}`
-        : "尚未配置，使用手机朗读备用",
-      features.expressive_tts_configured === true
-        ? "AI 回复可使用云端情绪语音；实际费用由 MiniMax 套餐或余额决定。"
-        : "当前不会产生 MiniMax 费用，也不会影响文字聊天和语音理解。",
+      expressiveTts.status,
+      expressiveTts.summary,
+      expressiveTts.detail,
       SERVICE_LINKS.minimax,
       "查看 MiniMax 账单",
     ),

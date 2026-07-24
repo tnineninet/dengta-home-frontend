@@ -86,6 +86,7 @@ import {
 import {
   SERVICE_LINKS,
   buildServiceStatusCards,
+  describeExpressiveTts,
   describeGroqExpiry,
   readGroqExpiryDate,
   storeGroqExpiryDate,
@@ -478,6 +479,8 @@ function App() {
     available: false,
     message: "正在检查服务器语音能力…",
     expressiveAvailable: false,
+    expressiveApiKeyConfigured: null,
+    expressiveVoiceConfigured: null,
     expressiveProvider: "none",
   });
   const [serviceHealth, setServiceHealth] = useState({
@@ -594,6 +597,14 @@ function App() {
       const available = data?.features?.hervoice_proxy_configured === true;
       const expressiveAvailable =
         data?.features?.expressive_tts_configured === true;
+      const expressiveApiKeyConfigured =
+        typeof data?.features?.expressive_tts_api_key_configured === "boolean"
+          ? data.features.expressive_tts_api_key_configured
+          : null;
+      const expressiveVoiceConfigured =
+        typeof data?.features?.expressive_tts_voice_configured === "boolean"
+          ? data.features.expressive_tts_voice_configured
+          : null;
       setVoiceService({
         checked: true,
         available,
@@ -601,6 +612,8 @@ function App() {
           ? "语音理解服务已连接。"
           : "服务器尚未配置语音理解服务。麦克风和音频附件暂不可用；图片与文档仍可正常发送。",
         expressiveAvailable,
+        expressiveApiKeyConfigured,
+        expressiveVoiceConfigured,
         expressiveProvider:
           data?.features?.expressive_tts_provider || "none",
       });
@@ -618,6 +631,8 @@ function App() {
         message:
           "暂时无法确认服务器语音能力。为避免录音后发送失败，麦克风和音频附件已停用；图片与文档不受影响。",
         expressiveAvailable: false,
+        expressiveApiKeyConfigured: null,
+        expressiveVoiceConfigured: null,
         expressiveProvider: "none",
       });
       setServiceHealth((current) => ({
@@ -3746,9 +3761,18 @@ function App() {
             <div className="voice-privacy-note">
               <strong>当前发声方式</strong>
               <p>
-                {voiceService.expressiveAvailable
-                  ? "MiniMax 自然语音已连接：会根据 AI 回复选择较合适的情绪后播放；失败时自动退回手机系统朗读。"
-                  : "MiniMax 自然语音接口已经预留，但服务器还没有密钥；现在选择自然语音时会使用手机系统朗读作为备用。"}
+                {
+                  describeExpressiveTts({
+                    expressive_tts_configured:
+                      voiceService.expressiveAvailable,
+                    expressive_tts_api_key_configured:
+                      voiceService.expressiveApiKeyConfigured,
+                    expressive_tts_voice_configured:
+                      voiceService.expressiveVoiceConfigured,
+                    expressive_tts_provider:
+                      voiceService.expressiveProvider,
+                  }).settingsText
+                }
               </p>
             </div>
             <div className="voice-privacy-note">
