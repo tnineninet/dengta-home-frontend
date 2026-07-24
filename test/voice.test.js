@@ -132,6 +132,11 @@ const formData = buildVoiceTurnFormData({
   model: "gpt-5.5",
   emotionUnderstandingEnabled: true,
   companionStatus: { mood: "安心" },
+  environmentContext: {
+    timeZone: "Asia/Shanghai",
+    weather: { temperatureC: 25.5, description: "多云" },
+  },
+  turnContext: "本轮语音的临时背景",
   timestamp: 123,
 });
 assert.equal(formData.get("session_id"), "session-id");
@@ -141,6 +146,11 @@ assert.equal(formData.get("emotion_understanding_enabled"), "true");
 assert.deepEqual(JSON.parse(formData.get("companion_status")), {
   mood: "安心",
 });
+assert.deepEqual(JSON.parse(formData.get("environment_context")), {
+  timeZone: "Asia/Shanghai",
+  weather: { temperatureC: 25.5, description: "多云" },
+});
+assert.equal(formData.get("turn_context"), "本轮语音的临时背景");
 assert.equal(formData.get("file").name, "dengta-voice-123.webm");
 assert.equal(formData.get("file").type, "audio/webm");
 

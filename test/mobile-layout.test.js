@@ -7,6 +7,10 @@ const status = fs.readFileSync(
   new URL("../src/CompanionStatus.jsx", import.meta.url),
   "utf8",
 );
+const androidManifest = fs.readFileSync(
+  new URL("../android/app/src/main/AndroidManifest.xml", import.meta.url),
+  "utf8",
+);
 
 assert.match(
   css,
@@ -72,6 +76,16 @@ assert.match(
   status,
   /LIVE COMPANION SIGNAL/,
   "expanded status must expose the live companion signal heading",
+);
+assert.match(
+  status,
+  /className="status-reaction-preview">\{normalized\.note\}/,
+  "collapsed status must expose the latest companion reaction",
+);
+assert.match(
+  css,
+  /\.status-reaction-preview\s*\{[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap/s,
+  "collapsed reaction must stay readable without resizing the mobile header",
 );
 assert.match(
   status,
@@ -162,6 +176,56 @@ assert.doesNotMatch(
   app,
   />保存设置</,
   "settings must not require the old bottom save button",
+);
+assert.match(
+  app,
+  /event\.type === "reasoning"[\s\S]*appendThinkingSummary/,
+  "chat streaming must render only the backend's explicit public reasoning event",
+);
+assert.match(
+  app,
+  /event\.public === true[\s\S]*\["companion_progress", "provider_summary"\]\.includes\(event\.source\)/,
+  "chat streaming must reject unmarked or unknown reasoning events",
+);
+assert.match(
+  app,
+  /event\.source === "provider_summary"[\s\S]*`\\n\\n\$\{event\.content \|\| ""\}`/,
+  "provider summaries must be visually separated from companion progress",
+);
+assert.match(
+  app,
+  /data-setting-field="unified_system_prompt"/,
+  "settings must expose one unified main system prompt editor",
+);
+assert.doesNotMatch(
+  app,
+  /data-setting-field="(?:system_prompt|additional_prompt|personality)"/,
+  "legacy prompt fields must not remain as competing visible editors",
+);
+assert.match(
+  app,
+  /data-setting-field="turn_context"/,
+  "settings must expose a temporary next-turn context editor",
+);
+assert.match(
+  app,
+  /"intimate_expression_enabled"/,
+  "settings must expose the persistent intimate-expression toggle",
+);
+assert.match(
+  app,
+  /intimateExpressionEnabled=\{\s*settings\.intimate_expression_enabled === true\s*\}/,
+  "status interactions must receive the intimate-expression setting",
+);
+assert.match(
+  androidManifest,
+  /android\.permission\.ACCESS_COARSE_LOCATION/,
+  "Android must declare coarse location for user-enabled weather",
+);
+assert.match(
+  androidManifest,
+  /android\.permission\.ACCESS_FINE_LOCATION/,
+  "Capacitor geolocation also requires fine location on Android 11 and older",
 );
 
 console.log("mobile layout regression tests passed");

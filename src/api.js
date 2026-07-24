@@ -105,6 +105,11 @@ export function buildStreamChatFormData(
       typeof payload.companion_status === "string"
         ? payload.companion_status
         : JSON.stringify(payload.companion_status || {}),
+    environment_context:
+      typeof payload.environment_context === "string"
+        ? payload.environment_context
+        : JSON.stringify(payload.environment_context || {}),
+    turn_context: payload.turn_context,
     model: payload.model,
     client_message_id: payload.client_message_id,
   };

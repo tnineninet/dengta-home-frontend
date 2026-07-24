@@ -1131,6 +1131,8 @@ button:disabled {
 }
 
 .thinking-panel-body {
+  max-height: 220px;
+  overflow-y: auto;
   padding: 0 10px 10px;
   border-top: 1px solid #ece8f1;
 }
@@ -1165,6 +1167,40 @@ button:disabled {
 .thinking-panel-body li.is-active .thinking-step-marker {
   background: #bc6f89;
   animation: breathe 0.9s ease-in-out infinite;
+}
+
+.thinking-context-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 9px;
+  padding: 3px 7px;
+  border: 1px solid #e5dce8;
+  border-radius: 999px;
+  color: #756d80;
+  background: #fff;
+  font-size: 9px;
+}
+
+.thinking-context-chip strong {
+  color: #5e596f;
+  font-size: 9px;
+}
+
+.thinking-context-chip span::before {
+  margin-right: 6px;
+  content: "·";
+}
+
+.thinking-summary-text {
+  margin: 9px 0 0;
+  padding: 9px 10px;
+  border-left: 2px solid #c997aa;
+  color: #625c6c;
+  background: rgba(255, 255, 255, 0.72);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .message-bubble time {
@@ -3294,6 +3330,150 @@ button:disabled {
   margin-top: 16px;
 }
 
+.unified-prompt-layer textarea {
+  min-height: 250px;
+}
+
+.prompt-memory-summary {
+  display: grid;
+  gap: 9px;
+  padding: 14px 16px;
+  border: 1px solid #d8dbe9;
+  border-radius: 12px;
+  color: #5e6078;
+  background: #f8f9ff;
+}
+
+.prompt-memory-summary > div {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.prompt-memory-summary strong,
+.prompt-memory-summary small {
+  display: block;
+}
+
+.prompt-memory-summary strong {
+  color: #4f526e;
+  font-size: 13px;
+}
+
+.prompt-memory-summary small {
+  margin-top: 2px;
+  color: #85889c;
+  font-size: 10px;
+}
+
+.prompt-memory-summary p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.prompt-memory-icon {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #777ca3;
+  font-size: 16px;
+}
+
+.prompt-intimacy-toggle {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid #e1ccd3;
+  border-radius: 12px;
+  color: #654c55;
+  background: #fff8fa;
+  cursor: pointer;
+}
+
+.prompt-intimacy-toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.prompt-toggle-visual {
+  position: relative;
+  width: 42px;
+  height: 24px;
+  border: 1px solid #c9b9be;
+  border-radius: 999px;
+  background: #e8e1e3;
+  transition: background 160ms ease, border-color 160ms ease;
+}
+
+.prompt-toggle-visual::after {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(69, 45, 54, 0.22);
+  content: "";
+  transition: transform 160ms ease;
+}
+
+.prompt-intimacy-toggle input:checked + .prompt-toggle-visual {
+  border-color: #a9526e;
+  background: #a9526e;
+}
+
+.prompt-intimacy-toggle input:checked + .prompt-toggle-visual::after {
+  transform: translateX(18px);
+}
+
+.prompt-intimacy-toggle:focus-within {
+  outline: 2px solid rgba(169, 82, 110, 0.3);
+  outline-offset: 2px;
+}
+
+.prompt-toggle-copy {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.prompt-toggle-copy strong,
+.prompt-toggle-copy small {
+  display: block;
+}
+
+.prompt-toggle-copy strong {
+  font-size: 13px;
+}
+
+.prompt-toggle-copy small {
+  margin-top: 2px;
+  color: #8a747c;
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.prompt-toggle-copy em {
+  flex: 0 0 auto;
+  color: #92566b;
+  font-size: 10px;
+  font-style: normal;
+}
+
 .prompt-layer {
   position: relative;
   padding: 16px;
@@ -3904,6 +4084,10 @@ button:disabled {
     text-align: left;
   }
 
+  .thinking-panel-body {
+    max-height: 180px;
+  }
+
   .composer-wrap > small {
     display: none;
   }
@@ -4031,6 +4215,16 @@ button:disabled {
 
   .prompt-layer {
     padding: 13px;
+  }
+
+  .unified-prompt-layer textarea {
+    min-height: 220px;
+  }
+
+  .prompt-toggle-copy {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
   }
 
   .prompt-layer-title {
@@ -5384,6 +5578,7 @@ body,
 
 .status-summary-copy {
   gap: 5px;
+  min-width: 0;
 }
 
 .status-name-line {
@@ -5407,6 +5602,17 @@ body,
   gap: 6px;
   color: #9eabb2;
   font-size: 11px;
+}
+
+.status-reaction-preview {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: #dce8eb;
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .status-mini-vitals {
@@ -5860,9 +6066,13 @@ body,
   }
 
   .status-summary {
-    min-height: 66px;
+    min-height: 72px;
     gap: 8px;
     padding: 9px 10px;
+  }
+
+  .status-reaction-preview {
+    max-width: min(48vw, 280px);
   }
 
   .status-presence {

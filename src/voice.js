@@ -209,6 +209,8 @@ export function buildVoiceTurnFormData({
   model = "",
   emotionUnderstandingEnabled = true,
   companionStatus = {},
+  environmentContext = {},
+  turnContext = "",
   timestamp = Date.now(),
   FormDataImpl = globalThis.FormData,
 }) {
@@ -235,6 +237,13 @@ export function buildVoiceTurnFormData({
     "companion_status",
     JSON.stringify(isPlainObject(companionStatus) ? companionStatus : {}),
   );
+  formData.append(
+    "environment_context",
+    JSON.stringify(
+      isPlainObject(environmentContext) ? environmentContext : {},
+    ),
+  );
+  formData.append("turn_context", String(turnContext || ""));
   return formData;
 }
 

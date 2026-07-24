@@ -6,6 +6,10 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const component = fs.readFileSync(path.join(here, "..", "src", "McpDeviceCenter.jsx"), "utf8");
 const app = fs.readFileSync(path.join(here, "..", "src", "App.jsx"), "utf8");
+const chatMessage = fs.readFileSync(
+  path.join(here, "..", "src", "ChatMessage.jsx"),
+  "utf8",
+);
 const css = fs.readFileSync(path.join(here, "..", "src", "index.css"), "utf8");
 
 assert.match(component, /MCP 设备中心/);
@@ -23,7 +27,7 @@ assert.doesNotMatch(component, /X-MCP-Admin-Secret/);
 assert.doesNotMatch(component, /isValidAdminSecret/);
 assert.doesNotMatch(component, /设备管理口令/);
 assert.doesNotMatch(component, /localStorage/);
-assert.match(app, /DeviceActionReceipts/);
+assert.match(chatMessage, /DeviceActionReceipts/);
 assert.doesNotMatch(
   app,
   /key=\{`companion-status-\$\{companionStatusCollapseToken\}`\}/,

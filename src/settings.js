@@ -3,6 +3,9 @@ export const emptySettings = {
   system_prompt: "",
   additional_prompt: "",
   personality: "",
+  prompt_mode: "unified",
+  unified_system_prompt: "",
+  intimate_expression_enabled: false,
   provider: "custom",
   api_url: "",
   model: "",
@@ -21,6 +24,8 @@ export const PROMPT_FIELD_LIMITS = {
   system_prompt: 12000,
   additional_prompt: 8000,
   personality: 1000,
+  unified_system_prompt: 30000,
+  turn_context: 4000,
 };
 
 function objectOrEmpty(value) {
@@ -33,8 +38,33 @@ function textOrFallback(value, fallback = "") {
   return typeof value === "string" ? value : fallback;
 }
 
+const LEGACY_PROMPT_SECTIONS = [
+  ["system_prompt", "原最高优先级系统提示词"],
+  ["additional_prompt", "原普通补充提示词"],
+  ["personality", "原独立人设词"],
+];
+
+export function settingsNeedsUnifiedPromptMigration(value) {
+  const source = objectOrEmpty(value);
+  if (textOrFallback(source.unified_system_prompt).length > 0) return false;
+  return LEGACY_PROMPT_SECTIONS.some(
+    ([field]) => textOrFallback(source[field]).length > 0,
+  );
+}
+
+export function mergeLegacyPromptFields(value) {
+  const source = objectOrEmpty(value);
+  return LEGACY_PROMPT_SECTIONS.flatMap(([field, label]) => {
+    const content = textOrFallback(source[field]);
+    return content.length > 0 ? [`【${label}】\n${content}`] : [];
+  }).join("\n\n");
+}
+
 export function normalizeSettingsDraft(value) {
   const source = objectOrEmpty(value);
+  const migratedPrompt = settingsNeedsUnifiedPromptMigration(source)
+    ? mergeLegacyPromptFields(source)
+    : textOrFallback(source.unified_system_prompt);
 
   return {
     ...emptySettings,
@@ -43,6 +73,10 @@ export function normalizeSettingsDraft(value) {
     system_prompt: textOrFallback(source.system_prompt),
     additional_prompt: textOrFallback(source.additional_prompt),
     personality: textOrFallback(source.personality),
+    prompt_mode: "unified",
+    unified_system_prompt: migratedPrompt,
+    intimate_expression_enabled:
+      source.intimate_expression_enabled === true,
   };
 }
 
@@ -63,6 +97,13 @@ export function createSettingsPayload(value) {
       0,
       PROMPT_FIELD_LIMITS.personality,
     ),
+    prompt_mode: "unified",
+    unified_system_prompt: normalized.unified_system_prompt.slice(
+      0,
+      PROMPT_FIELD_LIMITS.unified_system_prompt,
+    ),
+    intimate_expression_enabled:
+      normalized.intimate_expression_enabled === true,
   };
 }
 
@@ -89,6 +130,25 @@ function normalizedIsoTime(value) {
   return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
 }
 
+function optionalText(value, limit = 80) {
+  const text = textOrFallback(value).trim().slice(0, limit);
+  return text || null;
+}
+
+function deliveryBlock(source, fields) {
+  const result = {};
+  for (const [target, key, type] of fields) {
+    if (type === "boolean") {
+      result[target] = source[key] === true;
+    } else if (type === "text") {
+      result[target] = optionalText(source[key]);
+    } else {
+      result[target] = firstCharacterCount(source, [key]);
+    }
+  }
+  return result;
+}
+
 export function normalizePromptReceipt(value, fallbackAppliedAt) {
   const source = objectOrEmpty(value);
   const systemPromptChars = firstCharacterCount(source, [
@@ -103,12 +163,23 @@ export function normalizePromptReceipt(value, fallbackAppliedAt) {
     "personality_chars",
     "personality_length",
   ]);
-
-  if (
+  const hasLegacyReceipt =
     systemPromptChars === null ||
     additionalPromptChars === null ||
     personalityChars === null
-  ) {
+      ? false
+      : true;
+  const unifiedSystemPromptChars = firstCharacterCount(source, [
+    "unified_system_prompt_chars",
+  ]);
+  const rawDelivery = objectOrEmpty(source.delivery);
+  const hasUnifiedReceipt =
+    unifiedSystemPromptChars !== null ||
+    Boolean(optionalText(source.prompt_architecture)) ||
+    Boolean(optionalText(source.prompt_mode)) ||
+    Object.keys(rawDelivery).length > 0;
+
+  if (!hasLegacyReceipt && !hasUnifiedReceipt) {
     return null;
   }
 
@@ -122,7 +193,7 @@ export function normalizePromptReceipt(value, fallbackAppliedAt) {
   const provider = textOrFallback(source.provider).trim() || null;
   const model = textOrFallback(source.model).trim() || null;
 
-  return {
+  const common = {
     promptContractVersion,
     backendRequestSent: source.backend_request_sent === true,
     transport,
@@ -148,5 +219,46 @@ export function normalizePromptReceipt(value, fallbackAppliedAt) {
     personalityChars,
     settingsUpdatedAt: normalizedIsoTime(source.settings_updated_at),
     appliedAt,
+  };
+
+  if (!hasUnifiedReceipt) return common;
+
+  const mainSystem = objectOrEmpty(rawDelivery.main_system);
+  const stableMemory = objectOrEmpty(rawDelivery.stable_memory);
+  const history = objectOrEmpty(rawDelivery.history);
+  const dynamicContext = objectOrEmpty(rawDelivery.dynamic_context);
+
+  return {
+    ...common,
+    promptArchitecture: optionalText(source.prompt_architecture),
+    promptMode: optionalText(source.prompt_mode),
+    unifiedSystemPromptChars,
+    unifiedSystemPromptApplied:
+      source.unified_system_prompt_applied === true,
+    intimateExpressionEnabled:
+      source.intimate_expression_enabled === true,
+    delivery: {
+      mainSystem: deliveryBlock(mainSystem, [
+        ["applied", "applied", "boolean"],
+        ["source", "source", "text"],
+        ["chars", "chars", "count"],
+      ]),
+      stableMemory: deliveryBlock(stableMemory, [
+        ["applied", "applied", "boolean"],
+        ["count", "count", "count"],
+        ["chars", "chars", "count"],
+        ["position", "position", "text"],
+      ]),
+      history: deliveryBlock(history, [
+        ["count", "count", "count"],
+        ["position", "position", "text"],
+      ]),
+      dynamicContext: deliveryBlock(dynamicContext, [
+        ["applied", "applied", "boolean"],
+        ["chars", "chars", "count"],
+        ["messageCount", "message_count", "count"],
+        ["position", "position", "text"],
+      ]),
+    },
   };
 }

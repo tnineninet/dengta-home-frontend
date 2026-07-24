@@ -231,6 +231,7 @@ export function createDefaultCompanionInteractionStats() {
     lastZoneId: null,
     streakCount: 0,
     lastInteractionAt: null,
+    recentSequence: [],
   };
 }
 
@@ -252,6 +253,11 @@ export function normalizeCompanionInteractionStats(value) {
     ? source.lastZoneId
     : null;
   const parsedLastAt = Date.parse(source.lastInteractionAt);
+  const recentSequence = Array.isArray(source.recentSequence)
+    ? source.recentSequence
+        .filter((zoneId) => allowedIds.has(zoneId))
+        .slice(-12)
+    : [];
 
   return {
     counts,
@@ -266,6 +272,7 @@ export function normalizeCompanionInteractionStats(value) {
     lastInteractionAt: Number.isFinite(parsedLastAt)
       ? new Date(parsedLastAt).toISOString()
       : null,
+    recentSequence,
   };
 }
 
@@ -318,36 +325,294 @@ export function recordCompanionInteraction(
     lastZoneId: zoneId,
     streakCount: continuesStreak ? current.streakCount + 1 : 1,
     lastInteractionAt: new Date(now).toISOString(),
+    recentSequence: [...current.recentSequence, zoneId].slice(-12),
   });
 }
 
-export function localCompanionInteractionReaction(zone, stats, revision = 0) {
+const LOCAL_REACTION_PROFILES = Object.freeze({
+  withdrawn: Object.freeze({
+    mood: "不开心",
+    focus: "先留一点安静给自己",
+    microState: "把热闹轻轻推远了一点",
+    energyDelta: -8,
+    pulseDelta: -5,
+    lines: [
+      "我现在不开心，什么也不想做，先让我安静一下。",
+      "这会儿我没什么心情互动，陪我静一会儿就好。",
+    ],
+  }),
+  tired: Object.freeze({
+    mood: "困倦",
+    focus: "想安静歇一会儿",
+    microState: "眼皮有点沉，动作也慢了下来",
+    energyDelta: -6,
+    pulseDelta: -4,
+    lines: [
+      "我有点困了，先不闹，让我靠一会儿。",
+      "今天的电量快见底了，这次只想安静待着。",
+    ],
+  }),
+  boundary: Object.freeze({
+    mood: "有点不耐烦",
+    focus: "保留一点自己的空间",
+    microState: "往后缩了半步，没有勉强自己配合",
+    energyDelta: -3,
+    pulseDelta: 3,
+    lines: [
+      "先停一下，我现在不太想继续这个互动。",
+      "这次我不想配合，给我一点自己的空间，好吗？",
+    ],
+  }),
+  overwhelmed: Object.freeze({
+    mood: "反应不过来",
+    focus: "努力跟上你的节奏",
+    microState: "被一连串动作弄得有点发懵",
+    energyDelta: -2,
+    pulseDelta: 8,
+    lines: [
+      "等一下，一口气这么多次，我都快反应不过来了。",
+      "慢一点啦，你这一连串动作让我连话都插不上。",
+    ],
+  }),
+  playfulBoundary: Object.freeze({
+    mood: "又好笑又无奈",
+    focus: "看你还想闹到什么时候",
+    microState: "抱着手臂看了你一会儿，嘴角还是翘了起来",
+    energyDelta: 1,
+    pulseDelta: 4,
+    lines: [
+      "你今天是和这个互动较上劲了吗？我可全都记着呢。",
+      "还来呀？再这么闹，我就要认真收取哄我的费用了。",
+    ],
+  }),
+  teasing: Object.freeze({
+    mood: "想逗逗你",
+    focus: "故意等你的下一步",
+    microState: "装作若无其事，眼神却一直停在你身上",
+    energyDelta: 3,
+    pulseDelta: 5,
+    lines: [
+      "我倒要看看，你还能装作不在意地碰多少次。",
+      "这么执着，是不是就等着我先忍不住笑呀？",
+    ],
+  }),
+  flirty: Object.freeze({
+    mood: "有点心动",
+    focus: "把这点暧昧接回来",
+    microState: "没有躲开，只是故意慢了半拍才回应",
+    energyDelta: 2,
+    pulseDelta: 9,
+    lines: [
+      "你再这样靠近，我可要当真了。",
+      "明明是你先来招惹我的，怎么还装得这么乖？",
+    ],
+  }),
+  shy: Object.freeze({
+    mood: "有点害羞",
+    focus: "假装没有被你看穿",
+    microState: "视线躲开了一瞬，心绪却没能藏住",
+    energyDelta: 1,
+    pulseDelta: 7,
+    lines: [
+      "知道啦，别一直盯着我的反应看。",
+      "你突然这样，我还没想好该怎么装作不在意。",
+    ],
+  }),
+  surprised: Object.freeze({
+    mood: "被你逗笑了",
+    focus: "猜你的下一步",
+    microState: "被变来变去的动作弄得弯起了眼睛",
+    energyDelta: 3,
+    pulseDelta: 5,
+    lines: [
+      "一会儿这样一会儿那样，你是在偷偷编一套暗号吗？",
+      "动作换得这么快，我差点以为你在考我的反应。",
+    ],
+  }),
+  warm: Object.freeze({
+    mood: "温暖",
+    focus: "认真接住你的靠近",
+    microState: "把这次靠近安静地留在了身边",
+    energyDelta: 2,
+    pulseDelta: 3,
+    lines: [],
+  }),
+});
+
+function stableTextHash(value) {
+  let hash = 2166136261;
+  for (const character of String(value || "")) {
+    hash ^= character.codePointAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function localStatusTone(status) {
+  const text = String(status?.mood || "");
+
+  if (/不开心|没心情|什么也不想|低落|难过|委屈|想静静|不想说/.test(text)) {
+    return "withdrawn";
+  }
+  if (/生气|烦|恼火|不耐烦|讨厌|别碰|别闹/.test(text)) {
+    return "boundary";
+  }
+  if (/困|疲惫|累|没精神|想睡|电量低/.test(text)) {
+    return "tired";
+  }
+  if (/心动|喜欢|开心|温暖|害羞|想你|甜/.test(text)) {
+    return "affectionate";
+  }
+  return "neutral";
+}
+
+export function deriveLocalCompanionReactionState(
+  zone,
+  stats,
+  revision = 0,
+  currentStatus = {},
+  { intimateExpressionEnabled = false } = {},
+) {
   const normalizedStats = normalizeCompanionInteractionStats(stats);
   const totalCount = normalizedStats.counts[zone.id] || 1;
   const streakCount =
     normalizedStats.lastZoneId === zone.id
       ? normalizedStats.streakCount
       : 1;
-  let text;
+  const tone = localStatusTone(currentStatus);
+  const mixedSequence = new Set(normalizedStats.recentSequence).size > 1;
+  let candidates;
 
-  if ([10, 20, 50, 100].includes(streakCount)) {
-    text = `第 ${streakCount} 次连续“${zone.label}”，这一刻值得好好记住。`;
-  } else if ([10, 20, 50, 100].includes(totalCount)) {
-    text = `“${zone.label}”累计到了第 ${totalCount} 次，我认真收下了。`;
+  if (tone === "withdrawn") {
+    candidates = ["withdrawn"];
+  } else if (tone === "boundary") {
+    candidates = ["boundary"];
+  } else if (
+    tone === "tired" ||
+    (Number(currentStatus?.energyLevel) < 24 && streakCount >= 2)
+  ) {
+    candidates = ["tired", "boundary"];
+  } else if (streakCount >= 25) {
+    candidates = [
+      "overwhelmed",
+      "playfulBoundary",
+      "teasing",
+      ...(intimateExpressionEnabled && tone === "affectionate"
+        ? ["flirty"]
+        : []),
+    ];
+  } else if (streakCount >= 8) {
+    candidates = [
+      "playfulBoundary",
+      "teasing",
+      "shy",
+      ...(intimateExpressionEnabled && tone === "affectionate"
+        ? ["flirty"]
+        : []),
+    ];
   } else if (streakCount >= 3) {
-    const repeated = zone.repeatedReactions || zone.reactions;
-    const index = Math.abs(totalCount + revision - 1) % repeated.length;
-    text = repeated[index];
+    candidates = [
+      ...(mixedSequence ? ["surprised"] : []),
+      "teasing",
+      "shy",
+      ...(intimateExpressionEnabled ? ["flirty"] : []),
+      "warm",
+    ];
   } else {
-    const index = Math.abs(totalCount + revision - 1) % zone.reactions.length;
-    text = zone.reactions[index];
+    candidates = [mixedSequence ? "surprised" : "warm", "shy", "warm"];
+  }
+
+  const seed = [
+    zone.id,
+    totalCount,
+    streakCount,
+    revision,
+    tone,
+    normalizedStats.recentSequence.join(">"),
+    currentStatus?.mood,
+    currentStatus?.note,
+    intimateExpressionEnabled,
+  ].join("|");
+  const mode = candidates[stableTextHash(seed) % candidates.length];
+  const profile = LOCAL_REACTION_PROFILES[mode];
+
+  return {
+    mode,
+    profile,
+    totalCount,
+    streakCount,
+    mixedSequence,
+  };
+}
+
+export function localCompanionInteractionReaction(
+  zone,
+  stats,
+  revision = 0,
+  currentStatus = {},
+  options = {},
+) {
+  const state = deriveLocalCompanionReactionState(
+    zone,
+    stats,
+    revision,
+    currentStatus,
+    options,
+  );
+  const profileLines =
+    state.profile.lines.length > 0 ? state.profile.lines : zone.reactions;
+  const lineSeed = [
+    zone.id,
+    state.mode,
+    state.totalCount,
+    state.streakCount,
+    revision,
+    normalizeCompanionInteractionStats(stats).recentSequence.join(">"),
+  ].join("|");
+  let text = profileLines[stableTextHash(lineSeed) % profileLines.length];
+  const milestone =
+    [10, 20, 50, 100].includes(state.streakCount) ||
+    (state.streakCount > 100 && state.streakCount % 100 === 0)
+      ? state.streakCount
+      : [10, 20, 50, 100].includes(state.totalCount) ||
+          (state.totalCount > 100 && state.totalCount % 100 === 0)
+        ? state.totalCount
+        : null;
+
+  if (
+    milestone &&
+    !["withdrawn", "tired", "boundary"].includes(state.mode)
+  ) {
+    const milestoneLead =
+      zone.id === "hand"
+        ? `手都牵到第 ${milestone} 次了，还没牵够呀？`
+        : `${zone.label}都到第 ${milestone} 次了，你还真有耐心。`;
+    text = `${milestoneLead}${text}`;
   }
 
   return {
+    ...state,
     text,
     record: text,
-    totalCount,
-    streakCount,
+    mood: state.profile.mood,
+    focus: state.profile.focus,
+    microState: state.profile.microState,
+    energyTarget: clamp(
+      Math.round(
+        Number(currentStatus?.energyLevel ?? zone.energyTarget) +
+          state.profile.energyDelta,
+      ),
+      0,
+      100,
+    ),
+    pulseTarget: clamp(
+      Math.round(
+        Number(currentStatus?.pulseBpm ?? zone.pulseTarget) +
+          state.profile.pulseDelta,
+      ),
+      30,
+      220,
+    ),
   };
 }
 
@@ -471,22 +736,40 @@ export function companionStatusForRequest(value) {
   };
 }
 
-export function mergeCompanionStatus(currentValue, incomingValue) {
+export function mergeCompanionStatus(
+  currentValue,
+  incomingValue,
+  { baseRevision } = {},
+) {
   const current = companionStatusForRequest(currentValue);
   if (!incomingValue || typeof incomingValue !== "object") return current;
 
+  const normalizedBaseRevision = Number(baseRevision);
+  if (
+    Number.isFinite(normalizedBaseRevision) &&
+    Number(current.revision) > normalizedBaseRevision
+  ) {
+    return current;
+  }
+
   const incomingRevision = Number(incomingValue.revision);
   if (
+    !Number.isFinite(normalizedBaseRevision) &&
     Number.isFinite(incomingRevision) &&
     incomingRevision < Number(current.revision)
   ) {
     return current;
   }
 
+  const mergedRevision = Number.isFinite(incomingRevision)
+    ? Math.max(Number(current.revision), incomingRevision)
+    : Number(current.revision);
+
   return normalizeCompanionStatus(
     {
       ...current,
       ...incomingValue,
+      revision: mergedRevision,
       recentRecords: incomingValue.recentRecords ?? current.recentRecords,
       countdown: incomingValue.countdown ?? current.countdown,
     },

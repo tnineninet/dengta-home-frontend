@@ -28,6 +28,7 @@ export function createChatClientMessageId(cryptoImpl = globalThis.crypto) {
 export function chatRequestFingerprint({
   sessionId = "",
   message = "",
+  turnContext = "",
   attachments = [],
   attachmentInstructionMode = "untrusted",
 } = {}) {
@@ -43,6 +44,7 @@ export function chatRequestFingerprint({
   return JSON.stringify([
     String(sessionId || ""),
     String(message || ""),
+    String(turnContext || ""),
     attachmentInstructionMode === "system" ? "system" : "untrusted",
     files,
   ]);

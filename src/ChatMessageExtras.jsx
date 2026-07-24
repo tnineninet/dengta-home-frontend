@@ -4,6 +4,7 @@ import {
   normalizeMessageAttachments,
 } from "./chat-attachments";
 import {
+  personalizedThinkingStatus,
   thinkingPanelCompleted,
   thinkingPanelVisible,
 } from "./chat-thinking";
@@ -118,7 +119,7 @@ export function MessageAttachments({ value, apiBaseUrl, onPreview }) {
   );
 }
 
-export function ThinkingPanel({ message }) {
+export function ThinkingPanel({ message, aiName = "小灯", companionMood = "" }) {
   const visible = thinkingPanelVisible(message);
   const completed = thinkingPanelCompleted(message);
   const [open, setOpen] = useState(!completed);
@@ -128,6 +129,12 @@ export function ThinkingPanel({ message }) {
   const statuses = Array.isArray(message.thinkingStatuses)
     ? message.thinkingStatuses
     : [];
+  const summary =
+    typeof message.thinkingSummary === "string"
+      ? message.thinkingSummary.trim()
+      : "";
+  const displayName = String(aiName || "").trim() || "小灯";
+  const mood = String(companionMood || "").trim();
 
   return (
     <details
@@ -136,10 +143,16 @@ export function ThinkingPanel({ message }) {
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary>
-        <span>{completed ? "公开处理过程" : "正在处理"}</span>
-        <small>只显示处理阶段，不包含模型内部推理</small>
+        <span>
+          {completed ? `${displayName}刚才想了想` : `${displayName}悄悄想一会儿`}
+        </span>
+        <small>公开摘要 · 内部推理不会显示</small>
       </summary>
       <div className="thinking-panel-body">
+        <div className="thinking-context-chip">
+          <strong>{displayName}</strong>
+          {mood && <span>此刻：{mood}</span>}
+        </div>
         {statuses.length > 0 && (
           <ol>
             {statuses.map((status, index) => {
@@ -153,12 +166,18 @@ export function ThinkingPanel({ message }) {
                   <span className="thinking-step-marker" aria-hidden="true">
                     {active ? "·" : "✓"}
                   </span>
-                  <span>{status}</span>
+                  <span>
+                    {personalizedThinkingStatus(status, {
+                      aiName: displayName,
+                      companionMood: mood,
+                    })}
+                  </span>
                 </li>
               );
             })}
           </ol>
         )}
+        {summary && <p className="thinking-summary-text">{summary}</p>}
       </div>
     </details>
   );

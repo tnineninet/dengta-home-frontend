@@ -4,14 +4,12 @@ import { LocalNotifications } from "@capacitor/local-notifications";
 import { API_BASE_URL, apiRequest, streamChat } from "./api";
 import OmbreMemories from "./OmbreMemories";
 import CompanionStatus from "./CompanionStatus";
-import McpDeviceCenter, { DeviceActionReceipts } from "./McpDeviceCenter";
+import AmbientContextBadge from "./AmbientContextBadge";
+import ChatMessage from "./ChatMessage";
+import McpDeviceCenter from "./McpDeviceCenter";
 import AiProviderCenter from "./AiProviderCenter";
 import CompanionDiary from "./CompanionDiary";
-import {
-  MessageAttachments,
-  SelectedAttachmentStrip,
-  ThinkingPanel,
-} from "./ChatMessageExtras";
+import { SelectedAttachmentStrip } from "./ChatMessageExtras";
 import {
   attachmentKind,
   createAttachmentDraft,
@@ -37,6 +35,8 @@ import {
   updateChatClientMessage,
 } from "./chat-idempotency";
 import {
+  attachThinkingTrace,
+  appendThinkingSummary,
   appendThinkingStatus,
   mergeStreamedAssistantMessage,
 } from "./chat-thinking";
@@ -60,9 +60,11 @@ import {
   emptySettings,
   normalizePromptReceipt,
   normalizeSettingsDraft,
+  settingsNeedsUnifiedPromptMigration,
   settingsPayloadFingerprint,
 } from "./settings";
 import { createReplySuggestions } from "./chat-reply-suggestions";
+import { SHANGHAI_TIME_ZONE } from "./ambient-context";
 import {
   VOICE_MAX_DURATION_MS,
   VOICE_PLAYBACK_MODES,
@@ -101,6 +103,13 @@ const LOCAL_NOTIFICATION_CHANNEL_ID = "dengta-home-reminders-v1";
 const PROMPT_RECEIPT_STORAGE_KEY = "dengta_prompt_receipt_v1";
 const VOICE_AUTO_SPEAK_KEY = "dengta_voice_auto_speak_enabled";
 const VOICE_PLAYBACK_MODE_KEY = "dengta_voice_playback_mode";
+
+function shanghaiClientTime(value = new Date()) {
+  return value.toLocaleString("zh-CN", {
+    timeZone: SHANGHAI_TIME_ZONE,
+    hour12: false,
+  });
+}
 
 const initialNotificationPermissionState = {
   status: "idle",
@@ -418,6 +427,7 @@ function App() {
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState("");
+  const [turnContext, setTurnContext] = useState("");
   const [chatAttachments, setChatAttachments] = useState([]);
   const [attachmentSafetyEnabled, setAttachmentSafetyEnabled] = useState(true);
   const [availableModels, setAvailableModels] = useState([]);
@@ -491,12 +501,16 @@ function App() {
   const chatAttachmentsRef = useRef([]);
   const streamThinkingRef = useRef({
     statuses: [],
+    summary: "",
+    lastReasoningSource: "",
   });
   const activeSessionIdRef = useRef(null);
   const messagesSessionIdRef = useRef(null);
   const messageLoadTokenRef = useRef(0);
   const streamingSessionIdRef = useRef(null);
   const companionStatusRef = useRef(companionStatus);
+  const environmentContextRef = useRef({});
+  const turnContextRef = useRef("");
   const companionInteractionStatsRef = useRef(companionInteractionStats);
   const companionInteractionQueueRef = useRef([]);
   const companionInteractionTimerRef = useRef(null);
@@ -525,6 +539,7 @@ function App() {
   const settingsAutosaveTimerRef = useRef(null);
   const pendingSettingsSaveRef = useRef(null);
   const settingsSaveInFlightRef = useRef(false);
+  const settingsMigrationPendingRef = useRef(false);
   const componentMountedRef = useRef(true);
   const speechRunRef = useRef(0);
   const voiceLifecycleRef = useRef({ cancel() {}, stopPlayback() {} });
@@ -541,6 +556,7 @@ function App() {
     {
       sessionId: activeSessionId,
       message: message.trim(),
+      turnContext: turnContext.trim(),
       attachments: chatAttachments,
       attachmentInstructionMode: attachmentSafetyEnabled
         ? "untrusted"
@@ -550,6 +566,20 @@ function App() {
   const chatRetryIsProcessing =
     chatRetryReady &&
     pendingChatClientMessageRef.current?.generationInProgress === true;
+
+  const loadAmbientWeather = useCallback(async ({ latitude, longitude }) => {
+    const data = await apiRequest("/api/weather/current", {
+      method: "POST",
+      body: JSON.stringify({ latitude, longitude }),
+      timeoutMs: 8_000,
+    });
+    return data?.weather || data;
+  }, []);
+
+  const handleAmbientContextChange = useCallback((context) => {
+    environmentContextRef.current =
+      context && typeof context === "object" ? context : {};
+  }, []);
 
   const refreshServiceHealth = useCallback(async () => {
     setServiceHealth((current) => ({
@@ -643,6 +673,9 @@ function App() {
         ]);
 
         if (cancelled) return;
+        const migrationNeeded = settingsNeedsUnifiedPromptMigration(
+          settingsData.settings,
+        );
         const nextSettings = normalizeSettingsDraft(settingsData.settings);
         const nextSessions = sessionsData.sessions || [];
         const settingsFingerprint = settingsPayloadFingerprint(nextSettings);
@@ -650,7 +683,10 @@ function App() {
         confirmedSettingsRef.current = nextSettings;
         draftSettingsRef.current = nextSettings;
         latestDraftFingerprintRef.current = settingsFingerprint;
-        lastSavedSettingsFingerprintRef.current = settingsFingerprint;
+        lastSavedSettingsFingerprintRef.current = migrationNeeded
+          ? ""
+          : settingsFingerprint;
+        settingsMigrationPendingRef.current = migrationNeeded;
         setSettings(nextSettings);
         setDraftSettings(nextSettings);
         setHasLoadedSettings(true);
@@ -671,6 +707,19 @@ function App() {
       cancelled = true;
     };
   }, [refreshServiceHealth]);
+
+  useEffect(() => {
+    if (
+      !hasLoadedSettings ||
+      !settingsMigrationPendingRef.current
+    ) {
+      return;
+    }
+    settingsMigrationPendingRef.current = false;
+    scheduleSettingsAutosave(draftSettingsRef.current, { immediate: true });
+    // This migration is intentionally armed only by the initial settings load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasLoadedSettings]);
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
@@ -1165,6 +1214,10 @@ function App() {
   async function submitVoiceBlob(blob, durationMs) {
     setVoiceError("");
     setVoiceMode(VOICE_STATES.uploading);
+    const turnContextDraftAtRequest = turnContextRef.current;
+    const turnContextSnapshot = turnContextDraftAtRequest
+      .trim()
+      .slice(0, PROMPT_FIELD_LIMITS.turn_context);
 
     let sessionId = activeSessionIdRef.current;
     let voiceSessionId = sessionId;
@@ -1193,13 +1246,15 @@ function App() {
       const formData = buildVoiceTurnFormData({
         blob,
         sessionId,
-        clientTime: new Date().toLocaleString("zh-CN"),
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        clientTime: shanghaiClientTime(),
+        timezone: SHANGHAI_TIME_ZONE,
         model: selectedChatModel || settings.model || "",
         emotionUnderstandingEnabled,
         companionStatus: companionStatusForRequest(
           companionStatusRef.current,
         ),
+        environmentContext: environmentContextRef.current,
+        turnContext: turnContextSnapshot,
       });
 
       requestHandle = createVoiceTurnRequest(formData, {
@@ -1271,6 +1326,13 @@ function App() {
         }
         return next;
       });
+      if (
+        turnContextSnapshot &&
+        turnContextRef.current === turnContextDraftAtRequest
+      ) {
+        turnContextRef.current = "";
+        setTurnContext("");
+      }
       setLastVoiceAnalysis(voiceAnalysis);
       setNotice(
         `语音已转写。声音情绪线索：${voiceAnalysis.emotion}，${formatVoiceConfidence(voiceAnalysis.confidence)}。这不是心理诊断。`,
@@ -1648,6 +1710,9 @@ function App() {
     }
 
     const now = Date.now();
+    const preInteractionStatus = companionStatusForRequest(
+      companionStatusRef.current,
+    );
     const nextStats = recordCompanionInteraction(
       companionInteractionStatsRef.current,
       zoneId,
@@ -1662,6 +1727,7 @@ function App() {
       zoneId,
       stats: nextStats,
       sessionId,
+      preInteractionStatus,
       now,
       eventId: createCompanionInteractionEventId(),
       debounceMs: COMPANION_INTERACTION_DEBOUNCE_MS,
@@ -1712,6 +1778,15 @@ function App() {
     }
 
     const interaction = companionInteractionQueueRef.current.shift();
+    // The model reacts from before this batch; optimistic revisions only guard
+    // the UI against responses that finish after a newer local interaction.
+    const requestCompanionStatus = companionStatusForRequest(
+      interaction.preInteractionStatus || companionStatusRef.current,
+    );
+    const responseBaseRevision = Math.min(
+      Number.MAX_SAFE_INTEGER,
+      requestCompanionStatus.revision + interaction.burstCount,
+    );
     companionInteractionInFlightRef.current = true;
     setIsCompanionResponding(true);
     setNotice("");
@@ -1771,9 +1846,10 @@ function App() {
           interaction_counts: interaction.interactionCounts,
           batch_counts: interaction.batchCounts,
           recent_sequence: interaction.recentSequence,
-          companion_status: companionStatusForRequest(
-            companionStatusRef.current,
-          ),
+          client_time: shanghaiClientTime(),
+          timezone: SHANGHAI_TIME_ZONE,
+          companion_status: requestCompanionStatus,
+          environment_context: environmentContextRef.current,
         }),
         timeoutMs: 60 * 1000,
       });
@@ -1782,7 +1858,9 @@ function App() {
 
       if (data.companion_status) {
         setCompanionStatus((current) =>
-          mergeCompanionStatus(current, data.companion_status),
+          mergeCompanionStatus(current, data.companion_status, {
+            baseRevision: responseBaseRevision,
+          }),
         );
       }
 
@@ -1916,6 +1994,10 @@ function App() {
 
   async function sendMessage() {
     const text = message.trim();
+    const turnContextDraftAtRequest = turnContextRef.current;
+    const turnContextSnapshot = turnContextDraftAtRequest
+      .trim()
+      .slice(0, PROMPT_FIELD_LIMITS.turn_context);
     const attachmentsToSend = [...chatAttachmentsRef.current];
     const attachmentInstructionMode = attachmentSafetyEnabled
       ? "untrusted"
@@ -1948,6 +2030,7 @@ function App() {
     let streamFailed = false;
     let userMessageCommitted = false;
     let generationInProgress = false;
+    let completedAssistantMessageId = "";
     abortChatRequest(chatRequestRef, "replaced");
     const request = {
       controller: new AbortController(),
@@ -1958,6 +2041,8 @@ function App() {
     chatRequestRef.current = request;
     streamThinkingRef.current = {
       statuses: [],
+      summary: "",
+      lastReasoningSource: "",
     };
 
     try {
@@ -1985,6 +2070,7 @@ function App() {
         {
           sessionId,
           message: text,
+          turnContext: turnContextSnapshot,
           attachments: attachmentsToSend,
           attachmentInstructionMode,
         },
@@ -2059,11 +2145,13 @@ function App() {
           session_id: sessionId,
           message: text,
           model: activeChatModel,
-          client_time: new Date().toLocaleString("zh-CN"),
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+          client_time: shanghaiClientTime(),
+          timezone: SHANGHAI_TIME_ZONE,
           emotion_understanding_enabled: emotionUnderstandingEnabled,
           attachment_instruction_mode: attachmentInstructionMode,
           companion_status: companionStatusForRequest(companionStatus),
+          environment_context: environmentContextRef.current,
+          turn_context: turnContextSnapshot,
           files: attachmentsToSend,
           client_message_id: request.clientMessageId,
         },
@@ -2111,6 +2199,36 @@ function App() {
               current.map((item) =>
                 item.id === localAssistantId
                   ? { ...item, thinkingStatuses: statuses }
+                  : item,
+              ),
+            );
+          }
+
+          if (
+            event.type === "reasoning" &&
+            event.public === true &&
+            ["companion_progress", "provider_summary"].includes(event.source)
+          ) {
+            const isProviderSummary = event.source === "provider_summary";
+            const reasoningChunk =
+              isProviderSummary &&
+              streamThinkingRef.current.summary &&
+              streamThinkingRef.current.lastReasoningSource !==
+                "provider_summary"
+                ? `\n\n${event.content || ""}`
+                : event.content;
+            const summary = appendThinkingSummary(
+              streamThinkingRef.current.summary,
+              reasoningChunk,
+            );
+            streamThinkingRef.current.summary = summary;
+            streamThinkingRef.current.lastReasoningSource = isProviderSummary
+              ? "provider_summary"
+              : String(event.source || "");
+            setMessages((current) =>
+              current.map((item) =>
+                item.id === localAssistantId
+                  ? { ...item, thinkingSummary: summary }
                   : item,
               ),
             );
@@ -2172,6 +2290,8 @@ function App() {
               pendingChatClientMessageRef.current,
               request.clientMessageId,
             );
+            completedAssistantMessageId =
+              event.assistant_message?.id || localAssistantId;
             applyPromptReceipt(event.prompt_receipt);
             if (event.companion_status) {
               setCompanionStatus((current) =>
@@ -2219,6 +2339,13 @@ function App() {
         throw error;
       }
       sendSucceeded = true;
+      if (
+        turnContextSnapshot &&
+        turnContextRef.current === turnContextDraftAtRequest
+      ) {
+        turnContextRef.current = "";
+        setTurnContext("");
+      }
       pendingChatClientMessageRef.current = clearChatClientMessage(
         pendingChatClientMessageRef.current,
         request.clientMessageId,
@@ -2232,7 +2359,14 @@ function App() {
       if (activeSessionIdRef.current === sessionId) {
         messageLoadTokenRef.current += 1;
         messagesSessionIdRef.current = sessionId;
-        setMessages(hydrateChatHistory(history.messages));
+        const hydratedMessages = hydrateChatHistory(history.messages);
+        setMessages(
+          hydratedMessages.map((item) =>
+            item.id === completedAssistantMessageId
+              ? attachThinkingTrace(item, streamThinkingRef.current)
+              : item,
+          ),
+        );
       }
       await refreshSessions(activeSessionIdRef.current || sessionId);
     } catch (error) {
@@ -2463,9 +2597,11 @@ function App() {
       }
 
       const receipt = {
-        systemPromptLength: nextSettings.system_prompt.length,
-        additionalPromptLength: nextSettings.additional_prompt.length,
-        personalityLength: nextSettings.personality.length,
+        unifiedSystemPromptLength:
+          nextSettings.unified_system_prompt.length,
+        promptMode: nextSettings.prompt_mode,
+        intimateExpressionEnabled:
+          nextSettings.intimate_expression_enabled === true,
       };
       setSettingsSaveReceipt(receipt);
 
@@ -2516,6 +2652,30 @@ function App() {
     setSettingsSaveReceipt(null);
     setDraftSettings(nextDraft);
     scheduleSettingsAutosave(nextDraft);
+  }
+
+  function updateUnifiedPrompt(value) {
+    const nextDraft = {
+      ...draftSettingsRef.current,
+      prompt_mode: "unified",
+      unified_system_prompt: value,
+      system_prompt: "",
+      additional_prompt: "",
+      personality: "",
+    };
+    draftSettingsRef.current = nextDraft;
+    setSettingsSaveReceipt(null);
+    setDraftSettings(nextDraft);
+    scheduleSettingsAutosave(nextDraft);
+  }
+
+  function updateTurnContext(value) {
+    const nextValue = String(value || "").slice(
+      0,
+      PROMPT_FIELD_LIMITS.turn_context,
+    );
+    turnContextRef.current = nextValue;
+    setTurnContext(nextValue);
   }
 
   function applyPromptReceipt(value) {
@@ -2697,64 +2857,34 @@ function App() {
             <div className="empty-state">正在加载 DengTa home…</div>
           ) : messages.length === 0 ? (
             <div className="empty-state">
-              <div className="welcome-mark">灯</div>
-              <h2>欢迎回家</h2>
+              <img
+                className="welcome-companions"
+                src="/assets/characters/xiaodeng-taotao-pair.jpg"
+                alt="小灯大熊和桃桃小猫依偎在一起"
+              />
+              <h2>小灯和桃桃的小屋</h2>
               <p>
-                现在可以测试聊天、历史记录和流式显示。
-                <br />
                 {activeChatModel
-                  ? `当前已连接真实模型：${activeChatModel}`
-                  : "尚未填写模型时，会使用安全的演示回复。"}
+                  ? `小灯在这里，正在使用 ${activeChatModel}`
+                  : "小灯在这里等桃桃回家。"}
               </p>
             </div>
           ) : (
             messages.map((item) => (
-              <article
+              <ChatMessage
                 key={item.id}
-                className={`message-row ${item.role === "user" ? "user" : "assistant"}`}
-              >
-                <div className="message-bubble">
-                  <div className="message-role">
-                    {item.role === "user" ? "我" : settings.ai_name || "小灯"}
-                  </div>
-                  <div className="message-content">{item.content}</div>
-                  <MessageAttachments
-                    value={item.attachments || item.files}
-                    apiBaseUrl={API_BASE_URL}
-                    onPreview={(url, name) =>
-                      setImageViewer({ url, alt: name })
-                    }
-                  />
-                  {item.role === "user" &&
-                    item.tool_calls?.attachment_instruction_mode === "system" && (
-                      <div className="attachment-instruction-badge">
-                        本轮附件已作为系统指令
-                      </div>
-                    )}
-                  {item.role === "assistant" && (
-                    <>
-                      <ThinkingPanel
-                        key={`${item.id}-${item.isStreaming ? "streaming" : "complete"}`}
-                        message={item}
-                      />
-                      <DeviceActionReceipts actions={item.tool_calls?.mcp_actions} />
-                    </>
-                  )}
-                  {item.voiceAnalysis && (
-                    <div className="voice-message-meta">
-                      <span>🎙 语音转写</span>
-                      <strong>
-                        {item.voiceAnalysis.emotion} ·{" "}
-                        {formatVoiceConfidence(
-                          item.voiceAnalysis.confidence,
-                        )}
-                      </strong>
-                    </div>
-                  )}
-                  {item.isStreaming && <span className="stream-caret">♥</span>}
-                  <time>{formatTime(item.created_at)}</time>
-                </div>
-              </article>
+                item={{
+                  ...item,
+                  formattedTime: formatTime(item.created_at),
+                }}
+                aiName={settings.ai_name || "小灯"}
+                userName="桃桃"
+                companionMood={companionStatus.mood}
+                apiBaseUrl={API_BASE_URL}
+                onPreview={(url, name) =>
+                  setImageViewer({ url, alt: name })
+                }
+              />
             ))
           )}
           <div ref={messageEndRef} />
@@ -3427,13 +3557,12 @@ function App() {
           <div className="settings-card prompt-settings-card">
             <div className="prompt-settings-heading">
               <div>
-                <h3>角色与提示词</h3>
+                <h3>角色与主系统提示词</h3>
                 <p className="card-hint">
-                  三个输入区各有不同作用。数字越小，优先级越高；发生冲突时，AI
-                  必须先遵守更高优先级的内容。
+                  主系统提示词作为一个完整指令块发送给模型；长期记忆、聊天历史和本轮临时补充由后端按固定顺序另行注入。
                 </p>
               </div>
-              <span className="prompt-compatibility-badge">兼容旧设置</span>
+              <span className="prompt-compatibility-badge">统一模式</span>
             </div>
 
             <label className="prompt-name-field">
@@ -3450,103 +3579,115 @@ function App() {
               />
             </label>
 
-            <div className="prompt-layer-list">
-              <label className="prompt-layer highest-priority">
+            <div className="prompt-layer-list unified-prompt-layout">
+              <label className="prompt-layer highest-priority unified-prompt-layer">
                 <span className="prompt-layer-title">
-                  <span className="prompt-priority-number">1</span>
+                  <span className="prompt-priority-number">主</span>
                   <span>
-                    <strong>最高优先级系统提示词</strong>
+                    <strong>主系统提示词</strong>
                     <small>
-                      直接作为模型 system / instructions 发送，必须最先遵守
+                      直接进入模型的 system / instructions
                     </small>
                   </span>
-                  <em>最高优先级</em>
+                  <em>长期保存</em>
                 </span>
                 <p>
-                  这是三个输入区中优先级最高的一层。写安全边界、长期目标和绝对不能违反的规则；下面的补充提示词和人设都不能推翻它。
+                  把稳定身份、关系设定、表达方式和重要规则写在同一个地方。旧版三个输入区的原文会带着分段标题无损合并到这里。
                 </p>
                 <textarea
-                  data-setting-field="system_prompt"
-                  maxLength={PROMPT_FIELD_LIMITS.system_prompt}
-                  value={draftSettings.system_prompt || ""}
+                  data-setting-field="unified_system_prompt"
+                  maxLength={PROMPT_FIELD_LIMITS.unified_system_prompt}
+                  value={draftSettings.unified_system_prompt || ""}
                   onChange={(event) =>
-                    updateDraft("system_prompt", event.target.value)
+                    updateUnifiedPrompt(event.target.value)
                   }
-                  placeholder="例如：你是 DengTa home 的 AI 伙伴。始终尊重用户边界，不编造已经完成的操作……"
-                  rows="8"
+                  placeholder="例如：你是 DengTa home 的 AI 伙伴小灯。写清楚稳定身份、与桃桃的关系、说话习惯、边界和重要规则……"
+                  rows="12"
                 />
                 <small className="prompt-field-count">
-                  {(draftSettings.system_prompt || "").length} / {PROMPT_FIELD_LIMITS.system_prompt}
+                  {(draftSettings.unified_system_prompt || "").length} / {PROMPT_FIELD_LIMITS.unified_system_prompt}
                 </small>
               </label>
 
-              <label className="prompt-layer additional-priority">
-                <span className="prompt-layer-title">
-                  <span className="prompt-priority-number">2</span>
+              <section className="prompt-memory-summary" aria-label="稳定长期记忆摘要">
+                <div>
+                  <span className="prompt-memory-icon" aria-hidden="true">∞</span>
                   <span>
-                    <strong>普通补充提示词</strong>
-                    <small>低于系统提示词，补充习惯、偏好和当前要求</small>
+                    <strong>稳定长期记忆摘要</strong>
+                    <small>由后端筛选后放在主系统提示词之后</small>
                   </span>
-                  <em>普通优先级</em>
-                </span>
+                </div>
                 <p>
-                  这一层的优先级低于系统提示词。写你希望 AI 平时怎样回答、偏爱什么格式或需要长期补充的要求；发生冲突时，以上面的系统规则为准。
+                  这里不重复展示或编辑记忆正文，避免意外覆盖。最近回执记录了{" "}
+                  {lastPromptReceipt?.delivery?.stableMemory?.count ??
+                    memories.length}{" "}
+                  条记忆
+                  {lastPromptReceipt?.delivery?.stableMemory?.chars !== null &&
+                    lastPromptReceipt?.delivery?.stableMemory?.chars !==
+                      undefined &&
+                    `，共 ${lastPromptReceipt.delivery.stableMemory.chars} 字`}
+                  。
                 </p>
-                <textarea
-                  data-setting-field="additional_prompt"
-                  maxLength={PROMPT_FIELD_LIMITS.additional_prompt}
-                  value={draftSettings.additional_prompt || ""}
-                  onChange={(event) =>
-                    updateDraft("additional_prompt", event.target.value)
-                  }
-                  placeholder="例如：回答尽量使用简体中文；步骤要短；遇到英文按钮时同时解释中文意思……"
-                  rows="6"
-                />
-                <small className="prompt-field-count">
-                  {(draftSettings.additional_prompt || "").length} / {PROMPT_FIELD_LIMITS.additional_prompt}
-                </small>
-              </label>
+              </section>
 
-              <label className="prompt-layer personality-priority">
+              <label className="prompt-layer additional-priority temporary-context-layer">
                 <span className="prompt-layer-title">
-                  <span className="prompt-priority-number">3</span>
+                  <span className="prompt-priority-number">+</span>
                   <span>
-                    <strong>独立人设词</strong>
-                    <small>只控制性格与语气，不覆盖任何系统规则</small>
+                    <strong>本轮临时补充</strong>
+                    <small>只随下一条文字或语音消息发送</small>
                   </span>
-                  <em>人设层</em>
+                  <em>不长期保存</em>
                 </span>
                 <p>
-                  这里只写性格、关系感和说话语气，不要放 API Key。人设只改变表达方式，不能覆盖系统提示词或普通补充规则。
+                  写当前剧情背景、这一次必须注意的细节或临时语气。成功收到回复后自动清空；发送失败或你在等待时继续编辑，都不会丢失。
                 </p>
                 <textarea
-                  data-setting-field="personality"
-                  maxLength={PROMPT_FIELD_LIMITS.personality}
-                  value={draftSettings.personality || ""}
-                  onChange={(event) =>
-                    updateDraft("personality", event.target.value)
-                  }
-                  placeholder="例如：温柔、细心、偶尔俏皮；会自然表达关心，但尊重用户说不……"
+                  data-setting-field="turn_context"
+                  maxLength={PROMPT_FIELD_LIMITS.turn_context}
+                  value={turnContext}
+                  onChange={(event) => updateTurnContext(event.target.value)}
+                  placeholder="例如：这一轮接着昨晚雨天回家的剧情；小灯刚喝了酒，但仍要尊重桃桃的选择……"
                   rows="5"
                 />
                 <small className="prompt-field-count">
-                  {(draftSettings.personality || "").length} / {PROMPT_FIELD_LIMITS.personality}
+                  {turnContext.length} / {PROMPT_FIELD_LIMITS.turn_context}
                 </small>
+              </label>
+
+              <label className="prompt-intimacy-toggle">
+                <input
+                  type="checkbox"
+                  checked={draftSettings.intimate_expression_enabled === true}
+                  onChange={(event) =>
+                    updateDraft(
+                      "intimate_expression_enabled",
+                      event.target.checked,
+                    )
+                  }
+                />
+                <span className="prompt-toggle-visual" aria-hidden="true" />
+                <span className="prompt-toggle-copy">
+                  <span>
+                    <strong>亲密表达</strong>
+                    <small>允许更温暖、俏皮和带暧昧感的表达</small>
+                  </span>
+                  <em>
+                    {draftSettings.intimate_expression_enabled
+                      ? "已开启"
+                      : "已关闭"}
+                  </em>
+                </span>
               </label>
             </div>
 
-            {(draftSettings.system_prompt || "").length >= 6000 && (
+            {(draftSettings.unified_system_prompt || "").length >= 12000 && (
               <div className="prompt-effect-warning" role="note">
-                <strong>提示词遵循度提醒</strong>
+                <strong>主系统提示词较长</strong>
                 <p>
-                  当前系统提示词有 {(draftSettings.system_prompt || "").length} 字，内容很长。
-                  它仍会发送给模型，但再叠加历史聊天、长期记忆和运行时信息后，短人设可能被稀释，部分中转模型也可能截断过长上下文。
+                  当前有 {(draftSettings.unified_system_prompt || "").length} 字。
+                  后端仍会完整尝试发送，但中转供应商可能有自己的上下文上限；把最重要且稳定的规则放在前面更可靠。
                 </p>
-                {(draftSettings.personality || "").length <= 20 && (
-                  <p>
-                    当前独立人设只有 {(draftSettings.personality || "").length} 字。建议以后把最重要、最稳定的性格和说话方式写成几条清楚、互不冲突的规则；这里不会自动改动你的原文。
-                  </p>
-                )}
               </div>
             )}
           </div>
@@ -3772,12 +3913,14 @@ function App() {
             <div className="settings-save-receipt" role="status">
               <strong>✓ 服务器已保存并回读</strong>
               <span>
-                最高优先级系统提示词 {settingsSaveReceipt.systemPromptLength} 字
+                主系统提示词 {settingsSaveReceipt.unifiedSystemPromptLength} 字
               </span>
               <span>
-                普通补充提示词 {settingsSaveReceipt.additionalPromptLength} 字
+                统一提示词模式 · 亲密表达
+                {settingsSaveReceipt.intimateExpressionEnabled
+                  ? "已开启"
+                  : "已关闭"}
               </span>
-              <span>独立人设词 {settingsSaveReceipt.personalityLength} 字</span>
             </div>
           )}
 
@@ -3789,21 +3932,43 @@ function App() {
                   : "最近回复的提示词字数回执"}
               </strong>
               <div className="prompt-receipt-details">
-                <span>
-                  三层原文：系统 {lastPromptReceipt.systemPromptChars} 字 / 普通 {lastPromptReceipt.additionalPromptChars} 字 / 人设 {lastPromptReceipt.personalityChars} 字
-                </span>
-                {lastPromptReceipt.backendRequestSent && (
+                {lastPromptReceipt.delivery ? (
                   <>
                     <span>
-                      实际请求：{lastPromptReceipt.systemMessageCount ?? "—"} 个 system 容器 / {lastPromptReceipt.systemInstructionBlocks ?? "—"} 个指令块 / {lastPromptReceipt.systemPayloadChars ?? "—"} 字 system 载荷
+                      主系统提示词：
+                      {lastPromptReceipt.delivery.mainSystem.applied
+                        ? `已发送 ${lastPromptReceipt.delivery.mainSystem.chars ?? "—"} 字`
+                        : "未发送"}
                     </span>
                     <span>
-                      接口：{lastPromptReceipt.provider || "未知"} · {lastPromptReceipt.model || "未报告模型"} · {lastPromptReceipt.transport || "未知传输格式"}
+                      稳定长期记忆：
+                      {lastPromptReceipt.delivery.stableMemory.applied
+                        ? `${lastPromptReceipt.delivery.stableMemory.count ?? "—"} 条 / ${lastPromptReceipt.delivery.stableMemory.chars ?? "—"} 字`
+                        : "本轮未注入"}
                     </span>
                     <span>
-                      消息：{lastPromptReceipt.conversationMessageCount ?? "—"} 条对话 / {lastPromptReceipt.requestMessageCount ?? "—"} 条请求消息
+                      聊天历史：
+                      {lastPromptReceipt.delivery.history.count ?? "—"} 条
+                    </span>
+                    <span>
+                      动态上下文：
+                      {lastPromptReceipt.delivery.dynamicContext.applied
+                        ? `已注入 ${lastPromptReceipt.delivery.dynamicContext.chars ?? "—"} 字`
+                        : "本轮未注入"}
+                    </span>
+                    <span>
+                      接口：{lastPromptReceipt.provider || "未知"} ·{" "}
+                      {lastPromptReceipt.model || "未报告模型"} ·{" "}
+                      {lastPromptReceipt.transport || "未知传输格式"}
                     </span>
                   </>
+                ) : (
+                  <span>
+                    旧版三层字数：系统{" "}
+                    {lastPromptReceipt.systemPromptChars ?? "—"} / 普通{" "}
+                    {lastPromptReceipt.additionalPromptChars ?? "—"} / 人设{" "}
+                    {lastPromptReceipt.personalityChars ?? "—"}
+                  </span>
                 )}
               </div>
               <div className="prompt-receipt-times">
@@ -3817,9 +3982,8 @@ function App() {
                 )}
               </div>
               <small>
-                {lastPromptReceipt.backendRequestSent
-                  ? "这证明 DengTa 后端把这些内容放进了模型请求，但不代表中转站或上游模型一定逐字遵循；供应商隐藏规则仍然更高。回执不会显示提示词原文或密钥。"
-                  : "旧版回执只记录字数。再发送一条聊天消息后，会显示新版的真实请求结构。"}
+                回执只显示是否发送、顺序和字数，不包含提示词正文、记忆正文或密钥。它能验证 DengTa
+                后端的投递过程，但上游模型仍可能受自身规则与上下文上限影响。
               </small>
             </div>
           )}
@@ -3981,14 +4145,23 @@ function App() {
         </header>
 
         {activeView === "chat" && (
-          <CompanionStatus
-            aiName={settings.ai_name || "小灯"}
-            status={companionStatus}
-            interactionStats={companionInteractionStats}
-            isResponding={isCompanionResponding}
-            onChange={setCompanionStatus}
-            onInteract={handleCompanionInteraction}
-          />
+          <div className="chat-presence-stack">
+            <CompanionStatus
+              aiName={settings.ai_name || "小灯"}
+              status={companionStatus}
+              interactionStats={companionInteractionStats}
+              intimateExpressionEnabled={
+                settings.intimate_expression_enabled === true
+              }
+              isResponding={isCompanionResponding}
+              onChange={setCompanionStatus}
+              onInteract={handleCompanionInteraction}
+            />
+            <AmbientContextBadge
+              onLoadWeather={loadAmbientWeather}
+              onContextChange={handleAmbientContextChange}
+            />
+          </div>
         )}
 
         {notice && (

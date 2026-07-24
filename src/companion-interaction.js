@@ -16,6 +16,7 @@ export function enqueueCompanionInteraction({
   zoneId,
   stats,
   sessionId,
+  preInteractionStatus,
   now,
   eventId,
   debounceMs = 1100,
@@ -52,7 +53,9 @@ export function enqueueCompanionInteraction({
       batchCounts,
       interactionCount: interactionCounts[zoneId],
       streakCount: stats.streakCount,
-      recentSequence: [...pending.recentSequence, zoneId].slice(-12),
+      recentSequence: Array.isArray(stats?.recentSequence)
+        ? stats.recentSequence.slice(-12)
+        : [...pending.recentSequence, zoneId].slice(-12),
       lastClickedAt: now,
     };
     return [...currentQueue.slice(0, -1), merged];
@@ -65,13 +68,19 @@ export function enqueueCompanionInteraction({
     {
       eventId,
       sessionId,
+      preInteractionStatus:
+        preInteractionStatus && typeof preInteractionStatus === "object"
+          ? preInteractionStatus
+          : null,
       interactionType: zoneId,
       burstCount: 1,
       interactionCounts,
       batchCounts,
       interactionCount: interactionCounts[zoneId],
       streakCount: stats.streakCount,
-      recentSequence: [zoneId],
+      recentSequence: Array.isArray(stats?.recentSequence)
+        ? stats.recentSequence.slice(-12)
+        : [zoneId],
       lastClickedAt: now,
     },
   ];

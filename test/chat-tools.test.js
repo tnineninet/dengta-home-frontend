@@ -20,8 +20,10 @@ import {
 } from "../src/chat-models.js";
 import {
   attachThinkingTrace,
+  appendThinkingSummary,
   appendThinkingStatus,
   mergeStreamedAssistantMessage,
+  personalizedThinkingStatus,
   thinkingPanelCompleted,
   thinkingPanelVisible,
 } from "../src/chat-thinking.js";
@@ -50,6 +52,7 @@ function fakeFile(name, type, size) {
   const request = {
     sessionId: "session-a",
     message: "同一条消息",
+    turnContext: "同一段临时背景",
     attachments: [
       {
         file: {
@@ -89,6 +92,16 @@ function fakeFile(name, type, size) {
     "17c2cb36-635b-43b5-93d1-ea8f21ba9b2a",
   );
   assert.equal(changedAttachmentMode.reused, false);
+  const changedTurnContext = resolveChatClientMessage(
+    retry,
+    { ...request, turnContext: "临时背景已经改变" },
+    { randomUUID: () => "47c2cb36-435b-43b5-93d1-ea8f21ba9b2a" },
+  );
+  assert.equal(
+    changedTurnContext.clientMessageId,
+    "47c2cb36-435b-43b5-93d1-ea8f21ba9b2a",
+  );
+  assert.equal(changedTurnContext.reused, false);
   assert.equal(clearChatClientMessage(changed, fixedId), changed);
   assert.equal(clearChatClientMessage(changed, changed.clientMessageId), null);
   const committedRetry = updateChatClientMessage(first, fixedId, {
@@ -407,6 +420,20 @@ assert.equal(
     "正在安全读取附件",
   );
   assert.equal(
+    personalizedThinkingStatus("正在请求所选模型", {
+      aiName: "祂",
+      companionMood: "有点害羞",
+    }),
+    "祂悄悄想一会儿",
+  );
+  assert.equal(
+    personalizedThinkingStatus("正在生成回复", {
+      aiName: "小灯",
+      companionMood: "不开心",
+    }),
+    "小灯心里有点闷，正在想怎么告诉你",
+  );
+  assert.equal(
     thinkingPanelVisible({ isStreaming: false, thinkingStatuses: statuses }),
     true,
   );
@@ -418,19 +445,30 @@ assert.equal(
     thinkingPanelCompleted({ isStreaming: false, generationInProgress: false }),
     true,
   );
+  let publicSummary = appendThinkingSummary("", "先查看上下文。");
+  publicSummary = appendThinkingSummary(
+    publicSummary,
+    "\u0000再整理本轮公开摘要。",
+  );
+  assert.equal(publicSummary, "先查看上下文。再整理本轮公开摘要。");
+  assert.equal(
+    thinkingPanelVisible({ thinkingSummary: publicSummary }),
+    true,
+  );
   const historyMessage = attachThinkingTrace(
     {
       id: "assistant-1",
       reasoning: "不应保留",
       tool_calls: { resolved_model: "gpt-test" },
     },
-    { statuses },
+    { statuses, summary: publicSummary },
   );
   assert.deepEqual(historyMessage.tool_calls, {
     resolved_model: "gpt-test",
   });
   assert.equal("reasoning" in historyMessage, false);
   assert.deepEqual(historyMessage.thinkingStatuses, statuses);
+  assert.equal(historyMessage.thinkingSummary, publicSummary);
 
   const hydratedHistory = hydrateChatHistory([
     {
@@ -441,6 +479,8 @@ assert.equal(
       reasoning_summary: "不应恢复的推理摘要",
       thinking: "不应恢复的思考字段",
       tool_calls: {
+        reasoning: "嵌套的隐藏推理也不能恢复",
+        reasoning_summary: "嵌套摘要也不能进入历史 UI",
         processing_stages: [
           "accepted",
           { stage: "calling_model" },
@@ -466,6 +506,9 @@ assert.equal(
   assert.equal("reasoning_content" in hydratedHistory[0], false);
   assert.equal("reasoning_summary" in hydratedHistory[0], false);
   assert.equal("thinking" in hydratedHistory[0], false);
+  assert.equal("thinkingSummary" in hydratedHistory[0], false);
+  assert.equal("reasoning" in hydratedHistory[0].tool_calls, false);
+  assert.equal("reasoning_summary" in hydratedHistory[0].tool_calls, false);
   assert.equal(hydratedHistory[1].voiceAnalysis.emotion, "开心");
   const mergedMessage = mergeStreamedAssistantMessage(
     { id: "local", content: "流式内容" },
@@ -474,12 +517,13 @@ assert.equal(
       content: "最终内容",
       tool_calls: { response_mode: "custom" },
     },
-    { statuses },
+    { statuses, summary: publicSummary },
   );
   assert.deepEqual(mergedMessage.tool_calls, { response_mode: "custom" });
   assert.equal(mergedMessage.content, "最终内容");
   assert.equal(mergedMessage.generationInProgress, false);
   assert.equal(mergedMessage.retryAvailable, false);
+  assert.equal(mergedMessage.thinkingSummary, publicSummary);
 }
 
 {
@@ -493,6 +537,11 @@ assert.equal(
     emotion_understanding_enabled: true,
     attachment_instruction_mode: "system",
     companion_status: { mood: "平静" },
+    environment_context: {
+      timeZone: "Asia/Shanghai",
+      weather: { temperatureC: 26, description: "晴朗" },
+    },
+    turn_context: "本轮接着雨天回家的剧情",
     model: "gpt-test",
     client_message_id: "0f594d5c-e6d1-4f24-a583-cd5c66f81d75",
     files: [{ file: first }, second],
@@ -504,6 +553,11 @@ assert.equal(
   assert.deepEqual(JSON.parse(formData.get("companion_status")), {
     mood: "平静",
   });
+  assert.deepEqual(JSON.parse(formData.get("environment_context")), {
+    timeZone: "Asia/Shanghai",
+    weather: { temperatureC: 26, description: "晴朗" },
+  });
+  assert.equal(formData.get("turn_context"), "本轮接着雨天回家的剧情");
   assert.equal(formData.get("model"), "gpt-test");
   assert.equal(
     formData.get("client_message_id"),

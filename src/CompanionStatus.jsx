@@ -17,12 +17,12 @@ export default function CompanionStatus({
   aiName,
   status,
   interactionStats,
+  intimateExpressionEnabled = false,
   isResponding = false,
   onChange,
   onInteract,
 }) {
   const displayName = String(aiName || "").trim() || "小灯";
-  const presenceInitial = Array.from(displayName)[0] || "灯";
   const normalized = useMemo(
     () => normalizeCompanionStatus(status),
     [status],
@@ -151,29 +151,32 @@ export default function CompanionStatus({
         zone,
         interactionMeta || normalizedInteractionStats,
         current.revision,
+        current,
+        { intimateExpressionEnabled },
       );
       const streakIntensity = Math.min(
         8,
         Math.max(0, reaction.streakCount - 1),
       );
       const energyTarget = clamp(
-        zone.energyTarget + Math.round(streakIntensity / 2),
+        reaction.energyTarget + Math.round(streakIntensity / 2),
         0,
         100,
       );
       const pulseTarget = clamp(
-        zone.pulseTarget +
-          Math.sign(zone.pulseDelta) * Math.round(streakIntensity * 0.8),
+        reaction.pulseTarget +
+          Math.sign(reaction.pulseTarget - current.pulseBpm) *
+            Math.round(streakIntensity * 0.8),
         30,
         220,
       );
 
       return {
         ...current,
-        mood: zone.mood,
-        focus: zone.focus,
+        mood: reaction.mood,
+        focus: reaction.focus,
         note: reaction.text,
-        microState: zone.microState,
+        microState: reaction.microState,
         energyLevel: clamp(
           Math.round(current.energyLevel * 0.68 + energyTarget * 0.32),
           0,
@@ -290,12 +293,12 @@ export default function CompanionStatus({
         <path
           className="status-pulse-line"
           pathLength="1"
-          d="M0 72H126l20-14 24 42 25-74 29 78 25-32H680"
+          d="M0 78H74l16-10 18 22 22-56 28 78 24-34 22 10H302l15-9 18 20 23-52 28 72 25-31 24 9H520l14-8 17 18 20-45 25 63 22-27 18 8H680"
         />
         <path
           className="status-pulse-runner"
           pathLength="1"
-          d="M0 72H126l20-14 24 42 25-74 29 78 25-32H680"
+          d="M0 78H74l16-10 18 22 22-56 28 78 24-34 22 10H302l15-9 18 20 23-52 28 72 25-31 24 9H520l14-8 17 18 20-45 25 63 22-27 18 8H680"
         />
       </svg>
 
@@ -306,7 +309,10 @@ export default function CompanionStatus({
         onClick={() => setExpanded((current) => !current)}
       >
         <span className="status-presence" aria-hidden="true">
-          <span>{presenceInitial}</span>
+          <img
+            src="/assets/characters/xiaodeng-bear-avatar.jpg"
+            alt=""
+          />
         </span>
         <span className="status-summary-copy">
           <span className="status-name-line">
@@ -318,6 +324,7 @@ export default function CompanionStatus({
             <span>·</span>
             <span>{normalized.focus}</span>
           </span>
+          <span className="status-reaction-preview">{normalized.note}</span>
         </span>
         <span className="status-mini-vitals" aria-label="角色氛围数值">
           <span>{normalized.energyLevel}%</span>
