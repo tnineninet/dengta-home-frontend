@@ -1171,7 +1171,12 @@ function App() {
     }
   }
 
-  async function playAssistantReply(value, messageId = "") {
+  async function playAssistantReply(
+    value,
+    messageId = "",
+    speechToken = "",
+    sessionId = activeSessionIdRef.current,
+  ) {
     if (!voiceAutoSpeakEnabled || !String(value || "").trim()) return;
 
     const runId = speechRunRef.current + 1;
@@ -1190,6 +1195,8 @@ function App() {
       const result = await speakVoiceText(value, {
         mode: requestedMode,
         messageId,
+        sessionId,
+        speechToken,
       });
       if (
         voicePlaybackMode === VOICE_PLAYBACK_MODES.expressive &&
@@ -1347,6 +1354,8 @@ function App() {
         await playAssistantReply(
           serverAssistantMessage.content,
           serverAssistantMessage.id,
+          serverAssistantMessage.speech_token,
+          responseSessionId,
         );
       } else {
         setVoiceMode(VOICE_STATES.idle);
@@ -1875,7 +1884,12 @@ function App() {
       }
 
       if (voiceAutoSpeakEnabled) {
-        void playAssistantReply(assistantMessage.content, assistantMessage.id);
+        void playAssistantReply(
+          assistantMessage.content,
+          assistantMessage.id,
+          assistantMessage.speech_token,
+          sessionId,
+        );
       }
 
       if (activeSessionIdRef.current === sessionId) {
@@ -2316,6 +2330,8 @@ function App() {
               void playAssistantReply(
                 event.assistant_message.content,
                 event.assistant_message.id,
+                event.assistant_message.speech_token,
+                sessionId,
               );
             }
           }

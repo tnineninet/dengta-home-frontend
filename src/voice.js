@@ -356,11 +356,21 @@ export function normalizeVoicePlaybackMode(value) {
 
 export async function requestExpressiveSpeech(
   messageId,
-  { fetchImpl = globalThis.fetch, timeoutMs = 60_000 } = {},
+  {
+    sessionId = "",
+    speechToken = "",
+    fetchImpl = globalThis.fetch,
+    timeoutMs = 60_000,
+  } = {},
 ) {
   const safeMessageId = String(messageId || "").trim();
+  const safeSessionId = String(sessionId || "").trim();
+  const safeSpeechToken = String(speechToken || "").trim();
   if (!safeMessageId) {
     throw new Error("这条回复还没有可用于自然语音的消息编号。");
+  }
+  if (!safeSessionId || !safeSpeechToken) {
+    throw new Error("这条回复的自然语音凭据已失效，请发送新消息后再试。");
   }
   if (typeof fetchImpl !== "function") {
     throw new Error("当前设备不能连接自然语音服务。");
@@ -374,7 +384,11 @@ export async function requestExpressiveSpeech(
       response = await fetchImpl(`${API_BASE_URL}/voice/speech`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message_id: safeMessageId }),
+        body: JSON.stringify({
+          message_id: safeMessageId,
+          session_id: safeSessionId,
+          speech_token: safeSpeechToken,
+        }),
         signal: controller.signal,
       });
     } catch (error) {
@@ -529,6 +543,8 @@ export async function speakVoiceText(
     rate = 1,
     pitch = 1,
     volume = 1,
+    sessionId = "",
+    speechToken = "",
   } = {},
 ) {
   const normalizedMode = normalizeVoicePlaybackMode(mode);
@@ -540,7 +556,10 @@ export async function speakVoiceText(
   if (normalizedMode === VOICE_PLAYBACK_MODES.expressive) {
     let cloudError;
     try {
-      const speech = await requestExpressiveSpeech(messageId);
+      const speech = await requestExpressiveSpeech(messageId, {
+        sessionId,
+        speechToken,
+      });
       const playback = await playAudioBlob(speech.blob);
       return {
         ...playback,

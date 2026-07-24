@@ -164,7 +164,9 @@ assert.equal(
 assert.equal(normalizeVoicePlaybackMode("unknown"), VOICE_PLAYBACK_MODES.off);
 
 let expressiveRequest;
-const expressiveSpeech = await requestExpressiveSpeech("assistant-message-id", {
+const expressiveSpeech = await requestExpressiveSpeech("65", {
+  sessionId: "11111111-1111-4111-8111-111111111111",
+  speechToken: "v1.1784854800.test-speech-token",
   async fetchImpl(url, options) {
     expressiveRequest = { url, options };
     return {
@@ -185,10 +187,24 @@ const expressiveSpeech = await requestExpressiveSpeech("assistant-message-id", {
 });
 assert.match(expressiveRequest.url, /\/voice\/speech$/);
 assert.deepEqual(JSON.parse(expressiveRequest.options.body), {
-  message_id: "assistant-message-id",
+  message_id: "65",
+  session_id: "11111111-1111-4111-8111-111111111111",
+  speech_token: "v1.1784854800.test-speech-token",
 });
 assert.equal(expressiveSpeech.provider, "minimax");
 assert.equal(expressiveSpeech.emotion, "happy");
 assert.equal(expressiveSpeech.blob.type, "audio/mpeg");
+
+let missingCredentialFetches = 0;
+await assert.rejects(
+  () =>
+    requestExpressiveSpeech("65", {
+      async fetchImpl() {
+        missingCredentialFetches += 1;
+      },
+    }),
+  /凭据已失效/,
+);
+assert.equal(missingCredentialFetches, 0);
 
 console.log("voice helper tests passed");
