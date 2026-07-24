@@ -135,13 +135,60 @@ function optionalText(value, limit = 80) {
   return text || null;
 }
 
+function safeReceiptMetadata(value, limit = 80) {
+  const redacted = textOrFallback(value)
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}\b/g, "[已隐藏密钥]")
+    .replace(/\b(?:gsk_|AIza|xai-)[A-Za-z0-9_-]{8,}\b/g, "[已隐藏密钥]")
+    .replace(/\bBearer\s+[^\s,;]+/gi, "Bearer [已隐藏密钥]")
+    .replace(
+      /\b(api[_ -]?key|access[_ -]?token|refresh[_ -]?token|password|secret)\b(\s*[:=]\s*)[^\s,;]+/gi,
+      "$1$2[已隐藏密钥]",
+    )
+    .replace(
+      /\b(?=[A-Za-z0-9_-]{24,}\b)(?=[A-Za-z0-9_-]*[A-Z])(?=[A-Za-z0-9_-]*[a-z])(?=[A-Za-z0-9_-]*\d)[A-Za-z0-9_-]+\b/g,
+      "[已隐藏密钥]",
+    );
+  const text = Array.from(redacted)
+    .map((character) => {
+      const codePoint = character.codePointAt(0);
+      return codePoint <= 0x1f || codePoint === 0x7f ? " " : character;
+    })
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim();
+  return Array.from(text).slice(0, limit).join("") || null;
+}
+
+function safeReceiptProviderProtocol(value) {
+  const protocol = safeReceiptMetadata(value, 40)?.toLowerCase() || null;
+  return ["openai-chat", "openai-responses", "anthropic", "gemini"].includes(
+    protocol,
+  )
+    ? protocol
+    : null;
+}
+
+export function formatPromptReceiptProvider(receipt = {}) {
+  const profileName = safeReceiptMetadata(receipt.providerProfileName, 80);
+  const profileId = safeReceiptMetadata(receipt.providerProfileId, 80);
+  const protocol = safeReceiptProviderProtocol(receipt.providerProtocol);
+  const provider = safeReceiptMetadata(receipt.provider, 50);
+  const model = safeReceiptMetadata(receipt.model, 160);
+  const profileLabel = profileName || profileId;
+  const parts = profileLabel
+    ? [profileLabel, protocol || provider || "未知协议"]
+    : [provider || "未知接口"];
+  parts.push(model || "未报告模型");
+  return parts.join(" · ");
+}
+
 function deliveryBlock(source, fields) {
   const result = {};
   for (const [target, key, type] of fields) {
     if (type === "boolean") {
       result[target] = source[key] === true;
     } else if (type === "text") {
-      result[target] = optionalText(source[key]);
+      result[target] = safeReceiptMetadata(source[key]);
     } else {
       result[target] = firstCharacterCount(source, [key]);
     }
@@ -187,11 +234,24 @@ export function normalizePromptReceipt(value, fallbackAppliedAt) {
     normalizedIsoTime(source.applied_at) ||
     normalizedIsoTime(fallbackAppliedAt) ||
     new Date().toISOString();
-  const promptContractVersion =
-    textOrFallback(source.prompt_contract_version).trim() || null;
-  const transport = textOrFallback(source.transport).trim() || null;
-  const provider = textOrFallback(source.provider).trim() || null;
-  const model = textOrFallback(source.model).trim() || null;
+  const promptContractVersion = safeReceiptMetadata(
+    source.prompt_contract_version,
+    80,
+  );
+  const transport = safeReceiptMetadata(source.transport, 80);
+  const provider = safeReceiptMetadata(source.provider, 50);
+  const model = safeReceiptMetadata(source.model, 160);
+  const providerProfileId = safeReceiptMetadata(
+    source.provider_profile_id,
+    80,
+  );
+  const providerProfileName = safeReceiptMetadata(
+    source.provider_profile_name,
+    80,
+  );
+  const providerProtocol = safeReceiptProviderProtocol(
+    source.provider_protocol,
+  );
 
   const common = {
     promptContractVersion,
@@ -199,6 +259,9 @@ export function normalizePromptReceipt(value, fallbackAppliedAt) {
     transport,
     provider,
     model,
+    ...(providerProfileId ? { providerProfileId } : {}),
+    ...(providerProfileName ? { providerProfileName } : {}),
+    ...(providerProtocol ? { providerProtocol } : {}),
     systemInstructionBlocks: firstCharacterCount(source, [
       "system_instruction_blocks",
     ]),
@@ -230,8 +293,8 @@ export function normalizePromptReceipt(value, fallbackAppliedAt) {
 
   return {
     ...common,
-    promptArchitecture: optionalText(source.prompt_architecture),
-    promptMode: optionalText(source.prompt_mode),
+    promptArchitecture: safeReceiptMetadata(source.prompt_architecture),
+    promptMode: safeReceiptMetadata(source.prompt_mode),
     unifiedSystemPromptChars,
     unifiedSystemPromptApplied:
       source.unified_system_prompt_applied === true,

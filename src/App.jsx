@@ -58,6 +58,7 @@ import {
   PROMPT_FIELD_LIMITS,
   createSettingsPayload,
   emptySettings,
+  formatPromptReceiptProvider,
   normalizePromptReceipt,
   normalizeSettingsDraft,
   settingsNeedsUnifiedPromptMigration,
@@ -3997,8 +3998,8 @@ function App() {
                         : "本轮未注入"}
                     </span>
                     <span>
-                      接口：{lastPromptReceipt.provider || "未知"} ·{" "}
-                      {lastPromptReceipt.model || "未报告模型"} ·{" "}
+                      本轮使用的 DengTa 接口：
+                      {formatPromptReceiptProvider(lastPromptReceipt)} ·{" "}
                       {lastPromptReceipt.transport || "未知传输格式"}
                     </span>
                   </>

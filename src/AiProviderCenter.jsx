@@ -6,6 +6,14 @@ import {
   ccSwitchBridgeFileName,
   ccSwitchTargetsForProtocol,
 } from "./cc-switch-bridge";
+import {
+  beijingDateTimeInputValue,
+  beijingDateTimePayload,
+  formatBeijingDateTime,
+  providerHealthView,
+  providerIsExpired,
+  providerIsRoutable,
+} from "./ai-provider-health";
 
 const PROTOCOL_OPTIONS = [
   {
@@ -83,17 +91,11 @@ async function aiProviderRequest(
 }
 
 function inputDateTime(value) {
-  if (!value) return "";
-  const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime())) return String(value).slice(0, 16);
-  const local = new Date(parsed.getTime() - parsed.getTimezoneOffset() * 60000);
-  return local.toISOString().slice(0, 16);
+  return beijingDateTimeInputValue(value);
 }
 
 function payloadDateTime(value) {
-  if (!value) return null;
-  const parsed = new Date(value);
-  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : value;
+  return beijingDateTimePayload(value);
 }
 
 function providerPayload(profile) {
@@ -105,7 +107,7 @@ function providerPayload(profile) {
     credential: profile.credential || "",
     default_model: profile.default_model,
     enabled: profile.enabled === true,
-    is_default: profile.is_default === true,
+    is_default: profile.is_default === true && !providerIsExpired(profile),
     priority: Number(profile.priority) || 100,
     billing_url: profile.billing_url || "",
     expires_at: payloadDateTime(profile.expires_at),
@@ -113,14 +115,36 @@ function providerPayload(profile) {
   };
 }
 
-function connectionLabel(profile) {
-  if (profile.last_status === "connected") return "连接正常";
-  if (profile.last_status === "error") return "连接失败";
-  return "尚未测试";
+function catalogLabel(profile) {
+  return providerHealthView(profile).label;
+}
+
+function ProviderExpiryBadge({ value }) {
+  const formatted = formatBeijingDateTime(value);
+  if (!formatted) return null;
+  return <span>到期（北京时间）：{formatted}</span>;
+}
+
+function ProviderHealthSummary({ profile }) {
+  const health = providerHealthView(profile);
+  return (
+    <section
+      className={`provider-health provider-health-${health.state}`}
+      aria-label={`接口健康状态：${health.label}`}
+    >
+      <span className="provider-health-indicator">{health.label}</span>
+      <div>
+        <strong>{health.summary}</strong>
+        <p>{health.detail}</p>
+        <time dateTime={health.checkedAtIso || undefined}>{health.checkedAtLabel}</time>
+      </div>
+    </section>
+  );
 }
 
 function ProviderFields({ value, onChange, models = [], editing = false }) {
   const protocol = PROTOCOL_OPTIONS.find((item) => item.value === value.protocol);
+  const expired = providerIsExpired(value);
   const modelListId = editing
     ? "provider-models-" + (value.id || "edit")
     : "provider-models-new";
@@ -200,7 +224,7 @@ function ProviderFields({ value, onChange, models = [], editing = false }) {
         <datalist id={modelListId}>
           {models.map((model) => <option value={model} key={model} />)}
         </datalist>
-        <small>测试成功后可从发现的模型中选择；也可按服务商说明手动填写。</small>
+        <small>模型目录可读取后可从发现的模型中选择；也可按服务商说明手动填写。</small>
       </label>
       <label>
         优先级
@@ -211,10 +235,10 @@ function ProviderFields({ value, onChange, models = [], editing = false }) {
           value={value.priority || 100}
           onChange={(event) => onChange("priority", event.target.value)}
         />
-        <small>数字越小越靠前。默认接口不可用时，后续可用于自动故障切换。</small>
+        <small>数字越小越靠前，仅用于接口排序；当前不会自动切换供应商。</small>
       </label>
       <label>
-        到期时间（可选）
+        到期时间（北京时间，可选）
         <input
           type="datetime-local"
           value={inputDateTime(value.expires_at)}
@@ -253,10 +277,16 @@ function ProviderFields({ value, onChange, models = [], editing = false }) {
       <label className="provider-checkbox-row">
         <input
           type="checkbox"
-          checked={value.is_default === true}
+          checked={value.is_default === true && !expired}
+          disabled={expired}
           onChange={(event) => onChange("is_default", event.target.checked)}
         />
-        <span><strong>保存后设为默认</strong><small>必须同时启用；默认接口会真实覆盖旧版单接口设置。</small></span>
+        <span>
+          <strong>保存后设为下次聊天首选</strong>
+          <small>{expired
+            ? "该接口已到期，不参与路由；更新到期时间后才能设为首选。"
+            : "必须同时启用；它会成为下一次聊天请求优先使用的接口。"}</small>
+        </span>
       </label>
     </div>
   );
@@ -301,8 +331,8 @@ export default function AiProviderCenter() {
     };
   }, []);
 
-  const enabledCount = useMemo(
-    () => profiles.filter((profile) => profile.enabled).length,
+  const routableCount = useMemo(
+    () => profiles.filter((profile) => providerIsRoutable(profile)).length,
     [profiles],
   );
 
@@ -419,7 +449,7 @@ export default function AiProviderCenter() {
         body: providerPayload(draft),
       });
       setDraftModels(data.models || []);
-      setFeedback("连接成功，发现 " + (data.models?.length || 0) + " 个模型。测试不会保存密钥。");
+      setFeedback("模型目录可读取，发现 " + (data.models?.length || 0) + " 个模型。检查不会保存密钥。");
     } catch (error) {
       setDraftModels([]);
       setFeedback(error.message);
@@ -441,7 +471,7 @@ export default function AiProviderCenter() {
       setProfiles((current) => [data.profile, ...current.filter((item) => item.id !== data.profile.id)]);
       setDraft({ ...EMPTY_PROVIDER_DRAFT });
       setDraftModels([]);
-      setFeedback("接口已加密保存。只有你启用并设为默认后，它才会接管聊天。");
+      setFeedback("接口已加密保存。启用并设为下次聊天首选后，新的聊天请求才会优先使用它。");
       await refreshStatus();
     } catch (error) {
       setFeedback(error.message);
@@ -482,7 +512,7 @@ export default function AiProviderCenter() {
       setProfiles((current) => current.map((item) => (
         item.id === profile.id ? data.profile : item
       )));
-      setFeedback("连接成功，发现 " + (data.models?.length || 0) + " 个模型。");
+      setFeedback("模型目录可读取，发现 " + (data.models?.length || 0) + " 个模型。");
       await refreshStatus();
     } catch (error) {
       setFeedback(error.message);
@@ -503,7 +533,7 @@ export default function AiProviderCenter() {
         ...item,
         is_default: item.id === data.profile.id,
       })));
-      setFeedback("默认接口已切换；下一条聊天会使用它的地址、模型和加密密钥。");
+      setFeedback("下次聊天首选已更新；这不表示接口正在运行，新的聊天请求才会使用它。");
       await refreshStatus();
     } catch (error) {
       setFeedback(error.message);
@@ -551,8 +581,13 @@ export default function AiProviderCenter() {
 
       <div className="provider-summary-grid">
         <span><strong>{unlocked ? profiles.length : status.profiles || 0}</strong><small>已保存接口</small></span>
-        <span><strong>{unlocked ? enabledCount : status.enabled_profiles || 0}</strong><small>已启用</small></span>
-        <span><strong>{status.active_profile?.name || "旧版接口"}</strong><small>当前运行接口</small></span>
+        <span>
+          <strong>{unlocked
+            ? routableCount
+            : status.routable_profiles ?? (status.active_profile ? "≥1" : 0)}</strong>
+          <small>当前可路由</small>
+        </span>
+        <span><strong>{status.active_profile?.name || "旧版接口"}</strong><small>下次聊天首选</small></span>
       </div>
 
       {!unlocked && (
@@ -580,12 +615,12 @@ export default function AiProviderCenter() {
         <>
           <form className="provider-create-card" onSubmit={createProfile}>
             <div className="provider-section-title">
-              <div><strong>新增一个接口</strong><small>可先测试，不保存；确认无误后再保存并启用。</small></div>
+              <div><strong>新增一个接口</strong><small>可先检查模型目录而不保存；确认无误后再保存并启用。</small></div>
             </div>
             <ProviderFields value={draft} onChange={updateDraft} models={draftModels} />
             <div className="provider-card-actions">
               <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={testDraft}>
-                {busy === "test-draft" ? "测试中" : "测试但不保存"}
+                {busy === "test-draft" ? "检查中" : "检查模型目录但不保存"}
               </button>
               <button className="primary-button" disabled={Boolean(busy)}>
                 {busy === "create" ? "保存中" : "安全保存接口"}
@@ -599,15 +634,21 @@ export default function AiProviderCenter() {
                 <div className="provider-profile-head">
                   <div>
                     <strong>{profile.name}</strong>
-                    <small>{protocolLabel(profile.protocol)} · {connectionLabel(profile)}</small>
+                    <small>{protocolLabel(profile.protocol)} · {catalogLabel(profile)}</small>
                   </div>
                   <div className="provider-badges">
-                    {profile.is_default && <span>当前默认</span>}
-                    <span>{profile.enabled ? "已启用" : "已停用"}</span>
-                    {profile.expires_at && <span>到期：{new Date(profile.expires_at).toLocaleString()}</span>}
+                    {profile.is_default && (
+                      <span>{providerIsExpired(profile) ? "原首选已到期" : "下次聊天首选"}</span>
+                    )}
+                    <span>{profile.enabled
+                      ? providerIsExpired(profile)
+                        ? "已启用 · 已到期不参与路由"
+                        : "可参与路由"
+                      : "已停用"}</span>
+                    <ProviderExpiryBadge value={profile.expires_at} />
                   </div>
                 </div>
-                {profile.last_error && <p className="provider-error">上次错误：{profile.last_error}</p>}
+                <ProviderHealthSummary profile={profile} />
                 <ProviderFields
                   value={profile}
                   editing
@@ -621,13 +662,17 @@ export default function AiProviderCenter() {
                 )}
                 <div className="provider-card-actions">
                   <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => testProfile(profile)}>
-                    {busy === "test-" + profile.id ? "测试中" : "测试连接"}
+                    {busy === "test-" + profile.id ? "检查中" : "检查模型目录"}
                   </button>
                   <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => saveProfile(profile)}>
                     {busy === "save-" + profile.id ? "保存中" : "保存修改"}
                   </button>
-                  <button type="button" className="secondary-button" disabled={Boolean(busy) || !profile.enabled || profile.is_default} onClick={() => makeDefault(profile)}>
-                    {profile.is_default ? "正在使用" : "设为默认"}
+                  <button type="button" className="secondary-button" disabled={Boolean(busy) || !profile.enabled || profile.is_default || providerIsExpired(profile)} onClick={() => makeDefault(profile)}>
+                    {providerIsExpired(profile)
+                      ? "已到期，不可设为首选"
+                      : profile.is_default
+                        ? "已设为下次聊天首选"
+                        : "设为下次聊天首选"}
                   </button>
                   <button type="button" className="danger-outline-button" disabled={Boolean(busy)} onClick={() => removeProfile(profile)}>
                     删除
@@ -712,7 +757,7 @@ export default function AiProviderCenter() {
           <ol>
             <li><strong>Base URL：</strong>例如服务商提供的 HTTPS API 根地址，常见结尾是 <code>/v1</code>。</li>
             <li><strong>网关 API Key：</strong>由该服务商或你自己的网关生成，通常类似 <code>sk-...</code>。不要使用网页登录密码。</li>
-            <li><strong>模型名：</strong>先点“测试”，能读到列表就直接选择；读取不到时按服务商文档填写。</li>
+            <li><strong>模型名：</strong>先点“检查模型目录”，能读到列表就直接选择；读取不到时按服务商文档填写。</li>
           </ol>
           <h4>如果教程给你的是 auth.json、OAuth、Cookie 或账号 JSON</h4>
           <ol>

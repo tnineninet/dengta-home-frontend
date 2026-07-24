@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   PROMPT_FIELD_LIMITS,
   createSettingsPayload,
+  formatPromptReceiptProvider,
   mergeLegacyPromptFields,
   normalizePromptReceipt,
   normalizeSettingsDraft,
@@ -74,6 +75,9 @@ const receipt = normalizePromptReceipt({
   transport: "openai-chat-completions",
   provider: "openai-compatible",
   model: "test-model",
+  provider_profile_id: "provider-profile-1",
+  provider_profile_name: "我的主接口",
+  provider_protocol: "openai-responses",
   system_instruction_blocks: 7,
   system_message_count: 1,
   system_payload_chars: 560,
@@ -93,6 +97,9 @@ assert.deepEqual(receipt, {
   transport: "openai-chat-completions",
   provider: "openai-compatible",
   model: "test-model",
+  providerProfileId: "provider-profile-1",
+  providerProfileName: "我的主接口",
+  providerProtocol: "openai-responses",
   systemInstructionBlocks: 7,
   systemMessageCount: 1,
   systemPayloadChars: 560,
@@ -105,6 +112,68 @@ assert.deepEqual(receipt, {
   appliedAt: "2026-07-21T12:00:00.000Z",
 });
 assert.equal("system_prompt" in receipt, false);
+assert.equal(
+  formatPromptReceiptProvider(receipt),
+  "我的主接口 · openai-responses · test-model",
+);
+
+const sensitiveProviderMarker = "sk-provider-secret-123456789";
+const safeProviderReceipt = normalizePromptReceipt({
+  system_prompt_chars: 1,
+  additional_prompt_chars: 2,
+  personality_chars: 3,
+  provider: "openai-compatible",
+  model: "safe-model",
+  provider_profile_id: `profile-\u0000${"x".repeat(100)}`,
+  provider_profile_name: `主接口\n${sensitiveProviderMarker}`,
+  provider_protocol: "OPENAI-RESPONSES",
+  runtime_api_key: sensitiveProviderMarker,
+  api_url: "https://secret-gateway.example/v1",
+  billing_url: "https://billing.example/private",
+  notes: "private-provider-notes",
+});
+assert.equal(Array.from(safeProviderReceipt.providerProfileId).length, 80);
+assert.equal(safeProviderReceipt.providerProfileId.includes("\u0000"), false);
+assert.equal(
+  safeProviderReceipt.providerProfileName,
+  "主接口 [已隐藏密钥]",
+);
+assert.equal(safeProviderReceipt.providerProtocol, "openai-responses");
+assert.equal(
+  formatPromptReceiptProvider(safeProviderReceipt),
+  "主接口 [已隐藏密钥] · openai-responses · safe-model",
+);
+const serializedSafeProviderReceipt = JSON.stringify(safeProviderReceipt);
+assert.equal(serializedSafeProviderReceipt.includes(sensitiveProviderMarker), false);
+assert.equal(
+  serializedSafeProviderReceipt.includes("secret-gateway.example"),
+  false,
+);
+assert.equal(serializedSafeProviderReceipt.includes("billing.example"), false);
+assert.equal(serializedSafeProviderReceipt.includes("private-provider-notes"), false);
+assert.equal("runtime_api_key" in safeProviderReceipt, false);
+assert.equal("api_url" in safeProviderReceipt, false);
+assert.equal("billing_url" in safeProviderReceipt, false);
+assert.equal("notes" in safeProviderReceipt, false);
+
+const receiptMetadataSecret = ["gsk_", "TEST_", "Aa1Bb2Cc3Dd4Ee5Ff6Gg7Hh8"].join("");
+const sanitizedCommonMetadataReceipt = normalizePromptReceipt({
+  system_prompt_chars: 1,
+  additional_prompt_chars: 2,
+  personality_chars: 3,
+  prompt_contract_version: `contract-${receiptMetadataSecret}`,
+  transport: `transport-${receiptMetadataSecret}`,
+  provider: `provider-${receiptMetadataSecret}`,
+  model: `model-${receiptMetadataSecret}`,
+});
+const serializedCommonMetadataReceipt = JSON.stringify(
+  sanitizedCommonMetadataReceipt,
+);
+assert.equal(serializedCommonMetadataReceipt.includes(receiptMetadataSecret), false);
+assert.match(sanitizedCommonMetadataReceipt.promptContractVersion, /已隐藏密钥/);
+assert.match(sanitizedCommonMetadataReceipt.transport, /已隐藏密钥/);
+assert.match(sanitizedCommonMetadataReceipt.provider, /已隐藏密钥/);
+assert.match(sanitizedCommonMetadataReceipt.model, /已隐藏密钥/);
 
 const unifiedReceipt = normalizePromptReceipt({
   prompt_architecture: "unified-v1",
@@ -174,6 +243,13 @@ assert.equal(legacyReceipt.additionalPromptChars, 8);
 assert.equal(legacyReceipt.personalityChars, 9);
 assert.equal(legacyReceipt.settingsUpdatedAt, null);
 assert.equal(legacyReceipt.appliedAt, "2026-07-21T13:00:00.000Z");
+assert.equal(
+  formatPromptReceiptProvider({
+    provider: "openai-compatible",
+    model: "legacy-model",
+  }),
+  "openai-compatible · legacy-model",
+);
 
 const preservedConnection = createSettingsPayload({
   ...legacy,
