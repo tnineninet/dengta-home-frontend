@@ -66,6 +66,8 @@ import {
 } from "./settings";
 import { readReplySuggestions } from "./chat-reply-suggestions";
 import { SHANGHAI_TIME_ZONE } from "./ambient-context";
+import { installInnerHeightViewportFallback } from "./mobile-viewport";
+import { toggleMomentLikeOptimistically } from "./moment-like";
 import {
   VOICE_MAX_DURATION_MS,
   VOICE_PLAYBACK_MODES,
@@ -445,7 +447,9 @@ function App() {
   const [notificationPermissionState, setNotificationPermissionState] = useState(
     initialNotificationPermissionState,
   );
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [isPostingMoment, setIsPostingMoment] = useState(false);
+  const [pendingMomentLikes, setPendingMomentLikes] = useState({});
   const [notice, setNotice] = useState("");
   const [dialog, setDialog] = useState(null);
   const [imageViewer, setImageViewer] = useState(null);
@@ -525,6 +529,8 @@ function App() {
   const voiceRequestRef = useRef(null);
   const chatRequestRef = useRef(null);
   const pendingChatClientMessageRef = useRef(null);
+  const createSessionPendingRef = useRef(false);
+  const pendingMomentLikesRef = useRef({});
   const draftSettingsRef = useRef(draftSettings);
   const confirmedSettingsRef = useRef(settings);
   const latestDraftFingerprintRef = useRef("");
@@ -1095,7 +1101,7 @@ function App() {
 
   useEffect(() => {
     const viewport = window.visualViewport;
-    if (!viewport) return undefined;
+    if (!viewport) return installInnerHeightViewportFallback();
 
     const root = document.documentElement;
     let fullHeight = Math.max(
@@ -1664,6 +1670,9 @@ function App() {
   }
 
   async function createSession() {
+    if (createSessionPendingRef.current) return;
+    createSessionPendingRef.current = true;
+    setIsCreatingSession(true);
     abortChatRequest(chatRequestRef, "session-change");
     setIsComposerMenuOpen(false);
     try {
@@ -1680,6 +1689,9 @@ function App() {
       setNotice("");
     } catch (error) {
       setNotice(error.message);
+    } finally {
+      createSessionPendingRef.current = false;
+      setIsCreatingSession(false);
     }
   }
 
@@ -2825,7 +2837,14 @@ function App() {
     try {
       const data = await apiRequest("/moments");
       setMomentsAvailable(data.available);
-      setMoments(data.entries || []);
+      setMoments(
+        (data.entries || []).map((entry) => {
+          const pending = pendingMomentLikesRef.current[String(entry.id)];
+          return pending
+            ? { ...entry, user_liked: pending.liked }
+            : entry;
+        }),
+      );
     } catch (error) {
       if (!silent) setNotice(error.message);
     }
@@ -2903,14 +2922,35 @@ function App() {
   }
 
   async function toggleMomentLike(moment) {
+    const momentId = String(moment?.id ?? "");
+    if (!momentId || pendingMomentLikesRef.current[momentId]) return;
+
+    const pending = { liked: moment?.user_liked !== true };
+    pendingMomentLikesRef.current = {
+      ...pendingMomentLikesRef.current,
+      [momentId]: pending,
+    };
+    setPendingMomentLikes(pendingMomentLikesRef.current);
+
     try {
-      await apiRequest(`/moments/${moment.id}/like`, {
-        method: "POST",
-        body: JSON.stringify({ liked: !moment.user_liked }),
+      await toggleMomentLikeOptimistically({
+        moment,
+        updateMoments: setMoments,
+        persist(liked) {
+          return apiRequest(`/moments/${moment.id}/like`, {
+            method: "POST",
+            body: JSON.stringify({ liked }),
+          });
+        },
+        refresh: loadMoments,
       });
-      await loadMoments();
     } catch (error) {
       setNotice(error.message);
+    } finally {
+      const nextPending = { ...pendingMomentLikesRef.current };
+      delete nextPending[momentId];
+      pendingMomentLikesRef.current = nextPending;
+      setPendingMomentLikes(nextPending);
     }
   }
 
@@ -3439,8 +3479,20 @@ function App() {
                 )}
                 <div className="moment-actions">
                   {item.author === "assistant" ? (
-                    <button onClick={() => toggleMomentLike(item)}>
-                      {item.user_liked ? "♥ 已喜欢" : "♡ 喜欢"}
+                    <button
+                      type="button"
+                      aria-pressed={item.user_liked === true}
+                      aria-busy={Boolean(pendingMomentLikes[item.id])}
+                      disabled={Boolean(pendingMomentLikes[item.id])}
+                      onClick={() => toggleMomentLike(item)}
+                    >
+                      {pendingMomentLikes[item.id]
+                        ? item.user_liked
+                          ? "♥ 保存中"
+                          : "♡ 保存中"
+                        : item.user_liked
+                          ? "♥ 已喜欢"
+                          : "♡ 喜欢"}
                     </button>
                   ) : (
                     <span className="moment-reply-status">
@@ -4182,8 +4234,14 @@ function App() {
 
         <div className="session-heading">
           <span>最近对话</span>
-          <button onClick={createSession} title="新建对话">
-            ＋
+          <button
+            onClick={createSession}
+            title={isCreatingSession ? "正在创建新对话" : "新建对话"}
+            aria-label={isCreatingSession ? "正在创建新对话" : "新建对话"}
+            aria-busy={isCreatingSession}
+            disabled={isCreatingSession}
+          >
+            {isCreatingSession ? "…" : "＋"}
           </button>
         </div>
 
@@ -4256,12 +4314,16 @@ function App() {
           </div>
           <button
             className="new-chat-top"
-            aria-label="新对话"
-            title="新对话"
+            aria-label={isCreatingSession ? "正在创建新对话" : "新对话"}
+            aria-busy={isCreatingSession}
+            disabled={isCreatingSession}
+            title={isCreatingSession ? "正在创建新对话" : "新对话"}
             onClick={createSession}
           >
-            <span aria-hidden="true">＋</span>
-            <span className="new-chat-label">新对话</span>
+            <span aria-hidden="true">{isCreatingSession ? "…" : "＋"}</span>
+            <span className="new-chat-label">
+              {isCreatingSession ? "创建中" : "新对话"}
+            </span>
           </button>
         </header>
 

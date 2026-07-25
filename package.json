@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "test": "npm run test:settings && npm run test:companion-interaction && npm run test:reply-suggestions && npm run test:voice && npm run test:chat-tools && npm run test:ambient-context && npm run test:chat-stickers && npm run test:service-status && npm run test:diary && npm run test:mobile-layout && npm run test:ombre-mcp-ui && npm run test:mcp-device-center && npm run test:ai-provider-center && npm run test:cc-switch-bridge",
+    "test": "npm run test:settings && npm run test:companion-interaction && npm run test:reply-suggestions && npm run test:voice && npm run test:chat-tools && npm run test:ambient-context && npm run test:chat-stickers && npm run test:service-status && npm run test:diary && npm run test:instant-feedback && npm run test:mobile-layout && npm run test:ombre-mcp-ui && npm run test:mcp-device-center && npm run test:ai-provider-center && npm run test:cc-switch-bridge",
     "dev": "vite",
     "build": "vite build",
     "android:sync": "cap sync android",
@@ -18,6 +18,7 @@
     "test:chat-stickers": "node test/chat-stickers.test.js",
     "test:service-status": "node test/service-status.test.js",
     "test:diary": "node test/diary.test.js",
+    "test:instant-feedback": "node test/instant-feedback.test.js",
     "test:mobile-layout": "node test/mobile-layout.test.js",
     "test:ombre-mcp-ui": "node test/ombre-mcp-ui.test.js",
     "test:mcp-device-center": "node test/mcp-device-center.test.js",

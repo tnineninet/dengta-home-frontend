@@ -1,6 +1,59 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { loadEntrypointCssCascade } from "./helpers/effective-css.js";
+import { installInnerHeightViewportFallback } from "../src/mobile-viewport.js";
+
+class FakeEventTarget {
+  constructor() {
+    this.listeners = new Map();
+  }
+
+  addEventListener(type, listener) {
+    const listeners = this.listeners.get(type) || new Set();
+    listeners.add(listener);
+    this.listeners.set(type, listeners);
+  }
+
+  removeEventListener(type, listener) {
+    this.listeners.get(type)?.delete(listener);
+  }
+
+  dispatch(type) {
+    for (const listener of this.listeners.get(type) || []) {
+      listener({ type });
+    }
+  }
+}
+
+function createInnerHeightFallbackHarness() {
+  const root = {
+    dataset: {},
+    style: {
+      values: new Map(),
+      setProperty(name, value) {
+        this.values.set(name, value);
+      },
+    },
+  };
+  const windowObject = Object.assign(new FakeEventTarget(), {
+    innerHeight: 844,
+    innerWidth: 390,
+    scrollY: 0,
+    scrollTo() {},
+  });
+  const documentObject = Object.assign(new FakeEventTarget(), {
+    activeElement: null,
+    documentElement: root,
+  });
+  const textarea = {
+    isContentEditable: false,
+    matches(selector) {
+      return selector === "input, textarea, select";
+    },
+  };
+
+  return { documentObject, root, textarea, windowObject };
+}
 
 const mobileViewport = { width: 390, height: 844, reducedMotion: false };
 const cssCascade = loadEntrypointCssCascade(
@@ -466,6 +519,53 @@ assert.match(
   androidManifest,
   /android:windowSoftInputMode="adjustResize"/,
   "Android must resize the app for the keyboard while CSS hides mobile navigation",
+);
+
+const innerHeightFallback = createInnerHeightFallbackHarness();
+const cleanupInnerHeightFallback = installInnerHeightViewportFallback({
+  documentObject: innerHeightFallback.documentObject,
+  windowObject: innerHeightFallback.windowObject,
+});
+innerHeightFallback.documentObject.activeElement =
+  innerHeightFallback.textarea;
+innerHeightFallback.documentObject.dispatch("focusin");
+innerHeightFallback.windowObject.innerHeight = 510;
+innerHeightFallback.windowObject.dispatch("resize");
+assert.equal(
+  innerHeightFallback.root.dataset.keyboardOpen,
+  "true",
+  "an editable field plus a reduced innerHeight must hide mobile navigation when visualViewport is unavailable",
+);
+assert.equal(
+  innerHeightFallback.root.style.values.get("--app-height"),
+  "510px",
+  "the innerHeight fallback must keep the composer inside the keyboard-visible viewport",
+);
+innerHeightFallback.documentObject.activeElement = null;
+innerHeightFallback.documentObject.dispatch("focusout");
+assert.equal(
+  innerHeightFallback.root.dataset.keyboardOpen,
+  "true",
+  "focusout must not reveal mobile navigation before the keyboard resize animation finishes",
+);
+assert.equal(
+  innerHeightFallback.root.style.values.get("--app-height"),
+  "510px",
+);
+innerHeightFallback.windowObject.innerHeight = 844;
+innerHeightFallback.windowObject.dispatch("resize");
+assert.equal(innerHeightFallback.root.dataset.keyboardOpen, "false");
+assert.equal(
+  innerHeightFallback.root.style.values.get("--app-height"),
+  "844px",
+);
+cleanupInnerHeightFallback();
+assert.equal("keyboardOpen" in innerHeightFallback.root.dataset, false);
+
+assert.match(
+  app,
+  /if \(!viewport\) return installInnerHeightViewportFallback\(\);/,
+  "App must install the innerHeight keyboard fallback when visualViewport is unavailable",
 );
 assert.match(
   app,

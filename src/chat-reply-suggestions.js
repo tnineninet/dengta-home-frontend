@@ -1,4 +1,4 @@
-const MAX_SUGGESTION_CHARACTERS = 80;
+const MAX_SUGGESTION_CHARACTERS = 64;
 
 function replaceControlCharacters(value) {
   return Array.from(String(value || ""), (character) => {

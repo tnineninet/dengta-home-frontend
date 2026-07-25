@@ -28,7 +28,11 @@ assert.deepEqual(normalizeReplySuggestions(["一个", "两个", "三个"]), []);
 assert.deepEqual(normalizeReplySuggestions(["重复", "重复"]), []);
 assert.deepEqual(normalizeReplySuggestions(["", "有效"]), []);
 assert.deepEqual(
-  normalizeReplySuggestions(["一".repeat(81), "另一条"]),
+  normalizeReplySuggestions(["一".repeat(64), "另一条"]),
+  ["一".repeat(64), "另一条"],
+);
+assert.deepEqual(
+  normalizeReplySuggestions(["一".repeat(65), "另一条"]),
   [],
 );
 
