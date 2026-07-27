@@ -120,6 +120,14 @@ const expandedChatContentLayout = cssCascade.declarations(
   ".main-panel.view-chat:has(.companion-status.expanded) .view-content",
 );
 const messageListLayout = cssCascade.declarations(".message-list");
+const messageColumnLayout = cssCascade.declarations(".message-column");
+const messageBubbleLayout = cssCascade.declarations(".message-bubble");
+const referencedMessageBubbleLayout = cssCascade.declarations(
+  ".message-bubble:has(.message-reference-block)",
+);
+const thinkingMessageBubbleLayout = cssCascade.declarations(
+  ".message-bubble:has(.thinking-panel)",
+);
 const composerLayout = cssCascade.declarations(".composer-wrap");
 const expandedStatusLayout = cssCascade.declarations(
   ".companion-status.expanded",
@@ -189,6 +197,26 @@ assert.equal(
   messageListLayout.flex?.value,
   "1 1 0%",
   "message history must absorb the remaining chat height",
+);
+assert.equal(
+  messageColumnLayout.width?.value,
+  "100%",
+  "message columns must keep a stable track instead of shrinking around short text",
+);
+assert.equal(
+  messageBubbleLayout["min-width"]?.value,
+  "min(176px, 100%)",
+  "short messages such as QA-PING must retain a balanced bubble proportion",
+);
+assert.equal(
+  referencedMessageBubbleLayout.width?.value,
+  "100%",
+  "a quoted reply must give its reference block the full message track",
+);
+assert.equal(
+  thinkingMessageBubbleLayout.width?.value,
+  "100%",
+  "a streaming reasoning panel must not shrink before answer text arrives",
 );
 assert.equal(
   messageListLayout.padding?.value,

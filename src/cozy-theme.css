@@ -545,6 +545,7 @@ body {
 
 .message-column {
   display: flex;
+  width: 100%;
   min-width: 0;
   max-width: min(720px, 100%);
   grid-column: 2;
@@ -573,10 +574,16 @@ body {
 .message-bubble {
   position: relative;
   width: fit-content;
+  min-width: min(176px, 100%);
   max-width: 100%;
   padding: 13px 15px 9px;
   border-radius: 15px;
   box-shadow: 0 7px 20px rgba(78, 47, 57, 0.08);
+}
+
+.message-bubble:has(.message-reference-block),
+.message-bubble:has(.thinking-panel) {
+  width: 100%;
 }
 
 .message-row.assistant .message-bubble {
