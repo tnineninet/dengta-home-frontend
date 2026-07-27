@@ -241,6 +241,90 @@ assert.deepEqual(
   stop();
 }
 
+{
+  let listener = null;
+  let registerCalls = 0;
+  let nextTimerId = 1;
+  const timers = new Map();
+  const configured = [];
+  const manager = {
+    subscribe(next) {
+      listener = next;
+      next({
+        status: AUTH_STATUS.authenticated,
+        user: { id: USER_ID },
+      });
+      return () => {
+        listener = null;
+      };
+    },
+    async getRequestContext() {
+      return {
+        accessToken: "retry-access-token",
+        companionId: COMPANION_ID,
+      };
+    },
+  };
+  const stop = startBackgroundNotificationIdentitySync(manager, {
+    capacitor: {
+      isNativePlatform: () => true,
+      isPluginAvailable: () => true,
+    },
+    plugin: {
+      async configure(payload) {
+        configured.push(payload);
+      },
+      async clear() {},
+    },
+    storage: createStorage(),
+    randomUUID: () => DEVICE_ID,
+    register: async () => {
+      registerCalls += 1;
+      if (registerCalls === 1) throw new Error("backend waking up");
+      return {
+        installation_token: "retry-installation-token",
+        companion_id: COMPANION_ID,
+        expires_at: EXPIRES_AT,
+      };
+    },
+    retryDelays: [25],
+    setTimeoutFn(callback, delay) {
+      const id = nextTimerId;
+      nextTimerId += 1;
+      timers.set(id, { callback, delay });
+      return id;
+    },
+    clearTimeoutFn(id) {
+      timers.delete(id);
+    },
+    onError() {},
+  });
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(registerCalls, 1);
+  assert.deepEqual(
+    [...timers.values()].map(({ delay }) => delay),
+    [25],
+    "a temporary installation registration failure must schedule a retry",
+  );
+
+  const retryTimer = [...timers.entries()][0];
+  timers.delete(retryTimer[0]);
+  retryTimer[1].callback();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  assert.equal(registerCalls, 2);
+  assert.equal(configured.length, 1);
+  assert.equal(
+    configured[0].installationToken,
+    "retry-installation-token",
+  );
+  assert.equal(timers.size, 0);
+  stop();
+  assert.equal(listener, null);
+}
+
 const workerSource = fs.readFileSync(
   new URL(
     "../android/app/src/main/java/home/dengta/app/PushNotificationWorker.java",
@@ -285,6 +369,16 @@ assert.match(activitySource, /public void onPause\(\)/);
 assert.match(activitySource, /PushNotificationWorker\.markAppVisible/);
 assert.match(credentialsSource, /AndroidKeyStore/);
 assert.match(credentialsSource, /AES\/GCM\/NoPadding/);
+assert.match(
+  credentialsSource,
+  /cipher\.init\(\s*Cipher\.ENCRYPT_MODE,\s*getOrCreateKey\(\)\s*\)/,
+  "Android Keystore must generate the AES-GCM encryption IV",
+);
+assert.match(
+  credentialsSource,
+  /byte\[\]\s+iv\s*=\s*cipher\.getIV\(\)/,
+  "the generated AES-GCM IV must be persisted with the ciphertext",
+);
 assert.doesNotMatch(
   credentialsSource,
   /putString\([^,]*installation_token[^,]*,\s*installationToken/,

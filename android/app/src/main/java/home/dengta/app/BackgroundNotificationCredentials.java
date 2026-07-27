@@ -10,7 +10,6 @@ import org.json.JSONObject;
 
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
-import java.security.SecureRandom;
 
 import javax.crypto.Cipher;
 import javax.crypto.KeyGenerator;
@@ -29,7 +28,6 @@ final class BackgroundNotificationCredentials {
     private static final String COMPANION_ID_KEY = "companion_id";
     private static final String DEVICE_ID_KEY = "device_id";
     private static final int GCM_TAG_BITS = 128;
-    private static final int IV_BYTES = 12;
 
     private BackgroundNotificationCredentials() {}
 
@@ -67,14 +65,14 @@ final class BackgroundNotificationCredentials {
         String userId,
         String companionId
     ) throws Exception {
-        byte[] iv = new byte[IV_BYTES];
-        new SecureRandom().nextBytes(iv);
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-        cipher.init(
-            Cipher.ENCRYPT_MODE,
-            getOrCreateKey(),
-            new GCMParameterSpec(GCM_TAG_BITS, iv)
-        );
+        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey());
+        byte[] iv = cipher.getIV();
+        if (iv == null || iv.length == 0) {
+            throw new IllegalStateException(
+                "Android Keystore did not generate an encryption IV"
+            );
+        }
         JSONObject secrets = new JSONObject();
         secrets.put("installation_token", installationToken);
         secrets.put("expires_at", expiresAt);

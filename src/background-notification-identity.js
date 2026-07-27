@@ -3,6 +3,7 @@ import { apiRequest } from "./api.js";
 import { AUTH_STATUS } from "./auth-session.js";
 
 const DEVICE_ID_KEY = "dengta_android_installation_id_v1";
+const IDENTITY_RETRY_DELAYS_MS = [2_000, 5_000, 10_000, 30_000];
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -34,6 +35,8 @@ async function registerInstallation(deviceId) {
       device_id: deviceId,
       platform: "android",
     }),
+    retry: false,
+    timeoutMs: 15_000,
   });
 }
 
@@ -86,6 +89,9 @@ export function startBackgroundNotificationIdentitySync(
     storage = globalThis.localStorage,
     randomUUID = globalThis.crypto?.randomUUID,
     register = registerInstallation,
+    retryDelays = IDENTITY_RETRY_DELAYS_MS,
+    setTimeoutFn = globalThis.setTimeout,
+    clearTimeoutFn = globalThis.clearTimeout,
     onError = (error) =>
       console.warn(
         "后台通知身份同步失败：",
@@ -103,12 +109,37 @@ export function startBackgroundNotificationIdentitySync(
   let stopped = false;
   let revision = 0;
   let queue = Promise.resolve();
-  const unsubscribe = sessionManager.subscribe((snapshot) => {
-    revision += 1;
-    const targetRevision = revision;
+  let retryTimer = null;
+  let failureCount = 0;
+
+  function clearRetryTimer() {
+    if (retryTimer === null) return;
+    clearTimeoutFn(retryTimer);
+    retryTimer = null;
+  }
+
+  function retryDelay() {
+    const delays = retryDelays.length ? retryDelays : [30_000];
+    const index = Math.min(
+      Math.max(0, failureCount - 1),
+      delays.length - 1,
+    );
+    return Math.max(0, Number(delays[index]) || 0);
+  }
+
+  function scheduleRetry(snapshot, targetRevision) {
+    clearRetryTimer();
+    retryTimer = setTimeoutFn(() => {
+      retryTimer = null;
+      if (stopped || targetRevision !== revision) return;
+      enqueueSnapshot(snapshot, targetRevision);
+    }, retryDelay());
+  }
+
+  function enqueueSnapshot(snapshot, targetRevision) {
     queue = queue
       .then(async () => {
-        if (stopped) return;
+        if (stopped || targetRevision !== revision) return;
         const action = await resolveBackgroundNotificationIdentity(
           snapshot,
           sessionManager,
@@ -120,15 +151,34 @@ export function startBackgroundNotificationIdentitySync(
         );
         if (stopped || targetRevision !== revision) return;
         await plugin[action.method](action.payload);
+        if (stopped || targetRevision !== revision) return;
+        failureCount = 0;
+        clearRetryTimer();
       })
       .catch((error) => {
-        if (!stopped) onError(error);
+        if (stopped || targetRevision !== revision) return;
+        onError(error);
+        if (
+          snapshot?.status === AUTH_STATUS.authenticated &&
+          snapshot?.user?.id
+        ) {
+          failureCount += 1;
+          scheduleRetry(snapshot, targetRevision);
+        }
       });
+  }
+
+  const unsubscribe = sessionManager.subscribe((snapshot) => {
+    revision += 1;
+    failureCount = 0;
+    clearRetryTimer();
+    enqueueSnapshot(snapshot, revision);
   });
 
   return () => {
     stopped = true;
     revision += 1;
+    clearRetryTimer();
     unsubscribe();
   };
 }
