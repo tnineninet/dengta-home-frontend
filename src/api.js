@@ -193,13 +193,19 @@ export function buildStreamChatFormData(
         ? payload.environment_context
         : JSON.stringify(payload.environment_context || {}),
     turn_context: payload.turn_context,
-    message_reference:
-      typeof payload.message_reference === "string"
-        ? payload.message_reference
-        : JSON.stringify(payload.message_reference || {}),
     model: payload.model,
     client_message_id: payload.client_message_id,
   };
+  if (
+    payload.message_reference !== undefined &&
+    payload.message_reference !== null &&
+    payload.message_reference !== ""
+  ) {
+    fields.message_reference =
+      typeof payload.message_reference === "string"
+        ? payload.message_reference
+        : JSON.stringify(payload.message_reference);
+  }
 
   Object.entries(fields).forEach(([name, value]) => {
     formData.append(name, String(value ?? ""));

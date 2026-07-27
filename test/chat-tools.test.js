@@ -696,6 +696,16 @@ assert.equal(
   );
   assert.equal(formData.getAll("files").length, 2);
 
+  const noReferenceFormData = buildStreamChatFormData({
+    message: "QA-PING",
+    message_reference: null,
+  });
+  assert.equal(
+    noReferenceFormData.has("message_reference"),
+    false,
+    "a normal message without a quote must omit message_reference",
+  );
+
   const androidAudio = new File(["RIFFtestWAVE"], "录音.wav", {
     type: "application/octet-stream",
     lastModified: 456,
