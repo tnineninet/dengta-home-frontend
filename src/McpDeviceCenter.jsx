@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { API_BASE_URL } from "./api";
+import { apiRequest } from "./api";
 
 const EMPTY_DRAFT = {
   name: "",
@@ -11,21 +11,18 @@ const EMPTY_DRAFT = {
 };
 
 async function mcpRequest(path, { method = "GET", body } = {}) {
-  const headers = { Accept: "application/json" };
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-  let response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, {
+    return await apiRequest(path, {
       method,
-      headers,
+      headers: { Accept: "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-  } catch {
-    throw new Error("无法连接 DengTa 后端，请稍后再试。");
+  } catch (error) {
+    throw new Error(
+      error?.message || "无法连接 DengTa 后端，请稍后再试。",
+      { cause: error },
+    );
   }
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.message || `请求失败（${response.status}）`);
-  return data;
 }
 
 function policyLabel(value) {

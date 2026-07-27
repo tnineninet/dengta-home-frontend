@@ -33,7 +33,7 @@ export default function CompanionDiary({ aiName = "小灯", onNotice }) {
 
     async function load({ silent = false } = {}) {
       try {
-        const data = await apiRequest("/diary");
+        const data = await apiRequest("/api/v2/diary");
         if (cancelled) return;
         setAvailable(data.available);
         setEntries(data.entries || []);

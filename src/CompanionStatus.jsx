@@ -1,4 +1,11 @@
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   HOT_ZONES,
   addStatusRecord,
@@ -15,12 +22,14 @@ import {
 
 function CompanionStatus({
   active = true,
+  closeRequest = 0,
   aiName,
   status,
   interactionStats,
   intimateExpressionEnabled = false,
   isResponding = false,
   onChange,
+  onExpandedChange,
   onInteract,
 }) {
   const displayName = String(aiName || "").trim() || "小灯";
@@ -44,6 +53,7 @@ function CompanionStatus({
   const [clockNow, setClockNow] = useState(() => Date.now());
   const rootRef = useRef(null);
   const panelRef = useRef(null);
+  const lastCloseRequestRef = useRef(closeRequest);
   const remainingSeconds = remainingAt(normalized.countdown, clockNow);
   const rawCountdownEnd = Date.parse(status?.countdown?.endsAt);
   const countdownExpiredWhileAway =
@@ -69,6 +79,18 @@ function CompanionStatus({
       : normalized.energyLevel <= 25
         ? " low-energy"
         : "";
+
+  const closePanel = useCallback(() => {
+    panelRef.current?.scrollTo({ top: 0 });
+    setExpanded(false);
+    onExpandedChange?.(false);
+  }, [onExpandedChange]);
+
+  const openPanel = useCallback(() => {
+    panelRef.current?.scrollTo({ top: 0 });
+    setExpanded(true);
+    onExpandedChange?.(true);
+  }, [onExpandedChange]);
 
   useEffect(() => {
     if (!normalized.countdown.isRunning) return undefined;
@@ -102,11 +124,16 @@ function CompanionStatus({
   useEffect(() => {
     if (active) return undefined;
     const animationFrame = window.requestAnimationFrame(() => {
-      setExpanded(false);
-      panelRef.current?.scrollTo({ top: 0 });
+      closePanel();
     });
     return () => window.cancelAnimationFrame(animationFrame);
-  }, [active]);
+  }, [active, closePanel]);
+
+  useEffect(() => {
+    if (lastCloseRequestRef.current === closeRequest) return;
+    lastCloseRequestRef.current = closeRequest;
+    closePanel();
+  }, [closePanel, closeRequest]);
 
   useEffect(() => {
     if (!expanded) return undefined;
@@ -114,20 +141,14 @@ function CompanionStatus({
     panelRef.current?.scrollTo({ top: 0 });
 
     function closeFromOutside(event) {
-      if (
-        event.target instanceof Element &&
-        event.target.closest(".composer-wrap, .mobile-nav")
-      ) {
-        return;
-      }
       if (!rootRef.current?.contains(event.target)) {
-        setExpanded(false);
+        closePanel();
       }
     }
 
     function closeFromEscape(event) {
       if (event.key === "Escape") {
-        setExpanded(false);
+        closePanel();
       }
     }
 
@@ -137,7 +158,7 @@ function CompanionStatus({
       document.removeEventListener("pointerdown", closeFromOutside);
       document.removeEventListener("keydown", closeFromEscape);
     };
-  }, [expanded]);
+  }, [closePanel, expanded]);
 
   function updateStatus(transform) {
     onChange((currentValue) => {
@@ -316,7 +337,7 @@ function CompanionStatus({
         type="button"
         className="status-summary"
         aria-expanded={expanded}
-        onClick={() => setExpanded((current) => !current)}
+        onClick={() => (expanded ? closePanel() : openPanel())}
       >
         <span className="status-presence" aria-hidden="true">
           <img

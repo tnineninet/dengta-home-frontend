@@ -42,10 +42,25 @@ jobs:
       - name: Install web dependencies
         run: npm ci
 
+      - name: Run frontend regression checks
+        run: |
+          npm test
+          npm run lint
+
+      - name: Validate public authentication build settings
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          test -n "$VITE_SUPABASE_URL"
+          test -n "$VITE_SUPABASE_ANON_KEY"
+
       - name: Build DengTa web app
         run: npm run build
         env:
           VITE_API_URL: https://dengta-home-backend.onrender.com
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
       - name: Sync Android project
         run: npx cap sync android

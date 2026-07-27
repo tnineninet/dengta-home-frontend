@@ -1,4 +1,6 @@
 export const CHAT_MODEL_STORAGE_KEY = "dengta_chat_model_v1";
+export const CHAT_SESSION_MODELS_STORAGE_KEY =
+  "dengta_chat_session_models_v1";
 
 function cleanText(value, limit = 200) {
   return String(value || "").trim().slice(0, limit);
@@ -65,6 +67,86 @@ export function storeChatModel(value, storage = globalThis.localStorage) {
     // 本机存储不可用时只影响下次启动的选择，不影响当前聊天。
   }
   return model;
+}
+
+function readStoredSessionModels(storage = globalThis.localStorage) {
+  try {
+    const parsed = JSON.parse(
+      storage?.getItem(CHAT_SESSION_MODELS_STORAGE_KEY) || "{}",
+    );
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .map(([sessionId, model]) => [cleanText(sessionId), cleanText(model)])
+        .filter(([sessionId, model]) => sessionId && model),
+    );
+  } catch {
+    return {};
+  }
+}
+
+export function readStoredSessionChatModel(
+  sessionId,
+  storage = globalThis.localStorage,
+) {
+  const key = cleanText(sessionId);
+  if (!key) return "";
+  return readStoredSessionModels(storage)[key] || "";
+}
+
+export function readServerSessionChatModel(sessions, sessionId) {
+  const key = cleanText(sessionId);
+  if (!key || !Array.isArray(sessions)) return "";
+  const session = sessions.find((item) => cleanText(item?.id) === key);
+  return cleanText(session?.model_id || session?.model);
+}
+
+export function storeSessionChatModel(
+  sessionId,
+  value,
+  storage = globalThis.localStorage,
+) {
+  const key = cleanText(sessionId);
+  const model = cleanText(value);
+  if (!key) return model;
+
+  try {
+    const stored = readStoredSessionModels(storage);
+    if (model) stored[key] = model;
+    else delete stored[key];
+    if (Object.keys(stored).length > 0) {
+      storage?.setItem(CHAT_SESSION_MODELS_STORAGE_KEY, JSON.stringify(stored));
+    } else {
+      storage?.removeItem(CHAT_SESSION_MODELS_STORAGE_KEY);
+    }
+  } catch {
+    // Storage failure only affects restoration after this page is closed.
+  }
+  return model;
+}
+
+export function migrateLegacyChatModelToSession(
+  sessionId,
+  storage = globalThis.localStorage,
+) {
+  const key = cleanText(sessionId);
+  if (!key) return "";
+
+  const storedSessionModel = readStoredSessionChatModel(key, storage);
+  const legacyModel = readStoredChatModel(storage);
+  if (!legacyModel) return storedSessionModel;
+
+  const migratedModel =
+    storedSessionModel ||
+    storeSessionChatModel(key, legacyModel, storage);
+  try {
+    storage?.removeItem(CHAT_MODEL_STORAGE_KEY);
+  } catch {
+    // A failed cleanup may repeat a harmless migration on the next launch.
+  }
+  return migratedModel;
 }
 
 export function chooseChatModel({ models = [], stored = "", current = "", fallback = "" }) {

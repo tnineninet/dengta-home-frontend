@@ -1,6 +1,11 @@
-import { memo } from "react";
+import { memo, useCallback, useEffect, useRef } from "react";
 import { DeviceActionReceipts } from "./McpDeviceCenter";
 import { MessageAttachments, ThinkingPanel } from "./ChatMessageExtras";
+import {
+  longPressMovementExceeded,
+  messageCanBeReferenced,
+  messageReferenceFromMessage,
+} from "./message-reference";
 import { getStickerById } from "./sticker-catalog";
 import { formatVoiceConfidence } from "./voice";
 
@@ -23,16 +28,93 @@ function ChatMessage({
   companionMood = "",
   apiBaseUrl,
   onPreview,
+  onReference,
 }) {
   const isUser = item.role === "user";
   const displayName = isUser ? userName : aiName;
   const avatar = isUser ? USER_AVATAR : ASSISTANT_AVATAR;
+  const quotedMessage = messageReferenceFromMessage(item);
+  const canReference =
+    typeof onReference === "function" && messageCanBeReferenced(item);
+  const longPressRef = useRef(null);
   const sticker = !isUser
     ? getStickerById(item.tool_calls?.sticker_id)
     : null;
 
+  const cancelLongPress = useCallback(() => {
+    if (longPressRef.current?.timerId) {
+      window.clearTimeout(longPressRef.current.timerId);
+    }
+    longPressRef.current = null;
+  }, []);
+
+  useEffect(() => cancelLongPress, [cancelLongPress]);
+
+  function beginLongPress(event) {
+    if (
+      !canReference ||
+      (event.button !== undefined && event.button !== 0) ||
+      event.target?.closest?.("button, a, input, textarea, select")
+    ) {
+      return;
+    }
+    cancelLongPress();
+    const gesture = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      triggered: false,
+      timerId: null,
+    };
+    gesture.timerId = window.setTimeout(() => {
+      if (longPressRef.current !== gesture) return;
+      gesture.triggered = true;
+      onReference(item);
+      globalThis.navigator?.vibrate?.(8);
+    }, 520);
+    longPressRef.current = gesture;
+  }
+
+  function moveLongPress(event) {
+    const gesture = longPressRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    if (
+      longPressMovementExceeded(
+        gesture.startX,
+        gesture.startY,
+        event.clientX,
+        event.clientY,
+      )
+    ) {
+      cancelLongPress();
+    }
+  }
+
+  function endLongPress(event) {
+    const gesture = longPressRef.current;
+    if (!gesture || gesture.pointerId !== event.pointerId) return;
+    if (gesture.triggered) event.preventDefault();
+    cancelLongPress();
+  }
+
+  function preventTriggeredContextMenu(event) {
+    if (longPressRef.current?.triggered) event.preventDefault();
+  }
+
+  const quotedDisplayName =
+    quotedMessage?.role === "user" ? userName : aiName;
+
   return (
-    <article className={`message-row ${isUser ? "user" : "assistant"}`}>
+    <article
+      className={`message-row ${isUser ? "user" : "assistant"}${
+        canReference ? " can-reference" : ""
+      }`}
+      onPointerDown={beginLongPress}
+      onPointerMove={moveLongPress}
+      onPointerUp={endLongPress}
+      onPointerCancel={cancelLongPress}
+      onContextMenu={preventTriggeredContextMenu}
+    >
       <img
         className="message-avatar"
         src={avatar}
@@ -42,6 +124,16 @@ function ChatMessage({
       <div className="message-column">
         <div className="message-role">{displayName}</div>
         <div className="message-bubble">
+          {quotedMessage && (
+            <div className="message-reference-block">
+              <strong>引用 {quotedDisplayName}</strong>
+              <span>
+                {quotedMessage.text ||
+                  `${quotedMessage.attachment_summary?.count || 0} 个附件`}
+                {quotedMessage.text_truncated ? "…" : ""}
+              </span>
+            </div>
+          )}
           {item.content && (
             <div className="message-content">{item.content}</div>
           )}
@@ -91,7 +183,21 @@ function ChatMessage({
               ♥
             </span>
           )}
-          <time>{item.formattedTime || formatMessageTime(item.created_at)}</time>
+          <div className="message-footer">
+            {canReference && (
+              <button
+                type="button"
+                className="message-reference-button"
+                aria-label={`引用${displayName}的这条消息`}
+                onClick={() => onReference(item)}
+              >
+                引用
+              </button>
+            )}
+            <time>
+              {item.formattedTime || formatMessageTime(item.created_at)}
+            </time>
+          </div>
         </div>
       </div>
     </article>

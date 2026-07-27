@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "./api.js";
+import { authSession as defaultAuthSession } from "./auth-session.js";
 
 export const VOICE_MAX_DURATION_MS = 60_000;
 export const VOICE_MIN_DURATION_MS = 650;
@@ -259,6 +260,7 @@ export function createVoiceTurnRequest(
     timeoutMs = 120_000,
     onUploadComplete,
     XMLHttpRequestImpl = globalThis.XMLHttpRequest,
+    authSession = defaultAuthSession,
   } = {},
 ) {
   if (!XMLHttpRequestImpl) {
@@ -282,10 +284,6 @@ export function createVoiceTurnRequest(
       reject(error);
     }
 
-    xhr.open("POST", `${API_BASE_URL}/voice/turn`, true);
-    xhr.timeout = timeoutMs;
-    xhr.responseType = "json";
-
     xhr.upload?.addEventListener("load", finishUpload, { once: true });
     xhr.addEventListener(
       "load",
@@ -295,6 +293,13 @@ export function createVoiceTurnRequest(
         finishUpload();
         const data = parsedResponse(xhr);
         if (xhr.status >= 200 && xhr.status < 300) {
+          authSession?.captureCompanionFromResponse?.({
+            headers: {
+              get(name) {
+                return xhr.getResponseHeader?.(name) || "";
+              },
+            },
+          });
           resolve(data);
           return;
         }
@@ -326,7 +331,33 @@ export function createVoiceTurnRequest(
       },
       { once: true },
     );
-    xhr.send(formData);
+    Promise.resolve(authSession?.getRequestContext?.() || {})
+      .then((authContext) => {
+        if (settled) return;
+        xhr.open("POST", `${API_BASE_URL}/voice/turn`, true);
+        xhr.timeout = timeoutMs;
+        xhr.responseType = "json";
+        if (authContext?.accessToken) {
+          xhr.setRequestHeader(
+            "Authorization",
+            `Bearer ${authContext.accessToken}`,
+          );
+        }
+        if (authContext?.companionId) {
+          xhr.setRequestHeader(
+            "X-DengTa-Companion-Id",
+            authContext.companionId,
+          );
+        }
+        xhr.send(formData);
+      })
+      .catch((error) =>
+        fail(
+          new Error("无法读取登录状态，请重新登录后再发送语音。", {
+            cause: error,
+          }),
+        ),
+      );
   });
 
   return {
@@ -352,6 +383,7 @@ export async function requestExpressiveSpeech(
     speechToken = "",
     fetchImpl = globalThis.fetch,
     timeoutMs = 60_000,
+    authSession = defaultAuthSession,
   } = {},
 ) {
   const safeMessageId = String(messageId || "").trim();
@@ -371,10 +403,21 @@ export async function requestExpressiveSpeech(
   const timer = globalThis.setTimeout(() => controller.abort(), timeoutMs);
   try {
     let response;
+    const authContext = await authSession?.getRequestContext?.();
     try {
       response = await fetchImpl(`${API_BASE_URL}/voice/speech`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(authContext?.accessToken
+            ? { Authorization: `Bearer ${authContext.accessToken}` }
+            : {}),
+          ...(authContext?.companionId
+            ? {
+                "X-DengTa-Companion-Id": authContext.companionId,
+              }
+            : {}),
+        },
         body: JSON.stringify({
           message_id: safeMessageId,
           session_id: safeSessionId,
@@ -395,6 +438,12 @@ export async function requestExpressiveSpeech(
         payload = await response.json();
       } catch {
         // 非 JSON 错误响应统一按状态码处理。
+      }
+      if (
+        response.status === 401 &&
+        ["invalid_session", "authentication_required"].includes(payload.code)
+      ) {
+        await authSession?.invalidateSession?.(payload.message);
       }
       throw new Error(
         cleanDisplayText(payload.message, 240) ||

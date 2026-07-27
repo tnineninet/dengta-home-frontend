@@ -9,6 +9,11 @@ import {
   settingsNeedsUnifiedPromptMigration,
   settingsPayloadFingerprint,
 } from "../src/settings.js";
+import {
+  pendingAutosaveAfterFailure,
+  shouldScheduleSettingsOnViewChange,
+  shouldFlushSettingsForLifecycle,
+} from "../src/settings-autosave.js";
 
 const legacy = normalizeSettingsDraft({
   ai_name: "测试昵称",
@@ -271,6 +276,54 @@ assert.notEqual(
     ...preservedConnection,
     unified_system_prompt: "新的输入必须形成新的自动保存版本",
   }),
+);
+
+const failedSave = { fingerprint: "older", payload: { ai_name: "older" } };
+const newerSave = { fingerprint: "newer", payload: { ai_name: "newer" } };
+assert.equal(
+  pendingAutosaveAfterFailure(failedSave, newerSave),
+  newerSave,
+  "a failed request must not overwrite a newer queued draft",
+);
+assert.equal(
+  pendingAutosaveAfterFailure(failedSave, null),
+  failedSave,
+  "a failed request must remain queued for an online retry",
+);
+assert.equal(
+  shouldFlushSettingsForLifecycle("visibilitychange", "hidden"),
+  true,
+);
+assert.equal(shouldFlushSettingsForLifecycle("pagehide"), true);
+assert.equal(shouldFlushSettingsForLifecycle("online"), true);
+assert.equal(
+  shouldFlushSettingsForLifecycle("visibilitychange", "visible"),
+  false,
+);
+assert.equal(
+  shouldScheduleSettingsOnViewChange({
+    activeView: "settings",
+    nextView: "chat",
+    hasLoadedSettings: false,
+  }),
+  false,
+  "leaving settings during startup must not create a stale autosave warning",
+);
+assert.equal(
+  shouldScheduleSettingsOnViewChange({
+    activeView: "settings",
+    nextView: "chat",
+    hasLoadedSettings: true,
+  }),
+  true,
+);
+assert.equal(
+  shouldScheduleSettingsOnViewChange({
+    activeView: "chat",
+    nextView: "settings",
+    hasLoadedSettings: true,
+  }),
+  false,
 );
 
 console.log("frontend settings tests passed");

@@ -1,4 +1,5 @@
 import { isChatGenerationInProgress } from "./chat-idempotency.js";
+import { authSession as defaultAuthSession } from "./auth-session.js";
 
 const API_BASE_URL = (
   import.meta.env?.VITE_API_URL || "http://localhost:3000"
@@ -10,10 +11,48 @@ function wait(milliseconds) {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
+function awaitWithAbortSignal(value, signal) {
+  if (!signal) return Promise.resolve(value);
+  if (signal.aborted) {
+    return Promise.reject(
+      signal.reason ||
+        new DOMException("The operation was aborted.", "AbortError"),
+    );
+  }
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (callback, result) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener("abort", handleAbort);
+      callback(result);
+    };
+    const handleAbort = () => {
+      finish(
+        reject,
+        signal.reason ||
+          new DOMException("The operation was aborted.", "AbortError"),
+      );
+    };
+
+    signal.addEventListener("abort", handleAbort, { once: true });
+    Promise.resolve(value).then(
+      (result) => finish(resolve, result),
+      (error) => finish(reject, error),
+    );
+  });
+}
+
 async function fetchFromApi(path, options = {}) {
-  const { timeoutMs = 0, ...requestOptions } = options;
+  const {
+    timeoutMs = 0,
+    retry = true,
+    authSession = defaultAuthSession,
+    ...requestOptions
+  } = options;
   const method = String(requestOptions.method || "GET").toUpperCase();
-  const retryDelays = method === "GET" ? [0, 1500, 4000] : [0];
+  const retryDelays = retry && method === "GET" ? [0, 1500, 4000] : [0];
 
   for (let attempt = 0; attempt < retryDelays.length; attempt += 1) {
     const delay = retryDelays[attempt];
@@ -31,10 +70,23 @@ async function fetchFromApi(path, options = {}) {
           controller.abort();
         }, timeoutMs);
       }
+      const authContext = await awaitWithAbortSignal(
+        authSession?.getRequestContext?.(),
+        controller?.signal,
+      );
+      const headers = new Headers(requestOptions.headers || {});
+      if (authContext?.accessToken) {
+        headers.set("Authorization", `Bearer ${authContext.accessToken}`);
+      }
+      if (authContext?.companionId) {
+        headers.set("X-DengTa-Companion-Id", authContext.companionId);
+      }
       const response = await fetch(`${API_BASE_URL}${path}`, {
         ...requestOptions,
+        headers,
         ...(controller ? { signal: controller.signal } : {}),
       });
+      authSession?.captureCompanionFromResponse?.(response);
       if (
         attempt < retryDelays.length - 1 &&
         RETRYABLE_SERVER_STATUSES.has(response.status)
@@ -47,10 +99,12 @@ async function fetchFromApi(path, options = {}) {
         throw error;
       }
       if (timedOut) {
-        throw new Error(
+        const timeoutError = new Error(
           `等待 AI 回应超过 ${Math.ceil(timeoutMs / 1000)} 秒，本次不会自动重复请求。`,
           { cause: error },
         );
+        timeoutError.code = "request_timeout";
+        throw timeoutError;
       }
       if (attempt === retryDelays.length - 1) break;
     } finally {
@@ -61,8 +115,25 @@ async function fetchFromApi(path, options = {}) {
   throw new Error("无法连接 DengTa 服务器，请检查手机网络后重试。");
 }
 
+export async function apiFetch(path, options = {}) {
+  const response = await fetchFromApi(path, options);
+  if (
+    response.status === 401 &&
+    typeof response.clone === "function"
+  ) {
+    const data = await response.clone().json().catch(() => ({}));
+    if (
+      ["invalid_session", "authentication_required"].includes(data.code)
+    ) {
+      await (options.authSession || defaultAuthSession)
+        ?.invalidateSession?.(data.message);
+    }
+  }
+  return response;
+}
+
 export async function apiRequest(path, options = {}) {
-  const response = await fetchFromApi(path, {
+  const response = await apiFetch(path, {
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -77,7 +148,19 @@ export async function apiRequest(path, options = {}) {
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    throw new Error(data.message || data.detail || "请求失败，请稍后重试。");
+    if (
+      response.status === 401 &&
+      ["invalid_session", "authentication_required"].includes(data.code)
+    ) {
+      await (options.authSession || defaultAuthSession)
+        ?.invalidateSession?.(data.message);
+    }
+    const error = new Error(
+      data.message || data.detail || "请求失败，请稍后重试。",
+    );
+    error.status = response.status;
+    error.code = data.code || "api_request_failed";
+    throw error;
   }
 
   return data;
@@ -110,6 +193,10 @@ export function buildStreamChatFormData(
         ? payload.environment_context
         : JSON.stringify(payload.environment_context || {}),
     turn_context: payload.turn_context,
+    message_reference:
+      typeof payload.message_reference === "string"
+        ? payload.message_reference
+        : JSON.stringify(payload.message_reference || {}),
     model: payload.model,
     client_message_id: payload.client_message_id,
   };
@@ -127,18 +214,34 @@ export function buildStreamChatFormData(
   return formData;
 }
 
-export async function streamChat(payload, onEvent, { signal } = {}) {
+export async function streamChat(
+  payload,
+  onEvent,
+  { signal, authSession = defaultAuthSession } = {},
+) {
   const formData = buildStreamChatFormData(payload);
-  const response = await fetchFromApi("/chat/stream", {
+  const response = await apiFetch("/chat/stream", {
     method: "POST",
     body: formData,
     signal,
+    authSession,
   });
 
   const contentType = response.headers.get("content-type") || "";
   if (!response.ok || !contentType.includes("text/event-stream")) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.message || data.detail || "无法开始流式回复。");
+    if (
+      response.status === 401 &&
+      ["invalid_session", "authentication_required"].includes(data.code)
+    ) {
+      await authSession?.invalidateSession?.(data.message);
+    }
+    const error = new Error(
+      data.message || data.detail || "无法开始流式回复。",
+    );
+    error.status = response.status;
+    error.code = data.code || "stream_request_failed";
+    throw error;
   }
 
   if (!response.body) {

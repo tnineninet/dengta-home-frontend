@@ -96,6 +96,11 @@ assert.match(
   /disabled=\{Boolean\(pendingMomentLikes\[item\.id\]\)\}/,
   "the pending like must reject duplicate taps",
 );
+assert.doesNotMatch(
+  app,
+  /formatMomentReplyStatus|正在过来|正在看这条动态|reply_due_at/,
+  "Moments must not expose internal scheduling or promise an AI reply",
+);
 
 const createHandlerStart = app.indexOf("async function createSession()");
 const createHandlerEnd = app.indexOf(
@@ -113,7 +118,7 @@ assert.match(
 assert.ok(
   createHandler.indexOf("setIsCreatingSession(true)") >= 0 &&
     createHandler.indexOf("setIsCreatingSession(true)") <
-      createHandler.indexOf('apiRequest("/sessions"'),
+      createHandler.indexOf('apiRequest("/api/v2/sessions"'),
   "the new-session button must enter its pending state before the request",
 );
 assert.match(

@@ -92,6 +92,29 @@ public final class PushNotificationWorker extends Worker {
         );
     }
 
+    public static void configure(
+        Context context,
+        boolean scopeChanged
+    ) {
+        Context appContext = context.getApplicationContext();
+        if (scopeChanged) {
+            preferences(appContext)
+                .edit()
+                .putString(CURSOR_KEY, nowIso())
+                .putString(SEEN_IDS_KEY, "[]")
+                .apply();
+        }
+        schedule(appContext);
+    }
+
+    public static void clear(Context context) {
+        Context appContext = context.getApplicationContext();
+        preferences(appContext).edit().clear().apply();
+        WorkManager.getInstance(appContext).cancelUniqueWork(
+            UNIQUE_WORK_NAME
+        );
+    }
+
     public static void markAppVisible(Context context) {
         preferences(context.getApplicationContext())
             .edit()
@@ -120,63 +143,98 @@ public final class PushNotificationWorker extends Worker {
         if (!notificationsAllowed(context)) return Result.success();
 
         SharedPreferences preferences = preferences(context);
-        try {
-            JSONObject settingsResponse = getJson(context, "/settings");
-            JSONObject settings = settingsResponse.optJSONObject("settings");
-            if (settings == null || !settings.optBoolean("push_enabled", false)) {
-                preferences.edit().putString(CURSOR_KEY, nowIso()).apply();
-                return Result.success();
-            }
-
-            String cursor = preferences.getString(CURSOR_KEY, "");
-            if (cursor == null || cursor.isEmpty()) {
-                preferences.edit().putString(CURSOR_KEY, nowIso()).apply();
-                return Result.success();
-            }
-
-            String encodedCursor = URLEncoder.encode(
-                cursor,
-                StandardCharsets.UTF_8.name()
-            );
-            JSONObject response = getJson(
-                context,
-                "/api/push/messages?since=" + encodedCursor + "&limit=50"
-            );
-            JSONArray messages = response.optJSONArray("messages");
-            if (messages == null || messages.length() == 0) return Result.success();
-
-            Set<String> seenIds = readSeenIds(preferences);
-            List<JSONObject> unseen = new ArrayList<>();
-            String latestCreatedAt = cursor;
-
-            for (int index = 0; index < messages.length(); index += 1) {
-                JSONObject message = messages.optJSONObject(index);
-                if (message == null) continue;
-                String id = message.optString("id", "").trim();
-                String createdAt = message.optString("created_at", "").trim();
-                if (!createdAt.isEmpty()) latestCreatedAt = createdAt;
-                if (!id.isEmpty() && !seenIds.contains(id)) unseen.add(message);
-            }
-
-            boolean appVisible = isAppVisible(context);
-            String aiName = cleanText(settings.optString("ai_name", "DengTa home"), 50);
-            if (aiName.isEmpty()) aiName = "DengTa home";
-
-            for (JSONObject message : unseen) {
-                String id = message.optString("id", "").trim();
-                if (id.isEmpty()) continue;
-                if (!appVisible) postNotification(context, aiName, message);
-                seenIds.add(id);
-            }
-
-            preferences.edit()
-                .putString(CURSOR_KEY, latestCreatedAt)
-                .putString(SEEN_IDS_KEY, serializeSeenIds(seenIds))
-                .apply();
+        BackgroundNotificationCredentials.Identity identity =
+            BackgroundNotificationCredentials.read(context);
+        if (identity == null) return Result.success();
+        if (identity.isExpired(System.currentTimeMillis())) {
+            BackgroundNotificationCredentials.clear(context);
+            clear(context);
             return Result.success();
+        }
+        try {
+            return fetchAndNotify(context, preferences, identity);
+        } catch (HttpStatusException error) {
+            if (error.status == 401 || error.status == 403) {
+                BackgroundNotificationCredentials.clear(context);
+                clear(context);
+                return Result.success();
+            }
+            return getRunAttemptCount() < 3
+                ? Result.retry()
+                : Result.success();
         } catch (Exception error) {
             return getRunAttemptCount() < 3 ? Result.retry() : Result.success();
         }
+    }
+
+    private Result fetchAndNotify(
+        Context context,
+        SharedPreferences preferences,
+        BackgroundNotificationCredentials.Identity identity
+    ) throws Exception {
+        JSONObject settingsResponse = getJson(
+            context,
+            identity,
+            "/api/v2/settings"
+        );
+        JSONObject settings = settingsResponse.optJSONObject("settings");
+        if (settings == null || !settings.optBoolean("push_enabled", false)) {
+            preferences.edit().putString(CURSOR_KEY, nowIso()).apply();
+            return Result.success();
+        }
+
+        String cursor = preferences.getString(CURSOR_KEY, "");
+        if (cursor == null || cursor.isEmpty()) {
+            preferences.edit().putString(CURSOR_KEY, nowIso()).apply();
+            return Result.success();
+        }
+
+        String encodedCursor = URLEncoder.encode(
+            cursor,
+            StandardCharsets.UTF_8.name()
+        );
+        JSONObject response = getJson(
+            context,
+            identity,
+            "/api/v2/push/messages?since=" +
+                encodedCursor +
+                "&limit=50"
+        );
+        JSONArray messages = response.optJSONArray("messages");
+        if (messages == null || messages.length() == 0) return Result.success();
+
+        Set<String> seenIds = readSeenIds(preferences);
+        List<JSONObject> unseen = new ArrayList<>();
+        String latestCreatedAt = cursor;
+
+        for (int index = 0; index < messages.length(); index += 1) {
+            JSONObject message = messages.optJSONObject(index);
+            if (message == null) continue;
+            String id = message.optString("id", "").trim();
+            String createdAt = message.optString("created_at", "").trim();
+            if (!createdAt.isEmpty()) latestCreatedAt = createdAt;
+            if (!id.isEmpty() && !seenIds.contains(id)) unseen.add(message);
+        }
+
+        boolean appVisible = isAppVisible(context);
+        String aiName = cleanText(
+            settings.optString("ai_name", "DengTa home"),
+            50
+        );
+        if (aiName.isEmpty()) aiName = "DengTa home";
+
+        for (JSONObject message : unseen) {
+            String id = message.optString("id", "").trim();
+            if (id.isEmpty()) continue;
+            if (!appVisible) postNotification(context, aiName, message);
+            seenIds.add(id);
+        }
+
+        preferences.edit()
+            .putString(CURSOR_KEY, latestCreatedAt)
+            .putString(SEEN_IDS_KEY, serializeSeenIds(seenIds))
+            .apply();
+        return Result.success();
     }
 
     private static void postNotification(
@@ -214,7 +272,11 @@ public final class PushNotificationWorker extends Worker {
         NotificationManagerCompat.from(context).notify(notificationId(id), notification.build());
     }
 
-    private static JSONObject getJson(Context context, String path) throws Exception {
+    private static JSONObject getJson(
+        Context context,
+        BackgroundNotificationCredentials.Identity identity,
+        String path
+    ) throws Exception {
         String baseUrl = context.getString(R.string.backend_api_url).replaceAll("/+$", "");
         URI uri = URI.create(baseUrl + path);
         if (!"https".equalsIgnoreCase(uri.getScheme())) {
@@ -226,6 +288,14 @@ public final class PushNotificationWorker extends Worker {
         connection.setConnectTimeout(HTTP_TIMEOUT_MS);
         connection.setReadTimeout(HTTP_TIMEOUT_MS);
         connection.setRequestProperty("Accept", "application/json");
+        connection.setRequestProperty(
+            "X-DengTa-Installation-Token",
+            identity.installationToken
+        );
+        connection.setRequestProperty(
+            "X-DengTa-Companion-Id",
+            identity.companionId
+        );
 
         int status = connection.getResponseCode();
         InputStream stream = status >= 200 && status < 300
@@ -235,9 +305,18 @@ public final class PushNotificationWorker extends Worker {
         connection.disconnect();
 
         if (status < 200 || status >= 300) {
-            throw new IllegalStateException("Background notification API returned " + status);
+            throw new HttpStatusException(status);
         }
         return new JSONObject(body);
+    }
+
+    private static final class HttpStatusException extends Exception {
+        final int status;
+
+        HttpStatusException(int status) {
+            super("Background notification API returned " + status);
+            this.status = status;
+        }
     }
 
     private static String readStream(InputStream stream) throws Exception {

@@ -9,6 +9,8 @@ import ChatMessage from "./ChatMessage";
 import McpDeviceCenter from "./McpDeviceCenter";
 import AiProviderCenter from "./AiProviderCenter";
 import CompanionDiary from "./CompanionDiary";
+import CompanionProfile from "./CompanionProfile";
+import { AuthenticatedImage } from "./PrivateMedia";
 import { SelectedAttachmentStrip } from "./ChatMessageExtras";
 import {
   attachmentKind,
@@ -22,10 +24,21 @@ import {
 } from "./chat-attachments";
 import {
   chooseChatModel,
-  readStoredChatModel,
+  migrateLegacyChatModelToSession,
+  readServerSessionChatModel,
+  readStoredSessionChatModel,
   reconcileModelCatalog,
-  storeChatModel,
+  storeSessionChatModel,
 } from "./chat-models";
+import {
+  shouldSubmitComposerKeyDown,
+  transitionComposerOverlays,
+} from "./composer-interactions";
+import {
+  pendingAutosaveAfterFailure,
+  shouldFlushSettingsForLifecycle,
+  shouldScheduleSettingsOnViewChange,
+} from "./settings-autosave";
 import {
   canRetryChatClientMessage,
   clearChatClientMessage,
@@ -34,6 +47,14 @@ import {
   restoreChatRetryText,
   updateChatClientMessage,
 } from "./chat-idempotency";
+import {
+  applyStoredMessageReferences,
+  attachMessageReference,
+  clearStoredMessageReferencesForSession,
+  createMessageReference,
+  normalizeMessageReference,
+  storeMessageReferenceForMessage,
+} from "./message-reference";
 import {
   attachThinkingTrace,
   appendThinkingSummary,
@@ -68,6 +89,11 @@ import { readReplySuggestions } from "./chat-reply-suggestions";
 import { SHANGHAI_TIME_ZONE } from "./ambient-context";
 import { installInnerHeightViewportFallback } from "./mobile-viewport";
 import { toggleMomentLikeOptimistically } from "./moment-like";
+import {
+  STARTUP_REQUEST_OPTIONS,
+  createStartupReconnectController,
+  mergeRecoveredStartupData,
+} from "./startup-reconnect";
 import {
   VOICE_MAX_DURATION_MS,
   VOICE_PLAYBACK_MODES,
@@ -106,6 +132,7 @@ const COMPANION_INTERACTION_RATE_WINDOW_MS = 60 * 1000;
 const LOCAL_NOTIFICATION_CHANNEL_ID = "dengta-home-reminders-v1";
 const PROMPT_RECEIPT_STORAGE_KEY = "dengta_prompt_receipt_v1";
 const VOICE_PLAYBACK_MODE_KEY = "dengta_voice_playback_mode";
+const SETTINGS_SAVE_RETRY_DELAYS_MS = [1200, 3500, 8000];
 
 function shanghaiClientTime(value = new Date()) {
   return value.toLocaleString("zh-CN", {
@@ -201,7 +228,7 @@ const navItems = [
   { id: "chat", icon: "✦", label: "聊天" },
   { id: "moments", icon: "◌", label: "动态" },
   { id: "diary", icon: "▤", label: "日记" },
-  { id: "memories", icon: "◇", label: "记忆" },
+  { id: "memories", icon: "◇", label: "档案" },
   { id: "settings", icon: "⚙", label: "设置" },
 ];
 
@@ -213,17 +240,6 @@ function formatDateTime(value) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
-}
-
-function formatMomentReplyStatus(item, aiName) {
-  if (item?.reply_status !== "pending") return "";
-  const dueAt = Date.parse(item.reply_due_at);
-  if (!Number.isFinite(dueAt) || dueAt <= Date.now()) {
-    return `${aiName} 正在看这条动态…`;
-  }
-  const seconds = Math.max(1, Math.ceil((dueAt - Date.now()) / 1000));
-  if (seconds < 60) return `${aiName} 正在过来 · 约 ${seconds} 秒`;
-  return `${aiName} 正在过来 · 约 ${Math.ceil(seconds / 60)} 分钟`;
 }
 
 function readSeenPushIds() {
@@ -414,18 +430,21 @@ function abortChatRequest(requestRef, reason = "cancelled") {
   }
 }
 
-function App() {
+function hydrateSessionChatHistory(messages, sessionId) {
+  return applyStoredMessageReferences(hydrateChatHistory(messages), sessionId);
+}
+
+function App({ accountControl = null }) {
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [message, setMessage] = useState("");
+  const [messageReference, setMessageReference] = useState(null);
   const [turnContext, setTurnContext] = useState("");
   const [chatAttachments, setChatAttachments] = useState([]);
   const [attachmentSafetyEnabled, setAttachmentSafetyEnabled] = useState(true);
   const [availableModels, setAvailableModels] = useState([]);
-  const [selectedChatModel, setSelectedChatModel] = useState(
-    readStoredChatModel,
-  );
+  const [selectedChatModel, setSelectedChatModel] = useState("");
   const [modelsLoadMessage, setModelsLoadMessage] = useState("");
   const [settings, setSettings] = useState(emptySettings);
   const [draftSettings, setDraftSettings] = useState(emptySettings);
@@ -456,6 +475,12 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [installPrompt, setInstallPrompt] = useState(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+  const [startupConnection, setStartupConnection] = useState({
+    status: "connecting",
+    failureCount: 0,
+    nextRetryDelayMs: null,
+    lastError: null,
+  });
   const [emotionUnderstandingEnabled, setEmotionUnderstandingEnabled] =
     useState(readEmotionUnderstandingSetting);
   const [voiceState, setVoiceState] = useState(VOICE_STATES.idle);
@@ -464,6 +489,8 @@ function App() {
   const [voiceTapToSend, setVoiceTapToSend] = useState(false);
   const [lastVoiceAnalysis, setLastVoiceAnalysis] = useState(null);
   const [isComposerMenuOpen, setIsComposerMenuOpen] = useState(false);
+  const [isStatusPanelExpanded, setIsStatusPanelExpanded] = useState(false);
+  const [statusPanelCloseRequest, setStatusPanelCloseRequest] = useState(0);
   const [voicePlaybackMode, setVoicePlaybackMode] = useState(
     readVoicePlaybackMode,
   );
@@ -490,6 +517,7 @@ function App() {
   const messageListRef = useRef(null);
   const messageEndRef = useRef(null);
   const messageInputRef = useRef(null);
+  const composerMenuTriggerRef = useRef(null);
   const shouldAutoScrollRef = useRef(true);
   const chatFileInputRef = useRef(null);
   const chatImageInputRef = useRef(null);
@@ -532,6 +560,7 @@ function App() {
   const createSessionPendingRef = useRef(false);
   const pendingMomentLikesRef = useRef({});
   const draftSettingsRef = useRef(draftSettings);
+  const hasLoadedSettingsRef = useRef(false);
   const confirmedSettingsRef = useRef(settings);
   const latestDraftFingerprintRef = useRef("");
   const lastSavedSettingsFingerprintRef = useRef("");
@@ -539,8 +568,15 @@ function App() {
   const pendingSettingsSaveRef = useRef(null);
   const settingsSaveInFlightRef = useRef(false);
   const settingsSaveRunRef = useRef(null);
+  const settingsSaveRetryTimerRef = useRef(null);
+  const settingsSaveRetryCountRef = useRef(0);
+  const settingsSaveFailureRef = useRef(false);
+  const settingsLifecycleFlushPendingRef = useRef(false);
+  const flushLatestSettingsDraftRef = useRef(() => Promise.resolve(true));
   const settingsMigrationPendingRef = useRef(false);
   const componentMountedRef = useRef(true);
+  const startupReconnectRef = useRef(null);
+  const sessionModelSaveQueueRef = useRef(Promise.resolve());
   const speechRunRef = useRef(0);
   const voiceLifecycleRef = useRef({ cancel() {}, stopPlayback() {} });
 
@@ -559,6 +595,7 @@ function App() {
       sessionId: activeSessionId,
       message: message.trim(),
       turnContext: turnContext.trim(),
+      messageReference,
       attachments: chatAttachments,
       attachmentInstructionMode: attachmentSafetyEnabled
         ? "untrusted"
@@ -591,6 +628,62 @@ function App() {
     (zoneId) => companionInteractionHandlerRef.current?.(zoneId),
     [],
   );
+
+  const requestStatusPanelClose = useCallback(() => {
+    setIsStatusPanelExpanded(false);
+    setStatusPanelCloseRequest((current) => current + 1);
+  }, []);
+
+  const handleStatusPanelExpandedChange = useCallback((expanded) => {
+    const next = transitionComposerOverlays(
+      {
+        statusExpanded: expanded,
+        composerMenuOpen: false,
+      },
+      expanded ? "open-status" : "close-status",
+    );
+    setIsStatusPanelExpanded(next.statusExpanded);
+    if (next.statusExpanded) setIsComposerMenuOpen(next.composerMenuOpen);
+  }, []);
+
+  const closeComposerMenu = useCallback((restoreFocus = false) => {
+    setIsComposerMenuOpen(false);
+    if (restoreFocus) {
+      window.requestAnimationFrame(() => composerMenuTriggerRef.current?.focus());
+    }
+  }, []);
+
+  const toggleComposerMenu = useCallback(() => {
+    setIsComposerMenuOpen((current) => {
+      const action = current ? "close-composer-menu" : "open-composer-menu";
+      const next = transitionComposerOverlays(
+        {
+          statusExpanded: isStatusPanelExpanded,
+          composerMenuOpen: current,
+        },
+        action,
+      );
+      if (!current && !next.statusExpanded) {
+        setStatusPanelCloseRequest((request) => request + 1);
+        setIsStatusPanelExpanded(false);
+      }
+      return next.composerMenuOpen;
+    });
+  }, [isStatusPanelExpanded]);
+
+  useEffect(() => {
+    if (!isComposerMenuOpen) return undefined;
+
+    function closeComposerMenuFromEscape(event) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closeComposerMenu(true);
+    }
+
+    document.addEventListener("keydown", closeComposerMenuFromEscape);
+    return () =>
+      document.removeEventListener("keydown", closeComposerMenuFromEscape);
+  }, [closeComposerMenu, isComposerMenuOpen]);
 
   const refreshServiceHealth = useCallback(async () => {
     setServiceHealth((current) => ({
@@ -658,19 +751,25 @@ function App() {
     function applyInitialModelCatalog(data, fallbackModel = "") {
       if (cancelled) return;
       const catalog = reconcileModelCatalog(data, {
-        previous: readStoredChatModel(),
+        previous: readStoredSessionChatModel(activeSessionIdRef.current),
         fallback: fallbackModel,
       });
       setAvailableModels(catalog.models);
-      setSelectedChatModel(catalog.selectedModel);
-      storeChatModel(catalog.selectedModel);
+      setSelectedChatModel(
+        chooseChatModel({
+          models: catalog.models,
+          stored: readStoredSessionChatModel(activeSessionIdRef.current),
+          current: fallbackModel,
+          fallback: catalog.currentModel,
+        }),
+      );
     }
 
     async function loadInitialModels(fallbackModel = "") {
       const pendingSelection = chooseChatModel({
         models: [],
-        stored: readStoredChatModel(),
-        fallback: fallbackModel,
+        stored: readStoredSessionChatModel(activeSessionIdRef.current),
+        current: fallbackModel,
       });
       if (!cancelled) setSelectedChatModel(pendingSelection);
       try {
@@ -689,45 +788,76 @@ function App() {
     }
 
     async function loadInitialData() {
-      try {
-        const [settingsData, sessionsData] = await Promise.all([
-          apiRequest("/settings"),
-          apiRequest("/sessions"),
-        ]);
+      const [settingsData, sessionsData] = await Promise.all([
+        apiRequest("/api/v2/settings", STARTUP_REQUEST_OPTIONS),
+        apiRequest("/api/v2/sessions", STARTUP_REQUEST_OPTIONS),
+      ]);
 
-        if (cancelled) return;
-        const migrationNeeded = settingsNeedsUnifiedPromptMigration(
-          settingsData.settings,
-        );
-        const nextSettings = normalizeSettingsDraft(settingsData.settings);
-        const nextSessions = sessionsData.sessions || [];
-        const settingsFingerprint = settingsPayloadFingerprint(nextSettings);
+      if (cancelled) return null;
+      const migrationNeeded = settingsNeedsUnifiedPromptMigration(
+        settingsData.settings,
+      );
+      const nextSettings = normalizeSettingsDraft(settingsData.settings);
+      const nextSessions = sessionsData.sessions || [];
+      const settingsFingerprint = settingsPayloadFingerprint(nextSettings);
+      const hadLoadedSettings = hasLoadedSettingsRef.current;
+      const hasUnsavedSettingsDraft =
+        hadLoadedSettings &&
+        latestDraftFingerprintRef.current !==
+          lastSavedSettingsFingerprintRef.current;
+      const recovered = mergeRecoveredStartupData(
+        { activeSessionId: activeSessionIdRef.current },
+        { settings: nextSettings, sessions: nextSessions },
+      );
 
-        confirmedSettingsRef.current = nextSettings;
+      confirmedSettingsRef.current = nextSettings;
+      if (!hasUnsavedSettingsDraft) {
         draftSettingsRef.current = nextSettings;
         latestDraftFingerprintRef.current = settingsFingerprint;
-        lastSavedSettingsFingerprintRef.current = migrationNeeded
-          ? ""
-          : settingsFingerprint;
-        settingsMigrationPendingRef.current = migrationNeeded;
-        setSettings(nextSettings);
         setDraftSettings(nextSettings);
-        setHasLoadedSettings(true);
-        setSettingsAutosaveState("saved");
-        setSessions(nextSessions);
-        setActiveSessionId(nextSessions[0]?.id || null);
-        void loadInitialModels(nextSettings.model);
-      } catch (error) {
-        if (!cancelled) setNotice(error.message);
-      } finally {
-        if (!cancelled) setIsLoading(false);
       }
+      lastSavedSettingsFingerprintRef.current = migrationNeeded
+        ? ""
+        : settingsFingerprint;
+      settingsMigrationPendingRef.current = migrationNeeded;
+      setSettings(nextSettings);
+      setHasLoadedSettings(true);
+      setSettingsAutosaveState(hasUnsavedSettingsDraft ? "pending" : "saved");
+      setSessions(recovered.sessions);
+      activeSessionIdRef.current = recovered.activeSessionId;
+      const serverSessionModel = readServerSessionChatModel(
+        recovered.sessions,
+        recovered.activeSessionId,
+      );
+      if (serverSessionModel) {
+        storeSessionChatModel(recovered.activeSessionId, serverSessionModel);
+      } else {
+        migrateLegacyChatModelToSession(recovered.activeSessionId);
+      }
+      setActiveSessionId(recovered.activeSessionId);
+      hasLoadedSettingsRef.current = true;
+      setIsLoading(false);
+      void loadInitialModels(nextSettings.model);
+      void refreshServiceHealth();
+      return { settings: nextSettings, sessions: nextSessions };
     }
 
-    loadInitialData();
-    void refreshServiceHealth();
+    const reconnectController = createStartupReconnectController({
+      attempt: loadInitialData,
+      onStateChange(nextState) {
+        if (cancelled) return;
+        setStartupConnection(nextState);
+        if (nextState.status === "waiting") setIsLoading(false);
+      },
+    });
+    startupReconnectRef.current = reconnectController;
+    void reconnectController.start();
     return () => {
       cancelled = true;
+      reconnectController.stop();
+      if (startupReconnectRef.current === reconnectController) {
+        startupReconnectRef.current = null;
+      }
     };
   }, [refreshServiceHealth]);
 
@@ -747,7 +877,26 @@ function App() {
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
     shouldAutoScrollRef.current = true;
+    setMessageReference(null);
   }, [activeSessionId]);
+
+  useEffect(() => {
+    if (!hasLoadedSettingsRef.current) return;
+    const serverModel = readServerSessionChatModel(sessions, activeSessionId);
+    if (serverModel) {
+      storeSessionChatModel(activeSessionId, serverModel);
+    }
+    const stored =
+      serverModel || readStoredSessionChatModel(activeSessionId);
+    setSelectedChatModel(
+      chooseChatModel({
+        models: availableModels,
+        stored,
+        current: settings.model,
+        fallback: availableModels[0]?.id || "",
+      }),
+    );
+  }, [activeSessionId, availableModels, sessions, settings.model]);
 
   useEffect(() => {
     chatAttachmentsRef.current = chatAttachments;
@@ -757,6 +906,8 @@ function App() {
     componentMountedRef.current = true;
     return () => {
       componentMountedRef.current = false;
+      hasLoadedSettingsRef.current = false;
+      window.clearTimeout(settingsSaveRetryTimerRef.current);
       abortChatRequest(chatRequestRef, "component-unmount");
       releaseChatRequestAttachments(chatRequestRef.current);
       chatRequestRef.current = null;
@@ -902,7 +1053,7 @@ function App() {
       pollInFlight = true;
       try {
         const data = await apiRequest(
-          `/api/push/messages?since=${encodeURIComponent(since)}&limit=50`,
+          `/api/v2/push/messages?since=${encodeURIComponent(since)}&limit=50`,
         );
         if (cancelled) return;
 
@@ -927,7 +1078,7 @@ function App() {
         localStorage.setItem(PUSH_SEEN_IDS_KEY, JSON.stringify(nextSeenIds));
 
         const currentSessionId = activeSessionIdRef.current;
-        const sessionsData = await apiRequest("/sessions");
+        const sessionsData = await apiRequest("/api/v2/sessions");
         if (!cancelled) setSessions(sessionsData.sessions || []);
 
         if (
@@ -936,10 +1087,12 @@ function App() {
           incoming.some((item) => item.conversation_id === currentSessionId)
         ) {
           const history = await apiRequest(
-            `/sessions/${currentSessionId}/messages`,
+            `/api/v2/sessions/${currentSessionId}/messages`,
           );
           if (!cancelled && activeSessionIdRef.current === currentSessionId) {
-            setMessages(hydrateChatHistory(history.messages));
+            setMessages(
+              hydrateSessionChatHistory(history.messages, currentSessionId),
+            );
           }
         }
 
@@ -1004,13 +1157,17 @@ function App() {
       setMessages([]);
 
       try {
-        const data = await apiRequest(`/sessions/${activeSessionId}/messages`);
+        const data = await apiRequest(
+          `/api/v2/sessions/${activeSessionId}/messages`,
+        );
         if (
           !cancelled &&
           messageLoadTokenRef.current === loadToken &&
           activeSessionIdRef.current === activeSessionId
         ) {
-          setMessages(hydrateChatHistory(data.messages));
+          setMessages(
+            hydrateSessionChatHistory(data.messages, activeSessionId),
+          );
         }
       } catch (error) {
         if (!cancelled) setNotice(error.message);
@@ -1025,7 +1182,7 @@ function App() {
 
   useEffect(() => {
     if (activeView === "memories") {
-      apiRequest("/memories")
+      apiRequest("/api/v2/memories")
         .then((data) => setMemories(data.memories || []))
         .catch((error) => setNotice(error.message));
     }
@@ -1082,6 +1239,12 @@ function App() {
 
     function handleOnline() {
       setIsOnline(true);
+      if (shouldFlushSettingsForLifecycle("online")) {
+        window.clearTimeout(settingsSaveRetryTimerRef.current);
+        settingsSaveRetryTimerRef.current = null;
+        settingsSaveRetryCountRef.current = 0;
+        void flushLatestSettingsDraftRef.current();
+      }
     }
 
     function handleOffline() {
@@ -1157,6 +1320,48 @@ function App() {
       document.removeEventListener("focusin", fitViewport);
       document.removeEventListener("focusout", fitViewport);
       delete root.dataset.keyboardOpen;
+    };
+  }, []);
+
+  useEffect(() => {
+    function resetSettingsLifecycleFlush() {
+      settingsLifecycleFlushPendingRef.current = false;
+    }
+
+    function flushSettingsBeforePageLeaves(event) {
+      if (
+        event.type === "visibilitychange" &&
+        document.visibilityState === "visible"
+      ) {
+        settingsLifecycleFlushPendingRef.current = false;
+        return;
+      }
+      if (
+        !shouldFlushSettingsForLifecycle(
+          event.type,
+          document.visibilityState,
+        )
+      ) {
+        return;
+      }
+      if (settingsLifecycleFlushPendingRef.current) return;
+      settingsLifecycleFlushPendingRef.current = true;
+      void flushLatestSettingsDraftRef.current({ keepalive: true });
+    }
+
+    document.addEventListener(
+      "visibilitychange",
+      flushSettingsBeforePageLeaves,
+    );
+    window.addEventListener("pagehide", flushSettingsBeforePageLeaves);
+    window.addEventListener("pageshow", resetSettingsLifecycleFlush);
+    return () => {
+      document.removeEventListener(
+        "visibilitychange",
+        flushSettingsBeforePageLeaves,
+      );
+      window.removeEventListener("pagehide", flushSettingsBeforePageLeaves);
+      window.removeEventListener("pageshow", resetSettingsLifecycleFlush);
     };
   }, []);
 
@@ -1271,10 +1476,14 @@ function App() {
     const turnContextSnapshot = turnContextDraftAtRequest
       .trim()
       .slice(0, PROMPT_FIELD_LIMITS.turn_context);
-
     let sessionId = activeSessionIdRef.current;
     let voiceSessionId = sessionId;
     let requestHandle;
+    let voiceModel =
+      readStoredSessionChatModel(sessionId) ||
+      selectedChatModel ||
+      settings.model ||
+      "";
 
     try {
       if (!(await flushLatestSettingsDraft())) {
@@ -1284,7 +1493,7 @@ function App() {
       }
 
       if (!sessionId) {
-        const created = await apiRequest("/sessions", {
+        const created = await apiRequest("/api/v2/sessions", {
           method: "POST",
           body: JSON.stringify({ title: "语音对话" }),
         });
@@ -1299,6 +1508,7 @@ function App() {
         messagesSessionIdRef.current = sessionId;
         setActiveSessionId(sessionId);
         setMessages([]);
+        voiceModel = initializeSessionChatModel(sessionId);
       }
 
       streamingSessionIdRef.current = sessionId;
@@ -1307,7 +1517,7 @@ function App() {
         sessionId,
         clientTime: shanghaiClientTime(),
         timezone: SHANGHAI_TIME_ZONE,
-        model: selectedChatModel || settings.model || "",
+        model: voiceModel,
         emotionUnderstandingEnabled,
         companionStatus: companionStatusForRequest(
           companionStatusRef.current,
@@ -1658,8 +1868,13 @@ function App() {
   voiceLifecycleRef.current.stopPlayback = stopVoicePlayback;
 
   async function refreshSessions(preferredId = activeSessionId) {
-    const data = await apiRequest("/sessions");
+    const data = await apiRequest("/api/v2/sessions");
     const nextSessions = data.sessions || [];
+    nextSessions.forEach((session) => {
+      if (session.model_id) {
+        storeSessionChatModel(session.id, session.model_id);
+      }
+    });
     setSessions(nextSessions);
 
     if (preferredId && nextSessions.some((item) => item.id === preferredId)) {
@@ -1674,16 +1889,21 @@ function App() {
     createSessionPendingRef.current = true;
     setIsCreatingSession(true);
     abortChatRequest(chatRequestRef, "session-change");
-    setIsComposerMenuOpen(false);
+    closeComposerMenu();
+    requestStatusPanelClose();
     try {
-      const data = await apiRequest("/sessions", {
+      const data = await apiRequest("/api/v2/sessions", {
         method: "POST",
-        body: JSON.stringify({ title: "新对话" }),
+        body: JSON.stringify({
+          title: "新对话",
+          model_id: settings.model || undefined,
+        }),
       });
       setSessions((current) => [data.session, ...current]);
       activeSessionIdRef.current = data.session.id;
       setActiveSessionId(data.session.id);
       setMessages([]);
+      initializeSessionChatModel(data.session.id, data.session.model_id);
       setActiveView("chat");
       setIsSidebarOpen(false);
       setNotice("");
@@ -1699,7 +1919,8 @@ function App() {
     if (sessionId !== activeSessionIdRef.current) {
       abortChatRequest(chatRequestRef, "session-change");
     }
-    setIsComposerMenuOpen(false);
+    closeComposerMenu();
+    requestStatusPanelClose();
     activeSessionIdRef.current = sessionId;
     setActiveSessionId(sessionId);
     setActiveView("chat");
@@ -1714,7 +1935,7 @@ function App() {
       if (dialog.type === "rename") {
         const title = dialog.value.trim();
         if (!title) return;
-        const data = await apiRequest(`/sessions/${dialog.session.id}`, {
+        const data = await apiRequest(`/api/v2/sessions/${dialog.session.id}`, {
           method: "PATCH",
           body: JSON.stringify({ title }),
         });
@@ -1724,13 +1945,18 @@ function App() {
           ),
         );
       } else {
-        await apiRequest(`/sessions/${dialog.session.id}`, { method: "DELETE" });
+        await apiRequest(`/api/v2/sessions/${dialog.session.id}`, {
+          method: "DELETE",
+        });
+        storeSessionChatModel(dialog.session.id, "");
+        clearStoredMessageReferencesForSession(dialog.session.id);
         const remaining = sessions.filter(
           (item) => item.id !== dialog.session.id,
         );
         setSessions(remaining);
         if (activeSessionId === dialog.session.id) {
-          setActiveSessionId(remaining[0]?.id || null);
+          activeSessionIdRef.current = remaining[0]?.id || null;
+          setActiveSessionId(activeSessionIdRef.current);
           setMessages([]);
         }
       }
@@ -1756,14 +1982,16 @@ function App() {
     const loadToken = messageLoadTokenRef.current + 1;
     messageLoadTokenRef.current = loadToken;
     messagesSessionIdRef.current = sessionId;
-    const history = await apiRequest(`/sessions/${sessionId}/messages`);
+    const history = await apiRequest(
+      `/api/v2/sessions/${sessionId}/messages`,
+    );
 
     if (
       activeSessionIdRef.current === sessionId &&
       messageLoadTokenRef.current === loadToken
     ) {
       messagesSessionIdRef.current = sessionId;
-      setMessages(hydrateChatHistory(history.messages));
+      setMessages(hydrateSessionChatHistory(history.messages, sessionId));
     }
   }
 
@@ -1868,7 +2096,7 @@ function App() {
 
     try {
       if (!sessionId) {
-        const created = await apiRequest("/sessions", {
+        const created = await apiRequest("/api/v2/sessions", {
           method: "POST",
           body: JSON.stringify({
             title: `和${settings.ai_name || "小灯"}的互动`,
@@ -1885,6 +2113,7 @@ function App() {
           messagesSessionIdRef.current = sessionId;
           setActiveSessionId(sessionId);
         }
+        initializeSessionChatModel(sessionId);
       }
 
       streamingSessionIdRef.current = sessionId;
@@ -1920,6 +2149,13 @@ function App() {
           recent_sequence: interaction.recentSequence,
           client_time: shanghaiClientTime(),
           timezone: SHANGHAI_TIME_ZONE,
+          model:
+            readStoredSessionChatModel(sessionId) ||
+            (sessionId === activeSessionIdRef.current
+              ? selectedChatModel
+              : "") ||
+            settings.model ||
+            "",
           companion_status: requestCompanionStatus,
           environment_context: environmentContextRef.current,
         }),
@@ -2063,8 +2299,75 @@ function App() {
   }
 
   function selectChatModel(value) {
-    const model = storeChatModel(value);
+    const sessionId = activeSessionIdRef.current;
+    const previousModel = readStoredSessionChatModel(sessionId);
+    const model = storeSessionChatModel(sessionId, value);
     setSelectedChatModel(model);
+    setSessions((current) =>
+      current.map((session) =>
+        session.id === sessionId
+          ? { ...session, model_id: model }
+          : session,
+      ),
+    );
+    if (!sessionId || !model) return;
+
+    const saveOperation = sessionModelSaveQueueRef.current
+      .catch(() => {})
+      .then(() =>
+        apiRequest(`/api/v2/sessions/${sessionId}`, {
+          method: "PATCH",
+          body: JSON.stringify({ model_id: model }),
+        }),
+      );
+    sessionModelSaveQueueRef.current = saveOperation.catch(() => {});
+    void saveOperation
+      .then((data) => {
+        const savedModel = data.session?.model_id || model;
+        if (readStoredSessionChatModel(sessionId) !== model) return;
+        storeSessionChatModel(sessionId, savedModel);
+        if (activeSessionIdRef.current === sessionId) {
+          setSelectedChatModel(savedModel);
+        }
+        setSessions((current) =>
+          current.map((session) =>
+            session.id === sessionId ? data.session : session,
+          ),
+        );
+      })
+      .catch((error) => {
+        if (readStoredSessionChatModel(sessionId) !== model) return;
+        storeSessionChatModel(sessionId, previousModel);
+        if (activeSessionIdRef.current === sessionId) {
+          setSelectedChatModel(previousModel);
+        }
+        setSessions((current) =>
+          current.map((session) =>
+            session.id === sessionId
+              ? { ...session, model_id: previousModel || null }
+              : session,
+          ),
+        );
+        setNotice(
+          `${error.message || "会话模型保存失败。"} 已恢复之前的模型。`,
+        );
+      });
+  }
+
+  function initializeSessionChatModel(sessionId, serverModel = "") {
+    const migratedModel = migrateLegacyChatModelToSession(sessionId);
+    const model = serverModel || migratedModel || settings.model || "";
+    if (model) storeSessionChatModel(sessionId, model);
+    return model;
+  }
+
+  function selectMessageForReference(item) {
+    const reference = createMessageReference(item);
+    if (!reference) return;
+    setMessageReference(reference);
+    closeComposerMenu();
+    requestStatusPanelClose();
+    window.requestAnimationFrame(() => messageInputRef.current?.focus());
   }
 
   async function sendMessage() {
@@ -2073,6 +2376,8 @@ function App() {
     const turnContextSnapshot = turnContextDraftAtRequest
       .trim()
       .slice(0, PROMPT_FIELD_LIMITS.turn_context);
+    const messageReferenceAtRequest =
+      normalizeMessageReference(messageReference);
     const attachmentsToSend = [...chatAttachmentsRef.current];
     const attachmentInstructionMode = attachmentSafetyEnabled
       ? "untrusted"
@@ -2102,6 +2407,7 @@ function App() {
     }
 
     setMessage("");
+    setMessageReference(null);
     chatAttachmentsRef.current = [];
     setChatAttachments([]);
     setAttachmentSafetyEnabled(true);
@@ -2110,10 +2416,13 @@ function App() {
     let sessionId = activeSessionId;
     let localUserId = `local-user-${Date.now()}`;
     let localAssistantId = `local-assistant-${Date.now()}`;
+    let requestModel =
+      readStoredSessionChatModel(sessionId) || activeChatModel;
     let sendSucceeded = false;
     let streamFailed = false;
     let userMessageCommitted = false;
     let generationInProgress = false;
+    let completedUserMessageId = "";
     let completedAssistantMessageId = "";
     abortChatRequest(chatRequestRef, "replaced");
     const request = {
@@ -2131,7 +2440,7 @@ function App() {
 
     try {
       if (!sessionId) {
-        const created = await apiRequest("/sessions", {
+        const created = await apiRequest("/api/v2/sessions", {
           method: "POST",
           body: JSON.stringify({
             title: (text || attachmentsToSend[0]?.name || "附件对话").slice(
@@ -2147,6 +2456,7 @@ function App() {
         streamingSessionIdRef.current = sessionId;
         setSessions((current) => [created.session, ...current]);
         setActiveSessionId(sessionId);
+        requestModel = initializeSessionChatModel(sessionId);
       }
 
       const clientMessage = resolveChatClientMessage(
@@ -2155,6 +2465,7 @@ function App() {
           sessionId,
           message: text,
           turnContext: turnContextSnapshot,
+          messageReference: messageReferenceAtRequest,
           attachments: attachmentsToSend,
           attachmentInstructionMode,
         },
@@ -2187,17 +2498,22 @@ function App() {
             item.id === clientMessage.userMessageId,
         );
         if (!hasUserMessage) {
-          next.push({
-            id: localUserId,
-            role: "user",
-            content: text || "（发送了附件）",
-            attachments: draftsForLocalMessage(attachmentsToSend),
-            tool_calls:
-              attachmentInstructionMode === "system"
-                ? { attachment_instruction_mode: "system" }
-                : undefined,
-            created_at: new Date().toISOString(),
-          });
+          next.push(
+            attachMessageReference(
+              {
+                id: localUserId,
+                role: "user",
+                content: text || "（发送了附件）",
+                attachments: draftsForLocalMessage(attachmentsToSend),
+                tool_calls:
+                  attachmentInstructionMode === "system"
+                    ? { attachment_instruction_mode: "system" }
+                    : undefined,
+                created_at: new Date().toISOString(),
+              },
+              messageReferenceAtRequest,
+            ),
+          );
         }
 
         const assistantDraft = {
@@ -2228,7 +2544,7 @@ function App() {
         {
           session_id: sessionId,
           message: text,
-          model: activeChatModel,
+          model: requestModel,
           client_time: shanghaiClientTime(),
           timezone: SHANGHAI_TIME_ZONE,
           emotion_understanding_enabled: emotionUnderstandingEnabled,
@@ -2236,6 +2552,7 @@ function App() {
           companion_status: companionStatusForRequest(companionStatus),
           environment_context: environmentContextRef.current,
           turn_context: turnContextSnapshot,
+          message_reference: messageReferenceAtRequest,
           files: attachmentsToSend,
           client_message_id: request.clientMessageId,
         },
@@ -2250,6 +2567,14 @@ function App() {
 
           if (event.type === "meta" && event.user_message) {
             userMessageCommitted = true;
+            completedUserMessageId = event.user_message.id;
+            if (messageReferenceAtRequest) {
+              storeMessageReferenceForMessage(
+                sessionId,
+                completedUserMessageId,
+                messageReferenceAtRequest,
+              );
+            }
             pendingChatClientMessageRef.current = updateChatClientMessage(
               pendingChatClientMessageRef.current,
               request.clientMessageId,
@@ -2263,11 +2588,18 @@ function App() {
             setMessages((current) =>
               current.map((item) =>
                 item.id === localUserId
-                  ? {
-                      ...event.user_message,
-                      attachments:
-                        event.user_message.attachments || item.attachments,
-                    }
+                  ? attachMessageReference(
+                      {
+                        ...event.user_message,
+                        attachments:
+                          event.user_message.attachments || item.attachments,
+                        tool_calls: {
+                          ...(item.tool_calls || {}),
+                          ...(event.user_message.tool_calls || {}),
+                        },
+                      },
+                      messageReferenceAtRequest,
+                    )
                   : item,
               ),
             );
@@ -2441,11 +2773,16 @@ function App() {
         chatRequestRef.current = null;
       }
 
-      const history = await apiRequest(`/sessions/${sessionId}/messages`);
+      const history = await apiRequest(
+        `/api/v2/sessions/${sessionId}/messages`,
+      );
       if (activeSessionIdRef.current === sessionId) {
         messageLoadTokenRef.current += 1;
         messagesSessionIdRef.current = sessionId;
-        const hydratedMessages = hydrateChatHistory(history.messages);
+        const hydratedMessages = hydrateSessionChatHistory(
+          history.messages,
+          sessionId,
+        );
         setMessages(
           hydratedMessages.map((item) =>
             item.id === completedAssistantMessageId
@@ -2503,6 +2840,11 @@ function App() {
           return;
         }
         if (restoreDraft) {
+          if (messageReferenceAtRequest) {
+            setMessageReference(
+              (current) => current || messageReferenceAtRequest,
+            );
+          }
           if (text) {
             setMessage((current) =>
               restoreChatRetryText(current, text),
@@ -2539,6 +2881,11 @@ function App() {
       setNotice(`${error.message || "回复暂时中断。"} ${retryGuidance}`);
       if (!sendSucceeded) {
         if (restoreDraft) {
+          if (messageReferenceAtRequest) {
+            setMessageReference(
+              (current) => current || messageReferenceAtRequest,
+            );
+          }
           if (text) {
             setMessage((current) =>
               restoreChatRetryText(current, text),
@@ -2601,7 +2948,7 @@ function App() {
   }
 
   function scheduleSettingsAutosave(value, { immediate = false } = {}) {
-    if (!hasLoadedSettings) {
+    if (!hasLoadedSettingsRef.current) {
       setNotice(
         "服务器设置尚未加载成功。为防止覆盖现有模型和接口配置，请先恢复网络并重新打开 App。",
       );
@@ -2610,6 +2957,10 @@ function App() {
 
     const payload = createSettingsPayload(value);
     const fingerprint = settingsPayloadFingerprint(payload);
+    window.clearTimeout(settingsSaveRetryTimerRef.current);
+    settingsSaveRetryTimerRef.current = null;
+    settingsSaveRetryCountRef.current = 0;
+    settingsSaveFailureRef.current = false;
     latestDraftFingerprintRef.current = fingerprint;
     window.clearTimeout(settingsAutosaveTimerRef.current);
     settingsAutosaveTimerRef.current = null;
@@ -2657,18 +3008,26 @@ function App() {
       );
     }
 
+    let pausedForOnlineRetry = false;
     const run = (async () => {
       while (pendingSettingsSaveRef.current) {
         const queued = pendingSettingsSaveRef.current;
         pendingSettingsSaveRef.current = null;
         settingsSaveInFlightRef.current = true;
         setSettingsAutosaveState("saving");
-        setSettingsSaveError("");
+        if (!settingsSaveFailureRef.current) {
+          setSettingsSaveError("");
+        }
 
         try {
-          const data = await apiRequest("/settings", {
+          const requestBody = JSON.stringify(queued.payload);
+          const keepalive =
+            queued.keepalive === true &&
+            new TextEncoder().encode(requestBody).byteLength <= 60 * 1024;
+          const data = await apiRequest("/api/v2/settings", {
             method: "PUT",
-            body: JSON.stringify(queued.payload),
+            body: requestBody,
+            keepalive,
           });
           const nextSettings = normalizeSettingsDraft(data.settings);
           const savedFingerprint = settingsPayloadFingerprint(nextSettings);
@@ -2680,7 +3039,12 @@ function App() {
 
           confirmedSettingsRef.current = nextSettings;
           lastSavedSettingsFingerprintRef.current = savedFingerprint;
+          window.clearTimeout(settingsSaveRetryTimerRef.current);
+          settingsSaveRetryTimerRef.current = null;
+          settingsSaveRetryCountRef.current = 0;
+          settingsSaveFailureRef.current = false;
           setSettings(nextSettings);
+          setSettingsSaveError("");
 
           if (latestDraftFingerprintRef.current === queued.fingerprint) {
             draftSettingsRef.current = nextSettings;
@@ -2704,12 +3068,22 @@ function App() {
             try {
               const modelsData = await apiRequest("/models");
               const catalog = reconcileModelCatalog(modelsData, {
-                previous: selectedChatModel,
+                previous: readStoredSessionChatModel(
+                  activeSessionIdRef.current,
+                ),
                 fallback: nextSettings.model,
               });
               setAvailableModels(catalog.models);
-              setSelectedChatModel(catalog.selectedModel);
-              storeChatModel(catalog.selectedModel);
+              setSelectedChatModel(
+                chooseChatModel({
+                  models: catalog.models,
+                  stored: readStoredSessionChatModel(
+                    activeSessionIdRef.current,
+                  ),
+                  current: nextSettings.model,
+                  fallback: catalog.currentModel,
+                }),
+              );
               setModelsLoadMessage("");
             } catch {
               setModelsLoadMessage(
@@ -2718,6 +3092,12 @@ function App() {
             }
           }
         } catch (error) {
+          settingsSaveFailureRef.current = true;
+          pendingSettingsSaveRef.current = pendingAutosaveAfterFailure(
+            queued,
+            pendingSettingsSaveRef.current,
+          );
+          pausedForOnlineRetry = true;
           if (latestDraftFingerprintRef.current === queued.fingerprint) {
             setSettingsAutosaveState("error");
             setSettingsSaveError(error.message || "自动保存失败");
@@ -2725,6 +3105,8 @@ function App() {
             setSettingsAutosaveState("pending");
           }
           setNotice(error.message);
+          scheduleSettingsSaveRetry();
+          break;
         } finally {
           settingsSaveInFlightRef.current = false;
         }
@@ -2738,21 +3120,43 @@ function App() {
 
     settingsSaveRunRef.current = run.finally(() => {
       settingsSaveRunRef.current = null;
-      if (pendingSettingsSaveRef.current) {
+      if (pendingSettingsSaveRef.current && !pausedForOnlineRetry) {
         void flushSettingsSaveQueue();
       }
     });
     return settingsSaveRunRef.current;
   }
 
-  async function flushLatestSettingsDraft() {
-    if (!hasLoadedSettings) return true;
+  function scheduleSettingsSaveRetry() {
+    if (
+      !pendingSettingsSaveRef.current ||
+      settingsSaveRetryTimerRef.current ||
+      !navigator.onLine ||
+      settingsSaveRetryCountRef.current >=
+        SETTINGS_SAVE_RETRY_DELAYS_MS.length
+    ) {
+      return;
+    }
+
+    const delay =
+      SETTINGS_SAVE_RETRY_DELAYS_MS[settingsSaveRetryCountRef.current];
+    settingsSaveRetryCountRef.current += 1;
+    settingsSaveRetryTimerRef.current = window.setTimeout(() => {
+      settingsSaveRetryTimerRef.current = null;
+      void flushSettingsSaveQueue();
+    }, delay);
+  }
+
+  async function flushLatestSettingsDraft({ keepalive = false } = {}) {
+    if (!hasLoadedSettingsRef.current) return true;
 
     const payload = createSettingsPayload(draftSettingsRef.current);
     const fingerprint = settingsPayloadFingerprint(payload);
     latestDraftFingerprintRef.current = fingerprint;
     window.clearTimeout(settingsAutosaveTimerRef.current);
     settingsAutosaveTimerRef.current = null;
+    window.clearTimeout(settingsSaveRetryTimerRef.current);
+    settingsSaveRetryTimerRef.current = null;
 
     if (
       fingerprint === lastSavedSettingsFingerprintRef.current &&
@@ -2762,15 +3166,16 @@ function App() {
       return true;
     }
 
-    pendingSettingsSaveRef.current = { payload, fingerprint };
+    pendingSettingsSaveRef.current = { payload, fingerprint, keepalive };
     setSettingsAutosaveState("pending");
-    setSettingsSaveError("");
     const saved = await flushSettingsSaveQueue();
     return (
       saved &&
       fingerprint === lastSavedSettingsFingerprintRef.current
     );
   }
+
+  flushLatestSettingsDraftRef.current = flushLatestSettingsDraft;
 
   function saveSettings(event) {
     event.preventDefault();
@@ -2835,7 +3240,7 @@ function App() {
 
   async function loadMoments({ silent = false } = {}) {
     try {
-      const data = await apiRequest("/moments");
+      const data = await apiRequest("/api/v2/moments");
       setMomentsAvailable(data.available);
       setMoments(
         (data.entries || []).map((entry) => {
@@ -2857,7 +3262,7 @@ function App() {
 
     setIsPostingMoment(true);
     try {
-      await apiRequest("/moments", {
+      await apiRequest("/api/v2/moments", {
         method: "POST",
         body: JSON.stringify({
           content,
@@ -2870,9 +3275,7 @@ function App() {
       });
       setMomentDraft("");
       setMomentImages([]);
-      setNotice(
-        `${settings.ai_name || "小灯"} 已经收到这条动态，稍后会按当下的记忆和人设自然回应。`,
-      );
+      setNotice("动态已经发布。对方会不会留下痕迹，由当下的心情决定。");
       await loadMoments();
     } catch (error) {
       setNotice(error.message);
@@ -2937,7 +3340,7 @@ function App() {
         moment,
         updateMoments: setMoments,
         persist(liked) {
-          return apiRequest(`/moments/${moment.id}/like`, {
+          return apiRequest(`/api/v2/moments/${moment.id}/like`, {
             method: "POST",
             body: JSON.stringify({ liked }),
           });
@@ -2959,7 +3362,7 @@ function App() {
     if (!content) return;
 
     try {
-      await apiRequest(`/moments/${momentId}/comments`, {
+      await apiRequest(`/api/v2/moments/${momentId}/comments`, {
         method: "POST",
         body: JSON.stringify({ content }),
       });
@@ -2981,7 +3384,13 @@ function App() {
   }
 
   function changeView(view) {
-    if (activeView === "settings" && view !== "settings") {
+    if (
+      shouldScheduleSettingsOnViewChange({
+        activeView,
+        nextView: view,
+        hasLoadedSettings: hasLoadedSettingsRef.current,
+      })
+    ) {
       scheduleSettingsAutosave(draftSettingsRef.current, {
         immediate: true,
       });
@@ -2989,9 +3398,14 @@ function App() {
     if (view === "chat" && activeView !== "chat") {
       shouldAutoScrollRef.current = true;
     }
-    setIsComposerMenuOpen(false);
+    closeComposerMenu();
+    requestStatusPanelClose();
     setActiveView(view);
     setIsSidebarOpen(false);
+  }
+
+  function retryStartupConnection() {
+    void startupReconnectRef.current?.retryNow("manual");
   }
 
   function renderChat() {
@@ -3004,6 +3418,7 @@ function App() {
       !isVoiceInputBusy
         ? readReplySuggestions(latestMessage)
         : [];
+    const attachmentsAtLimit = chatAttachments.length >= 4;
 
     return (
       <>
@@ -3039,6 +3454,7 @@ function App() {
                 companionMood={companionStatus.mood}
                 apiBaseUrl={API_BASE_URL}
                 onPreview={handleImagePreview}
+                onReference={selectMessageForReference}
               />
             ))
           )}
@@ -3051,7 +3467,7 @@ function App() {
               type="button"
               className="composer-tool-scrim"
               aria-label="关闭更多功能"
-              onClick={() => setIsComposerMenuOpen(false)}
+              onClick={() => closeComposerMenu()}
             />
           )}
           {replySuggestions.length > 0 && (
@@ -3071,6 +3487,37 @@ function App() {
                   {suggestion}
                 </button>
               ))}
+            </div>
+          )}
+          {messageReference && (
+            <div className="composer-message-reference" role="status">
+              <div>
+                <strong>
+                  引用{" "}
+                  {messageReference.role === "user"
+                    ? "桃桃"
+                    : settings.ai_name || "小灯"}
+                </strong>
+                <span>
+                  {messageReference.text ||
+                    `${messageReference.attachment_summary?.count || 0} 个附件`}
+                  {messageReference.text_truncated ? "…" : ""}
+                </span>
+                {messageReference.attachment_summary?.count > 0 &&
+                  messageReference.text && (
+                    <small>
+                      另有 {messageReference.attachment_summary.count} 个附件
+                    </small>
+                  )}
+              </div>
+              <button
+                type="button"
+                aria-label="取消引用"
+                title="取消引用"
+                onClick={() => setMessageReference(null)}
+              >
+                ×
+              </button>
             </div>
           )}
           <SelectedAttachmentStrip
@@ -3102,10 +3549,21 @@ function App() {
               ref={messageInputRef}
               value={message}
               onChange={(event) => setMessage(event.target.value)}
+              onFocus={() => {
+                const next = transitionComposerOverlays(
+                  {
+                    statusExpanded: isStatusPanelExpanded,
+                    composerMenuOpen: isComposerMenuOpen,
+                  },
+                  "focus-input",
+                );
+                setIsComposerMenuOpen(next.composerMenuOpen);
+                requestStatusPanelClose();
+              }}
               onKeyDown={(event) => {
-                if (event.key === "Enter" && !event.shiftKey) {
+                if (shouldSubmitComposerKeyDown(event)) {
                   event.preventDefault();
-                  sendMessage();
+                  void sendMessage();
                 }
               }}
               placeholder="输入消息，或只添加附件后发送…"
@@ -3152,43 +3610,25 @@ function App() {
                 tabIndex="-1"
               />
               <button
+                ref={composerMenuTriggerRef}
                 className={`chat-attach-button${isComposerMenuOpen ? " active" : ""}`}
                 type="button"
-                title="更多功能"
-                aria-label="打开更多功能"
+                title={isComposerMenuOpen ? "关闭更多功能" : "更多功能"}
+                aria-label={
+                  isComposerMenuOpen ? "关闭更多功能" : "打开更多功能"
+                }
                 aria-expanded={isComposerMenuOpen}
                 disabled={
-                  chatAttachments.length >= 4 ||
                   isSending ||
                   isCompanionResponding ||
                   isVoiceInputBusy
                 }
-                onClick={() => setIsComposerMenuOpen((current) => !current)}
+                onClick={toggleComposerMenu}
               >
-                +
+                <span className="composer-menu-icon" aria-hidden="true">
+                  {isComposerMenuOpen ? "×" : "+"}
+                </span>
               </button>
-              <label className="chat-model-picker">
-                <span>模型</span>
-                <select
-                  aria-label="本轮模型"
-                  value={selectedChatModel}
-                  onChange={(event) => selectChatModel(event.target.value)}
-                  disabled={
-                    isSending || isCompanionResponding || isVoiceInputBusy
-                  }
-                >
-                  {availableModels.length === 0 && (
-                    <option value={selectedChatModel || settings.model || ""}>
-                      {activeChatModel || "由服务器自动选择"}
-                    </option>
-                  )}
-                  {availableModels.map((modelOption) => (
-                    <option value={modelOption.id} key={modelOption.id}>
-                      {modelOption.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
               <button
                 className="send-button"
                 onClick={sendMessage}
@@ -3216,6 +3656,8 @@ function App() {
               <div className="composer-tool-grid">
                 <button
                   type="button"
+                  disabled={attachmentsAtLimit}
+                  aria-disabled={attachmentsAtLimit}
                   onClick={() => chatImageInputRef.current?.click()}
                 >
                   <span aria-hidden="true">▧</span>
@@ -3224,6 +3666,8 @@ function App() {
                 </button>
                 <button
                   type="button"
+                  disabled={attachmentsAtLimit}
+                  aria-disabled={attachmentsAtLimit}
                   onClick={() => chatVideoInputRef.current?.click()}
                 >
                   <span aria-hidden="true">▶</span>
@@ -3232,6 +3676,8 @@ function App() {
                 </button>
                 <button
                   type="button"
+                  disabled={attachmentsAtLimit}
+                  aria-disabled={attachmentsAtLimit}
                   onClick={() => chatFileInputRef.current?.click()}
                 >
                   <span aria-hidden="true">▤</span>
@@ -3239,6 +3685,28 @@ function App() {
                   <small>PDF、文档与文本</small>
                 </button>
               </div>
+              <label className="chat-model-picker">
+                <span>模型</span>
+                <select
+                  aria-label="本会话模型"
+                  value={selectedChatModel}
+                  onChange={(event) => selectChatModel(event.target.value)}
+                  disabled={
+                    isSending || isCompanionResponding || isVoiceInputBusy
+                  }
+                >
+                  {availableModels.length === 0 && (
+                    <option value={selectedChatModel || settings.model || ""}>
+                      {activeChatModel || "由服务器自动选择"}
+                    </option>
+                  )}
+                  {availableModels.map((modelOption) => (
+                    <option value={modelOption.id} key={modelOption.id}>
+                      {modelOption.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <div className={`voice-controls voice-${voiceState}`}>
                 <button
                   className="voice-hold-button"
@@ -3456,29 +3924,20 @@ function App() {
                 {Array.isArray(item.images) && item.images.length > 0 && (
                   <div className={`moment-image-grid count-${item.images.length}`}>
                     {item.images.map((url, index) => (
-                      <button
-                        type="button"
-                        className="moment-image-button"
-                        aria-label={`查看动态图片 ${index + 1}`}
-                        onClick={() =>
-                          setImageViewer({
-                            url,
-                            alt: `动态图片 ${index + 1}`,
-                          })
+                      <AuthenticatedImage
+                        src={url}
+                        alt={`动态图片 ${index + 1}`}
+                        buttonClassName="moment-image-button"
+                        onPreview={(previewUrl, alt) =>
+                          setImageViewer({ url: previewUrl, alt })
                         }
                         key={`${url}-${index}`}
-                      >
-                        <img
-                          src={url}
-                          alt={`动态图片 ${index + 1}`}
-                          loading="lazy"
-                        />
-                      </button>
+                      />
                     ))}
                   </div>
                 )}
-                <div className="moment-actions">
-                  {item.author === "assistant" ? (
+                {item.author === "assistant" && (
+                  <div className="moment-actions">
                     <button
                       type="button"
                       aria-pressed={item.user_liked === true}
@@ -3490,19 +3949,12 @@ function App() {
                         ? item.user_liked
                           ? "♥ 保存中"
                           : "♡ 保存中"
-                        : item.user_liked
-                          ? "♥ 已喜欢"
-                          : "♡ 喜欢"}
+                          : item.user_liked
+                            ? "♥ 已喜欢"
+                            : "♡ 喜欢"}
                     </button>
-                  ) : (
-                    <span className="moment-reply-status">
-                      {formatMomentReplyStatus(
-                        item,
-                        settings.ai_name || "小灯",
-                      )}
-                    </span>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 {item.liked && item.author === "user" && (
                   <div className="ai-like">
@@ -3566,6 +4018,10 @@ function App() {
   function renderMemories() {
     return (
       <section className="feature-page memory-page">
+        <CompanionProfile
+          aiName={settings.ai_name || "小灯"}
+          onNotice={setNotice}
+        />
         <div className="section-intro">
           <span className="eyebrow">长期记忆</span>
           <h2>留在家里的事情</h2>
@@ -4196,9 +4652,15 @@ function App() {
     chat: activeSession?.title || "欢迎回家",
     moments: "动态空间",
     diary: "暗恋日记",
-    memories: "长期记忆",
+    memories: "角色档案",
     settings: "设置",
   }[activeView];
+  const showStartupRecovery =
+    startupConnection.failureCount > 0 &&
+    startupConnection.status !== "connected";
+  const startupRetrySeconds = Math.ceil(
+    Number(startupConnection.nextRetryDelayMs || 0) / 1_000,
+  );
 
   return (
     <div className="app-shell">
@@ -4287,6 +4749,10 @@ function App() {
           ))}
         </div>
 
+        {accountControl && (
+          <div className="sidebar-account-slot">{accountControl}</div>
+        )}
+
         <div className="sidebar-footer">
           <span className={`connection-dot ${isOnline ? "online" : ""}`} />
           {isOnline ? "服务可连接" : "网络已断开"}
@@ -4335,6 +4801,7 @@ function App() {
         >
           <CompanionStatus
             active={activeView === "chat"}
+            closeRequest={statusPanelCloseRequest}
             aiName={settings.ai_name || "小灯"}
             status={companionStatus}
             interactionStats={companionInteractionStats}
@@ -4343,6 +4810,7 @@ function App() {
             }
             isResponding={isCompanionResponding}
             onChange={setCompanionStatus}
+            onExpandedChange={handleStatusPanelExpandedChange}
             onInteract={handleCompanionInteraction}
           />
           <AmbientContextBadge
@@ -4350,6 +4818,27 @@ function App() {
             onContextChange={handleAmbientContextChange}
           />
         </div>
+
+        {showStartupRecovery && (
+          <div className="connection-recovery" role="status" aria-live="polite">
+            <div>
+              <strong>
+                {startupConnection.status === "connecting"
+                  ? "正在重新连接 DengTa 后端…"
+                  : "DengTa 后端暂时没有响应"}
+              </strong>
+              <span>
+                {startupConnection.status === "waiting" && startupRetrySeconds
+                  ? `将在 ${startupRetrySeconds} 秒后自动重试。`
+                  : startupConnection.lastError?.message ||
+                    "正在恢复设置和会话。"}
+              </span>
+            </div>
+            <button type="button" onClick={retryStartupConnection}>
+              立即重试
+            </button>
+          </div>
+        )}
 
         {notice && (
           <div className="notice" role="status">

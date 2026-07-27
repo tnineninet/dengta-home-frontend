@@ -29,6 +29,7 @@ export function chatRequestFingerprint({
   sessionId = "",
   message = "",
   turnContext = "",
+  messageReference = null,
   attachments = [],
   attachmentInstructionMode = "untrusted",
 } = {}) {
@@ -45,6 +46,7 @@ export function chatRequestFingerprint({
     String(sessionId || ""),
     String(message || ""),
     String(turnContext || ""),
+    JSON.stringify(messageReference || null),
     attachmentInstructionMode === "system" ? "system" : "untrusted",
     files,
   ]);

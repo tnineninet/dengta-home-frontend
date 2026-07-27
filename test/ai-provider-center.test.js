@@ -39,6 +39,10 @@ const failedProbeRefreshSource = sourceSection(
   "async function refreshProfilesAfterProbeFailure()",
   "useEffect(() =>",
 );
+const initialLoadSource = sourceSection(
+  "useEffect(() =>",
+  "const routableCount = useMemo(",
+);
 const editProfileSource = sourceSection(
   "function editProfile(",
   "function openCcSwitchBridge(",
@@ -68,7 +72,6 @@ assert.match(component, /多供应商 API 控制台/);
 assert.match(component, /OpenAI Responses \/ Sub2API \/ Codex 网关/);
 assert.match(component, /Claude \/ Anthropic 原生接口/);
 assert.match(component, /Gemini 原生接口/);
-assert.match(component, /X-AI-Provider-Admin-Secret/);
 assert.match(component, /检查模型目录但不保存/);
 assert.match(component, /付款页 \/ 控制台地址/);
 assert.match(component, /到期时间/);
@@ -82,7 +85,8 @@ assert.match(component, /下载无密钥离线桥接文件/);
 assert.match(component, /ccswitch:\/\/v1\/import/);
 assert.match(component, /不会读取 CC Switch 数据库/);
 assert.match(component, /127\.0\.0\.1/);
-assert.match(component, /管理口令只保存在本次页面内存/);
+assert.doesNotMatch(component, /X-AI-Provider-Admin-Secret/);
+assert.doesNotMatch(component, /管理口令|adminSecret|unlocked|provider-unlock/);
 assert.match(component, /<ProviderHealthSummary profile=\{profile\} \/>/);
 assert.match(component, /检查模型目录但不保存/);
 assert.match(component, /已到期，不可设为首选/);
@@ -98,6 +102,9 @@ assert.doesNotMatch(component, /auth\.json[^\n]*type="file"/i);
 assert.match(refreshProfilesSource, /\/api\/ai-providers\/manage/);
 assert.match(refreshProfilesSource, /Array\.isArray\(data\.profiles\)/);
 assert.match(refreshProfilesSource, /setProfiles\(nextProfiles\)/);
+assert.match(initialLoadSource, /aiProviderRequest\("\/api\/ai-providers\/manage"\)/);
+assert.match(initialLoadSource, /setProfiles\(Array\.isArray\(profilesData\.profiles\)/);
+assert.doesNotMatch(initialLoadSource, /X-AI-Provider-Admin-Secret|adminSecret/);
 assert.match(failedProbeRefreshSource, /await refreshProfiles\(\)/);
 assert.match(
   editProfileSource,

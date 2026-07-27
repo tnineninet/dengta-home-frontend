@@ -409,15 +409,15 @@ function AmbientContextBadge({
         data-minimized="true"
         data-side={side}
         style={{
-          width: 44,
-          height: 44,
-          minWidth: 44,
-          minHeight: 44,
+          width: 48,
+          height: 48,
+          minWidth: 48,
+          minHeight: 48,
           alignSelf: side === "left" ? "flex-start" : "flex-end",
           gridTemplateColumns: "1fr",
           margin: side === "left" ? "6px auto 0 0" : "6px 0 0 auto",
           padding: 0,
-          flex: "0 0 44px",
+          flex: "0 0 48px",
           position: "relative",
           zIndex: 9,
           overflow: "hidden",
@@ -493,6 +493,15 @@ function AmbientContextBadge({
         </div>
 
         <div className="ambient-context-actions">
+          <button
+            type="button"
+            className="ambient-context-minimize"
+            aria-label={`最小化时间和天气到${side === "left" ? "左" : "右"}侧`}
+            title="最小化时间和天气"
+            onClick={() => minimizeWidget(side)}
+          >
+            <span aria-hidden="true">{side === "left" ? "←" : "→"}</span>
+          </button>
           {statusCanRetry && (
             <button type="button" onClick={enableWeather}>
               重试

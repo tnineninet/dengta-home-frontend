@@ -13,10 +13,14 @@ import {
 } from "../src/chat-attachments.js";
 import {
   chooseChatModel,
+  migrateLegacyChatModelToSession,
   normalizeModelsResponse,
+  readServerSessionChatModel,
   readStoredChatModel,
+  readStoredSessionChatModel,
   reconcileModelCatalog,
   storeChatModel,
+  storeSessionChatModel,
 } from "../src/chat-models.js";
 import {
   attachThinkingTrace,
@@ -42,6 +46,53 @@ import {
 
 function fakeFile(name, type, size) {
   return { name, type, size };
+}
+
+{
+  const values = new Map([["dengta_chat_model_v1", "legacy-model"]]);
+  const storage = {
+    getItem(key) {
+      return values.get(key) ?? null;
+    },
+    setItem(key, value) {
+      values.set(key, value);
+    },
+    removeItem(key) {
+      values.delete(key);
+    },
+  };
+
+  assert.equal(
+    migrateLegacyChatModelToSession("first-session", storage),
+    "legacy-model",
+    "the old global selection must become the first active session model",
+  );
+  assert.equal(
+    readStoredSessionChatModel("first-session", storage),
+    "legacy-model",
+  );
+  assert.equal(
+    readStoredChatModel(storage),
+    "",
+    "the global key must be consumed so later sessions keep the App default",
+  );
+  assert.equal(
+    migrateLegacyChatModelToSession("later-session", storage),
+    "",
+  );
+}
+
+{
+  const sessions = [
+    { id: "session-a", model_id: "server-model-a" },
+    { id: "session-b", model_id: null },
+  ];
+  assert.equal(
+    readServerSessionChatModel(sessions, "session-a"),
+    "server-model-a",
+  );
+  assert.equal(readServerSessionChatModel(sessions, "session-b"), "");
+  assert.equal(readServerSessionChatModel(sessions, "missing"), "");
 }
 
 {
@@ -102,6 +153,23 @@ function fakeFile(name, type, size) {
     "47c2cb36-435b-43b5-93d1-ea8f21ba9b2a",
   );
   assert.equal(changedTurnContext.reused, false);
+  const changedReference = resolveChatClientMessage(
+    retry,
+    {
+      ...request,
+      messageReference: {
+        message_id: "quoted-message",
+        role: "assistant",
+        text: "换成了另一条引用",
+      },
+    },
+    { randomUUID: () => "57c2cb36-435b-43b5-93d1-ea8f21ba9b2a" },
+  );
+  assert.equal(
+    changedReference.clientMessageId,
+    "57c2cb36-435b-43b5-93d1-ea8f21ba9b2a",
+  );
+  assert.equal(changedReference.reused, false);
   assert.equal(clearChatClientMessage(changed, fixedId), changed);
   assert.equal(clearChatClientMessage(changed, changed.clientMessageId), null);
   const committedRetry = updateChatClientMessage(first, fixedId, {
@@ -385,6 +453,34 @@ assert.equal(
 }
 
 {
+  const models = [
+    { id: "app-default", label: "App default" },
+    { id: "saved-for-session", label: "Saved" },
+    { id: "provider-current", label: "Provider current" },
+  ];
+  assert.equal(
+    chooseChatModel({
+      models,
+      stored: "",
+      current: "app-default",
+      fallback: "provider-current",
+    }),
+    "app-default",
+    "a new conversation must start from the App default",
+  );
+  assert.equal(
+    chooseChatModel({
+      models,
+      stored: "saved-for-session",
+      current: "app-default",
+      fallback: "provider-current",
+    }),
+    "saved-for-session",
+    "an existing conversation must restore its own model",
+  );
+}
+
+{
   const retained = reconcileModelCatalog(
     { models: ["new-default", "still-valid"], current_model: "new-default" },
     { previous: "still-valid", fallback: "new-default" },
@@ -407,6 +503,27 @@ assert.equal(
   };
   storeChatModel("gpt-test", storage);
   assert.equal(readStoredChatModel(storage), "gpt-test");
+}
+
+{
+  const values = new Map();
+  const storage = {
+    getItem: (key) => values.get(key) || null,
+    setItem: (key, value) => values.set(key, value),
+    removeItem: (key) => values.delete(key),
+  };
+  storeSessionChatModel("session-a", "gpt-a", storage);
+  storeSessionChatModel("session-b", "gpt-b", storage);
+  assert.equal(readStoredSessionChatModel("session-a", storage), "gpt-a");
+  assert.equal(readStoredSessionChatModel("session-b", storage), "gpt-b");
+  assert.equal(
+    readStoredSessionChatModel("new-session", storage),
+    "",
+    "a new conversation must not inherit another conversation's model",
+  );
+  storeSessionChatModel("session-a", "", storage);
+  assert.equal(readStoredSessionChatModel("session-a", storage), "");
+  assert.equal(readStoredSessionChatModel("session-b", storage), "gpt-b");
 }
 
 {
@@ -542,6 +659,13 @@ assert.equal(
       weather: { temperatureC: 26, description: "晴朗" },
     },
     turn_context: "本轮接着雨天回家的剧情",
+    message_reference: {
+      message_id: "quoted-message",
+      role: "assistant",
+      text: "刚才说要抱一下",
+      text_truncated: false,
+      attachment_summary: null,
+    },
     model: "gpt-test",
     client_message_id: "0f594d5c-e6d1-4f24-a583-cd5c66f81d75",
     files: [{ file: first }, second],
@@ -558,6 +682,13 @@ assert.equal(
     weather: { temperatureC: 26, description: "晴朗" },
   });
   assert.equal(formData.get("turn_context"), "本轮接着雨天回家的剧情");
+  assert.deepEqual(JSON.parse(formData.get("message_reference")), {
+    message_id: "quoted-message",
+    role: "assistant",
+    text: "刚才说要抱一下",
+    text_truncated: false,
+    attachment_summary: null,
+  });
   assert.equal(formData.get("model"), "gpt-test");
   assert.equal(
     formData.get("client_message_id"),

@@ -61,13 +61,26 @@ const cssCascade = loadEntrypointCssCascade(
   mobileViewport,
 );
 const css = cssCascade.source;
+const narrowViewport = { width: 280, height: 653, reducedMotion: false };
+const narrowCssCascade = loadEntrypointCssCascade(
+  new URL("../src/main.jsx", import.meta.url),
+  narrowViewport,
+);
 const shortLandscapeCascade = loadEntrypointCssCascade(
   new URL("../src/main.jsx", import.meta.url),
   { width: 844, height: 390, reducedMotion: false },
 );
 const app = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
+const chatMessage = fs.readFileSync(
+  new URL("../src/ChatMessage.jsx", import.meta.url),
+  "utf8",
+);
 const status = fs.readFileSync(
   new URL("../src/CompanionStatus.jsx", import.meta.url),
+  "utf8",
+);
+const ambientContextBadge = fs.readFileSync(
+  new URL("../src/AmbientContextBadge.jsx", import.meta.url),
   "utf8",
 );
 const androidManifest = fs.readFileSync(
@@ -85,8 +98,18 @@ function sourceBetween(startMarker, endMarker) {
 
 assert.deepEqual(
   cssCascade.stylesheets.map((stylesheet) => stylesheet.name),
-  ["index.css", "cozy-theme.css"],
+  ["index.css", "cozy-theme.css", "auth.css"],
   "layout tests must use the same stylesheet order as the application entrypoint",
+);
+assert.match(
+  css,
+  /html,\s*body,\s*#root\s*\{[^}]*min-width:\s*0;/s,
+  "the app root must not force horizontal overflow on the 280px regression viewport",
+);
+assert.deepEqual(
+  narrowCssCascade.stylesheets.map((stylesheet) => stylesheet.name),
+  ["index.css", "cozy-theme.css", "auth.css"],
+  "the 280px regression must use the complete application stylesheet cascade",
 );
 
 const rootLayout = cssCascade.declarations(":root");
@@ -112,6 +135,18 @@ const keyboardNavLayout = cssCascade.declarations(
 const keyboardPresenceLayout = cssCascade.declarations(
   ':root[data-keyboard-open="true"] .chat-presence-stack',
 );
+const narrowMainPanelLayout = narrowCssCascade.declarations(".main-panel");
+const narrowViewContentLayout = narrowCssCascade.declarations(".view-content");
+const narrowChatContentLayout = narrowCssCascade.declarations(
+  ".view-chat .view-content",
+);
+const narrowMessageListLayout = narrowCssCascade.declarations(".message-list");
+const narrowComposerLayout = narrowCssCascade.declarations(".composer-wrap");
+const narrowComposerToolbarLayout =
+  narrowCssCascade.declarations(".composer-toolbar");
+const narrowStatusSummaryLayout =
+  narrowCssCascade.declarations(".status-summary");
+const narrowMobileNavLayout = narrowCssCascade.declarations(".mobile-nav");
 
 assert.equal(
   rootLayout["--mobile-nav-reserved-height"]?.value,
@@ -138,14 +173,23 @@ assert.equal(
   "the 390px composer must include the later cozy-theme mobile override",
 );
 assert.equal(
-  chatContentLayout["grid-template-rows"]?.value,
-  "minmax(0, 1fr) auto",
-  "chat must reserve an independent row for the composer",
+  chatContentLayout.display?.value,
+  "contents",
+  "mobile message history and composer must participate directly in the main vertical layout",
 );
 assert.equal(chatContentLayout["min-height"]?.value, "0");
 assert.equal(chatContentLayout.flex?.value, "1 1 0%");
-assert.equal(messageListLayout["min-height"]?.value, "0");
+assert.equal(
+  messageListLayout["min-height"]?.value,
+  "64px",
+  "expanded panels must still leave a readable slice of chat history",
+);
 assert.equal(messageListLayout["overflow-y"]?.value, "auto");
+assert.equal(
+  messageListLayout.flex?.value,
+  "1 1 0%",
+  "message history must absorb the remaining chat height",
+);
 assert.equal(
   messageListLayout.padding?.value,
   "18px 12px",
@@ -158,20 +202,26 @@ assert.equal(
 );
 assert.equal(
   expandedStatusLayout["min-height"]?.value,
-  "clamp(320px, 50vh, 500px)",
+  "160px",
+  "the expanded status must be allowed to yield space to recovery notices and the composer",
 );
 assert.equal(
   expandedStatusLayout["max-height"]?.value,
   "clamp(320px, 50vh, 500px)",
-  "the expanded status must keep a stable mobile height",
+  "the expanded status may use half the viewport when enough space is available",
 );
 assert.equal(
   expandedStatusLayout.flex?.value,
-  "0 0 clamp(320px, 50vh, 500px)",
-  "reply suggestions must not shrink the expanded status",
+  "1 1 clamp(320px, 50vh, 500px)",
+  "the expanded status must shrink before the composer can overlap navigation",
 );
 assert.equal(expandedStatusLayout["flex-direction"]?.value, "column");
-assert.equal(presenceStackLayout.flex?.value, "0 0 auto");
+assert.equal(
+  presenceStackLayout.flex?.value,
+  "0 1 auto",
+  "the presence stack must yield vertical space when a recovery notice is visible",
+);
+assert.equal(presenceStackLayout["min-height"]?.value, "0");
 assert.equal(statusPanelLayout["min-height"]?.value, "0");
 assert.equal(statusPanelLayout.flex?.value, "1 1 auto");
 assert.equal(statusPanelLayout["overflow-y"]?.value, "auto");
@@ -182,6 +232,25 @@ assert.equal(
 );
 assert.equal(expandedChatContentLayout["min-height"]?.value, "0");
 assert.equal(expandedChatContentLayout.flex?.value, "1 1 0%");
+assert.equal(
+  composerLayout.flex?.value,
+  "0 0 auto",
+  "the composer must keep its measured height when status or recovery UI grows",
+);
+assert.equal(
+  presenceStackLayout.position?.value,
+  "relative",
+  "the status and weather stack must establish its own layer above chat history",
+);
+assert.ok(
+  Number.parseInt(presenceStackLayout["z-index"]?.value || "0", 10) > 0,
+  "the status and weather stack must not fall behind chat messages",
+);
+assert.ok(
+  Number.parseInt(mobileNavLayout["z-index"]?.value || "0", 10) >
+    Number.parseInt(composerLayout["z-index"]?.value || "0", 10),
+  "the fixed mobile navigation must remain above composer overlays",
+);
 assert.equal(
   keyboardRootLayout["--mobile-nav-reserved-height"]?.value,
   "0px",
@@ -201,6 +270,51 @@ assert.ok(
   Number.parseInt(composerLayout["z-index"]?.value || "0", 10) >
     Number.parseInt(presenceStackLayout["z-index"]?.value || "0", 10),
   "the add menu must render above the status and weather stack",
+);
+assert.equal(
+  narrowMainPanelLayout["min-width"]?.value,
+  "0",
+  "the 280px chat panel must be allowed to shrink below legacy phone widths",
+);
+assert.equal(
+  narrowViewContentLayout["min-width"]?.value,
+  "0",
+  "the 280px chat content must not force horizontal overflow",
+);
+assert.equal(
+  narrowChatContentLayout.display?.value,
+  "contents",
+  "the 280px chat must keep the composer as a direct non-shrinking flex item",
+);
+assert.equal(
+  narrowMessageListLayout["min-width"]?.value,
+  "0",
+  "the 280px message list must remain horizontally shrinkable",
+);
+assert.equal(
+  narrowComposerLayout["min-width"]?.value,
+  "0",
+  "the 280px composer wrapper must remain horizontally shrinkable",
+);
+assert.equal(
+  narrowComposerLayout["max-width"]?.value,
+  "100%",
+  "the 280px composer wrapper must stay within the viewport",
+);
+assert.equal(
+  narrowComposerToolbarLayout["grid-template-columns"]?.value,
+  "44px minmax(0, 1fr)",
+  "the 280px composer toolbar must keep a fixed plus button and a shrinkable input",
+);
+assert.equal(
+  narrowStatusSummaryLayout["grid-template-columns"]?.value,
+  "auto minmax(0, 1fr) auto auto",
+  "the 280px status summary must keep only its text column shrinkable",
+);
+assert.equal(
+  narrowMobileNavLayout["grid-template-columns"]?.value,
+  "repeat(5, minmax(0, 1fr))",
+  "the 280px navigation must divide the viewport without intrinsic-width overflow",
 );
 
 const landscapeExpandedStatus = shortLandscapeCascade.declarations(
@@ -247,6 +361,16 @@ const touchZone = status.match(
   /function touchZone\(zone\)\s*\{([\s\S]*?)\n\s*\}/,
 )?.[1];
 assert.ok(touchZone, "touchZone handler must exist");
+assert.match(
+  status,
+  /const \[expanded,\s*setExpanded\] = useState\(false\)/,
+  "the status panel must start compact on every mounted app session",
+);
+assert.match(
+  app,
+  /const \[isStatusPanelExpanded,\s*setIsStatusPanelExpanded\] = useState\(false\)/,
+  "the parent layout must also reserve compact status geometry by default",
+);
 assert.doesNotMatch(
   touchZone,
   /setExpanded\(false\)/,
@@ -264,13 +388,13 @@ assert.match(
 );
 assert.match(
   status,
-  /event\.key === "Escape"[\s\S]*?setExpanded\(false\)/,
+  /event\.key === "Escape"[\s\S]*?closePanel\(\)/,
   "status panel must close from the keyboard without changing views",
 );
 assert.match(
   status,
-  /closest\("\.composer-wrap, \.mobile-nav"\)/,
-  "using the composer or mobile navigation must not collapse the status panel",
+  /if \(!rootRef\.current\?\.contains\(event\.target\)\) \{\s*closePanel\(\)/,
+  "using anything outside the status panel must collapse it",
 );
 assert.match(
   status,
@@ -279,7 +403,7 @@ assert.match(
 );
 assert.match(
   status,
-  /aria-expanded=\{expanded\}[\s\S]*?onClick=\{\(\) =>\s*setExpanded\(\(current\) => !current\)\}/,
+  /aria-expanded=\{expanded\}[\s\S]*?onClick=\{\(\) => \(expanded \? closePanel\(\) : openPanel\(\)\)\}/,
   "the status summary must explicitly toggle open and closed",
 );
 assert.match(
@@ -361,7 +485,7 @@ assert.match(
 );
 assert.match(
   status,
-  /if \(active\) return undefined;[\s\S]*?requestAnimationFrame[\s\S]*?setExpanded\(false\);[\s\S]*?scrollTo\(\{ top: 0 \}\)/,
+  /const closePanel = useCallback\(\(\) => \{[\s\S]*?scrollTo\(\{ top: 0 \}\);[\s\S]*?setExpanded\(false\)[\s\S]*?if \(active\) return undefined;[\s\S]*?requestAnimationFrame\(\(\) => \{[\s\S]*?closePanel\(\)/,
   "an inactive status panel must close and reset its private scroll position",
 );
 assert.match(
@@ -371,8 +495,8 @@ assert.match(
 );
 assert.match(
   app,
-  /function changeView\(view\)[\s\S]*?setIsComposerMenuOpen\(false\)[\s\S]*?setActiveView\(view\)/,
-  "the composer tool menu must close when navigating away from chat",
+  /function changeView\(view\)[\s\S]*?closeComposerMenu\(\)[\s\S]*?requestStatusPanelClose\(\)[\s\S]*?setActiveView\(view\)/,
+  "navigation must close both chat overlays",
 );
 assert.match(
   css,
@@ -389,6 +513,46 @@ assert.equal(
   1,
   "the hold-to-talk control must not remain duplicated below the composer",
 );
+assert.match(
+  app,
+  /ref=\{composerMenuTriggerRef\}[\s\S]*?disabled=\{\s*isSending \|\|[\s\S]*?onClick=\{toggleComposerMenu\}/,
+  "the attachment count must not disable the plus menu itself",
+);
+assert.match(
+  app,
+  /aria-label=\{\s*isComposerMenuOpen \? "关闭更多功能" : "打开更多功能"[\s\S]*?\{isComposerMenuOpen \? "×" : "\+"\}/,
+  "the plus menu trigger must expose its open state without rotating the whole button",
+);
+assert.doesNotMatch(
+  css,
+  /\.chat-attach-button\.active\s*\{[^}]*transform:/s,
+  "opening the plus menu must not rotate its square trigger into a diamond",
+);
+assert.match(
+  app,
+  /disabled=\{attachmentsAtLimit\}[\s\S]*?chatImageInputRef[\s\S]*?disabled=\{attachmentsAtLimit\}[\s\S]*?chatVideoInputRef[\s\S]*?disabled=\{attachmentsAtLimit\}[\s\S]*?chatFileInputRef/,
+  "only attachment choices must be disabled at the attachment limit",
+);
+assert.match(
+  app,
+  /closeComposerMenuFromEscape[\s\S]*?event\.key !== "Escape"[\s\S]*?closeComposerMenu\(true\)/,
+  "Escape must close the plus menu through its focus-restoring path",
+);
+assert.match(
+  app,
+  /closeComposerMenu = useCallback[\s\S]*?requestAnimationFrame\(\(\) => composerMenuTriggerRef\.current\?\.focus\(\)\)/,
+  "closing the plus menu from Escape must restore focus to its trigger",
+);
+assert.match(
+  app,
+  /className="composer-tool-menu"[\s\S]*?aria-label="本会话模型"/,
+  "the per-conversation model picker must live inside the plus menu",
+);
+assert.match(
+  app,
+  /onFocus=\{\(\) => \{[\s\S]*?"focus-input"[\s\S]*?requestStatusPanelClose\(\)/,
+  "focusing the message input must close the status panel",
+);
 assert.doesNotMatch(
   app,
   /key=\{`companion-status-/,
@@ -398,6 +562,120 @@ assert.match(
   app,
   /window\.setTimeout\(enqueue,\s*800\)/,
   "settings changes must be autosaved after a short debounce",
+);
+assert.match(
+  app,
+  /const recovered = mergeRecoveredStartupData\([\s\S]*?activeSessionIdRef\.current = recovered\.activeSessionId;[\s\S]*?migrateLegacyChatModelToSession\(recovered\.activeSessionId\)/,
+  "startup must migrate the old global model selection into the first active session",
+);
+assert.match(
+  app,
+  /function initializeSessionChatModel\(sessionId, serverModel = ""\)[\s\S]*?migrateLegacyChatModelToSession\(sessionId\)[\s\S]*?serverModel \|\| migratedModel \|\| settings\.model/,
+  "new sessions must consume a pending legacy model or fall back to the App default",
+);
+const createSessionSource = sourceBetween(
+  "async function createSession()",
+  "function chooseSession(",
+);
+assert.match(
+  createSessionSource,
+  /model_id:\s*settings\.model \|\| undefined[\s\S]*?initializeSessionChatModel\(data\.session\.id,\s*data\.session\.model_id\)/,
+  "an explicitly created first session must initialize its own model immediately",
+);
+assert.match(
+  app,
+  /function selectChatModel\(value\)[\s\S]*?apiRequest\(`\/api\/v2\/sessions\/\$\{sessionId\}`,[\s\S]*?method: "PATCH"[\s\S]*?model_id: model[\s\S]*?已恢复之前的模型/,
+  "model changes must be serialized to the current session and roll back on failure",
+);
+assert.match(
+  app,
+  /readServerSessionChatModel\(\s*recovered\.sessions,[\s\S]*?recovered\.activeSessionId[\s\S]*?storeSessionChatModel\(recovered\.activeSessionId, serverSessionModel\)/,
+  "startup must prefer the server-persisted model for cross-device continuity",
+);
+assert.match(
+  app,
+  /visibilitychange[\s\S]*?flushSettingsBeforePageLeaves[\s\S]*?pagehide/,
+  "hidden and pagehide lifecycle events must flush the settings draft",
+);
+assert.match(
+  app,
+  /pendingAutosaveAfterFailure\(\s*queued,\s*pendingSettingsSaveRef\.current[\s\S]*?pausedForOnlineRetry = true[\s\S]*?break/,
+  "a failed autosave must remain queued while the active request loop stops",
+);
+assert.match(
+  app,
+  /SETTINGS_SAVE_RETRY_DELAYS_MS = \[1200,\s*3500,\s*8000\]/,
+  "online autosave failures must use a finite delayed retry schedule",
+);
+assert.match(
+  app,
+  /settingsSaveRetryCountRef\.current >=[\s\S]*?SETTINGS_SAVE_RETRY_DELAYS_MS\.length[\s\S]*?window\.setTimeout\(\(\) => \{[\s\S]*?flushSettingsSaveQueue\(\)/,
+  "autosave retries must stop at the configured limit and retry through the same queue",
+);
+assert.match(
+  app,
+  /settingsLifecycleFlushPendingRef\.current\) return;[\s\S]*?settingsLifecycleFlushPendingRef\.current = true;[\s\S]*?flushLatestSettingsDraftRef\.current\(\{ keepalive: true \}\)/,
+  "visibilitychange and pagehide must share one lifecycle flush per hidden cycle",
+);
+assert.match(
+  ambientContextBadge,
+  /className="ambient-context-minimize"[\s\S]*?aria-label=\{`最小化时间和天气到[\s\S]*?onClick=\{\(\) => minimizeWidget\(side\)\}/,
+  "weather must provide an explicit accessible minimize button in addition to gestures",
+);
+assert.match(
+  ambientContextBadge,
+  /data-minimized="true"[\s\S]*?width:\s*48,[\s\S]*?height:\s*48,[\s\S]*?minWidth:\s*48,[\s\S]*?minHeight:\s*48,/,
+  "the minimized weather control must expose at least a 48 by 48 touch target",
+);
+assert.match(
+  ambientContextBadge,
+  /const \[minimized,\s*setMinimized\] = useState\(\s*initialState\.preferences\.minimized,\s*\)/,
+  "weather minimization must restore from the persisted preference",
+);
+assert.match(
+  ambientContextBadge,
+  /const \[side,\s*setSide\] = useState\(initialState\.preferences\.side\)/,
+  "the minimized weather edge must restore from the persisted preference",
+);
+assert.match(
+  ambientContextBadge,
+  /function minimizeWidget\(nextSide\)[\s\S]*?persistPreferences\(\{ minimized: true, side: normalizedSide \}\)/,
+  "minimizing weather must persist both its state and chosen edge",
+);
+assert.match(
+  ambientContextBadge,
+  /function restoreWidget\(\)[\s\S]*?persistPreferences\(\{ minimized: false, side \}\)/,
+  "restoring weather must persist the expanded state",
+);
+assert.match(
+  css,
+  /\.composer-toolbar\s*\{[^}]*grid-template-columns:\s*42px minmax\(0,\s*1fr\)/s,
+  "the base composer toolbar must remain two-column after model selection moved into the plus menu",
+);
+assert.match(
+  chatMessage,
+  /onPointerDown=\{beginLongPress\}[\s\S]*?onPointerMove=\{moveLongPress\}[\s\S]*?onPointerUp=\{endLongPress\}[\s\S]*?onPointerCancel=\{cancelLongPress\}/,
+  "message long press must cancel cleanly when Android turns the gesture into scrolling",
+);
+assert.match(
+  chatMessage,
+  /event\.target\?\.closest\?\.\("button, a, input, textarea, select"\)/,
+  "long press must leave attachment controls and links interactive",
+);
+assert.match(
+  chatMessage,
+  /className="message-reference-button"[\s\S]*?aria-label=\{`引用\$\{displayName\}的这条消息`\}/,
+  "each referenceable message must expose a keyboard and screen-reader fallback",
+);
+assert.match(
+  app,
+  /className="composer-message-reference"[\s\S]*?aria-label="取消引用"/,
+  "the composer must show a cancellable reference snapshot",
+);
+assert.match(
+  css,
+  /\.message-row\.can-reference\s*\{[^}]*touch-action:\s*pan-y/s,
+  "reference gestures must preserve vertical chat scrolling",
 );
 assert.match(
   app,
@@ -418,6 +696,11 @@ const sendMessageSource = sourceBetween(
   "async function sendMessage()",
   "function scheduleSettingsAutosave",
 );
+assert.match(
+  sendMessageSource,
+  /message_reference:\s*messageReferenceAtRequest/,
+  "the reference snapshot must travel separately from turn_context",
+);
 assert.ok(
   sendMessageSource.indexOf("await flushLatestSettingsDraft()") >= 0 &&
     sendMessageSource.indexOf("await flushLatestSettingsDraft()") <
@@ -431,7 +714,7 @@ const submitVoiceSource = sourceBetween(
 assert.ok(
   submitVoiceSource.indexOf("await flushLatestSettingsDraft()") >= 0 &&
     submitVoiceSource.indexOf("await flushLatestSettingsDraft()") <
-      submitVoiceSource.indexOf('apiRequest("/sessions"'),
+      submitVoiceSource.indexOf('apiRequest("/api/v2/sessions"'),
   "voice chat must save the latest role settings before its first request",
 );
 const companionInteractionSource = sourceBetween(
@@ -457,8 +740,8 @@ const changeViewSource = sourceBetween(
 );
 assert.match(
   changeViewSource,
-  /activeView === "settings"[\s\S]*scheduleSettingsAutosave\(draftSettingsRef\.current,[\s\S]*immediate: true/,
-  "leaving settings must start an immediate save",
+  /shouldScheduleSettingsOnViewChange\(\{[\s\S]*activeView,[\s\S]*nextView: view,[\s\S]*hasLoadedSettings: hasLoadedSettingsRef\.current,[\s\S]*scheduleSettingsAutosave\(draftSettingsRef\.current,[\s\S]*immediate: true/,
+  "leaving loaded settings must start an immediate save without writing during startup",
 );
 assert.doesNotMatch(
   app,

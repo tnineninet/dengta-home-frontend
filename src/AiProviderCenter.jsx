@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { API_BASE_URL } from "./api";
+import { apiFetch } from "./api";
 import {
   buildCcSwitchBridgeHtml,
   buildCcSwitchDeepLink,
@@ -53,32 +53,23 @@ const EMPTY_PROVIDER_DRAFT = {
   notes: "",
 };
 
-function isValidAiProviderAdminSecret(value) {
-  const normalized = String(value || "").trim();
-  return normalized.length >= 24
-    && normalized.length <= 256
-    && /^[\x21-\x7e]+$/.test(normalized);
-}
-
 function protocolLabel(value) {
   return PROTOCOL_OPTIONS.find((item) => item.value === value)?.label || value;
 }
 
 async function aiProviderRequest(
   path,
-  { adminSecret = "", method = "GET", body } = {},
+  { method = "GET", body } = {},
 ) {
   const headers = { Accept: "application/json" };
-  if (adminSecret) {
-    headers["X-AI-Provider-Admin-Secret"] = String(adminSecret).trim();
-  }
   if (body !== undefined) headers["Content-Type"] = "application/json";
   let response;
   try {
-    response = await fetch(API_BASE_URL + path, {
+    response = await apiFetch(path, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
+      retry: false,
     });
   } catch {
     throw new Error("无法连接 DengTa 后端，请稍后再试。");
@@ -294,8 +285,6 @@ function ProviderFields({ value, onChange, models = [], editing = false }) {
 
 export default function AiProviderCenter() {
   const [status, setStatus] = useState({ checking: true });
-  const [adminSecret, setAdminSecret] = useState("");
-  const [unlocked, setUnlocked] = useState(false);
   const [profiles, setProfiles] = useState([]);
   const [draft, setDraft] = useState({ ...EMPTY_PROVIDER_DRAFT });
   const [draftModels, setDraftModels] = useState([]);
@@ -316,9 +305,7 @@ export default function AiProviderCenter() {
   }
 
   async function refreshProfiles() {
-    const data = await aiProviderRequest("/api/ai-providers/manage", {
-      adminSecret,
-    });
+    const data = await aiProviderRequest("/api/ai-providers/manage");
     const nextProfiles = Array.isArray(data.profiles) ? data.profiles : [];
     setProfiles(nextProfiles);
     return nextProfiles;
@@ -335,13 +322,19 @@ export default function AiProviderCenter() {
 
   useEffect(() => {
     let active = true;
-    aiProviderRequest("/api/ai-providers/status")
-      .then((data) => {
-        if (active) setStatus({ ...data, checking: false });
+    Promise.all([
+      aiProviderRequest("/api/ai-providers/status"),
+      aiProviderRequest("/api/ai-providers/manage"),
+    ])
+      .then(([statusData, profilesData]) => {
+        if (!active) return;
+        setStatus({ ...statusData, checking: false });
+        setProfiles(Array.isArray(profilesData.profiles) ? profilesData.profiles : []);
       })
       .catch((error) => {
         if (active) {
           setStatus({ checking: false, available: false, message: error.message });
+          setFeedback(error.message);
         }
       });
     return () => {
@@ -436,37 +429,11 @@ export default function AiProviderCenter() {
     }
   }
 
-  async function unlock(event) {
-    event.preventDefault();
-    const normalized = adminSecret.trim();
-    if (!isValidAiProviderAdminSecret(normalized)) {
-      setUnlocked(false);
-      setFeedback("管理口令格式不正确：请粘贴 Render 中至少 24 位的英文、数字或符号口令。");
-      return;
-    }
-    setBusy("unlock");
-    setFeedback("");
-    try {
-      const data = await aiProviderRequest("/api/ai-providers/manage", {
-        adminSecret: normalized,
-      });
-      setProfiles(data.profiles || []);
-      setUnlocked(true);
-      setFeedback("多接口控制台已解锁。管理口令只保存在本次页面内存，关闭 App 后清除。");
-    } catch (error) {
-      setUnlocked(false);
-      setFeedback(error.message);
-    } finally {
-      setBusy("");
-    }
-  }
-
   async function testDraft() {
     setBusy("test-draft");
     setFeedback("");
     try {
       const data = await aiProviderRequest("/api/ai-providers/manage/test", {
-        adminSecret,
         method: "POST",
         body: providerPayload(draft),
       });
@@ -486,7 +453,6 @@ export default function AiProviderCenter() {
     setFeedback("");
     try {
       await aiProviderRequest("/api/ai-providers/manage", {
-        adminSecret,
         method: "POST",
         body: providerPayload(draft),
       });
@@ -507,7 +473,6 @@ export default function AiProviderCenter() {
     setFeedback("");
     try {
       await aiProviderRequest("/api/ai-providers/manage/" + profile.id, {
-        adminSecret,
         method: "PUT",
         body: providerPayload(profile),
       });
@@ -527,7 +492,7 @@ export default function AiProviderCenter() {
     try {
       const data = await aiProviderRequest(
         "/api/ai-providers/manage/" + profile.id + "/test",
-        { adminSecret, method: "POST" },
+        { method: "POST" },
       );
       await refreshProfiles();
       setFeedback("模型目录可读取，发现 " + (data.models?.length || 0) + " 个模型。");
@@ -546,7 +511,7 @@ export default function AiProviderCenter() {
     try {
       await aiProviderRequest(
         "/api/ai-providers/manage/" + profile.id + "/default",
-        { adminSecret, method: "POST" },
+        { method: "POST" },
       );
       await refreshProfiles();
       setFeedback("下次聊天首选已更新；这不表示接口正在运行，新的聊天请求才会使用它。");
@@ -564,7 +529,6 @@ export default function AiProviderCenter() {
     setFeedback("");
     try {
       await aiProviderRequest("/api/ai-providers/manage/" + profile.id, {
-        adminSecret,
         method: "DELETE",
       });
       await refreshProfiles();
@@ -596,40 +560,18 @@ export default function AiProviderCenter() {
       </div>
 
       <div className="provider-summary-grid">
-        <span><strong>{unlocked ? profiles.length : status.profiles || 0}</strong><small>已保存接口</small></span>
+        <span><strong>{profiles.length}</strong><small>已保存接口</small></span>
         <span>
-          <strong>{unlocked
-            ? routableCount
-            : status.routable_profiles ?? (status.active_profile ? "≥1" : 0)}</strong>
+          <strong>{routableCount}</strong>
           <small>当前可路由</small>
         </span>
         <span><strong>{status.active_profile?.name || "旧版接口"}</strong><small>下次聊天首选</small></span>
       </div>
 
-      {!unlocked && (
-        <form className="provider-unlock" onSubmit={unlock}>
-          <label>
-            管理口令
-            <input
-              type="password"
-              value={adminSecret}
-              onChange={(event) => setAdminSecret(event.target.value)}
-              placeholder="粘贴 Render 中的管理口令"
-              autoComplete="off"
-            />
-            <small>可继续复用 MCP_ADMIN_SECRET；口令不会写入手机持久存储，也不会显示在接口列表里。</small>
-          </label>
-          <button className="primary-button" disabled={busy === "unlock"}>
-            {busy === "unlock" ? "解锁中" : "解锁多接口控制台"}
-          </button>
-        </form>
-      )}
-
       {feedback && <p className="provider-feedback" role="status">{feedback}</p>}
 
-      {unlocked && (
-        <>
-          <form className="provider-create-card" onSubmit={createProfile}>
+      <>
+        <form className="provider-create-card" onSubmit={createProfile}>
             <div className="provider-section-title">
               <div><strong>新增一个接口</strong><small>可先检查模型目录而不保存；确认无误后再保存并启用。</small></div>
             </div>
@@ -642,9 +584,9 @@ export default function AiProviderCenter() {
                 {busy === "create" ? "保存中" : "安全保存接口"}
               </button>
             </div>
-          </form>
+        </form>
 
-          <div className="provider-profile-list">
+        <div className="provider-profile-list">
             {profiles.map((profile) => (
               <article className={profile.is_default ? "provider-profile-card default" : "provider-profile-card"} key={profile.id}>
                 <div className="provider-profile-head">
@@ -762,9 +704,8 @@ export default function AiProviderCenter() {
               </article>
             ))}
             {profiles.length === 0 && <p className="provider-empty">还没有保存接口。旧版单接口会继续工作，不会因这里为空而中断聊天。</p>}
-          </div>
-        </>
-      )}
+        </div>
+      </>
 
       <details className="provider-tutorial">
         <summary>零基础填写教程：New API、Sub2API、CPA 和普通模型 API</summary>
