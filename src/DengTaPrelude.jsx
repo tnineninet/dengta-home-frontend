@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-const PRELUDE_DURATION_MS = 2_250;
+const PRELUDE_DURATION_MS = 2_600;
 
 export default function DengTaPrelude() {
   const [visible, setVisible] = useState(true);
@@ -18,16 +18,14 @@ export default function DengTaPrelude() {
         <svg viewBox="0 0 420 108" role="presentation">
           <path
             className="dengta-prelude-signature"
-            d="M22 62c21-34 34-34 39-1 5 31 18 35 29 2 11-32 22-36 31-4 8 27 20 29 32 4 13-27 25-28 36-2 11 24 22 23 34-2 13-27 25-28 36 0 10 25 23 25 37-1 14-25 26-25 36 1 9 23 23 23 36-2 13-23 26-22 50 3"
+            data-word="DENGTA"
+            d="M20 84V24C52 20 66 32 66 54S52 88 20 84H80V24H120H80V54H116H80V84H120H136V24L178 84V24H194C178 24 178 84 218 84C244 84 244 54 220 54H238V24H254H300H277V84H316L340 24L366 84L354 56H328L316 84"
           />
-          <path
-            className="dengta-prelude-line"
-            d="M22 62H398"
-          />
+          <path className="dengta-prelude-line" d="M20 54H400" />
+          <circle className="dengta-prelude-tip" cx="400" cy="54" r="2.5" />
         </svg>
-        <span className="dengta-prelude-tip" />
         <div className="dengta-prelude-copy">
-          <strong>DengTa</strong>
+          <strong>DENGTA</strong>
           <small>小灯与桃桃的小屋</small>
         </div>
       </div>

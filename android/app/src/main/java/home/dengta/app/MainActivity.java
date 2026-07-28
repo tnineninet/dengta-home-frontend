@@ -29,7 +29,7 @@ public class MainActivity extends BridgeActivity {
         }
 
         WebView webView = getBridge().getWebView();
-        webView.setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+        webView.setLayerType(View.LAYER_TYPE_NONE, null);
         getBridge().addWebViewListener(new WebViewListener() {
             @Override
             public boolean onRenderProcessGone(WebView crashedView, RenderProcessGoneDetail detail) {

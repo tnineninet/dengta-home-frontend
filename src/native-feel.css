@@ -23,6 +23,8 @@
     0 2px 10px rgba(36, 44, 46, 0.05);
   --native-hairline: rgba(255, 255, 255, 0.76);
   --native-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  --native-radius-card: 18px;
+  --native-radius-control: 14px;
 }
 
 html,
@@ -45,6 +47,8 @@ select {
 }
 
 button {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
   transition:
     transform 180ms var(--native-spring),
     color 160ms ease,
@@ -68,7 +72,7 @@ button:active:not(:disabled) {
   color: #202729;
   background: #fbfcfa;
   pointer-events: none;
-  animation: dengta-prelude-leave 420ms ease 1.82s both;
+  animation: dengta-prelude-leave 420ms ease 2.15s both;
 }
 
 .dengta-prelude-mark {
@@ -94,29 +98,26 @@ button:active:not(:disabled) {
 }
 
 .dengta-prelude-signature {
-  stroke-width: 2;
+  stroke-width: 1.9;
   transform-box: fill-box;
-  transform-origin: right center;
-  animation: dengta-signature-settle 1.62s var(--native-spring) both;
+  transform-origin: center center;
+  animation: dengta-signature-settle 1.92s var(--native-spring) both;
 }
 
 .dengta-prelude-line {
   stroke-width: 1.5;
   transform-box: fill-box;
   transform-origin: right center;
-  animation: dengta-line-arrive 1.62s var(--native-spring) both;
+  animation: dengta-line-arrive 1.92s var(--native-spring) both;
 }
 
 .dengta-prelude-tip {
-  position: absolute;
-  top: 55px;
-  right: 4.7%;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--rose);
-  box-shadow: 0 0 0 6px rgba(187, 95, 121, 0.1);
-  animation: dengta-tip-arrive 1.62s var(--native-spring) both;
+  fill: var(--rose);
+  stroke: rgba(187, 95, 121, 0.12);
+  stroke-width: 6;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: dengta-tip-arrive 1.92s var(--native-spring) both;
 }
 
 .dengta-prelude-copy {
@@ -126,13 +127,14 @@ button:active:not(:disabled) {
   margin-top: 8px;
   opacity: 0;
   transform: translate3d(0, 6px, 0);
-  animation: dengta-copy-arrive 420ms ease 1.18s forwards;
+  animation: dengta-copy-arrive 420ms ease 1.58s forwards;
 }
 
 .dengta-prelude-copy strong {
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 500;
+  letter-spacing: 0.14em;
 }
 
 .dengta-prelude-copy small {
@@ -142,33 +144,33 @@ button:active:not(:disabled) {
 
 @keyframes dengta-signature-settle {
   0% {
-    opacity: 0;
-    transform: translate3d(-18px, 0, 0) scaleX(0.72);
+    opacity: 0.02;
+    transform: translate3d(-12px, 0, 0) scale(0.96);
   }
-  18% {
+  16% {
     opacity: 1;
   }
-  58% {
+  60% {
     opacity: 1;
-    transform: translate3d(0, 0, 0) scaleX(1);
+    transform: translate3d(0, 0, 0) scale(1);
   }
   82% {
-    opacity: 0.85;
-    transform: translate3d(48%, 0, 0) scaleX(0.08);
+    opacity: 0.92;
+    transform: translate3d(0, 0, 0) scaleY(0.025);
   }
   100% {
     opacity: 0;
-    transform: translate3d(54%, 0, 0) scaleX(0.02);
+    transform: translate3d(0, 0, 0) scaleY(0.025);
   }
 }
 
 @keyframes dengta-line-arrive {
   0%,
-  52% {
+  60% {
     opacity: 0;
-    transform: translate3d(-16%, 0, 0) scaleX(0.06);
+    transform: translate3d(-18%, 0, 0) scaleX(0.06);
   }
-  78%,
+  84%,
   100% {
     opacity: 1;
     transform: translate3d(0, 0, 0) scaleX(1);
@@ -177,11 +179,11 @@ button:active:not(:disabled) {
 
 @keyframes dengta-tip-arrive {
   0%,
-  68% {
+  72% {
     opacity: 0;
     transform: translate3d(-58px, 0, 0) scale(0.4);
   }
-  84%,
+  88%,
   100% {
     opacity: 1;
     transform: translate3d(0, 0, 0) scale(1);
@@ -197,10 +199,10 @@ button:active:not(:disabled) {
 
 @keyframes dengta-mark-breathe {
   0% {
-    opacity: 0;
+    opacity: 0.02;
     transform: translate3d(0, 5px, 0) scale(0.985);
   }
-  18%,
+  8%,
   100% {
     opacity: 1;
     transform: translate3d(0, 0, 0) scale(1);
@@ -281,7 +283,7 @@ button:active:not(:disabled) {
 .new-chat-top,
 .install-button {
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--native-radius-control);
   color: #3c484b;
   background: rgba(255, 255, 255, 0.58);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
@@ -299,7 +301,7 @@ button:active:not(:disabled) {
   isolation: isolate;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.56);
-  border-radius: 8px;
+  border-radius: var(--native-radius-card);
   color: #f7f9f7;
   background: var(--native-glass-dark);
   background-image: none;
@@ -418,6 +420,7 @@ button:active:not(:disabled) {
   box-shadow:
     0 22px 52px rgba(20, 27, 29, 0.22),
     inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  animation: native-status-unfold 340ms var(--native-spring) both;
 }
 
 .status-panel {
@@ -430,7 +433,7 @@ button:active:not(:disabled) {
 .status-card,
 .status-vital-tile {
   border: 1px solid rgba(255, 255, 255, 0.11);
-  border-radius: 8px;
+  border-radius: 16px;
   color: #f4f7f5;
   background: rgba(255, 255, 255, 0.055);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07);
@@ -505,12 +508,20 @@ button:active:not(:disabled) {
   position: relative;
   z-index: 3;
   border: 1px solid var(--native-hairline);
-  border-radius: 8px;
+  border-radius: var(--native-radius-card);
   color: #344043;
   background: var(--native-glass);
   box-shadow: 0 8px 22px rgba(46, 58, 60, 0.08);
   backdrop-filter: blur(20px) saturate(1.28);
   transform: translateZ(0);
+}
+
+.ambient-context-badge:not(.is-minimized) {
+  animation: native-weather-unfold 300ms var(--native-spring) both;
+}
+
+.ambient-context-badge.is-minimized {
+  animation: native-weather-dock 240ms var(--native-spring) both;
 }
 
 .ambient-context-toggle,
@@ -531,6 +542,7 @@ button:active:not(:disabled) {
     url("/assets/xiaodeng-taotao-chat-wallpaper.jpg") center bottom / cover
       no-repeat;
   scrollbar-color: rgba(80, 105, 108, 0.28) transparent;
+  overscroll-behavior-y: contain;
 }
 
 .message-row,
@@ -599,14 +611,14 @@ button:active:not(:disabled) {
 .composer-message-reference {
   min-width: 0;
   border-color: rgba(115, 174, 178, 0.34);
-  border-radius: 8px;
+  border-radius: 12px;
   background: rgba(115, 174, 178, 0.09);
 }
 
 .thinking-panel {
   overflow: hidden;
   border: 1px solid rgba(112, 131, 133, 0.15);
-  border-radius: 8px;
+  border-radius: 14px;
   color: #586569;
   background: rgba(241, 245, 242, 0.72);
 }
@@ -638,7 +650,7 @@ button:active:not(:disabled) {
 
 .reply-suggestions button {
   border: 1px solid rgba(255, 255, 255, 0.74);
-  border-radius: 8px;
+  border-radius: var(--native-radius-control);
   color: #334043;
   background: rgba(251, 252, 249, 0.76);
   box-shadow: 0 5px 14px rgba(38, 47, 49, 0.06);
@@ -681,7 +693,7 @@ button:active:not(:disabled) {
 .voice-hold-button,
 .voice-stop-button,
 .chat-model-picker select {
-  border-radius: 8px;
+  border-radius: var(--native-radius-control);
 }
 
 .chat-attach-button,
@@ -713,7 +725,7 @@ button:active:not(:disabled) {
 
 .composer-tool-menu {
   border: 1px solid rgba(255, 255, 255, 0.74);
-  border-radius: 8px;
+  border-radius: 24px;
   color: #2f3a3d;
   background: rgba(248, 250, 248, 0.92);
   box-shadow: 0 24px 60px rgba(24, 34, 36, 0.2);
@@ -724,7 +736,7 @@ button:active:not(:disabled) {
 
 .composer-tool-grid > button {
   border-color: rgba(73, 92, 95, 0.12);
-  border-radius: 8px;
+  border-radius: 16px;
   color: #3e4b4e;
   background: rgba(255, 255, 255, 0.62);
 }
@@ -739,7 +751,7 @@ button:active:not(:disabled) {
 .voice-analysis-card,
 .voice-privacy-note {
   border-color: rgba(73, 92, 95, 0.13);
-  border-radius: 8px;
+  border-radius: 14px;
   color: #4d5b5e;
   background: rgba(248, 250, 248, 0.78);
 }
@@ -756,13 +768,13 @@ button:active:not(:disabled) {
 .settings-page {
   background:
     linear-gradient(rgba(241, 246, 243, 0.88), rgba(231, 238, 235, 0.9)),
-    url("/assets/moments-paper-banner.webp") top center / cover fixed;
+    url("/assets/moments-paper-banner.webp") top center / cover no-repeat;
 }
 
 .moments-journal-hero,
 .diary-hero,
 .profile-hero {
-  border-radius: 8px;
+  border-radius: var(--native-radius-card);
 }
 
 .moment-composer,
@@ -784,9 +796,9 @@ button:active:not(:disabled) {
 .prompt-memory-summary,
 .prompt-intimacy-toggle {
   border: 1px solid rgba(255, 255, 255, 0.76);
-  border-radius: 8px;
+  border-radius: var(--native-radius-card);
   color: #303a3d;
-  background: rgba(249, 251, 248, 0.88);
+  background: rgba(249, 251, 248, 0.8);
   box-shadow:
     0 4px 14px rgba(36, 45, 47, 0.06),
     inset 0 1px 0 rgba(255, 255, 255, 0.68);
@@ -823,7 +835,7 @@ button:active:not(:disabled) {
 .provider-form-grid select,
 .comment-box input {
   border: 1px solid rgba(74, 92, 95, 0.14);
-  border-radius: 8px;
+  border-radius: var(--native-radius-control);
   color: #263033;
   background: rgba(255, 255, 255, 0.72);
   box-shadow: inset 0 1px 2px rgba(37, 48, 50, 0.04);
@@ -831,7 +843,7 @@ button:active:not(:disabled) {
 
 .save-bar {
   border: 1px solid rgba(255, 255, 255, 0.75);
-  border-radius: 8px;
+  border-radius: 16px;
   color: #4b5a5d;
   background: rgba(245, 248, 245, 0.86);
   box-shadow: 0 8px 24px rgba(37, 48, 50, 0.08);
@@ -841,7 +853,7 @@ button:active:not(:disabled) {
 .notice,
 .connection-recovery {
   border-color: rgba(213, 164, 90, 0.3);
-  border-radius: 8px;
+  border-radius: 16px;
   color: #6f572f;
   background: rgba(255, 247, 231, 0.9);
   box-shadow: 0 10px 30px rgba(72, 56, 31, 0.08);
@@ -859,7 +871,7 @@ button:active:not(:disabled) {
 .dialog-card,
 .ombre-detail-sheet {
   border: 1px solid rgba(255, 255, 255, 0.72);
-  border-radius: 8px;
+  border-radius: 24px;
   color: #2e383a;
   background: rgba(249, 251, 248, 0.94);
   box-shadow: 0 28px 72px rgba(20, 29, 31, 0.24);
@@ -886,23 +898,24 @@ button:active:not(:disabled) {
 
 .mobile-nav button.active span {
   transform: translate3d(0, -1px, 0);
+  animation: native-nav-settle 360ms var(--native-spring) both;
 }
 
 @keyframes native-page-enter {
   from {
-    opacity: 0;
-    transform: translate3d(0, 8px, 0);
+    opacity: 0.02;
+    transform: translate3d(0, 10px, 0) scale(0.995);
   }
   to {
     opacity: 1;
-    transform: translate3d(0, 0, 0);
+    transform: translate3d(0, 0, 0) scale(1);
   }
 }
 
 @keyframes native-sheet-enter {
   from {
-    opacity: 0;
-    transform: translate3d(0, 12px, 0) scale(0.98);
+    opacity: 0.02;
+    transform: translate3d(0, 18px, 0) scale(0.97);
   }
   to {
     opacity: 1;
@@ -919,6 +932,54 @@ button:active:not(:disabled) {
   }
 }
 
+@keyframes native-status-unfold {
+  from {
+    opacity: 0.96;
+    transform: translate3d(0, -4px, 0) scale(0.992);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes native-weather-unfold {
+  from {
+    opacity: 0.02;
+    transform: translate3d(12px, -4px, 0) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes native-weather-dock {
+  from {
+    opacity: 0.02;
+    transform: translate3d(14px, 0, 0) scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes native-nav-settle {
+  0% {
+    opacity: 0.72;
+    transform: translate3d(0, 2px, 0) scale(0.9);
+  }
+  65% {
+    opacity: 1;
+    transform: translate3d(0, -2px, 0) scale(1.04);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, -1px, 0) scale(1);
+  }
+}
+
 @media (max-width: 820px), (max-height: 500px) and (max-width: 900px) {
   .topbar {
     min-height: 54px;
@@ -931,7 +992,7 @@ button:active:not(:disabled) {
 
   .companion-status,
   .ambient-context-badge {
-    border-radius: 8px;
+    border-radius: var(--native-radius-card);
   }
 
   .message-list {
@@ -999,7 +1060,10 @@ button:active:not(:disabled) {
   .dialog-card,
   .ombre-detail-backdrop,
   .ombre-detail-sheet,
-  .composer-tool-menu {
+  .composer-tool-menu,
+  .companion-status.expanded,
+  .ambient-context-badge,
+  .mobile-nav button.active span {
     animation: none !important;
     transform: none !important;
   }

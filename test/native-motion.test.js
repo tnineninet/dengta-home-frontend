@@ -48,12 +48,19 @@ test("the launch prelude and overlay motion only animate compositor properties",
   const styles = read("src/native-feel.css");
 
   assert.match(prelude, /className="dengta-prelude"/);
+  assert.match(
+    prelude,
+    /data-word="DENGTA"/,
+    "the launch thread must resolve into the DENGTA wordmark",
+  );
   assert.doesNotMatch(
     chatMessage,
     /key=\{`\$\{item\.id\}-\$\{item\.isStreaming/,
   );
   assert.match(styles, /@keyframes dengta-signature-settle/);
   assert.match(styles, /@keyframes native-sheet-enter/);
+  assert.match(styles, /@keyframes native-nav-settle/);
+  assert.match(styles, /@keyframes native-weather-unfold/);
   assert.doesNotMatch(
     keyframeBlocks(styles, "(?:dengta|native)").join("\n"),
     /(?:height|width|margin|padding|top|left)\s*:/,

@@ -54,9 +54,9 @@ assert.match(
   /onRenderProcessGone/,
   "the activity must recover when Android WebView loses its renderer",
 );
-assert.match(
+assert.doesNotMatch(
   mainActivity,
   /LAYER_TYPE_SOFTWARE/,
-  "the embedded WebView must explicitly stay off the crashing GPU path",
+  "the embedded WebView must not force CPU-only rendering",
 );
 console.log("Android 2.0 release baseline tests passed");
