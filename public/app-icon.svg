@@ -1,39 +1,75 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id="backdrop" x1="72" y1="40" x2="440" y2="470" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#353b48"/>
-      <stop offset=".48" stop-color="#161b23"/>
-      <stop offset="1" stop-color="#090c11"/>
+    <linearGradient id="cream" x1="128" y1="78" x2="392" y2="430" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fffdf7"/>
+      <stop offset=".42" stop-color="#f7e9d3"/>
+      <stop offset="1" stop-color="#e8cdb0"/>
     </linearGradient>
-    <linearGradient id="thread" x1="120" y1="102" x2="390" y2="418" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#fafcff"/>
-      <stop offset=".48" stop-color="#cbd1dc"/>
-      <stop offset="1" stop-color="#ffffff"/>
-    </linearGradient>
-    <radialGradient id="iridescent" cx="35%" cy="24%" r="82%">
+    <radialGradient id="pearl-a" cx="28%" cy="18%" r="86%">
       <stop stop-color="#ffffff"/>
-      <stop offset=".28" stop-color="#a7e7ff"/>
-      <stop offset=".52" stop-color="#e2b7ff"/>
-      <stop offset=".75" stop-color="#ffd8a1"/>
-      <stop offset="1" stop-color="#93d9d3"/>
+      <stop offset=".2" stop-color="#d9f5ff"/>
+      <stop offset=".43" stop-color="#e6d6ff"/>
+      <stop offset=".68" stop-color="#ffd9d4"/>
+      <stop offset=".86" stop-color="#fff1b9"/>
+      <stop offset="1" stop-color="#b8ede2"/>
     </radialGradient>
-    <filter id="glow" x="-80%" y="-80%" width="260%" height="260%">
-      <feGaussianBlur stdDeviation="5"/>
+    <radialGradient id="pearl-b" cx="22%" cy="20%" r="90%">
+      <stop stop-color="#ffffff"/>
+      <stop offset=".22" stop-color="#f6d8ff"/>
+      <stop offset=".46" stop-color="#bfe9ff"/>
+      <stop offset=".7" stop-color="#ffe1a8"/>
+      <stop offset="1" stop-color="#d7f1e9"/>
+    </radialGradient>
+    <filter id="soft-shadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="13" stdDeviation="15" flood-color="#a57e68" flood-opacity=".22"/>
+    </filter>
+    <filter id="pearl-shadow" x="-70%" y="-70%" width="240%" height="250%">
+      <feDropShadow dx="0" dy="7" stdDeviation="7" flood-color="#9e7fc1" flood-opacity=".26"/>
     </filter>
   </defs>
-  <rect width="512" height="512" rx="118" fill="url(#backdrop)"/>
-  <path d="M116 131c32-7 48-1 53 18m-27-13c15 34 16 204 5 241-7 22-22 29-38 20m35-257c55-36 164-30 213 54 47 81 16 186-72 217-48 17-101 9-141-22m1-5c37 30 89 38 133 18 66-29 85-112 47-169-34-52-102-72-158-47m-17 230c57-9 148 1 213 45 22 15 43 13 57-1"
-    fill="none" stroke="url(#thread)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-  <path d="M111 131c31-7 47-1 53 18m-28-13c16 35 16 204 6 241-7 22-21 29-38 20m35-257c55-36 164-30 213 54 47 81 16 186-72 217-48 17-101 9-141-22"
-    fill="none" stroke="#fff" stroke-opacity=".4" stroke-width="2" stroke-linecap="round"/>
-  <g fill="url(#iridescent)" stroke="#fff" stroke-opacity=".75" stroke-width="2.5" stroke-linejoin="round">
-    <path d="M184 113c8-5 16 4 24 4 8 0 17-8 23-2 7 7-1 15 1 23 2 8 12 14 8 22-4 9-15 3-23 7-7 4-10 16-19 14-10-2-7-14-13-20-6-6-18-5-19-14-2-10 10-12 14-20 4-7-4-18 4-24Z"/>
-    <path d="M354 252c8-5 15 3 23 3 8-1 16-8 22-2 7 6 0 15 2 22 3 8 12 13 9 21-4 9-15 4-22 8-7 5-9 16-18 15-10-1-8-13-14-19-6-5-17-4-19-13-2-9 9-12 13-20 3-7-4-17 4-25Z"/>
-    <path d="M136 373c8-5 15 3 23 3 8-1 16-8 22-2 7 6 0 15 2 22 3 8 12 13 9 21-4 9-15 4-22 8-7 5-9 16-18 15-10-1-8-13-14-19-6-5-17-4-19-13-2-9 9-12 13-20 3-7-4-17 4-25Z"/>
+
+  <rect width="512" height="512" rx="116" fill="#fff"/>
+  <circle cx="252" cy="256" r="188" fill="#fbf7f2"/>
+  <path
+    d="M164 112v288M166 112h77c96 0 153 58 153 144s-57 144-153 144h-77"
+    fill="none"
+    stroke="url(#cream)"
+    stroke-width="54"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    filter="url(#soft-shadow)"
+  />
+  <path
+    d="M164 112v288M166 112h77c96 0 153 58 153 144s-57 144-153 144h-77"
+    fill="none"
+    stroke="#fff"
+    stroke-opacity=".52"
+    stroke-width="7"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+
+  <g filter="url(#pearl-shadow)" stroke="#fff" stroke-width="3" stroke-linejoin="round">
+    <path
+      d="M0-55Q2-43 8-25Q11-16 21-18L42-23Q51-25 55-17Q58-10 49-3L31 11Q24 17 29 25L41 45Q46 53 39 59Q32 64 24 57L7 44Q0 38-7 44L-24 57Q-32 64-39 59Q-46 53-41 45L-29 25Q-24 17-31 11L-49-3Q-58-10-55-17Q-51-25-42-23L-21-18Q-11-16-8-25L0-55Z"
+      fill="url(#pearl-a)"
+      transform="translate(132 150) scale(.56)"
+    />
+    <path
+      d="M0-55Q2-43 8-25Q11-16 21-18L42-23Q51-25 55-17Q58-10 49-3L31 11Q24 17 29 25L41 45Q46 53 39 59Q32 64 24 57L7 44Q0 38-7 44L-24 57Q-32 64-39 59Q-46 53-41 45L-29 25Q-24 17-31 11L-49-3Q-58-10-55-17Q-51-25-42-23L-21-18Q-11-16-8-25L0-55Z"
+      fill="url(#pearl-b)"
+      transform="translate(365 278) scale(.52)"
+    />
+    <path
+      d="M0-55Q2-43 8-25Q11-16 21-18L42-23Q51-25 55-17Q58-10 49-3L31 11Q24 17 29 25L41 45Q46 53 39 59Q32 64 24 57L7 44Q0 38-7 44L-24 57Q-32 64-39 59Q-46 53-41 45L-29 25Q-24 17-31 11L-49-3Q-58-10-55-17Q-51-25-42-23L-21-18Q-11-16-8-25L0-55Z"
+      fill="url(#pearl-a)"
+      transform="translate(171 395) scale(.43)"
+    />
   </g>
-  <g fill="#b9eaff" opacity=".34" filter="url(#glow)">
-    <circle cx="206" cy="143" r="18"/>
-    <circle cx="376" cy="282" r="16"/>
-    <circle cx="158" cy="403" r="16"/>
+
+  <g fill="none" stroke="#fff" stroke-linecap="round" opacity=".76">
+    <path d="M116 187c12-4 23-2 31 6" stroke-width="4"/>
+    <path d="M348 281c11-5 22-4 31 3" stroke-width="3.5"/>
+    <path d="M157 398c8-3 16-2 22 2" stroke-width="3"/>
   </g>
 </svg>

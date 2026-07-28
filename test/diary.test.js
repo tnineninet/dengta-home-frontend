@@ -24,14 +24,14 @@ assert.match(diary, /发生过的事情不能虚构/);
 assert.match(css, /\.companion-diary-page/);
 assert.match(css, /\.diary-entry-list/);
 assert.doesNotMatch(serviceWorker, /secret-crush-diary\.html/);
-assert.match(serviceWorker, /dengta-home-v10/);
+assert.match(serviceWorker, /dengta-home-v11/);
 
 for (const asset of [
   "../public/assets/moments-paper-banner.webp",
-  "../public/assets/xiaodeng-handdrawn-avatar.webp",
+  "../public/app-icon.svg",
 ]) {
   const info = await stat(new URL(asset, import.meta.url));
-  assert.ok(info.size > 1000, `${asset} should contain a real generated asset`);
+  assert.ok(info.size > 1000, `${asset} should contain a real visual asset`);
   assert.ok(info.size < 500_000, `${asset} should be optimized for mobile`);
 }
 

@@ -51,6 +51,8 @@ function readInitialAmbientState() {
 function AmbientContextBadge({
   onLoadWeather,
   onContextChange,
+  onCoordinatesChange,
+  celestialSnapshot,
   className = "",
 }) {
   const [initialState] = useState(readInitialAmbientState);
@@ -60,6 +62,9 @@ function AmbientContextBadge({
     initialState.preferences.enabled,
   );
   const [weather, setWeather] = useState(initialState.weather.weather);
+  const [coordinates, setCoordinates] = useState(
+    initialState.coordinates.coordinates,
+  );
   const [minimized, setMinimized] = useState(
     initialState.preferences.minimized,
   );
@@ -131,6 +136,10 @@ function AmbientContextBadge({
     lastContextRef.current = serialized;
     onContextChange?.(ambientContext);
   }, [ambientContext, onContextChange]);
+
+  useEffect(() => {
+    onCoordinatesChange?.(locationEnabled ? coordinates : null);
+  }, [coordinates, locationEnabled, onCoordinatesChange]);
 
   useEffect(
     () => () => {
@@ -213,6 +222,7 @@ function AmbientContextBadge({
           accuracy: position.coords.accuracy,
         };
         storeCachedCoordinates(coordinates);
+        setCoordinates(readCachedCoordinates().coordinates);
         persistPreferences({ enabled: true, permissionDenied: false });
         setLocationEnabled(true);
         void loadWeather(coordinates, operation);
@@ -347,6 +357,7 @@ function AmbientContextBadge({
     clearCachedWeather();
     persistPreferences({ enabled: false, permissionDenied: false });
     setLocationEnabled(false);
+    setCoordinates(null);
     weatherRef.current = null;
     setWeather(null);
     setStatus(OFF_STATE);
@@ -490,6 +501,13 @@ function AmbientContextBadge({
           >
             {status.message}
           </span>
+          {celestialSnapshot?.sunriseLabel &&
+            celestialSnapshot?.sunsetLabel && (
+              <span className="ambient-context-solar">
+                日出 {celestialSnapshot.sunriseLabel} · 日落{" "}
+                {celestialSnapshot.sunsetLabel}
+              </span>
+            )}
         </div>
 
         <div className="ambient-context-actions">

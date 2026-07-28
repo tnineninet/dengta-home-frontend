@@ -92,7 +92,10 @@ import {
   settingsPayloadFingerprint,
 } from "./settings";
 import { readReplySuggestions } from "./chat-reply-suggestions";
-import { SHANGHAI_TIME_ZONE } from "./ambient-context";
+import {
+  readCachedCoordinates,
+  SHANGHAI_TIME_ZONE,
+} from "./ambient-context";
 import { installInnerHeightViewportFallback } from "./mobile-viewport";
 import { toggleMomentLikeOptimistically } from "./moment-like";
 import {
@@ -456,11 +459,14 @@ function App({ accountControl = null }) {
   const [draftSettings, setDraftSettings] = useState(emptySettings);
   const [activeView, setActiveView] = useState("chat");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [celestialCoordinates, setCelestialCoordinates] = useState(
+    () => readCachedCoordinates().coordinates,
+  );
   const {
     preferences: themePreferences,
     snapshot: celestialSnapshot,
     updateTheme,
-  } = useDengTaTheme();
+  } = useDengTaTheme(celestialCoordinates);
   const [memories, setMemories] = useState([]);
   const [moments, setMoments] = useState([]);
   const [momentsAvailable, setMomentsAvailable] = useState(null);
@@ -485,6 +491,7 @@ function App({ accountControl = null }) {
   const [dialog, setDialog] = useState(null);
   const [imageViewer, setImageViewer] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [installPrompt, setInstallPrompt] = useState(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [startupConnection, setStartupConnection] = useState({
@@ -3503,12 +3510,14 @@ function App({ accountControl = null }) {
     requestStatusPanelClose();
     setActiveView(view);
     setIsSidebarOpen(false);
+    setIsMobileNavOpen(false);
   }
 
   function openSettingsPanel() {
     closeComposerMenu();
     requestStatusPanelClose();
     setIsSidebarOpen(false);
+    setIsMobileNavOpen(false);
     setIsSettingsOpen(true);
   }
 
@@ -3536,6 +3545,15 @@ function App({ accountControl = null }) {
         ? readReplySuggestions(latestMessage)
         : [];
     const attachmentsAtLimit = chatAttachments.length >= 4;
+    const sendButtonLabel = isCompanionResponding
+      ? "互动回应中"
+      : isSending
+        ? "回应中"
+        : chatRetryReady
+          ? chatRetryIsProcessing
+            ? "检查进度"
+            : "重试"
+          : "发送";
 
     return (
       <>
@@ -3551,8 +3569,8 @@ function App({ accountControl = null }) {
             <div className="empty-state">
               <img
                 className="welcome-companions"
-                src="/assets/characters/xiaodeng-taotao-pair.jpg"
-                alt="小灯大熊和桃桃小猫依偎在一起"
+                src="/app-icon.svg"
+                alt="DengTa"
               />
               <h2>小灯和桃桃的小屋</h2>
               <p>
@@ -3748,6 +3766,9 @@ function App({ accountControl = null }) {
               </button>
               <button
                 className="send-button"
+                type="button"
+                aria-label={sendButtonLabel}
+                title={sendButtonLabel}
                 onClick={sendMessage}
                 disabled={
                   (!message.trim() && chatAttachments.length === 0) ||
@@ -3756,15 +3777,10 @@ function App({ accountControl = null }) {
                   isVoiceInputBusy
                 }
               >
-                {isCompanionResponding
-                  ? "互动回应中"
-                  : isSending
-                    ? "回应中"
-                    : chatRetryReady
-                      ? chatRetryIsProcessing
-                        ? "检查进度"
-                        : "重试"
-                      : "发送"}
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 18V6m0 0L7.5 10.5M12 6l4.5 4.5" />
+                </svg>
+                <span className="send-button-label">{sendButtonLabel}</span>
               </button>
             </div>
           </div>
@@ -4020,8 +4036,8 @@ function App({ accountControl = null }) {
                   {item.author === "assistant" ? (
                     <img
                       className="moment-avatar"
-                      src="/assets/xiaodeng-handdrawn-avatar.webp"
-                      alt=""
+                      src="/app-icon.svg"
+                      alt="DengTa"
                     />
                   ) : (
                     <div className="moment-avatar user-avatar" aria-hidden="true">
@@ -4958,6 +4974,8 @@ function App({ accountControl = null }) {
           <AmbientContextBadge
             onLoadWeather={loadAmbientWeather}
             onContextChange={handleAmbientContextChange}
+            onCoordinatesChange={setCelestialCoordinates}
+            celestialSnapshot={celestialSnapshot}
           />
         </div>
 
@@ -4997,18 +5015,31 @@ function App({ accountControl = null }) {
         </div>
       </main>
 
-      <nav className="mobile-nav" aria-label="手机底部导航">
-        {navItems.map((item) => (
-          <button
-            className={activeView === item.id ? "active" : ""}
-            key={item.id}
-            onClick={() => changeView(item.id)}
-          >
-            <span>{item.icon}</span>
-            <small>{item.label}</small>
-          </button>
-        ))}
-      </nav>
+      <div
+        className={`mobile-edge-navigation${isMobileNavOpen ? " is-open" : ""}`}
+      >
+        <button
+          type="button"
+          className="mobile-nav-handle"
+          aria-label={isMobileNavOpen ? "收起页面导航" : "展开页面导航"}
+          aria-expanded={isMobileNavOpen}
+          onClick={() => setIsMobileNavOpen((current) => !current)}
+        >
+          <span aria-hidden="true">{isMobileNavOpen ? "‹" : "›"}</span>
+        </button>
+        <nav className="mobile-nav" aria-label="手机侧边导航">
+          {navItems.map((item) => (
+            <button
+              className={activeView === item.id ? "active" : ""}
+              key={item.id}
+              onClick={() => changeView(item.id)}
+            >
+              <span>{item.icon}</span>
+              <small>{item.label}</small>
+            </button>
+          ))}
+        </nav>
+      </div>
 
       {isSettingsOpen && (
         <div

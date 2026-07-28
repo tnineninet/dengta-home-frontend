@@ -115,6 +115,9 @@ assert.deepEqual(
 const rootLayout = cssCascade.declarations(":root");
 const mainPanelLayout = cssCascade.declarations(".main-panel");
 const mobileNavLayout = cssCascade.declarations(".mobile-nav");
+const mobileEdgeNavigationLayout = cssCascade.declarations(
+  ".mobile-edge-navigation",
+);
 const chatContentLayout = cssCascade.declarations(".view-chat .view-content");
 const expandedChatContentLayout = cssCascade.declarations(
   ".main-panel.view-chat:has(.companion-status.expanded) .view-content",
@@ -158,27 +161,27 @@ const narrowMobileNavLayout = narrowCssCascade.declarations(".mobile-nav");
 
 assert.equal(
   rootLayout["--mobile-nav-reserved-height"]?.value,
-  "calc(72px + env(safe-area-inset-bottom))",
-  "mobile nav must expose one shared reserved height",
+  "0px",
+  "the edge navigation must not reserve a bottom bar",
 );
 assert.equal(
   mainPanelLayout["padding-bottom"]?.value,
-  "var(--mobile-nav-reserved-height)",
-  "chat layout must reserve the full mobile nav height",
+  "0",
+  "chat layout must use the pixels released by the old bottom bar",
 );
 assert.equal(
   mobileNavLayout.height?.value,
-  "var(--mobile-nav-reserved-height)",
-  "mobile nav and chat reservation must use the same height",
+  "auto",
+  "the side navigation must size to its own controls",
 );
 assert.equal(mainPanelLayout.height?.value, "var(--app-height)");
-assert.equal(mobileNavLayout.position?.value, "fixed");
+assert.equal(mobileNavLayout.position?.value, "absolute");
 assert.equal(mobileNavLayout.bottom?.value, "0");
 assert.equal(mobileNavLayout.display?.value, "grid");
 assert.equal(
   composerLayout.padding?.value,
-  "9px 10px max(9px, env(safe-area-inset-bottom))",
-  "the 390px composer must include the later cozy-theme mobile override",
+  "7px 9px max(8px, env(safe-area-inset-bottom))",
+  "the compact composer must retain Android safe-area padding",
 );
 assert.equal(
   chatContentLayout.display?.value,
@@ -275,9 +278,12 @@ assert.ok(
   "the status and weather stack must not fall behind chat messages",
 );
 assert.ok(
-  Number.parseInt(mobileNavLayout["z-index"]?.value || "0", 10) >
+  Number.parseInt(
+    mobileEdgeNavigationLayout["z-index"]?.value || "0",
+    10,
+  ) >
     Number.parseInt(composerLayout["z-index"]?.value || "0", 10),
-  "the fixed mobile navigation must remain above composer overlays",
+  "the side navigation handle must remain above the composer",
 );
 assert.equal(
   keyboardRootLayout["--mobile-nav-reserved-height"]?.value,
@@ -332,7 +338,7 @@ assert.equal(
 assert.equal(
   narrowComposerToolbarLayout["grid-template-columns"]?.value,
   "44px minmax(0, 1fr)",
-  "the 280px composer toolbar must keep a fixed plus button and a shrinkable input",
+  "legacy toolbar sizing must remain harmless underneath the compact composer grid",
 );
 assert.equal(
   narrowStatusSummaryLayout["grid-template-columns"]?.value,
@@ -341,8 +347,8 @@ assert.equal(
 );
 assert.equal(
   narrowMobileNavLayout["grid-template-columns"]?.value,
-  "repeat(4, minmax(0, 1fr))",
-  "the 280px navigation must divide the viewport without intrinsic-width overflow",
+  "1fr",
+  "the 280px side navigation must remain a vertical one-column drawer",
 );
 
 const landscapeExpandedStatus = shortLandscapeCascade.declarations(
@@ -352,8 +358,8 @@ assert.equal(
   shortLandscapeCascade.declarations(":root")[
     "--mobile-nav-reserved-height"
   ]?.value,
-  "calc(52px + env(safe-area-inset-bottom))",
-  "short landscape navigation must stay usable without covering the composer toolbar",
+  "0px",
+  "short landscape navigation must stay at the edge without reserving a bottom bar",
 );
 assert.equal(
   landscapeExpandedStatus.height?.value,
@@ -677,8 +683,8 @@ assert.match(
 );
 assert.match(
   css,
-  /\.composer-toolbar\s*\{[^}]*grid-template-columns:\s*42px minmax\(0,\s*1fr\)/s,
-  "the base composer toolbar must remain two-column after model selection moved into the plus menu",
+  /\.composer\s*\{[^}]*grid-template-columns:\s*42px minmax\(0,\s*1fr\) 42px/s,
+  "the compact composer must place plus, text and send controls in one capsule",
 );
 assert.match(
   chatMessage,

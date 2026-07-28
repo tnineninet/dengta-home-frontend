@@ -15,13 +15,13 @@
   min-height: 100dvh;
   overflow: hidden;
   background:
+    radial-gradient(circle at 18% 18%, rgba(255, 211, 178, 0.76), transparent 34%),
     linear-gradient(
       90deg,
-      rgba(39, 27, 32, 0.16),
-      rgba(39, 27, 32, 0.02) 62%,
+      rgba(114, 151, 184, 0.18),
+      rgba(255, 255, 255, 0.08) 62%,
       rgba(238, 231, 226, 0.92)
-    ),
-    url("/assets/xiaodeng-taotao-chat-wallpaper.jpg") center / cover no-repeat;
+    );
 }
 
 .auth-scene-copy {
@@ -275,8 +275,8 @@
   place-content: center;
   padding: 24px;
   background:
-    linear-gradient(rgba(248, 242, 237, 0.9), rgba(248, 242, 237, 0.96)),
-    url("/assets/xiaodeng-taotao-chat-wallpaper.jpg") center / cover no-repeat;
+    radial-gradient(circle at 15% 12%, rgba(255, 213, 181, 0.58), transparent 33%),
+    linear-gradient(145deg, rgba(248, 242, 237, 0.9), rgba(222, 234, 243, 0.96));
 }
 
 .auth-message-panel {
@@ -451,13 +451,12 @@
   .auth-page {
     display: block;
     background:
+      radial-gradient(circle at 16% 8%, rgba(255, 211, 179, 0.7), transparent 32%),
       linear-gradient(
-        rgba(53, 34, 42, 0.12),
-        rgba(244, 237, 232, 0.92) 48%,
+        rgba(213, 228, 240, 0.28),
+        rgba(244, 237, 232, 0.9) 48%,
         #f8f3ee 70%
-      ),
-      url("/assets/xiaodeng-taotao-chat-wallpaper.jpg") center top / cover
-        no-repeat;
+      );
   }
 
   .auth-scene {

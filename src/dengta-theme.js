@@ -1,4 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import {
+  formatSolarTime,
+  getSolarSchedule,
+  phaseProgress,
+} from "./solar-cycle.js";
 
 export const DENGTA_THEME_STORAGE_KEY = "dengta.ui-theme.v1";
 
@@ -59,6 +64,8 @@ export const DEFAULT_THEME_PREFERENCES = {
   card: "#fffdf8",
   cardOpacity: 0.82,
   appearance: "auto",
+  sunIntensity: 1,
+  moonIntensity: 0.86,
 };
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
@@ -77,6 +84,13 @@ function boundedOpacity(value) {
     : DEFAULT_THEME_PREFERENCES.cardOpacity;
 }
 
+function boundedLightIntensity(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0.35 && parsed <= 1.6
+    ? parsed
+    : fallback;
+}
+
 export function normalizeThemePreferences(value = {}) {
   const source = value && typeof value === "object" ? value : {};
   const preset =
@@ -90,6 +104,14 @@ export function normalizeThemePreferences(value = {}) {
     appearance: APPEARANCE_MODES.has(source.appearance)
       ? source.appearance
       : DEFAULT_THEME_PREFERENCES.appearance,
+    sunIntensity: boundedLightIntensity(
+      source.sunIntensity,
+      DEFAULT_THEME_PREFERENCES.sunIntensity,
+    ),
+    moonIntensity: boundedLightIntensity(
+      source.moonIntensity,
+      DEFAULT_THEME_PREFERENCES.moonIntensity,
+    ),
   };
 }
 
@@ -170,15 +192,34 @@ function stablePatternIndex(value, count) {
 export function getCelestialSnapshot(
   date = new Date(),
   appearance = "auto",
+  coordinates,
+  lightPreferences = DEFAULT_THEME_PREFERENCES,
 ) {
   const parts = chinaTimeParts(date);
   const hour = Number(parts.hour) + Number(parts.minute) / 60;
+  const schedule = getSolarSchedule(date, coordinates);
+  const previousSchedule = getSolarSchedule(date, coordinates, -1);
+  const nextSchedule = getSolarSchedule(date, coordinates, 1);
+  const dawnEnd = new Date(
+    schedule.sunrise.valueOf() +
+      Math.max(
+        60 * 60 * 1000,
+        (schedule.sunset.valueOf() - schedule.sunrise.valueOf()) * 0.1,
+      ),
+  );
+  const duskStart = new Date(
+    schedule.sunset.valueOf() -
+      Math.max(
+        60 * 60 * 1000,
+        (schedule.sunset.valueOf() - schedule.sunrise.valueOf()) * 0.1,
+      ),
+  );
   const phase =
-    hour >= 5 && hour < 8
+    date >= schedule.civilDawn && date < dawnEnd
       ? "dawn"
-      : hour >= 8 && hour < 17
+      : date >= dawnEnd && date < duskStart
         ? "day"
-        : hour >= 17 && hour < 20
+        : date >= duskStart && date < schedule.civilDusk
           ? "dusk"
           : "night";
   const resolvedAppearance =
@@ -191,12 +232,27 @@ export function getCelestialSnapshot(
   const dateKey = `${parts.year}-${parts.month}-${parts.day}`;
   const pattern =
     patterns[stablePatternIndex(`${dateKey}:${phase}`, patterns.length)];
-  const isSun = phase !== "night";
-  const daylightProgress = Math.min(1, Math.max(0, (hour - 5) / 15));
-  const moonHour = hour < 5 ? hour + 24 : hour;
-  const moonProgress = Math.min(1, Math.max(0, (moonHour - 20) / 9));
-  const progress = isSun ? daylightProgress : moonProgress;
-  const arc = 4 * progress * (1 - progress);
+  const isSun = date >= schedule.civilDawn && date < schedule.civilDusk;
+  const nightStart =
+    date < schedule.civilDawn
+      ? previousSchedule.civilDusk
+      : schedule.civilDusk;
+  const nightEnd =
+    date < schedule.civilDawn ? schedule.civilDawn : nextSchedule.civilDawn;
+  const progress = isSun
+    ? phaseProgress(date, schedule.civilDawn, schedule.civilDusk)
+    : phaseProgress(date, nightStart, nightEnd);
+  const arc = Math.sin(Math.PI * progress);
+  const sunIntensity = boundedLightIntensity(
+    lightPreferences.sunIntensity,
+    DEFAULT_THEME_PREFERENCES.sunIntensity,
+  );
+  const moonIntensity = boundedLightIntensity(
+    lightPreferences.moonIntensity,
+    DEFAULT_THEME_PREFERENCES.moonIntensity,
+  );
+  const activeIntensity =
+    (isSun ? sunIntensity : moonIntensity) * (0.44 + arc * 0.56);
 
   return {
     dateKey,
@@ -207,6 +263,15 @@ export function getCelestialSnapshot(
     isSun,
     progress,
     arc,
+    activeIntensity,
+    sunIntensity,
+    moonIntensity,
+    lightAngle: -18 + progress * 36,
+    lightSource: schedule.source,
+    sunrise: schedule.sunrise.toISOString(),
+    sunset: schedule.sunset.toISOString(),
+    sunriseLabel: formatSolarTime(schedule.sunrise),
+    sunsetLabel: formatSolarTime(schedule.sunset),
     moonPeak: phase === "night" && (hour >= 22 || hour < 2),
   };
 }
@@ -273,14 +338,36 @@ export function applyThemePreferences(preferences, snapshot, root) {
     "--theme-glass-border",
     `rgb(${cardRgb} / ${isNight ? 0.24 : 0.78})`,
   );
+  root.style.setProperty(
+    "--celestial-light-intensity",
+    snapshot.activeIntensity.toFixed(3),
+  );
+  root.style.setProperty(
+    "--sun-light-intensity",
+    normalized.sunIntensity.toFixed(2),
+  );
+  root.style.setProperty(
+    "--moon-light-intensity",
+    normalized.moonIntensity.toFixed(2),
+  );
 }
 
-export function useDengTaTheme() {
+export function useDengTaTheme(coordinates = null) {
   const [preferences, setPreferences] = useState(readThemePreferences);
   const [clock, setClock] = useState(() => new Date());
   const snapshot = useMemo(
-    () => getCelestialSnapshot(clock, preferences.appearance),
-    [clock, preferences.appearance],
+    () =>
+      getCelestialSnapshot(
+        clock,
+        preferences.appearance,
+        coordinates,
+        preferences,
+      ),
+    [
+      clock,
+      coordinates,
+      preferences,
+    ],
   );
 
   useEffect(() => {

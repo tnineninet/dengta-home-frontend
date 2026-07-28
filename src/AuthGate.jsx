@@ -14,8 +14,8 @@ function ConfigurationScreen() {
     <main className="auth-page auth-configuration-page">
       <section className="auth-message-panel" role="alert">
         <img
-          src="/assets/characters/xiaodeng-taotao-pair.jpg"
-          alt="小灯与桃桃"
+          src="/app-icon.svg"
+          alt="DengTa"
         />
         <span className="auth-kicker">登录服务尚未接通</span>
         <h1>DengTa Home 暂时不能进入</h1>
@@ -151,7 +151,7 @@ export function AuthScreen({
       <section className="auth-panel" aria-label="DengTa Home 账号">
         <div className="auth-brand">
           <img
-            src="/assets/characters/xiaodeng-taotao-pair.jpg"
+            src="/app-icon.svg"
             alt=""
           />
           <div>

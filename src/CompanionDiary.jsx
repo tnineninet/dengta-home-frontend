@@ -79,7 +79,7 @@ export default function CompanionDiary({ aiName = "小灯", onNotice }) {
         className={`diary-generation-state state-${generation.state || "watching"}`}
         role="status"
       >
-        <img src="/assets/xiaodeng-handdrawn-avatar.webp" alt="" />
+        <img src="/app-icon.svg" alt="" />
         <div>
           <strong>
             {generation.state === "writing"

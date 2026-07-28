@@ -492,11 +492,9 @@ body {
 .message-list {
   background:
     linear-gradient(
-      rgba(255, 250, 240, 0.72),
-      rgba(255, 247, 235, 0.84)
-    ),
-    url("/assets/xiaodeng-taotao-chat-wallpaper.jpg") center bottom / cover
-      no-repeat;
+      rgba(255, 250, 240, 0.24),
+      rgba(255, 247, 235, 0.12)
+    );
   scrollbar-color: #c28b9b rgba(255, 255, 255, 0.28);
 }
 

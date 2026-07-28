@@ -85,12 +85,44 @@ export default function ThemeStudio({ preferences, updateTheme }) {
             }
           />
         </label>
+        <label className="theme-opacity-control theme-light-control">
+          <span>
+            <strong>Sunlight</strong>
+            <output>{Math.round(preferences.sunIntensity * 100)}%</output>
+          </span>
+          <small>调节日出、正午与夕阳照亮玻璃的范围</small>
+          <input
+            type="range"
+            min="35"
+            max="160"
+            value={Math.round(preferences.sunIntensity * 100)}
+            onChange={(event) =>
+              updateTheme({ sunIntensity: Number(event.target.value) / 100 })
+            }
+          />
+        </label>
+        <label className="theme-opacity-control theme-light-control">
+          <span>
+            <strong>Moonlight</strong>
+            <output>{Math.round(preferences.moonIntensity * 100)}%</output>
+          </span>
+          <small>调节月光点光源的亮度与照射面积</small>
+          <input
+            type="range"
+            min="35"
+            max="160"
+            value={Math.round(preferences.moonIntensity * 100)}
+            onChange={(event) =>
+              updateTheme({ moonIntensity: Number(event.target.value) / 100 })
+            }
+          />
+        </label>
       </div>
 
       <div className="theme-appearance-control">
         <span>
           <strong>Light cycle</strong>
-          <small>中国时间 · 日出、夕阳与月光自动过渡</small>
+          <small>定位开启后按当地日出日落 · 否则使用上海时刻</small>
         </span>
         <div>
           {APPEARANCE_OPTIONS.map((option) => (

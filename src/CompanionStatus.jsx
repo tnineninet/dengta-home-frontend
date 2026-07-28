@@ -336,10 +336,7 @@ function CompanionStatus({
         onClick={() => (expanded ? closePanel() : openPanel())}
       >
         <span className="status-presence" aria-hidden="true">
-          <img
-            src="/assets/characters/xiaodeng-bear-avatar.jpg"
-            alt=""
-          />
+          <span>D</span>
         </span>
         <span className="status-summary-copy">
           <span className="status-name-line">

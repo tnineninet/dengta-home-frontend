@@ -9,10 +9,6 @@ import {
 import { getStickerById } from "./sticker-catalog";
 import { formatVoiceConfidence } from "./voice";
 
-const ASSISTANT_AVATAR =
-  "/assets/characters/xiaodeng-bear-avatar.jpg";
-const USER_AVATAR = "/assets/characters/taotao-cat-avatar.jpg";
-
 function formatMessageTime(value) {
   if (!value) return "刚刚";
   return new Intl.DateTimeFormat("zh-CN", {
@@ -32,7 +28,6 @@ function ChatMessage({
 }) {
   const isUser = item.role === "user";
   const displayName = isUser ? userName : aiName;
-  const avatar = isUser ? USER_AVATAR : ASSISTANT_AVATAR;
   const quotedMessage = messageReferenceFromMessage(item);
   const canReference =
     typeof onReference === "function" && messageCanBeReferenced(item);
@@ -115,12 +110,15 @@ function ChatMessage({
       onPointerCancel={cancelLongPress}
       onContextMenu={preventTriggeredContextMenu}
     >
-      <img
-        className="message-avatar"
-        src={avatar}
-        alt={`${displayName}的头像`}
-        loading="lazy"
-      />
+      <span
+        className={`message-avatar message-avatar-letter ${
+          isUser ? "is-user" : "is-assistant"
+        }`}
+        role="img"
+        aria-label={`${displayName}的标记`}
+      >
+        {isUser ? "桃" : "D"}
+      </span>
       <div className="message-column">
         <div className="message-role">{displayName}</div>
         <div className="message-bubble">

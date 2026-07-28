@@ -7,6 +7,10 @@ import {
   normalizeThemePreferences,
 } from "../src/dengta-theme.js";
 import fs from "node:fs";
+import {
+  formatSolarTime,
+  getSolarSchedule,
+} from "../src/solar-cycle.js";
 
 test("theme preferences reject invalid colours, opacity and modes", () => {
   assert.deepEqual(
@@ -40,9 +44,30 @@ test("the China-time light cycle resolves deterministic phases and shadows", () 
   assert.equal(night.phase, "night");
   assert.equal(night.resolvedAppearance, "night");
   assert.equal(night.pattern, repeated.pattern);
+  assert.equal(night.lightSource, "fallback");
+  assert.match(night.sunrise, /^\d{4}-\d{2}-\d{2}T/);
+  assert.match(night.sunset, /^\d{4}-\d{2}-\d{2}T/);
 });
 
-test("theme colours reach the wallpaper and shared optical-glass material", () => {
+test("location drives the local astronomical sunrise and sunset", () => {
+  const date = new Date("2026-07-28T04:00:00.000Z");
+  const schedule = getSolarSchedule(date, {
+    latitude: 31.23,
+    longitude: 121.47,
+  });
+  const snapshot = getCelestialSnapshot(date, "auto", {
+    latitude: 31.23,
+    longitude: 121.47,
+  });
+
+  assert.equal(schedule.source, "location");
+  assert.ok(schedule.sunrise < schedule.sunset);
+  assert.equal(snapshot.lightSource, "location");
+  assert.equal(snapshot.sunriseLabel, formatSolarTime(schedule.sunrise));
+  assert.ok(snapshot.progress >= 0 && snapshot.progress <= 1);
+});
+
+test("theme colours reach the sky and shared optical-glass material", () => {
   const values = new Map();
   const root = {
     dataset: {},
@@ -72,6 +97,8 @@ test("theme colours reach the wallpaper and shared optical-glass material", () =
   assert.equal(values.get("--theme-wallpaper-tint-rgb"), "52 86 120");
   assert.ok(values.has("--theme-glass-highlight"));
   assert.ok(values.has("--theme-glass-shadow"));
+  assert.equal(values.get("--sun-light-intensity"), "1.00");
+  assert.equal(values.get("--moon-light-intensity"), "0.86");
 
   const styles = fs.readFileSync(
     new URL("../src/native-feel.css", import.meta.url),
@@ -79,8 +106,13 @@ test("theme colours reach the wallpaper and shared optical-glass material", () =
   );
   assert.match(
     styles,
-    /\.message-list\s*\{[\s\S]*?--theme-wallpaper-tint-rgb[\s\S]*?background-blend-mode:/,
-    "the bear wallpaper itself must be colour-mapped by the selected theme",
+    /\.message-list\s*\{[\s\S]*?--theme-background-rgb[\s\S]*?background-blend-mode:/,
+    "the transparent chat wash must share the live theme background",
+  );
+  assert.doesNotMatch(
+    styles,
+    /xiaodeng-taotao-chat-wallpaper/,
+    "the retired generated wallpaper must not remain in the chat cascade",
   );
   assert.match(
     styles,
