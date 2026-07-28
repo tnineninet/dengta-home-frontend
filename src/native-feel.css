@@ -1057,6 +1057,45 @@ button:active:not(:disabled) {
   }
 }
 
+.notice {
+  max-height: min(40dvh, 280px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.notice > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.message-row.chat-error-message .message-bubble {
+  max-width: min(82vw, 520px);
+  border-color: color-mix(in srgb, var(--theme-accent) 22%, transparent);
+  color: var(--theme-ink);
+  background:
+    linear-gradient(145deg, rgb(255 255 255 / 0.46), transparent 54%),
+    rgb(var(--theme-card-rgb) / 0.82);
+  overflow-wrap: anywhere;
+}
+
+.message-error-dismiss {
+  display: grid;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  margin-right: auto;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  color: var(--theme-ink-soft);
+  background: rgb(255 255 255 / 0.36);
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+}
+
 /* Taotao Cream keeps the celestial glass environment and changes chat only. */
 .app-shell[data-chat-skin="taotao-cream"] {
   --cream-ai: 249 220 229;

@@ -29,12 +29,15 @@ function ChatMessage({
   apiBaseUrl,
   onPreview,
   onReference,
+  onDismissError,
 }) {
   const isUser = item.role === "user";
   const displayName = isUser ? userName : aiName;
   const quotedMessage = messageReferenceFromMessage(item);
   const canReference =
-    typeof onReference === "function" && messageCanBeReferenced(item);
+    item.chatError !== true &&
+    typeof onReference === "function" &&
+    messageCanBeReferenced(item);
   const longPressRef = useRef(null);
   const sticker = !isUser
     ? getStickerById(item.tool_calls?.sticker_id)
@@ -114,7 +117,9 @@ function ChatMessage({
         canReference ? " can-reference" : ""
       }${skin === "taotao-cream" ? " chat-skin-cream-message" : ""}${
         skinPresentation?.groupStart ? " group-start" : ""
-      }${skinPresentation?.groupEnd ? " group-end" : ""}`}
+      }${skinPresentation?.groupEnd ? " group-end" : ""}${
+        item.chatError === true ? " chat-error-message" : ""
+      }`}
       onPointerDown={beginLongPress}
       onPointerMove={moveLongPress}
       onPointerUp={endLongPress}
@@ -216,6 +221,18 @@ function ChatMessage({
             </span>
           )}
           <div className="message-footer">
+            {item.chatError === true &&
+              typeof onDismissError === "function" && (
+                <button
+                  type="button"
+                  className="message-error-dismiss"
+                  aria-label="关闭这条错误提示"
+                  title="关闭错误提示"
+                  onClick={() => onDismissError(item.id)}
+                >
+                  ×
+                </button>
+              )}
             {canReference && (
               <button
                 type="button"

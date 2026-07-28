@@ -139,6 +139,10 @@ import {
   readStoredChatSkinPreferences,
   writeStoredChatSkinPreferences,
 } from "./chat-skin";
+import {
+  dismissChatErrorMessage,
+  publicChatErrorMessage,
+} from "./chat-errors";
 
 const PUSH_CURSOR_KEY = "dengta_push_cursor";
 const PUSH_SEEN_IDS_KEY = "dengta_push_seen_ids";
@@ -2871,6 +2875,10 @@ function App({ accountControl = null, userName = "" }) {
           if (event.type === "error") {
             const eventGenerationInProgress =
               isChatGenerationInProgress(event);
+            const eventErrorMessage = publicChatErrorMessage(
+              event,
+              "模型服务暂时无法完成这次回复，请稍后重试。",
+            );
             generationInProgress =
               generationInProgress || eventGenerationInProgress;
             if (event.user_message_committed === true) {
@@ -2889,8 +2897,9 @@ function App({ accountControl = null, userName = "" }) {
                       ...item,
                       content: eventGenerationInProgress
                         ? "这条消息已经保存，AI 仍在服务器处理中。"
-                        : event.content,
+                        : eventErrorMessage,
                       isStreaming: false,
+                      chatError: true,
                       generationInProgress: eventGenerationInProgress,
                       retryAvailable: true,
                       thinkingStatuses: eventGenerationInProgress
@@ -3002,10 +3011,14 @@ function App({ accountControl = null, userName = "" }) {
       await refreshSessions(activeSessionIdRef.current || sessionId);
       void refreshComposerHint(sessionId);
     } catch (error) {
+      const publicErrorMessage = publicChatErrorMessage(
+        error,
+        "回复暂时中断，请稍后重试。",
+      );
       if (sendSucceeded) {
         if (componentMountedRef.current) {
           setNotice(
-            `AI 回复已经保存，但刷新聊天记录失败：${error.message || "请稍后重新打开本会话。"}`,
+            `AI 回复已经保存，但刷新聊天记录失败：${publicErrorMessage}`,
           );
         }
         return;
@@ -3087,7 +3100,7 @@ function App({ accountControl = null, userName = "" }) {
               attachmentsToSend.length > 0 ? "和附件" : ""
             }已经保存。文字和附件仍保留，点“重试”会继续生成，不会重复保存。`
           : "本轮没有确认保存，文字和附件已保留，可以直接点“重试”。";
-      setNotice(`${error.message || "回复暂时中断。"} ${retryGuidance}`);
+      setNotice(`${publicErrorMessage} ${retryGuidance}`);
       if (!sendSucceeded) {
         if (restoreDraft) {
           if (messageReferenceAtRequest) {
@@ -3118,9 +3131,10 @@ function App({ accountControl = null, userName = "" }) {
                   content:
                     (generationStillInProgress
                       ? "这条消息已经保存，AI 仍在服务器处理中。稍后可以直接检查进度。"
-                      : `${error.message || "AI 回复失败。"}\n\n${retryGuidance}`) ||
+                      : `${publicErrorMessage}\n\n${retryGuidance}`) ||
                     "连接暂时中断了，请检查后端后再试一次。",
                   isStreaming: false,
+                  chatError: true,
                   generationInProgress: generationStillInProgress,
                   retryAvailable: restoreDraft,
                   thinkingStatuses: generationStillInProgress
@@ -3649,6 +3663,11 @@ function App({ accountControl = null, userName = "" }) {
     setIsSettingsOpen(false);
   }
 
+  function dismissChatError(messageId) {
+    setMessages((current) => dismissChatErrorMessage(current, messageId));
+    setNotice("");
+  }
+
   function retryStartupConnection() {
     void startupReconnectRef.current?.retryNow("manual");
   }
@@ -3710,6 +3729,7 @@ function App({ accountControl = null, userName = "" }) {
                 apiBaseUrl={API_BASE_URL}
                 onPreview={handleImagePreview}
                 onReference={selectMessageForReference}
+                onDismissError={dismissChatError}
               />
             ))
           )}

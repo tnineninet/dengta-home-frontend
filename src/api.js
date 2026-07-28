@@ -1,5 +1,10 @@
 import { isChatGenerationInProgress } from "./chat-idempotency.js";
 import { authSession as defaultAuthSession } from "./auth-session.js";
+import {
+  COMMITTED_CHAT_ERROR_FALLBACK,
+  publicChatErrorMessage,
+  sanitizeChatErrorEvent,
+} from "./chat-errors.js";
 
 const API_BASE_URL = (
   import.meta.env?.VITE_API_URL || "http://localhost:3000"
@@ -156,7 +161,7 @@ export async function apiRequest(path, options = {}) {
         ?.invalidateSession?.(data.message);
     }
     const error = new Error(
-      data.message || data.detail || "请求失败，请稍后重试。",
+      publicChatErrorMessage(data, "请求失败，请稍后重试。"),
     );
     error.status = response.status;
     error.code = data.code || "api_request_failed";
@@ -243,7 +248,7 @@ export async function streamChat(
       await authSession?.invalidateSession?.(data.message);
     }
     const error = new Error(
-      data.message || data.detail || "无法开始流式回复。",
+      publicChatErrorMessage(data, "无法开始流式回复。"),
     );
     error.status = response.status;
     error.code = data.code || "stream_request_failed";
@@ -262,10 +267,12 @@ export async function streamChat(
   let userMessageCommitted = false;
 
   function createStreamError(source) {
-    const message =
-      typeof source === "string"
-        ? source
-        : source?.content || source?.message || "回复中断。";
+    const message = publicChatErrorMessage(
+      source,
+      userMessageCommitted
+        ? COMMITTED_CHAT_ERROR_FALLBACK
+        : "回复中断，请稍后重试。",
+    );
     const error = new Error(message);
     error.userMessageCommitted = userMessageCommitted;
     if (source?.code) error.code = source.code;
@@ -280,7 +287,11 @@ export async function streamChat(
     if (!json) return;
 
     try {
-      const event = JSON.parse(json);
+      const parsedEvent = JSON.parse(json);
+      const event =
+        parsedEvent?.type === "error"
+          ? sanitizeChatErrorEvent(parsedEvent)
+          : parsedEvent;
       if (
         (event.type === "meta" && event.user_message) ||
         event.user_message_committed === true
