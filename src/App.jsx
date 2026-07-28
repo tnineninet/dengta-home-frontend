@@ -3703,9 +3703,6 @@ function App({ accountControl = null }) {
               }}
               placeholder="输入消息，或只添加附件后发送…"
               rows="1"
-              disabled={
-                isSending || isCompanionResponding || isVoiceInputBusy
-              }
             />
             <div className="composer-toolbar">
               <input

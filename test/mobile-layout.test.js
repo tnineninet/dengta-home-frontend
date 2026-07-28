@@ -587,6 +587,18 @@ assert.match(
   /onFocus=\{\(\) => \{[\s\S]*?"focus-input"[\s\S]*?requestStatusPanelClose\(\)/,
   "focusing the message input must close the status panel",
 );
+const messageComposerTextarea = app.match(
+  /<textarea\s+ref=\{messageInputRef\}[\s\S]*?\/>/,
+)?.[0];
+assert.ok(
+  messageComposerTextarea,
+  "the chat composer textarea must remain present",
+);
+assert.doesNotMatch(
+  messageComposerTextarea,
+  /disabled=\{/,
+  "background sending, companion or voice states must never lock text entry",
+);
 assert.doesNotMatch(
   app,
   /key=\{`companion-status-/,
