@@ -646,6 +646,40 @@ body {
   object-fit: cover;
 }
 
+.message-artwork {
+  width: min(280px, 100%);
+  margin-top: 10px;
+}
+
+.message-artwork-reveal {
+  display: inline-flex;
+  margin-bottom: 7px;
+  padding: 4px 9px;
+  border: 1px solid rgb(255 255 255 / 0.64);
+  border-radius: 999px;
+  color: var(--theme-ink);
+  background: rgb(var(--theme-card-rgb) / 0.58);
+  font-size: 11px;
+}
+
+.message-artwork-preview {
+  display: block;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 18px;
+  background: rgb(var(--theme-card-rgb) / 0.32);
+  box-shadow: 0 12px 30px var(--theme-glass-shadow);
+}
+
+.message-artwork-image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+}
+
 .message-bubble time,
 .attachment-copy small {
   color: #9a858a;
@@ -654,6 +688,275 @@ body {
 .message-row.user .message-bubble time,
 .message-row.user .attachment-copy small {
   color: rgba(255, 245, 241, 0.7);
+}
+
+.companion-artwork-library,
+.companion-creative-settings {
+  color: var(--theme-ink);
+}
+
+.creative-invitation-card,
+.creative-permission-form,
+.creative-provider-form {
+  border: 1px solid rgb(255 255 255 / 0.66);
+  border-radius: 24px;
+  background:
+    linear-gradient(145deg, rgb(255 255 255 / 0.4), transparent 52%),
+    rgb(var(--theme-card-rgb) / 0.58);
+  box-shadow:
+    0 16px 42px var(--theme-glass-shadow),
+    inset 0 1px 0 rgb(255 255 255 / 0.72);
+}
+
+.creative-invitation-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px;
+}
+
+.creative-invitation-card p,
+.creative-settings-heading p,
+.creative-provider-form small,
+.creative-permission-form small {
+  margin: 5px 0 0;
+  color: var(--theme-muted);
+  line-height: 1.6;
+}
+
+.creative-invitation-actions,
+.artwork-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.creative-invitation-actions button,
+.artwork-card-actions button,
+.creative-upload-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 13px;
+  border: 1px solid rgb(255 255 255 / 0.72);
+  border-radius: 999px;
+  color: var(--theme-ink);
+  background: rgb(var(--theme-card-rgb) / 0.72);
+}
+
+.creative-upload-button {
+  cursor: pointer;
+}
+
+.creative-upload-button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.creative-feedback {
+  margin: 12px 0;
+  padding: 10px 13px;
+  border-radius: 16px;
+  color: var(--theme-ink);
+  background: rgb(var(--theme-accent-rgb) / 0.1);
+}
+
+.artwork-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.artwork-card,
+.artwork-empty {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.66);
+  border-radius: 24px;
+  background: rgb(var(--theme-card-rgb) / 0.58);
+  box-shadow: 0 14px 36px var(--theme-glass-shadow);
+}
+
+.artwork-empty {
+  grid-column: 1 / -1;
+  padding: 24px;
+  text-align: center;
+}
+
+.artwork-empty p {
+  margin: 7px auto 0;
+  max-width: 36rem;
+  color: var(--theme-muted);
+}
+
+.artwork-card-image,
+.artwork-concept {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+}
+
+.artwork-card-image {
+  object-fit: cover;
+}
+
+.artwork-concept {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 7px;
+  color: var(--theme-muted);
+  background:
+    radial-gradient(circle at 32% 25%, rgb(255 255 255 / 0.7), transparent 34%),
+    linear-gradient(145deg, rgb(var(--theme-accent-rgb) / 0.13), transparent);
+}
+
+.artwork-concept span {
+  font-size: 38px;
+}
+
+.artwork-card-copy {
+  display: grid;
+  gap: 6px;
+  padding: 15px 16px 10px;
+}
+
+.artwork-card-copy > span {
+  color: var(--theme-accent);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.artwork-card-copy p {
+  margin: 0;
+  color: var(--theme-ink);
+  line-height: 1.65;
+}
+
+.artwork-card-copy small {
+  color: var(--theme-muted);
+}
+
+.artwork-card-copy .artwork-error {
+  color: #a4424f;
+}
+
+.artwork-card-actions {
+  padding: 6px 16px 16px;
+}
+
+.creative-settings-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.creative-settings-heading h3 {
+  margin: 3px 0 0;
+}
+
+.creative-permission-form,
+.creative-provider-form {
+  display: grid;
+  gap: 15px;
+  margin-top: 16px;
+  padding: 18px;
+}
+
+.creative-permission-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.creative-provider-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.creative-permission-form label,
+.creative-provider-grid label {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.creative-permission-form input,
+.creative-permission-form select,
+.creative-provider-grid input,
+.creative-provider-grid select {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 12px;
+  border: 1px solid rgb(var(--theme-accent-rgb) / 0.18);
+  border-radius: 15px;
+  color: var(--theme-ink);
+  background: rgb(var(--theme-card-rgb) / 0.74);
+}
+
+.creative-switch-row {
+  display: flex !important;
+  align-items: flex-start;
+  gap: 10px !important;
+  padding: 12px;
+  border-radius: 17px;
+  background: rgb(var(--theme-accent-rgb) / 0.07);
+}
+
+.creative-switch-row input {
+  flex: 0 0 auto;
+  width: 22px;
+  min-height: 22px;
+  margin-top: 2px;
+}
+
+.creative-switch-row span {
+  display: grid;
+  gap: 2px;
+}
+
+.creative-provider-wide {
+  grid-column: 1 / -1;
+}
+
+.creative-provider-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.creative-provider-summary span {
+  padding: 7px 10px;
+  border-radius: 999px;
+  color: var(--theme-muted);
+  background: rgb(var(--theme-accent-rgb) / 0.08);
+  font-size: 12px;
+}
+
+@media (max-width: 720px) {
+  .creative-invitation-card,
+  .creative-settings-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .creative-permission-form,
+  .creative-provider-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .creative-provider-wide {
+    grid-column: auto;
+  }
 }
 
 .thinking-panel {

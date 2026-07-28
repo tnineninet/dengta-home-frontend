@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest } from "./api";
+import { CompanionArtworkLibrary } from "./CompanionCreativeStudio";
 import {
   PROFILE_IDENTITY_FIELDS,
   PROFILE_STABLE_FIELDS,
@@ -246,24 +247,10 @@ export default function CompanionProfile({ aiName = "小灯", onNotice }) {
               )}
             </div>
 
-            <div className="profile-creative-grid">
-              <article>
-                <span aria-hidden="true">✎</span>
-                <div>
-                  <strong>头像草稿</strong>
-                  <p>
-                    还没有接入绘图能力。以后会先和你聊想法，再决定要不要画。
-                  </p>
-                </div>
-              </article>
-              <article>
-                <span aria-hidden="true">☁</span>
-                <div>
-                  <strong>随手涂鸦</strong>
-                  <p>{aiName}现在还没有留下作品，画过以后会收在这里。</p>
-                </div>
-              </article>
-            </div>
+            <CompanionArtworkLibrary
+              aiName={aiName}
+              onNotice={onNotice}
+            />
 
             <div className="profile-section-heading profile-history-heading">
               <div>

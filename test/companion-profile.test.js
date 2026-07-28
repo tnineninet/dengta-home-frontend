@@ -75,7 +75,8 @@ assert.match(componentSource, /proposal_ids/);
 assert.match(componentSource, /client_action_id/);
 assert.match(componentSource, /查看比较/);
 assert.match(componentSource, /确认恢复/);
-assert.match(componentSource, /还没有接入绘图能力/);
+assert.match(componentSource, /CompanionArtworkLibrary/);
+assert.doesNotMatch(componentSource, /还没有接入绘图能力/);
 assert.doesNotMatch(
   componentSource,
   /付费请求已开启|头像已经自动生成|涂鸦已经自动生成/,

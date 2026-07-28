@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useRef } from "react";
 import { DeviceActionReceipts } from "./McpDeviceCenter";
 import { MessageAttachments, ThinkingPanel } from "./ChatMessageExtras";
+import { AuthenticatedImage } from "./PrivateMedia";
 import {
   longPressMovementExceeded,
   messageCanBeReferenced,
@@ -35,6 +36,11 @@ function ChatMessage({
   const sticker = !isUser
     ? getStickerById(item.tool_calls?.sticker_id)
     : null;
+  const artworkId = !isUser
+    ? String(item.tool_calls?.artwork_id || "")
+    : "";
+  const artworkAlt =
+    item.tool_calls?.artwork_alt || `${aiName}创作的图片`;
 
   const cancelLongPress = useCallback(() => {
     if (longPressRef.current?.timerId) {
@@ -144,6 +150,24 @@ function ChatMessage({
             >
               <img src={sticker.assetPath} alt={sticker.alt} loading="lazy" />
             </button>
+          )}
+          {artworkId && (
+            <div className="message-artwork">
+              {item.tool_calls?.is_surprise_reveal === true && (
+                <span className="message-artwork-reveal">
+                  悄悄准备的惊喜，现在揭晓
+                </span>
+              )}
+              <AuthenticatedImage
+                src={`/api/v2/creative/artworks/${encodeURIComponent(
+                  artworkId,
+                )}/image`}
+                alt={artworkAlt}
+                className="message-artwork-image"
+                buttonClassName="message-artwork-preview"
+                onPreview={onPreview}
+              />
+            </div>
           )}
           <MessageAttachments
             value={item.attachments || item.files}

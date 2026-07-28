@@ -8,6 +8,7 @@ import AmbientContextBadge from "./AmbientContextBadge";
 import ChatMessage from "./ChatMessage";
 import McpDeviceCenter from "./McpDeviceCenter";
 import AiProviderCenter from "./AiProviderCenter";
+import CompanionCreativeSettings from "./CompanionCreativeStudio";
 import CompanionDiary from "./CompanionDiary";
 import CompanionProfile from "./CompanionProfile";
 import CelestialBackdrop from "./CelestialBackdrop";
@@ -4773,6 +4774,7 @@ function App({ accountControl = null }) {
           </div>
         </form>
         <AiProviderCenter />
+        <CompanionCreativeSettings />
         <McpDeviceCenter />
       </section>
     );
