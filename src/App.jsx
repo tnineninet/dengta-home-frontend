@@ -34,6 +34,7 @@ import {
   storeSessionChatModel,
 } from "./chat-models";
 import {
+  shouldHandleComposerPointerDown,
   shouldSubmitComposerKeyDown,
   transitionComposerOverlays,
 } from "./composer-interactions";
@@ -131,6 +132,13 @@ import {
   storeGroqExpiryDate,
 } from "./service-status";
 import { useDengTaTheme } from "./dengta-theme";
+import {
+  chatSkinPreferencesApiPayload,
+  getMessageSkinPresentation,
+  normalizeChatSkinPreferences,
+  readStoredChatSkinPreferences,
+  writeStoredChatSkinPreferences,
+} from "./chat-skin";
 
 const PUSH_CURSOR_KEY = "dengta_push_cursor";
 const PUSH_SEEN_IDS_KEY = "dengta_push_seen_ids";
@@ -444,7 +452,7 @@ function hydrateSessionChatHistory(messages, sessionId) {
   return applyStoredMessageReferences(hydrateChatHistory(messages), sessionId);
 }
 
-function App({ accountControl = null }) {
+function App({ accountControl = null, userName = "" }) {
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -460,6 +468,10 @@ function App({ accountControl = null }) {
   const [draftSettings, setDraftSettings] = useState(emptySettings);
   const [activeView, setActiveView] = useState("chat");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [chatSkinPreferences, setChatSkinPreferences] = useState(
+    readStoredChatSkinPreferences,
+  );
+  const [composerHint, setComposerHint] = useState("");
   const [celestialCoordinates, setCelestialCoordinates] = useState(
     () => readCachedCoordinates().coordinates,
   );
@@ -594,6 +606,11 @@ function App({ accountControl = null }) {
   const settingsSaveRetryTimerRef = useRef(null);
   const settingsSaveRetryCountRef = useRef(0);
   const settingsSaveFailureRef = useRef(false);
+  const chatSkinPreferencesRef = useRef(chatSkinPreferences);
+  const chatSkinSaveTimerRef = useRef(null);
+  const chatSkinSaveRunRef = useRef(Promise.resolve());
+  const composerHintSessionRef = useRef(null);
+  const composerHintLoadTokenRef = useRef(0);
   const settingsLifecycleFlushPendingRef = useRef(false);
   const flushLatestSettingsDraftRef = useRef(() => Promise.resolve(true));
   const settingsMigrationPendingRef = useRef(false);
@@ -693,6 +710,103 @@ function App({ accountControl = null }) {
       return next.composerMenuOpen;
     });
   }, [isStatusPanelExpanded]);
+
+  function queueChatSkinPreferences(next) {
+    window.clearTimeout(chatSkinSaveTimerRef.current);
+    chatSkinSaveTimerRef.current = window.setTimeout(() => {
+      const payload = chatSkinPreferencesApiPayload(next);
+      chatSkinSaveRunRef.current = chatSkinSaveRunRef.current
+        .catch(() => {})
+        .then(() =>
+          apiRequest("/api/v2/chat-skin/preferences", {
+            method: "PUT",
+            body: JSON.stringify(payload),
+          }),
+        )
+        .catch(() => {});
+    }, 260);
+  }
+
+  function updateChatSkinPreferences(patch) {
+    setChatSkinPreferences((current) => {
+      const next = normalizeChatSkinPreferences({
+        ...current,
+        ...(typeof patch === "function" ? patch(current) : patch),
+      });
+      chatSkinPreferencesRef.current = next;
+      writeStoredChatSkinPreferences(next);
+      queueChatSkinPreferences(next);
+      return next;
+    });
+  }
+
+  const loadChatSkinPreferences = useCallback(async () => {
+    try {
+      const data = await apiRequest(
+        "/api/v2/chat-skin/preferences",
+        STARTUP_REQUEST_OPTIONS,
+      );
+      const next = normalizeChatSkinPreferences(data.preferences);
+      chatSkinPreferencesRef.current = next;
+      writeStoredChatSkinPreferences(next);
+      if (componentMountedRef.current) setChatSkinPreferences(next);
+    } catch {
+      // Local skin preferences remain available during a backend reconnect.
+    }
+  }, []);
+
+  const loadComposerHint = useCallback(async (sessionId) => {
+    const token = ++composerHintLoadTokenRef.current;
+    composerHintSessionRef.current = sessionId || null;
+    if (!sessionId) {
+      setComposerHint("");
+      return;
+    }
+    try {
+      const data = await apiRequest(
+        `/api/v2/chat-skin/conversations/${encodeURIComponent(sessionId)}/hint`,
+      );
+      if (
+        token === composerHintLoadTokenRef.current &&
+        composerHintSessionRef.current === sessionId
+      ) {
+        setComposerHint(data.hint?.hint || "");
+      }
+    } catch {
+      if (token === composerHintLoadTokenRef.current) setComposerHint("");
+    }
+  }, []);
+
+  const refreshComposerHint = useCallback(async (sessionId) => {
+    if (
+      !sessionId ||
+      chatSkinPreferencesRef.current.dynamicComposerHint !== true
+    ) {
+      return;
+    }
+    try {
+      const data = await apiRequest(
+        `/api/v2/chat-skin/conversations/${encodeURIComponent(
+          sessionId,
+        )}/hint/refresh`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            mood_summary: companionStatusRef.current.mood || "",
+          }),
+        },
+      );
+      if (
+        data?.updated === true &&
+        activeSessionIdRef.current === sessionId &&
+        composerHintSessionRef.current === sessionId
+      ) {
+        setComposerHint(data.hint?.hint || "");
+      }
+    } catch {
+      // Hint generation is optional and must never affect message delivery.
+    }
+  }, []);
 
   useEffect(
     () => () => window.clearTimeout(messageScrollIdleTimerRef.current),
@@ -867,6 +981,7 @@ function App({ accountControl = null }) {
       setIsLoading(false);
       void loadInitialModels(nextSettings.model);
       void refreshServiceHealth();
+      void loadChatSkinPreferences();
       return { settings: nextSettings, sessions: nextSessions };
     }
 
@@ -887,7 +1002,7 @@ function App({ accountControl = null }) {
         startupReconnectRef.current = null;
       }
     };
-  }, [refreshServiceHealth]);
+  }, [loadChatSkinPreferences, refreshServiceHealth]);
 
   useEffect(() => {
     if (
@@ -910,7 +1025,8 @@ function App({ accountControl = null }) {
     shouldAutoScrollRef.current =
       savedScrollState?.pinnedToBottom ?? true;
     setMessageReference(null);
-  }, [activeSessionId]);
+    void loadComposerHint(activeSessionId);
+  }, [activeSessionId, loadComposerHint]);
 
   useEffect(() => {
     if (!hasLoadedSettingsRef.current) return;
@@ -2308,6 +2424,7 @@ function App({ accountControl = null }) {
       }
 
       await refreshSessions(activeSessionIdRef.current || sessionId);
+      void refreshComposerHint(sessionId);
     } catch (error) {
       if (activeSessionIdRef.current === sessionId) {
         messageLoadTokenRef.current += 1;
@@ -2883,6 +3000,7 @@ function App({ accountControl = null }) {
         );
       }
       await refreshSessions(activeSessionIdRef.current || sessionId);
+      void refreshComposerHint(sessionId);
     } catch (error) {
       if (sendSucceeded) {
         if (componentMountedRef.current) {
@@ -3576,10 +3694,16 @@ function App({ accountControl = null }) {
               </p>
             </div>
           ) : (
-            messages.map((item) => (
+            messages.map((item, index) => (
               <ChatMessage
                 key={item.id}
                 item={item}
+                skin={chatSkinPreferences.skin}
+                skinPresentation={getMessageSkinPresentation(
+                  messages,
+                  index,
+                  chatSkinPreferences,
+                )}
                 aiName={settings.ai_name || "小灯"}
                 userName="桃桃"
                 companionMood={companionStatus.mood}
@@ -3697,7 +3821,11 @@ function App({ accountControl = null }) {
                   void sendMessage();
                 }
               }}
-              placeholder="输入消息…"
+              placeholder={
+                chatSkinPreferences.dynamicComposerHint && composerHint
+                  ? composerHint
+                  : "想和祂说点什么……"
+              }
               rows="1"
             />
             <div className="composer-toolbar">
@@ -3746,11 +3874,12 @@ function App({ accountControl = null }) {
                   isComposerMenuOpen ? "关闭更多功能" : "打开更多功能"
                 }
                 aria-expanded={isComposerMenuOpen}
-                disabled={
-                  isSending ||
-                  isCompanionResponding ||
-                  isVoiceInputBusy
-                }
+                disabled={isVoiceInputBusy}
+                onPointerDown={(event) => {
+                  if (shouldHandleComposerPointerDown(event)) {
+                    event.preventDefault();
+                  }
+                }}
                 onClick={toggleComposerMenu}
               >
                 <span className="composer-menu-icon" aria-hidden="true">
@@ -3762,7 +3891,12 @@ function App({ accountControl = null }) {
                 type="button"
                 aria-label={sendButtonLabel}
                 title={sendButtonLabel}
-                onClick={sendMessage}
+                onPointerDown={(event) => {
+                  if (!shouldHandleComposerPointerDown(event)) return;
+                  event.preventDefault();
+                  void sendMessage();
+                }}
+                onClick={() => void sendMessage()}
                 disabled={
                   (!message.trim() && chatAttachments.length === 0) ||
                   isSending ||
@@ -3770,9 +3904,7 @@ function App({ accountControl = null }) {
                   isVoiceInputBusy
                 }
               >
-                <svg viewBox="0 0 24 24" aria-hidden="true">
-                  <path d="M12 18V6m0 0L7.5 10.5M12 6l4.5 4.5" />
-                </svg>
+                <span className="send-paw-icon" aria-hidden="true">🐾</span>
                 <span className="send-button-label">{sendButtonLabel}</span>
               </button>
             </div>
@@ -4216,6 +4348,8 @@ function App({ accountControl = null }) {
         <ThemeStudio
           preferences={themePreferences}
           updateTheme={updateTheme}
+          chatSkinPreferences={chatSkinPreferences}
+          updateChatSkin={updateChatSkinPreferences}
         />
 
         <form className="settings-form" onSubmit={saveSettings}>
@@ -4794,7 +4928,13 @@ function App({ accountControl = null }) {
   );
 
   return (
-    <div className="app-shell">
+    <div
+      className={`app-shell${
+        chatSkinPreferences.reduceMotion ? " reduce-chat-motion" : ""
+      }`}
+      data-chat-skin={chatSkinPreferences.skin}
+      data-ornament-activity={chatSkinPreferences.ornamentActivity}
+    >
       <CelestialBackdrop snapshot={celestialSnapshot} />
 
       {isSidebarOpen && (
@@ -4955,6 +5095,7 @@ function App({ accountControl = null }) {
             active={activeView === "chat"}
             closeRequest={statusPanelCloseRequest}
             aiName={settings.ai_name || "小灯"}
+            userName={userName}
             status={companionStatus}
             interactionStats={companionInteractionStats}
             intimateExpressionEnabled={

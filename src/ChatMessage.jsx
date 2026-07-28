@@ -9,6 +9,7 @@ import {
 } from "./message-reference";
 import { getStickerById } from "./sticker-catalog";
 import { formatVoiceConfidence } from "./voice";
+import ChatSkinOrnament from "./ChatSkinOrnament";
 
 function formatMessageTime(value) {
   if (!value) return "刚刚";
@@ -23,6 +24,8 @@ function ChatMessage({
   aiName = "小灯",
   userName = "桃桃",
   companionMood = "",
+  skin = "classic-glass",
+  skinPresentation = null,
   apiBaseUrl,
   onPreview,
   onReference,
@@ -109,7 +112,9 @@ function ChatMessage({
     <article
       className={`message-row ${isUser ? "user" : "assistant"}${
         canReference ? " can-reference" : ""
-      }`}
+      }${skin === "taotao-cream" ? " chat-skin-cream-message" : ""}${
+        skinPresentation?.groupStart ? " group-start" : ""
+      }${skinPresentation?.groupEnd ? " group-end" : ""}`}
       onPointerDown={beginLongPress}
       onPointerMove={moveLongPress}
       onPointerUp={endLongPress}
@@ -128,6 +133,12 @@ function ChatMessage({
       <div className="message-column">
         <div className="message-role">{displayName}</div>
         <div className="message-bubble">
+          {skin === "taotao-cream" && skinPresentation?.showOrnament && (
+            <ChatSkinOrnament
+              role={item.role}
+              mood={companionMood}
+            />
+          )}
           {quotedMessage && (
             <div className="message-reference-block">
               <strong>引用 {quotedDisplayName}</strong>

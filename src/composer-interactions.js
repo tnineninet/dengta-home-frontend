@@ -10,6 +10,14 @@ export function shouldSubmitComposerKeyDown(event = {}) {
   );
 }
 
+export function shouldHandleComposerPointerDown(event = {}) {
+  return (
+    event.isPrimary !== false &&
+    (event.pointerType === "touch" || event.pointerType === "pen") &&
+    (event.button === undefined || event.button === 0)
+  );
+}
+
 export function transitionComposerOverlays(
   { statusExpanded = false, composerMenuOpen = false } = {},
   action,

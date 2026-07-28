@@ -22,8 +22,12 @@ const css = fs.readFileSync(
 );
 
 assert.match(main, /<AuthGate>/);
-assert.match(main, /<App accountControl=\{accountControl\}/);
-assert.match(app, /function App\(\{ accountControl = null \}\)/);
+assert.match(main, /<App\s+accountControl=\{accountControl\}/);
+assert.match(main, /userName=\{snapshot\.user\?\.displayName\}/);
+assert.match(
+  app,
+  /function App\(\{ accountControl = null, userName = "" \}\)/,
+);
 assert.match(app, /className="sidebar-account-slot"/);
 
 assert.match(source, /sessionManager\.initialize\(\)/);

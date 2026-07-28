@@ -16,6 +16,7 @@ import {
   localCompanionInteractionReaction,
   normalizeCompanionStatus,
   normalizeCompanionInteractionStats,
+  personalizeCompanionStatusText,
   remainingAt,
   settleExpiredCountdown,
 } from "./companion-status";
@@ -24,6 +25,7 @@ function CompanionStatus({
   active = true,
   closeRequest = 0,
   aiName,
+  userName,
   status,
   interactionStats,
   intimateExpressionEnabled = false,
@@ -33,6 +35,10 @@ function CompanionStatus({
   onInteract,
 }) {
   const displayName = String(aiName || "").trim() || "小灯";
+  const personalized = useCallback(
+    (value) => personalizeCompanionStatusText(value, userName),
+    [userName],
+  );
   const normalized = useMemo(
     () => normalizeCompanionStatus(status),
     [status],
@@ -346,9 +352,11 @@ function CompanionStatus({
           <span className="status-glance">
             <span>⌖ {normalized.place}</span>
             <span>·</span>
-            <span>{normalized.focus}</span>
+            <span>{personalized(normalized.focus)}</span>
           </span>
-          <span className="status-reaction-preview">{normalized.note}</span>
+          <span className="status-reaction-preview">
+            {personalized(normalized.note)}
+          </span>
         </span>
         <span className="status-mini-vitals" aria-label="角色氛围数值">
           <span>{normalized.energyLevel}%</span>
@@ -373,11 +381,11 @@ function CompanionStatus({
             <div className="status-signal-title">
               <div>
                 <span className="status-eyebrow">此刻心绪</span>
-                <h2>{normalized.microState}</h2>
+                <h2>{personalized(normalized.microState)}</h2>
               </div>
               <span className="status-signal-state">{normalized.mood}</span>
             </div>
-            <p>{normalized.note}</p>
+            <p>{personalized(normalized.note)}</p>
             <dl className="status-facts">
               <div>
                 <dt>所在</dt>
@@ -385,7 +393,7 @@ function CompanionStatus({
               </div>
               <div>
                 <dt>在意</dt>
-                <dd>{normalized.focus}</dd>
+                <dd>{personalized(normalized.focus)}</dd>
               </div>
               <div>
                 <dt>同步</dt>
@@ -525,7 +533,7 @@ function CompanionStatus({
                       <time>
                         {formatUpdatedAt(record.createdAt, clockNow)}
                       </time>
-                      <span>{record.text}</span>
+                      <span>{personalized(record.text)}</span>
                     </li>
                   ))}
                 </ul>

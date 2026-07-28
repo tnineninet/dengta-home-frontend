@@ -461,7 +461,7 @@ assert.match(
 );
 assert.match(
   status,
-  /className="status-reaction-preview">\{normalized\.note\}/,
+  /className="status-reaction-preview">[\s\S]*?\{personalized\(normalized\.note\)\}/,
   "collapsed status must expose the latest companion reaction",
 );
 assert.match(
@@ -553,8 +553,16 @@ assert.equal(
 );
 assert.match(
   app,
-  /ref=\{composerMenuTriggerRef\}[\s\S]*?disabled=\{\s*isSending \|\|[\s\S]*?onClick=\{toggleComposerMenu\}/,
-  "the attachment count must not disable the plus menu itself",
+  /ref=\{composerMenuTriggerRef\}[\s\S]*?disabled=\{isVoiceInputBusy\}[\s\S]*?onClick=\{toggleComposerMenu\}/,
+  "AI thinking must not disable the plus menu used to prepare the next turn",
+);
+const composerMenuTrigger = app.match(
+  /<button\s+ref=\{composerMenuTriggerRef\}[\s\S]*?<\/button>/,
+)?.[0];
+assert.doesNotMatch(
+  composerMenuTrigger || "",
+  /isSending|isCompanionResponding/,
+  "the plus menu must remain available while the current reply is in flight",
 );
 assert.match(
   app,
@@ -602,6 +610,14 @@ assert.doesNotMatch(
   messageComposerTextarea,
   /disabled=\{/,
   "background sending, companion or voice states must never lock text entry",
+);
+const composerSendButton = app.match(
+  /<button\s+className="send-button"[\s\S]*?<\/button>/,
+)?.[0];
+assert.match(
+  composerSendButton || "",
+  /onPointerDown=\{[\s\S]*?shouldHandleComposerPointerDown[\s\S]*?preventDefault\(\)[\s\S]*?sendMessage\(\)/,
+  "a touch on send must dispatch before Android keyboard resize can swallow click",
 );
 assert.doesNotMatch(
   app,
@@ -704,8 +720,8 @@ assert.match(
 );
 assert.match(
   app,
-  /placeholder="输入消息…"/,
-  "the compact mobile composer must use a one-line placeholder",
+  /placeholder=\{[\s\S]*?composerHint[\s\S]*?想和祂说点什么……[\s\S]*?\}/,
+  "the compact mobile composer must use a dynamic one-line placeholder",
 );
 assert.match(
   css,

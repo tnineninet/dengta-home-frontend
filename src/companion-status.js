@@ -133,6 +133,17 @@ function cleanText(value, maximum, fallback) {
   return cleaned || fallback;
 }
 
+export function personalizeCompanionStatusText(value, userDisplayName = "") {
+  const text = typeof value === "string" ? value : "";
+  if (!text.includes("用户")) return text;
+  const normalizedName = cleanText(userDisplayName, 40, "");
+  const reference =
+    normalizedName && !/^(?:用户|user|你|我)$/i.test(normalizedName)
+      ? normalizedName
+      : "你";
+  return text.replace(/用户/g, reference);
+}
+
 function safeIsoDate(value, fallback) {
   const timestamp = Date.parse(value);
   return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : fallback;

@@ -98,6 +98,9 @@ function publicUser(session) {
   return Object.freeze({
     id: user.id,
     email: user.email || "",
+    displayName: String(user.user_metadata?.display_name || "")
+      .trim()
+      .slice(0, 80),
     emailVerified: Boolean(user.email_confirmed_at || user.confirmed_at),
   });
 }

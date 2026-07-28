@@ -6,7 +6,12 @@ const APPEARANCE_OPTIONS = [
   { id: "night", label: "Night" },
 ];
 
-export default function ThemeStudio({ preferences, updateTheme }) {
+export default function ThemeStudio({
+  preferences,
+  updateTheme,
+  chatSkinPreferences,
+  updateChatSkin,
+}) {
   return (
     <section className="theme-studio" aria-labelledby="theme-studio-title">
       <div className="settings-card-heading">
@@ -140,6 +145,73 @@ export default function ThemeStudio({ preferences, updateTheme }) {
           ))}
         </div>
       </div>
+
+      <section className="chat-skin-control" aria-labelledby="chat-skin-title">
+        <div className="settings-card-heading">
+          <div>
+            <span className="settings-kicker">CHAT SKIN</span>
+            <h4 id="chat-skin-title">桃桃奶油</h4>
+          </div>
+          <span className="theme-live-dot">Live</span>
+        </div>
+        <label className="chat-skin-toggle">
+          <span>
+            <strong>奶油气泡与原创挂件</strong>
+            <small>旧消息只换样式，不改聊天数据</small>
+          </span>
+          <input
+            type="checkbox"
+            checked={chatSkinPreferences?.skin === "taotao-cream"}
+            onChange={(event) =>
+              updateChatSkin?.({
+                skin: event.target.checked ? "taotao-cream" : "classic-glass",
+              })
+            }
+          />
+        </label>
+        <label className="chat-skin-select">
+          <span>
+            <strong>挂件活跃度</strong>
+            <small>安静、自然或热闹</small>
+          </span>
+          <select
+            value={chatSkinPreferences?.ornamentActivity || "natural"}
+            onChange={(event) =>
+              updateChatSkin?.({ ornamentActivity: event.target.value })
+            }
+          >
+            <option value="quiet">安静</option>
+            <option value="natural">自然</option>
+            <option value="lively">热闹</option>
+          </select>
+        </label>
+        <label className="chat-skin-toggle">
+          <span>
+            <strong>AI 心情输入提示</strong>
+            <small>随当前会话氛围更新，不阻塞回复</small>
+          </span>
+          <input
+            type="checkbox"
+            checked={chatSkinPreferences?.dynamicComposerHint !== false}
+            onChange={(event) =>
+              updateChatSkin?.({ dynamicComposerHint: event.target.checked })
+            }
+          />
+        </label>
+        <label className="chat-skin-toggle">
+          <span>
+            <strong>减少动画</strong>
+            <small>跟随系统减少回弹与挂件动态</small>
+          </span>
+          <input
+            type="checkbox"
+            checked={chatSkinPreferences?.reduceMotion === true}
+            onChange={(event) =>
+              updateChatSkin?.({ reduceMotion: event.target.checked })
+            }
+          />
+        </label>
+      </section>
     </section>
   );
 }

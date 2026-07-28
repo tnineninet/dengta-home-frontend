@@ -7,6 +7,7 @@ import {
   localCompanionInteractionReaction,
   mergeCompanionStatus,
   normalizeCompanionInteractionStats,
+  personalizeCompanionStatusText,
   recordCompanionInteraction,
 } from "../src/companion-status.js";
 import { enqueueCompanionInteraction } from "../src/companion-interaction.js";
@@ -15,6 +16,19 @@ const handZone = HOT_ZONES.find((zone) => zone.id === "hand");
 const shoulderZone = HOT_ZONES.find((zone) => zone.id === "shoulder");
 assert.ok(handZone);
 assert.ok(shoulderZone);
+
+assert.equal(
+  personalizeCompanionStatusText("用户要我直接作画。", "桃桃"),
+  "桃桃要我直接作画。",
+);
+assert.equal(
+  personalizeCompanionStatusText("用户要求我先看图片。", ""),
+  "你要求我先看图片。",
+);
+assert.equal(
+  personalizeCompanionStatusText("我正想着该怎么逗桃桃笑。", "桃桃"),
+  "我正想着该怎么逗桃桃笑。",
+);
 
 let stats = createDefaultCompanionInteractionStats();
 const startedAt = Date.parse("2026-07-21T08:00:00.000Z");

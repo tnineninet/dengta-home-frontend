@@ -23,6 +23,14 @@
 }
 
 @font-face {
+  font-family: "ChillRoundF";
+  src: url("/fonts/ChillRoundF-v3.0.ttf") format("truetype");
+  font-style: normal;
+  font-weight: 400 900;
+  font-display: swap;
+}
+
+@font-face {
   font-family: "Roboto Mono";
   src: url("/fonts/RobotoMono-latin.woff2") format("woff2");
   font-style: normal;
@@ -1046,6 +1054,341 @@ button:active:not(:disabled) {
 
   .mobile-nav {
     padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Taotao Cream keeps the celestial glass environment and changes chat only. */
+.app-shell[data-chat-skin="taotao-cream"] {
+  --cream-ai: 249 220 229;
+  --cream-user: 255 250 248;
+  --cream-lilac: 224 213 238;
+  --cream-line: 119 100 108;
+  --cream-ink: 61 53 58;
+}
+
+:root[data-dengta-appearance="night"]
+  .app-shell[data-chat-skin="taotao-cream"] {
+  --cream-ai: 116 76 82;
+  --cream-user: 48 51 54;
+  --cream-lilac: 93 82 111;
+  --cream-line: 224 207 200;
+  --cream-ink: 250 244 239;
+}
+
+.app-shell[data-chat-skin="taotao-cream"] .message-list {
+  padding-inline: clamp(12px, 3.5vw, 26px);
+  background:
+    radial-gradient(circle at 20% 8%, rgb(255 255 255 / 0.24), transparent 26%),
+    linear-gradient(180deg, transparent, rgb(var(--theme-background-rgb) / 0.16));
+}
+
+.app-shell[data-chat-skin="taotao-cream"] .chat-skin-cream-message {
+  margin-block: 13px;
+  animation: cream-message-enter 340ms var(--native-spring) both;
+}
+
+.app-shell[data-chat-skin="taotao-cream"] .chat-skin-cream-message.group-start {
+  padding-top: 38px;
+}
+
+.app-shell[data-chat-skin="taotao-cream"]
+  .chat-skin-cream-message:not(.group-start) {
+  margin-top: -7px;
+}
+
+.app-shell[data-chat-skin="taotao-cream"] .chat-skin-cream-message .message-avatar,
+.app-shell[data-chat-skin="taotao-cream"] .chat-skin-cream-message .message-role {
+  display: none;
+}
+
+.app-shell[data-chat-skin="taotao-cream"] .chat-skin-cream-message .message-column {
+  width: min(82%, 720px);
+}
+
+.app-shell[data-chat-skin="taotao-cream"] .chat-skin-cream-message .message-bubble {
+  position: relative;
+  overflow: visible;
+  min-width: 56px;
+  padding: 15px 18px 12px;
+  border: 1.5px solid rgb(var(--cream-line) / 0.7);
+  border-radius: 25px;
+  color: rgb(var(--cream-ink));
+  background: rgb(var(--cream-user) / 0.9);
+  box-shadow:
+    0 13px 30px rgb(70 53 61 / 0.1),
+    inset 0 1px 0 rgb(255 255 255 / 0.66);
+  font-family: "ChillRoundF", "Noto Sans SC", "PingFang SC", sans-serif;
+  font-size: 16px;
+  font-weight: 550;
+  letter-spacing: 0;
+  line-height: 1.65;
+}
+
+.app-shell[data-chat-skin="taotao-cream"]
+  .chat-skin-cream-message.assistant
+  .message-bubble {
+  background:
+    linear-gradient(145deg, rgb(255 255 255 / 0.42), transparent 48%),
+    rgb(var(--cream-ai) / 0.93);
+}
+
+.app-shell[data-chat-skin="taotao-cream"]
+  .chat-skin-cream-message.user
+  .message-bubble {
+  background:
+    linear-gradient(145deg, rgb(255 255 255 / 0.5), transparent 48%),
+    linear-gradient(
+      155deg,
+      rgb(var(--cream-user) / 0.94),
+      rgb(var(--cream-lilac) / 0.7)
+    );
+}
+
+.app-shell[data-chat-skin="taotao-cream"]
+  .chat-skin-cream-message
+  .message-bubble::after {
+  display: none;
+}
+
+.app-shell[data-chat-skin="taotao-cream"] .message-content {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.app-shell[data-chat-skin="taotao-cream"] pre,
+.app-shell[data-chat-skin="taotao-cream"] code,
+.app-shell[data-chat-skin="taotao-cream"] a {
+  font-family: "Noto Sans SC", "PingFang SC", sans-serif;
+}
+
+.app-shell[data-chat-skin="taotao-cream"] .chat-skin-ornament {
+  position: absolute;
+  z-index: 2;
+  top: -38px;
+  left: 12px;
+  display: block;
+  width: 58px;
+  height: 46px;
+  color: rgb(var(--cream-line));
+  pointer-events: none;
+  transform-origin: 50% 100%;
+  animation: cream-ornament-peek 430ms 80ms var(--native-spring) both;
+}
+
+.app-shell[data-chat-skin="taotao-cream"]
+  .chat-skin-cream-message.user
+  .chat-skin-ornament {
+  right: 12px;
+  left: auto;
+}
+
+.chat-skin-ornament svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.chat-skin-ornament .ornament-face {
+  fill: rgb(var(--cream-user) / 0.98);
+  stroke: currentColor;
+  stroke-width: 2.1;
+}
+
+.chat-skin-ornament .ornament-ear {
+  fill: rgb(var(--cream-ai) / 0.98);
+  stroke: currentColor;
+  stroke-width: 2.1;
+}
+
+.chat-skin-ornament .ornament-muzzle {
+  fill: rgb(var(--cream-user) / 0.72);
+  stroke: currentColor;
+  stroke-width: 1.4;
+}
+
+.chat-skin-ornament .ornament-body {
+  fill: rgb(var(--cream-ai) / 0.96);
+  stroke: currentColor;
+  stroke-width: 2.1;
+  stroke-linecap: round;
+}
+
+.chat-skin-ornament .ornament-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chat-skin-ornament .ornament-eye {
+  fill: currentColor;
+}
+
+.app-shell[data-chat-skin="taotao-cream"] .message-reference-block,
+.app-shell[data-chat-skin="taotao-cream"] .thinking-panel {
+  width: 100%;
+  min-width: 0;
+  border-color: rgb(var(--cream-line) / 0.24);
+  background: rgb(255 255 255 / 0.32);
+  box-shadow: none;
+}
+
+.app-shell[data-chat-skin="taotao-cream"] .thinking-panel {
+  font-family: "LXGW WenKai Lite", "Noto Sans SC", sans-serif;
+}
+
+.app-shell[data-chat-skin="taotao-cream"] .message-footer {
+  opacity: 0.58;
+}
+
+.app-shell[data-chat-skin="taotao-cream"] .composer-wrap {
+  padding-top: 8px;
+  background: linear-gradient(180deg, transparent, rgb(var(--cream-user) / 0.28));
+}
+
+.app-shell[data-chat-skin="taotao-cream"] .composer {
+  min-height: 54px;
+  border: 1px solid rgb(255 255 255 / 0.78);
+  border-radius: 28px;
+  background:
+    linear-gradient(145deg, rgb(255 255 255 / 0.6), transparent 54%),
+    rgb(var(--cream-user) / 0.78);
+  box-shadow:
+    0 13px 32px rgb(74 58 66 / 0.12),
+    inset 0 1px 0 rgb(255 255 255 / 0.82);
+}
+
+.app-shell[data-chat-skin="taotao-cream"] .composer textarea {
+  max-height: 82px;
+  color: rgb(var(--cream-ink));
+  font-family: "ChillRoundF", "Noto Sans SC", sans-serif;
+  font-size: 15px;
+}
+
+.app-shell[data-chat-skin="taotao-cream"] .composer textarea::placeholder {
+  color: rgb(var(--cream-line) / 0.52);
+  font-family: "LXGW WenKai Lite", "Noto Sans SC", sans-serif;
+}
+
+.app-shell[data-chat-skin="taotao-cream"] .chat-attach-button,
+.app-shell[data-chat-skin="taotao-cream"] .send-button {
+  border: 0;
+  border-radius: 50%;
+  background: rgb(var(--cream-lilac) / 0.74);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.7);
+}
+
+.app-shell[data-chat-skin="taotao-cream"] .composer-tool-menu {
+  border-color: rgb(255 255 255 / 0.72);
+  background: rgb(var(--cream-user) / 0.9);
+  box-shadow:
+    0 20px 46px rgb(63 48 57 / 0.16),
+    inset 0 1px 0 rgb(255 255 255 / 0.76);
+}
+
+.chat-skin-control {
+  display: grid;
+  gap: 0;
+  padding-top: 18px;
+  border-top: 1px solid rgb(var(--theme-ink-rgb) / 0.09);
+}
+
+.chat-skin-control h4 {
+  margin: 3px 0 13px;
+  font-family: var(--font-display);
+  font-size: 20px;
+}
+
+.chat-skin-toggle,
+.chat-skin-select {
+  display: flex;
+  min-height: 62px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  border-bottom: 1px solid rgb(var(--theme-ink-rgb) / 0.08);
+}
+
+.chat-skin-toggle > span,
+.chat-skin-select > span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.chat-skin-toggle small,
+.chat-skin-select small {
+  color: rgb(var(--theme-ink-rgb) / 0.54);
+  font-size: 11px;
+}
+
+.chat-skin-toggle input {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  accent-color: var(--theme-accent);
+}
+
+.chat-skin-select select {
+  min-width: 88px;
+  min-height: 40px;
+  border: 0;
+  border-radius: 20px;
+  color: var(--theme-ink);
+  background: rgb(var(--theme-ink-rgb) / 0.07);
+  text-align: center;
+}
+
+@keyframes cream-message-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes cream-ornament-peek {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0) scale(0.82);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+.app-shell.reduce-chat-motion .chat-skin-cream-message,
+.app-shell.reduce-chat-motion .chat-skin-ornament {
+  animation-duration: 1ms;
+  animation-delay: 0ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell[data-chat-skin="taotao-cream"] .chat-skin-cream-message,
+  .app-shell[data-chat-skin="taotao-cream"] .chat-skin-ornament {
+    animation-duration: 1ms;
+    animation-delay: 0ms;
+  }
+}
+
+@media (max-width: 430px) {
+  .app-shell[data-chat-skin="taotao-cream"]
+    .chat-skin-cream-message
+    .message-column {
+    width: min(86%, 720px);
+  }
+
+  .app-shell[data-chat-skin="taotao-cream"]
+    .chat-skin-cream-message
+    .message-bubble {
+    padding: 14px 16px 11px;
+    font-size: 15.5px;
   }
 }
 

@@ -12,7 +12,12 @@ createRoot(document.getElementById("root")).render(
   <StrictMode>
     <DengTaPrelude />
     <AuthGate>
-      {({ accountControl }) => <App accountControl={accountControl} />}
+      {({ accountControl, snapshot }) => (
+        <App
+          accountControl={accountControl}
+          userName={snapshot.user?.displayName}
+        />
+      )}
     </AuthGate>
   </StrictMode>,
 );
