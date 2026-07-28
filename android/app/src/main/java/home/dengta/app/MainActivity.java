@@ -16,6 +16,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(BackgroundNotificationsPlugin.class);
+        registerPlugin(DeviceActivityPlugin.class);
         super.onCreate(savedInstanceState);
         configureStableWebView();
         PushNotificationWorker.ensureNotificationChannel(this);

@@ -98,6 +98,16 @@ import {
   readCachedCoordinates,
   SHANGHAI_TIME_ZONE,
 } from "./ambient-context";
+import {
+  DEVICE_ACTIVITY_REFRESH_MS,
+  DEVICE_ACTIVITY_WINDOW_MINUTES,
+  DeviceActivity,
+  deviceActivityPluginAvailable,
+  mergeDeviceActivityContext,
+  normalizeDeviceActivityState,
+  normalizeDeviceActivitySummary,
+  readDeviceActivityState,
+} from "./device-activity";
 import { installInnerHeightViewportFallback } from "./mobile-viewport";
 import { toggleMomentLikeOptimistically } from "./moment-like";
 import {
@@ -501,6 +511,14 @@ function App({ accountControl = null, userName = "" }) {
   const [notificationPermissionState, setNotificationPermissionState] = useState(
     initialNotificationPermissionState,
   );
+  const [deviceActivityState, setDeviceActivityState] = useState(() =>
+    normalizeDeviceActivityState({}),
+  );
+  const [deviceActivityFeedback, setDeviceActivityFeedback] = useState({
+    status: "idle",
+    message: "默认关闭。开启后只提供最近使用过的 App 名称和粗略时长。",
+  });
+  const [isDeviceActivityBusy, setIsDeviceActivityBusy] = useState(false);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [isPostingMoment, setIsPostingMoment] = useState(false);
   const [pendingMomentLikes, setPendingMomentLikes] = useState({});
@@ -572,6 +590,9 @@ function App({ accountControl = null, userName = "" }) {
   const messageLoadTokenRef = useRef(0);
   const streamingSessionIdRef = useRef(null);
   const companionStatusRef = useRef(companionStatus);
+  const ambientContextRef = useRef({});
+  const deviceActivitySummaryRef = useRef(null);
+  const deviceActivityRefreshRunRef = useRef(null);
   const environmentContextRef = useRef({});
   const turnContextRef = useRef("");
   const companionInteractionStatsRef = useRef(companionInteractionStats);
@@ -660,9 +681,111 @@ function App({ accountControl = null, userName = "" }) {
   }, []);
 
   const handleAmbientContextChange = useCallback((context) => {
-    environmentContextRef.current =
+    ambientContextRef.current =
       context && typeof context === "object" ? context : {};
+    environmentContextRef.current = mergeDeviceActivityContext(
+      ambientContextRef.current,
+      deviceActivitySummaryRef.current,
+    );
   }, []);
+
+  const refreshDeviceActivityContext = useCallback(
+    async ({ force = false, silent = false } = {}) => {
+      if (!deviceActivityPluginAvailable()) {
+        const unavailable = normalizeDeviceActivityState({});
+        setDeviceActivityState(unavailable);
+        deviceActivitySummaryRef.current = null;
+        environmentContextRef.current = mergeDeviceActivityContext(
+          ambientContextRef.current,
+          null,
+        );
+        if (!silent) {
+          setDeviceActivityFeedback({
+            status: "idle",
+            message: "活动感知只在安装到 Android 手机后的 App 内可用。",
+          });
+        }
+        return null;
+      }
+
+      if (deviceActivityRefreshRunRef.current) {
+        return deviceActivityRefreshRunRef.current;
+      }
+
+      const run = (async () => {
+        try {
+          const state = await readDeviceActivityState();
+          setDeviceActivityState(state);
+          if (!state.enabled || !state.permissionGranted) {
+            deviceActivitySummaryRef.current = null;
+            environmentContextRef.current = mergeDeviceActivityContext(
+              ambientContextRef.current,
+              null,
+            );
+            if (!silent) {
+              setDeviceActivityFeedback({
+                status: state.enabled ? "checking" : "idle",
+                message: state.enabled
+                  ? "开关已打开，还需要在系统页授予使用情况访问权限。"
+                  : "默认关闭。开启后只提供最近使用过的 App 名称和粗略时长。",
+              });
+            }
+            return null;
+          }
+
+          const previous = deviceActivitySummaryRef.current;
+          const previousTime = Date.parse(previous?.capturedAt);
+          if (
+            !force &&
+            Number.isFinite(previousTime) &&
+            Date.now() - previousTime < DEVICE_ACTIVITY_REFRESH_MS
+          ) {
+            return previous;
+          }
+
+          const summary = normalizeDeviceActivitySummary(
+            await DeviceActivity.getRecentSummary({
+              windowMinutes: DEVICE_ACTIVITY_WINDOW_MINUTES,
+            }),
+          );
+          deviceActivitySummaryRef.current = summary;
+          environmentContextRef.current = mergeDeviceActivityContext(
+            ambientContextRef.current,
+            summary,
+          );
+          if (!silent) {
+            setDeviceActivityFeedback({
+              status: "success",
+              message: summary
+                ? `摘要已更新：仅包含 ${summary.apps.length} 个 App 名称和粗略使用时长。`
+                : "最近没有可用的活动摘要；不会上传空记录。",
+            });
+          }
+          return summary;
+        } catch (error) {
+          deviceActivitySummaryRef.current = null;
+          environmentContextRef.current = mergeDeviceActivityContext(
+            ambientContextRef.current,
+            null,
+          );
+          if (!silent) {
+            setDeviceActivityFeedback({
+              status: "error",
+              message:
+                error?.message || "暂时无法读取活动摘要，请检查系统授权。",
+            });
+          }
+          return null;
+        }
+      })();
+
+      deviceActivityRefreshRunRef.current = run.finally(() => {
+        deviceActivityRefreshRunRef.current = null;
+      });
+      return deviceActivityRefreshRunRef.current;
+    },
+    [],
+  );
 
   const handleImagePreview = useCallback((url, alt) => {
     setImageViewer({ url, alt });
@@ -1070,6 +1193,30 @@ function App({ accountControl = null, userName = "" }) {
       window.clearTimeout(settingsAutosaveTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    if (!deviceActivityPluginAvailable()) {
+      void refreshDeviceActivityContext();
+      return undefined;
+    }
+
+    void refreshDeviceActivityContext({ force: true });
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        void refreshDeviceActivityContext({ force: true });
+      }
+    };
+    const refreshTimer = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void refreshDeviceActivityContext({ silent: true });
+      }
+    }, DEVICE_ACTIVITY_REFRESH_MS);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.clearInterval(refreshTimer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, [refreshDeviceActivityContext]);
 
   useEffect(() => {
     companionStatusRef.current = companionStatus;
@@ -1684,6 +1831,7 @@ function App({ accountControl = null, userName = "" }) {
           "最新角色设置还没有保存成功，语音没有发送。请恢复网络后再试一次。",
         );
       }
+      await refreshDeviceActivityContext({ silent: true });
 
       if (!sessionId) {
         const created = await apiRequest("/api/v2/sessions", {
@@ -2288,6 +2436,8 @@ function App({ accountControl = null, userName = "" }) {
       return;
     }
 
+    await refreshDeviceActivityContext({ silent: true });
+
     const interaction = companionInteractionQueueRef.current.shift();
     // The model reacts from before this batch; optimistic revisions only guard
     // the UI against responses that finish after a newer local interaction.
@@ -2613,6 +2763,7 @@ function App({ accountControl = null, userName = "" }) {
       );
       return;
     }
+    await refreshDeviceActivityContext({ silent: true });
 
     if (voiceStateRef.current === VOICE_STATES.speaking) {
       void stopVoicePlayback();
@@ -3414,6 +3565,92 @@ function App({ accountControl = null, userName = "" }) {
     setSettingsSaveReceipt(null);
     setDraftSettings(nextDraft);
     scheduleSettingsAutosave(nextDraft);
+  }
+
+  async function setDeviceActivityEnabled(enabled) {
+    if (!deviceActivityPluginAvailable() || isDeviceActivityBusy) return;
+    setIsDeviceActivityBusy(true);
+    try {
+      const nextState = normalizeDeviceActivityState(
+        await DeviceActivity.setEnabled({ enabled }),
+      );
+      setDeviceActivityState(nextState);
+      if (!enabled) {
+        deviceActivitySummaryRef.current = null;
+        environmentContextRef.current = mergeDeviceActivityContext(
+          ambientContextRef.current,
+          null,
+        );
+        setDeviceActivityFeedback({
+          status: "idle",
+          message: "活动感知已关闭，后续对话不会附带 App 活动摘要。",
+        });
+      } else if (!nextState.permissionGranted) {
+        setDeviceActivityFeedback({
+          status: "checking",
+          message: "开关已打开。请继续点“打开系统授权”并允许 DengTa home。",
+        });
+      } else {
+        await refreshDeviceActivityContext({ force: true });
+      }
+    } catch (error) {
+      setDeviceActivityFeedback({
+        status: "error",
+        message: error?.message || "活动感知开关暂时无法更改。",
+      });
+    } finally {
+      setIsDeviceActivityBusy(false);
+    }
+  }
+
+  async function openDeviceActivityPermission() {
+    if (!deviceActivityPluginAvailable() || isDeviceActivityBusy) return;
+    setIsDeviceActivityBusy(true);
+    try {
+      const nextState = normalizeDeviceActivityState(
+        await DeviceActivity.setEnabled({ enabled: true }),
+      );
+      setDeviceActivityState(nextState);
+      setDeviceActivityFeedback({
+        status: "checking",
+        message: "请在系统页允许 DengTa home；返回 App 后会自动检查。",
+      });
+      await DeviceActivity.openUsageAccessSettings();
+    } catch (error) {
+      setDeviceActivityFeedback({
+        status: "error",
+        message: error?.message || "无法打开系统使用情况访问授权页。",
+      });
+    } finally {
+      setIsDeviceActivityBusy(false);
+    }
+  }
+
+  async function clearDeviceActivity() {
+    if (!deviceActivityPluginAvailable() || isDeviceActivityBusy) return;
+    setIsDeviceActivityBusy(true);
+    try {
+      const nextState = normalizeDeviceActivityState(
+        await DeviceActivity.clear(),
+      );
+      setDeviceActivityState(nextState);
+      deviceActivitySummaryRef.current = null;
+      environmentContextRef.current = mergeDeviceActivityContext(
+        ambientContextRef.current,
+        null,
+      );
+      setDeviceActivityFeedback({
+        status: "idle",
+        message: "本机活动感知状态已清除；系统授权可在 Android 设置中单独撤销。",
+      });
+    } catch (error) {
+      setDeviceActivityFeedback({
+        status: "error",
+        message: error?.message || "暂时无法清除本机活动感知状态。",
+      });
+    } finally {
+      setIsDeviceActivityBusy(false);
+    }
   }
 
   function updateUnifiedPrompt(value) {
@@ -4819,6 +5056,83 @@ function App({ accountControl = null, userName = "" }) {
               </p>
               <small>
                 Android 为省电可能把后台检查延后；它不是整点闹钟，但 App 关闭后仍会继续检查。
+              </small>
+            </div>
+            <div className="notification-feature-panel device-activity-panel">
+              <div className="device-activity-heading">
+                <div>
+                  <strong>活动感知（只读取 App 名称）</strong>
+                  <span>Android · 默认关闭</span>
+                </div>
+                <button
+                  type="button"
+                  className={`privacy-switch${
+                    deviceActivityState.enabled ? " is-on" : ""
+                  }`}
+                  role="switch"
+                  aria-checked={deviceActivityState.enabled}
+                  aria-label={
+                    deviceActivityState.enabled
+                      ? "关闭活动感知"
+                      : "开启活动感知"
+                  }
+                  disabled={
+                    isDeviceActivityBusy || !deviceActivityState.supported
+                  }
+                  onClick={() =>
+                    void setDeviceActivityEnabled(!deviceActivityState.enabled)
+                  }
+                >
+                  <span aria-hidden="true" />
+                </button>
+              </div>
+              <p>
+                开启后，AI 最多会看到最近 30 分钟内少量 App
+                的名称、打开次数和粗略前台时长。不会读取屏幕文字、截图、通知、键盘输入、剪贴板或账号内容。
+              </p>
+              <p>
+                银行、支付、钱包、密码和验证器类 App 默认排除；摘要只用于当前对话背景，不会仅凭它写入长期记忆。
+              </p>
+              <p
+                className={`notification-feature-feedback ${deviceActivityFeedback.status}`}
+                role="status"
+                aria-live="polite"
+              >
+                {deviceActivityFeedback.message}
+              </p>
+              <div className="device-activity-actions">
+                <button
+                  type="button"
+                  disabled={
+                    isDeviceActivityBusy || !deviceActivityState.supported
+                  }
+                  onClick={() => void openDeviceActivityPermission()}
+                >
+                  打开系统授权
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    isDeviceActivityBusy ||
+                    !deviceActivityState.enabled ||
+                    !deviceActivityState.permissionGranted
+                  }
+                  onClick={() =>
+                    void refreshDeviceActivityContext({ force: true })
+                  }
+                >
+                  更新摘要
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeviceActivityBusy || !deviceActivityState.enabled}
+                  onClick={() => void clearDeviceActivity()}
+                >
+                  关闭并清除
+                </button>
+              </div>
+              <small>
+                Android 的“使用情况访问”是单独的系统权限；关闭本功能会立即停止附带摘要，撤销系统权限仍需在授权页操作。
               </small>
             </div>
           </div>
