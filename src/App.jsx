@@ -515,6 +515,7 @@ function App({ accountControl = null }) {
     readCompanionInteractionStats,
   );
   const messageListRef = useRef(null);
+  const messageScrollIdleTimerRef = useRef(null);
   const messageEndRef = useRef(null);
   const messageInputRef = useRef(null);
   const composerMenuTriggerRef = useRef(null);
@@ -670,6 +671,11 @@ function App({ accountControl = null }) {
       return next.composerMenuOpen;
     });
   }, [isStatusPanelExpanded]);
+
+  useEffect(
+    () => () => window.clearTimeout(messageScrollIdleTimerRef.current),
+    [],
+  );
 
   useEffect(() => {
     if (!isComposerMenuOpen) return undefined;
@@ -1224,6 +1230,11 @@ function App({ accountControl = null }) {
 
   function trackMessageScroll(event) {
     const messageList = event.currentTarget;
+    messageList.classList.add("is-scrolling");
+    window.clearTimeout(messageScrollIdleTimerRef.current);
+    messageScrollIdleTimerRef.current = window.setTimeout(() => {
+      messageList.classList.remove("is-scrolling");
+    }, 140);
     const distanceFromBottom =
       messageList.scrollHeight -
       messageList.scrollTop -

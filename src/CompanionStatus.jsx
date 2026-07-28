@@ -326,12 +326,8 @@ function CompanionStatus({
           pathLength="1"
           d="M0 78H74l16-10 18 22 22-56 28 78 24-34 22 10H302l15-9 18 20 23-52 28 72 25-31 24 9H520l14-8 17 18 20-45 25 63 22-27 18 8H680"
         />
-        <path
-          className="status-pulse-runner"
-          pathLength="1"
-          d="M0 78H74l16-10 18 22 22-56 28 78 24-34 22 10H302l15-9 18 20 23-52 28 72 25-31 24 9H520l14-8 17 18 20-45 25 63 22-27 18 8H680"
-        />
       </svg>
+      <span className="status-pulse-runner" aria-hidden="true" />
 
       <button
         type="button"

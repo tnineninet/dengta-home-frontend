@@ -3,11 +3,14 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import "./cozy-theme.css";
 import "./auth.css";
+import "./native-feel.css";
 import App from "./App.jsx";
 import AuthGate from "./AuthGate.jsx";
+import DengTaPrelude from "./DengTaPrelude.jsx";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
+    <DengTaPrelude />
     <AuthGate>
       {({ accountControl }) => <App accountControl={accountControl} />}
     </AuthGate>

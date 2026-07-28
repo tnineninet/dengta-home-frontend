@@ -161,7 +161,6 @@ function ChatMessage({
           {!isUser && (
             <>
               <ThinkingPanel
-                key={`${item.id}-${item.isStreaming ? "streaming" : "complete"}`}
                 message={item}
                 aiName={aiName}
                 companionMood={companionMood}

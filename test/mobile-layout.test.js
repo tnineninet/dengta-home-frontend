@@ -98,7 +98,7 @@ function sourceBetween(startMarker, endMarker) {
 
 assert.deepEqual(
   cssCascade.stylesheets.map((stylesheet) => stylesheet.name),
-  ["index.css", "cozy-theme.css", "auth.css"],
+  ["index.css", "cozy-theme.css", "auth.css", "native-feel.css"],
   "layout tests must use the same stylesheet order as the application entrypoint",
 );
 assert.match(
@@ -108,7 +108,7 @@ assert.match(
 );
 assert.deepEqual(
   narrowCssCascade.stylesheets.map((stylesheet) => stylesheet.name),
-  ["index.css", "cozy-theme.css", "auth.css"],
+  ["index.css", "cozy-theme.css", "auth.css", "native-feel.css"],
   "the 280px regression must use the complete application stylesheet cascade",
 );
 

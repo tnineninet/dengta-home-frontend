@@ -179,6 +179,7 @@ export function ThinkingPanel({ message, aiName = "小灯", companionMood = "" }
     typeof message.thinkingSummary === "string"
       ? message.thinkingSummary.trim()
       : "";
+  const hasPublicSummary = summary.length > 0;
   const displayName = String(aiName || "").trim() || "小灯";
   const mood = String(companionMood || "").trim();
 
@@ -190,16 +191,26 @@ export function ThinkingPanel({ message, aiName = "小灯", companionMood = "" }
     >
       <summary>
         <span>
-          {completed ? `${displayName}刚才想了想` : `${displayName}悄悄想一会儿`}
+          {hasPublicSummary
+            ? completed
+              ? `${displayName}刚才在想`
+              : `${displayName}此刻在想`
+            : completed
+              ? `${displayName}已经回应`
+              : `${displayName}正在回应你`}
         </span>
-        <small>公开摘要 · 内部推理不会显示</small>
+        <small>
+          {hasPublicSummary
+            ? "模型公开思考摘要"
+            : "处理中 · 暂无模型公开摘要"}
+        </small>
       </summary>
       <div className="thinking-panel-body">
         <div className="thinking-context-chip">
           <strong>{displayName}</strong>
           {mood && <span>此刻：{mood}</span>}
         </div>
-        {statuses.length > 0 && (
+        {hasPublicSummary && statuses.length > 0 && (
           <ol>
             {statuses.map((status, index) => {
               const active = !completed && index === statuses.length - 1;
@@ -223,7 +234,15 @@ export function ThinkingPanel({ message, aiName = "小灯", companionMood = "" }
             })}
           </ol>
         )}
-        {summary && <p className="thinking-summary-text">{summary}</p>}
+        {hasPublicSummary ? (
+          <p className="thinking-summary-text">{summary}</p>
+        ) : (
+          <p className="thinking-availability-note">
+            {completed
+              ? "这一轮没有收到模型提供的公开思考内容，所以这里只显示处理状态，不会用固定文案冒充真实想法。"
+              : "正在等待模型返回可以公开展示的思考内容。"}
+          </p>
+        )}
       </div>
     </details>
   );
