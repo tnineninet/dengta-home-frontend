@@ -24,7 +24,7 @@ assert.match(diary, /发生过的事情不能虚构/);
 assert.match(css, /\.companion-diary-page/);
 assert.match(css, /\.diary-entry-list/);
 assert.doesNotMatch(serviceWorker, /secret-crush-diary\.html/);
-assert.match(serviceWorker, /dengta-home-v11/);
+assert.match(serviceWorker, /dengta-home-v12/);
 
 for (const asset of [
   "../public/assets/moments-paper-banner.webp",

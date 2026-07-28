@@ -58,7 +58,7 @@ function StarField() {
 
 export default function CelestialBackdrop({ snapshot }) {
   const x = `${Math.round(snapshot.progress * 84)}vw`;
-  const y = `${Math.round(snapshot.arc * -76)}px`;
+  const y = `${Math.round(snapshot.arc * -52)}px`;
   const sourceX = `${Math.round(7 + snapshot.progress * 84)}%`;
   const activeIntensity = snapshot.activeIntensity;
 

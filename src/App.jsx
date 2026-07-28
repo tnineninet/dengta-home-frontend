@@ -3567,11 +3567,6 @@ function App({ accountControl = null }) {
             <div className="empty-state">正在加载 DengTa home…</div>
           ) : messages.length === 0 ? (
             <div className="empty-state">
-              <img
-                className="welcome-companions"
-                src="/app-icon.svg"
-                alt="DengTa"
-              />
               <h2>小灯和桃桃的小屋</h2>
               <p>
                 {activeChatModel

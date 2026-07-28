@@ -1195,7 +1195,7 @@ button:active:not(:disabled) {
 }
 
 .celestial-body {
-  top: clamp(112px, 16vh, 148px);
+  top: clamp(150px, 20vh, 184px);
   left: 2vw;
   width: clamp(58px, 8vw, 82px);
   height: clamp(58px, 8vw, 82px);
@@ -1913,7 +1913,7 @@ body,
 
 .celestial-body {
   position: absolute;
-  top: clamp(112px, 16vh, 148px);
+  top: clamp(150px, 20vh, 184px);
   left: 3vw;
   width: 54px;
   height: 54px;
@@ -2643,7 +2643,7 @@ body,
 }
 
 .celestial-body {
-  top: clamp(112px, 16vh, 148px);
+  top: clamp(150px, 20vh, 184px);
   left: 2vw;
   width: clamp(58px, 8vw, 82px);
   height: clamp(58px, 8vw, 82px);

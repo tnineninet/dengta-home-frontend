@@ -83,6 +83,10 @@ const ambientContextBadge = fs.readFileSync(
   new URL("../src/AmbientContextBadge.jsx", import.meta.url),
   "utf8",
 );
+const celestialBackdrop = fs.readFileSync(
+  new URL("../src/CelestialBackdrop.jsx", import.meta.url),
+  "utf8",
+);
 const androidManifest = fs.readFileSync(
   new URL("../android/app/src/main/AndroidManifest.xml", import.meta.url),
   "utf8",
@@ -705,8 +709,18 @@ assert.match(
 );
 assert.match(
   css,
-  /\.celestial-body\s*\{[^}]*top:\s*clamp\(112px,\s*16vh,\s*148px\)/s,
-  "the sun and moon orbit must remain below the opaque top bar at arc peak",
+  /\.celestial-body\s*\{[^}]*top:\s*clamp\(150px,\s*20vh,\s*184px\)/s,
+  "the sun and moon orbit must stay visible behind the glass canopy",
+);
+assert.match(
+  celestialBackdrop,
+  /snapshot\.arc \* -52/,
+  "the celestial arc must not lift the light source behind the opaque top bar",
+);
+assert.doesNotMatch(
+  app,
+  /className="welcome-companions"[\s\S]*?src="\/app-icon\.svg"/,
+  "an empty chat must not render the launcher icon as a large white avatar block",
 );
 assert.match(
   chatMessage,
