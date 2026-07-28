@@ -699,6 +699,16 @@ assert.match(
   "the compact composer must place plus, text and send controls in one capsule",
 );
 assert.match(
+  app,
+  /placeholder="输入消息…"/,
+  "the compact mobile composer must use a one-line placeholder",
+);
+assert.match(
+  css,
+  /\.celestial-body\s*\{[^}]*top:\s*clamp\(112px,\s*16vh,\s*148px\)/s,
+  "the sun and moon orbit must remain below the opaque top bar at arc peak",
+);
+assert.match(
   chatMessage,
   /onPointerDown=\{beginLongPress\}[\s\S]*?onPointerMove=\{moveLongPress\}[\s\S]*?onPointerUp=\{endLongPress\}[\s\S]*?onPointerCancel=\{cancelLongPress\}/,
   "message long press must cancel cleanly when Android turns the gesture into scrolling",

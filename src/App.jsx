@@ -3701,7 +3701,7 @@ function App({ accountControl = null }) {
                   void sendMessage();
                 }
               }}
-              placeholder="输入消息，或只添加附件后发送…"
+              placeholder="输入消息…"
               rows="1"
             />
             <div className="composer-toolbar">
