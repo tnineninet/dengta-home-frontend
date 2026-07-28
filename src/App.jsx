@@ -10,6 +10,8 @@ import McpDeviceCenter from "./McpDeviceCenter";
 import AiProviderCenter from "./AiProviderCenter";
 import CompanionDiary from "./CompanionDiary";
 import CompanionProfile from "./CompanionProfile";
+import CelestialBackdrop from "./CelestialBackdrop";
+import ThemeStudio from "./ThemeStudio";
 import { AuthenticatedImage } from "./PrivateMedia";
 import { SelectedAttachmentStrip } from "./ChatMessageExtras";
 import {
@@ -62,6 +64,10 @@ import {
   mergeStreamedAssistantMessage,
 } from "./chat-thinking";
 import { hydrateChatHistory } from "./chat-history";
+import {
+  captureChatScrollState,
+  restoreChatScrollState,
+} from "./chat-scroll-state";
 import {
   COMPANION_INTERACTION_TYPES,
   enqueueCompanionInteraction,
@@ -120,6 +126,7 @@ import {
   readGroqExpiryDate,
   storeGroqExpiryDate,
 } from "./service-status";
+import { useDengTaTheme } from "./dengta-theme";
 
 const PUSH_CURSOR_KEY = "dengta_push_cursor";
 const PUSH_SEEN_IDS_KEY = "dengta_push_seen_ids";
@@ -225,11 +232,10 @@ function storePromptReceipt(receipt) {
 }
 
 const navItems = [
-  { id: "chat", icon: "✦", label: "聊天" },
-  { id: "moments", icon: "◌", label: "动态" },
-  { id: "diary", icon: "▤", label: "日记" },
-  { id: "memories", icon: "◇", label: "档案" },
-  { id: "settings", icon: "⚙", label: "设置" },
+  { id: "chat", icon: "⌁", label: "Chat" },
+  { id: "moments", icon: "◌", label: "Moments" },
+  { id: "diary", icon: "▱", label: "Diary" },
+  { id: "memories", icon: "◇", label: "Memory" },
 ];
 
 function formatDateTime(value) {
@@ -449,6 +455,12 @@ function App({ accountControl = null }) {
   const [settings, setSettings] = useState(emptySettings);
   const [draftSettings, setDraftSettings] = useState(emptySettings);
   const [activeView, setActiveView] = useState("chat");
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const {
+    preferences: themePreferences,
+    snapshot: celestialSnapshot,
+    updateTheme,
+  } = useDengTaTheme();
   const [memories, setMemories] = useState([]);
   const [moments, setMoments] = useState([]);
   const [momentsAvailable, setMomentsAvailable] = useState(null);
@@ -516,6 +528,8 @@ function App({ accountControl = null }) {
   );
   const messageListRef = useRef(null);
   const messageScrollIdleTimerRef = useRef(null);
+  const chatScrollStatesRef = useRef(new Map());
+  const pendingChatScrollRestoreRef = useRef(null);
   const messageEndRef = useRef(null);
   const messageInputRef = useRef(null);
   const composerMenuTriggerRef = useRef(null);
@@ -882,7 +896,11 @@ function App({ accountControl = null }) {
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
-    shouldAutoScrollRef.current = true;
+    const savedScrollState = chatScrollStatesRef.current.get(
+      activeSessionId || "__draft__",
+    );
+    shouldAutoScrollRef.current =
+      savedScrollState?.pinnedToBottom ?? true;
     setMessageReference(null);
   }, [activeSessionId]);
 
@@ -1218,14 +1236,47 @@ function App({ accountControl = null }) {
   useEffect(() => {
     if (activeView !== "chat") return undefined;
 
+    const pending = pendingChatScrollRestoreRef.current;
+    if (
+      pending?.sessionId === activeSessionId &&
+      pending.waitForMessages &&
+      messages.length === 0
+    ) {
+      return undefined;
+    }
+
+    let secondAnimationFrame = 0;
+    let lateCorrectionTimer = 0;
     const animationFrame = window.requestAnimationFrame(() => {
+      if (pending?.sessionId === activeSessionId) {
+        secondAnimationFrame = window.requestAnimationFrame(() => {
+          const messageList = messageListRef.current;
+          if (!messageList) return;
+
+          restoreChatScrollState(messageList, pending.snapshot);
+          if (pendingChatScrollRestoreRef.current === pending) {
+            pendingChatScrollRestoreRef.current = null;
+          }
+          lateCorrectionTimer = window.setTimeout(() => {
+            restoreChatScrollState(messageListRef.current, pending.snapshot);
+          }, 120);
+        });
+        return;
+      }
+
       const messageList = messageListRef.current;
       if (!messageList || !shouldAutoScrollRef.current) return;
-
-      messageList.scrollTop = messageList.scrollHeight;
+      restoreChatScrollState(messageList, {
+        pinnedToBottom: true,
+        scrollTop: messageList.scrollTop,
+      });
     });
 
-    return () => window.cancelAnimationFrame(animationFrame);
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.cancelAnimationFrame(secondAnimationFrame);
+      window.clearTimeout(lateCorrectionTimer);
+    };
   }, [activeView, activeSessionId, messages, isSending]);
 
   function trackMessageScroll(event) {
@@ -1235,11 +1286,14 @@ function App({ accountControl = null }) {
     messageScrollIdleTimerRef.current = window.setTimeout(() => {
       messageList.classList.remove("is-scrolling");
     }, 140);
-    const distanceFromBottom =
-      messageList.scrollHeight -
-      messageList.scrollTop -
-      messageList.clientHeight;
-    shouldAutoScrollRef.current = distanceFromBottom <= 140;
+    const snapshot = captureChatScrollState(messageList);
+    shouldAutoScrollRef.current = snapshot?.pinnedToBottom ?? true;
+    if (snapshot) {
+      chatScrollStatesRef.current.set(
+        activeSessionIdRef.current || "__draft__",
+        snapshot,
+      );
+    }
   }
 
   useEffect(() => {
@@ -1927,6 +1981,24 @@ function App({ accountControl = null }) {
   }
 
   function chooseSession(sessionId) {
+    const currentSnapshot = captureChatScrollState(messageListRef.current);
+    if (currentSnapshot) {
+      chatScrollStatesRef.current.set(
+        activeSessionIdRef.current || "__draft__",
+        currentSnapshot,
+      );
+    }
+    const nextSnapshot = chatScrollStatesRef.current.get(sessionId) || {
+      distanceFromBottom: 0,
+      pinnedToBottom: true,
+      scrollTop: 0,
+    };
+    pendingChatScrollRestoreRef.current = {
+      sessionId,
+      snapshot: nextSnapshot,
+      waitForMessages: true,
+    };
+    shouldAutoScrollRef.current = nextSnapshot.pinnedToBottom;
     if (sessionId !== activeSessionIdRef.current) {
       abortChatRequest(chatRequestRef, "session-change");
     }
@@ -3406,13 +3478,47 @@ function App({ accountControl = null }) {
         immediate: true,
       });
     }
+    const scrollStateKey = activeSessionIdRef.current || "__draft__";
+    if (activeView === "chat" && view !== "chat") {
+      const snapshot = captureChatScrollState(messageListRef.current);
+      if (snapshot) {
+        chatScrollStatesRef.current.set(scrollStateKey, snapshot);
+        shouldAutoScrollRef.current = snapshot.pinnedToBottom;
+      }
+    }
     if (view === "chat" && activeView !== "chat") {
-      shouldAutoScrollRef.current = true;
+      const snapshot = chatScrollStatesRef.current.get(scrollStateKey) || {
+        distanceFromBottom: 0,
+        pinnedToBottom: true,
+        scrollTop: 0,
+      };
+      pendingChatScrollRestoreRef.current = {
+        sessionId: activeSessionIdRef.current,
+        snapshot,
+        waitForMessages: false,
+      };
+      shouldAutoScrollRef.current = snapshot.pinnedToBottom;
     }
     closeComposerMenu();
     requestStatusPanelClose();
     setActiveView(view);
     setIsSidebarOpen(false);
+  }
+
+  function openSettingsPanel() {
+    closeComposerMenu();
+    requestStatusPanelClose();
+    setIsSidebarOpen(false);
+    setIsSettingsOpen(true);
+  }
+
+  function closeSettingsPanel() {
+    if (hasLoadedSettingsRef.current) {
+      scheduleSettingsAutosave(draftSettingsRef.current, {
+        immediate: true,
+      });
+    }
+    setIsSettingsOpen(false);
   }
 
   function retryStartupConnection() {
@@ -4098,6 +4204,11 @@ function App({ accountControl = null }) {
           </button>
         </div>
 
+        <ThemeStudio
+          preferences={themePreferences}
+          updateTheme={updateTheme}
+        />
+
         <form className="settings-form" onSubmit={saveSettings}>
           <div className="settings-card service-manager-card">
             <div className="service-manager-heading">
@@ -4661,10 +4772,9 @@ function App({ accountControl = null }) {
 
   const viewTitle = {
     chat: activeSession?.title || "欢迎回家",
-    moments: "动态空间",
-    diary: "暗恋日记",
-    memories: "角色档案",
-    settings: "设置",
+    moments: "Moments",
+    diary: "Diary",
+    memories: "Portrait",
   }[activeView];
   const showStartupRecovery =
     startupConnection.failureCount > 0 &&
@@ -4675,6 +4785,8 @@ function App({ accountControl = null }) {
 
   return (
     <div className="app-shell">
+      <CelestialBackdrop snapshot={celestialSnapshot} />
+
       {isSidebarOpen && (
         <button
           className="sidebar-scrim"
@@ -4685,7 +4797,7 @@ function App({ accountControl = null }) {
 
       <aside className={`sidebar ${isSidebarOpen ? "open" : ""}`}>
         <div className="brand">
-          <span className="brand-icon">灯</span>
+          <span className="brand-icon">D</span>
           <div>
             <strong>DengTa home</strong>
             <small>给 AI 一个家</small>
@@ -4779,8 +4891,12 @@ function App({ accountControl = null }) {
           >
             ☰
           </button>
-          <div>
-            <h1>{viewTitle}</h1>
+          <div
+            className={`topbar-context${
+              activeView === "chat" ? " is-chat" : ""
+            }`}
+          >
+            {activeView !== "chat" && <h1>{viewTitle}</h1>}
             <p>
               {activeView === "chat"
                 ? `${settings.ai_name || "小灯"} · ${
@@ -4789,19 +4905,34 @@ function App({ accountControl = null }) {
                 : "DengTa home"}
             </p>
           </div>
-          <button
-            className="new-chat-top"
-            aria-label={isCreatingSession ? "正在创建新对话" : "新对话"}
-            aria-busy={isCreatingSession}
-            disabled={isCreatingSession}
-            title={isCreatingSession ? "正在创建新对话" : "新对话"}
-            onClick={createSession}
-          >
-            <span aria-hidden="true">{isCreatingSession ? "…" : "＋"}</span>
-            <span className="new-chat-label">
-              {isCreatingSession ? "创建中" : "新对话"}
-            </span>
-          </button>
+          <div className="topbar-actions">
+            <button
+              className="new-chat-top"
+              aria-label={isCreatingSession ? "正在创建新对话" : "新对话"}
+              aria-busy={isCreatingSession}
+              disabled={isCreatingSession}
+              title={isCreatingSession ? "正在创建新对话" : "新对话"}
+              onClick={createSession}
+            >
+              <span aria-hidden="true">{isCreatingSession ? "…" : "＋"}</span>
+              <span className="new-chat-label">
+                {isCreatingSession ? "创建中" : "新对话"}
+              </span>
+            </button>
+            <button
+              type="button"
+              className="settings-gear-button"
+              aria-label="打开设置"
+              aria-haspopup="dialog"
+              aria-expanded={isSettingsOpen}
+              onClick={openSettingsPanel}
+            >
+              <svg viewBox="0 0 24 24" role="presentation">
+                <path d="M9.7 2.8h4.6l.7 2.4 2.2 1.3 2.4-.6 2.3 4-1.7 1.8v2.6l1.7 1.8-2.3 4-2.4-.6-2.2 1.3-.7 2.4H9.7L9 20.8l-2.2-1.3-2.4.6-2.3-4 1.7-1.8v-2.6L2.1 9.9l2.3-4 2.4.6L9 5.2l.7-2.4Z" />
+                <circle cx="12" cy="13" r="3.1" />
+              </svg>
+            </button>
+          </div>
         </header>
 
         <div
@@ -4863,7 +4994,6 @@ function App({ accountControl = null }) {
           {activeView === "moments" && renderMoments()}
           {activeView === "diary" && renderDiary()}
           {activeView === "memories" && renderMemories()}
-          {activeView === "settings" && renderSettings()}
         </div>
       </main>
 
@@ -4879,6 +5009,33 @@ function App({ accountControl = null }) {
           </button>
         ))}
       </nav>
+
+      {isSettingsOpen && (
+        <div
+          className="settings-sheet-backdrop"
+          role="presentation"
+          onPointerDown={closeSettingsPanel}
+        >
+          <section
+            className="settings-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="settings-sheet-title"
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <header className="settings-sheet-header">
+              <div>
+                <span>PERSONAL SPACE</span>
+                <h2 id="settings-sheet-title">Settings</h2>
+              </div>
+              <button type="button" onClick={closeSettingsPanel}>
+                Done
+              </button>
+            </header>
+            <div className="settings-sheet-scroll">{renderSettings()}</div>
+          </section>
+        </div>
+      )}
 
       {dialog && (
         <div className="dialog-backdrop" onMouseDown={() => setDialog(null)}>

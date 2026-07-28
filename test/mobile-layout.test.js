@@ -341,7 +341,7 @@ assert.equal(
 );
 assert.equal(
   narrowMobileNavLayout["grid-template-columns"]?.value,
-  "repeat(5, minmax(0, 1fr))",
+  "repeat(4, minmax(0, 1fr))",
   "the 280px navigation must divide the viewport without intrinsic-width overflow",
 );
 
@@ -882,6 +882,16 @@ assert.match(
   app,
   /const rawGap = Math\.max\(0, fullHeight - viewport\.height\)/,
   "keyboard detection must not let visualViewport offsetTop cancel the height loss",
+);
+assert.match(
+  app,
+  /className=\{`topbar-context[\s\S]*?activeView !== "chat" && <h1>\{viewTitle\}<\/h1>/,
+  "the mobile chat top bar must not render the conversation title",
+);
+assert.match(
+  css,
+  /@media \(max-width: 820px\)[\s\S]*?\.topbar\s*\{[\s\S]*?env\(safe-area-inset-top\)/,
+  "the final mobile top-bar override must retain the Android safe area",
 );
 
 console.log("mobile layout regression tests passed");

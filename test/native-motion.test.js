@@ -42,7 +42,7 @@ test("the companion pulse uses compositor motion instead of repainting an SVG da
   );
 });
 
-test("the launch prelude and overlay motion only animate compositor properties", () => {
+test("the launch thread straightens point-by-point without React frame state", () => {
   const prelude = read("src/DengTaPrelude.jsx");
   const chatMessage = read("src/ChatMessage.jsx");
   const styles = read("src/native-feel.css");
@@ -53,11 +53,19 @@ test("the launch prelude and overlay motion only animate compositor properties",
     /data-word="DENGTA"/,
     "the launch thread must resolve into the DENGTA wordmark",
   );
+  assert.match(prelude, /data-motion="progressive-tension"/);
+  assert.match(prelude, /requestAnimationFrame\(renderFrame\)/);
+  assert.match(prelude, /pointRatio \* THREAD_STAGGER/);
+  assert.doesNotMatch(
+    prelude,
+    /set[A-Z][A-Za-z]*\([^)]*requestAnimationFrame/,
+    "the one-shot SVG morph must update attributes directly, not React state per frame",
+  );
   assert.doesNotMatch(
     chatMessage,
     /key=\{`\$\{item\.id\}-\$\{item\.isStreaming/,
   );
-  assert.match(styles, /@keyframes dengta-signature-settle/);
+  assert.match(styles, /@keyframes dengta-thread-arrive/);
   assert.match(styles, /@keyframes native-sheet-enter/);
   assert.match(styles, /@keyframes native-nav-settle/);
   assert.match(styles, /@keyframes native-weather-unfold/);
