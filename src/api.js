@@ -189,6 +189,10 @@ export function buildStreamChatFormData(
       payload.emotion_understanding_enabled === true ? "true" : "false",
     attachment_instruction_mode:
       payload.attachment_instruction_mode === "system" ? "system" : "untrusted",
+    attachment_storage_mode:
+      payload.attachment_storage_mode === "ephemeral"
+        ? "ephemeral"
+        : "persistent",
     companion_status:
       typeof payload.companion_status === "string"
         ? payload.companion_status

@@ -32,6 +32,7 @@ export function chatRequestFingerprint({
   messageReference = null,
   attachments = [],
   attachmentInstructionMode = "untrusted",
+  attachmentStorageMode = "persistent",
 } = {}) {
   const files = Array.from(attachments || []).map((item) => {
     const file = item?.file || item || {};
@@ -48,6 +49,7 @@ export function chatRequestFingerprint({
     String(turnContext || ""),
     JSON.stringify(messageReference || null),
     attachmentInstructionMode === "system" ? "system" : "untrusted",
+    attachmentStorageMode === "ephemeral" ? "ephemeral" : "persistent",
     files,
   ]);
 }

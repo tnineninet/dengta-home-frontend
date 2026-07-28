@@ -143,6 +143,23 @@ function fakeFile(name, type, size) {
     "17c2cb36-635b-43b5-93d1-ea8f21ba9b2a",
   );
   assert.equal(changedAttachmentMode.reused, false);
+  assert.notEqual(
+    chatRequestFingerprint(request),
+    chatRequestFingerprint({
+      ...request,
+      attachmentStorageMode: "ephemeral",
+    }),
+  );
+  const changedAttachmentStorage = resolveChatClientMessage(
+    retry,
+    { ...request, attachmentStorageMode: "ephemeral" },
+    { randomUUID: () => "27c2cb36-635b-43b5-93d1-ea8f21ba9b2a" },
+  );
+  assert.equal(
+    changedAttachmentStorage.clientMessageId,
+    "27c2cb36-635b-43b5-93d1-ea8f21ba9b2a",
+  );
+  assert.equal(changedAttachmentStorage.reused, false);
   const changedTurnContext = resolveChatClientMessage(
     retry,
     { ...request, turnContext: "临时背景已经改变" },
@@ -668,12 +685,14 @@ assert.equal(
     },
     model: "gpt-test",
     client_message_id: "0f594d5c-e6d1-4f24-a583-cd5c66f81d75",
+    attachment_storage_mode: "ephemeral",
     files: [{ file: first }, second],
   });
   assert.equal(formData.get("message"), "请看看");
   assert.equal(formData.get("session_id"), "session-1");
   assert.equal(formData.get("emotion_understanding_enabled"), "true");
   assert.equal(formData.get("attachment_instruction_mode"), "system");
+  assert.equal(formData.get("attachment_storage_mode"), "ephemeral");
   assert.deepEqual(JSON.parse(formData.get("companion_status")), {
     mood: "平静",
   });
@@ -704,6 +723,10 @@ assert.equal(
     noReferenceFormData.has("message_reference"),
     false,
     "a normal message without a quote must omit message_reference",
+  );
+  assert.equal(
+    noReferenceFormData.get("attachment_storage_mode"),
+    "persistent",
   );
 
   const androidAudio = new File(["RIFFtestWAVE"], "录音.wav", {

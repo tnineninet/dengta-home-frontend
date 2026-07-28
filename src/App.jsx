@@ -108,6 +108,16 @@ import {
   normalizeDeviceActivitySummary,
   readDeviceActivityState,
 } from "./device-activity";
+import {
+  SCREEN_GLANCE_DEFAULT_CONFIG,
+  ScreenGlance,
+  buildScreenGlanceTurn,
+  normalizeScreenGlanceConfig,
+  normalizeScreenGlanceState,
+  readScreenGlanceState,
+  screenGlanceCaptureToFile,
+  screenGlancePluginAvailable,
+} from "./screen-glance";
 import { installInnerHeightViewportFallback } from "./mobile-viewport";
 import { toggleMomentLikeOptimistically } from "./moment-like";
 import {
@@ -519,6 +529,17 @@ function App({ accountControl = null, userName = "" }) {
     message: "默认关闭。开启后只提供最近使用过的 App 名称和粗略时长。",
   });
   const [isDeviceActivityBusy, setIsDeviceActivityBusy] = useState(false);
+  const [screenGlanceState, setScreenGlanceState] = useState(() =>
+    normalizeScreenGlanceState({}),
+  );
+  const [screenGlanceConfig, setScreenGlanceConfig] = useState(
+    SCREEN_GLANCE_DEFAULT_CONFIG,
+  );
+  const [screenGlanceFeedback, setScreenGlanceFeedback] = useState({
+    status: "idle",
+    message: "默认关闭。只有 Android 系统明确显示共享状态时才可能取得画面。",
+  });
+  const [isScreenGlanceBusy, setIsScreenGlanceBusy] = useState(false);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [isPostingMoment, setIsPostingMoment] = useState(false);
   const [pendingMomentLikes, setPendingMomentLikes] = useState({});
@@ -593,6 +614,9 @@ function App({ accountControl = null, userName = "" }) {
   const ambientContextRef = useRef({});
   const deviceActivitySummaryRef = useRef(null);
   const deviceActivityRefreshRunRef = useRef(null);
+  const screenGlanceConsumeRunRef = useRef(null);
+  const pendingScreenGlanceTurnRef = useRef(null);
+  const sendMessageRef = useRef(null);
   const environmentContextRef = useRef({});
   const turnContextRef = useRef("");
   const companionInteractionStatsRef = useRef(companionInteractionStats);
@@ -786,6 +810,128 @@ function App({ accountControl = null, userName = "" }) {
     },
     [],
   );
+
+  const applyScreenGlanceState = useCallback((value) => {
+    const next = normalizeScreenGlanceState(value);
+    setScreenGlanceState(next);
+    setScreenGlanceConfig(
+      normalizeScreenGlanceConfig({
+        randomEnabled: next.randomEnabled,
+        minimumMinutes: next.minimumMinutes,
+        maximumMinutes: next.maximumMinutes,
+        wifiOnly: next.wifiOnly,
+        chargingOnly: next.chargingOnly,
+      }),
+    );
+    return next;
+  }, []);
+
+  const refreshScreenGlanceState = useCallback(async () => {
+    if (!screenGlancePluginAvailable()) {
+      return applyScreenGlanceState({});
+    }
+    try {
+      return applyScreenGlanceState(await readScreenGlanceState());
+    } catch (error) {
+      setScreenGlanceFeedback({
+        status: "error",
+        message: error?.message || "暂时无法读取屏幕共看状态。",
+      });
+      return null;
+    }
+  }, [applyScreenGlanceState]);
+
+  const flushPendingScreenGlanceTurn = useCallback(() => {
+    const pending = pendingScreenGlanceTurnRef.current;
+    if (
+      !pending ||
+      !hasLoadedSettingsRef.current ||
+      !navigator.onLine ||
+      isSendingRef.current ||
+      companionInteractionInFlightRef.current ||
+      voiceInputBusy(voiceStateRef.current) ||
+      typeof sendMessageRef.current !== "function"
+    ) {
+      return false;
+    }
+
+    pendingScreenGlanceTurnRef.current = null;
+    setActiveView("chat");
+    setIsSettingsOpen(false);
+    setScreenGlanceFeedback({
+      status: "checking",
+      message: "画面已在本机清除，正在让小灯按此刻心情回应。",
+    });
+    void sendMessageRef
+      .current({
+        text: pending.turn.displayText,
+        turnContext: pending.turn.turnContext,
+        attachments: [pending.attachment],
+        attachmentInstructionMode: "untrusted",
+        attachmentStorageMode: "ephemeral",
+        preserveComposer: true,
+      })
+      .finally(() => {
+        if (!componentMountedRef.current) return;
+        setScreenGlanceFeedback({
+          status: "success",
+          message: "这次画面已交给小灯；原始截图没有保存在作品库或长期记忆中。",
+        });
+        void refreshScreenGlanceState();
+      });
+    return true;
+  }, [refreshScreenGlanceState]);
+
+  const consumeLatestScreenGlance = useCallback(async () => {
+    if (!screenGlancePluginAvailable()) return null;
+    if (screenGlanceConsumeRunRef.current) {
+      return screenGlanceConsumeRunRef.current;
+    }
+
+    const run = (async () => {
+      try {
+        const capture = await ScreenGlance.consumeLatestCapture();
+        if (capture?.available !== true) {
+          await refreshScreenGlanceState();
+          return null;
+        }
+        const file = screenGlanceCaptureToFile(capture);
+        const checked = validateAttachmentFiles([], [file]);
+        if (checked.accepted.length !== 1) {
+          throw new Error(checked.rejected[0] || "这次屏幕画面无法作为图片附件发送。");
+        }
+        const prepared = await prepareChatAttachmentFile(checked.accepted[0]);
+        const attachment = createAttachmentDraft(prepared.file);
+        pendingScreenGlanceTurnRef.current = {
+          attachment,
+          turn: buildScreenGlanceTurn(capture),
+        };
+        applyScreenGlanceState({
+          ...(await ScreenGlance.getState()),
+          pendingCapture: false,
+        });
+        if (prepared.warning) {
+          setScreenGlanceFeedback({
+            status: "checking",
+            message: prepared.warning,
+          });
+        }
+        flushPendingScreenGlanceTurn();
+        return capture;
+      } catch (error) {
+        setScreenGlanceFeedback({
+          status: "error",
+          message: error?.message || "刚才的屏幕画面读取失败，原图已经清除。",
+        });
+        return null;
+      }
+    })();
+
+    screenGlanceConsumeRunRef.current = run.finally(() => {
+      screenGlanceConsumeRunRef.current = null;
+    });
+    return screenGlanceConsumeRunRef.current;
+  }, [applyScreenGlanceState, flushPendingScreenGlanceTurn, refreshScreenGlanceState]);
 
   const handleImagePreview = useCallback((url, alt) => {
     setImageViewer({ url, alt });
@@ -1217,6 +1363,40 @@ function App({ accountControl = null, userName = "" }) {
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [refreshDeviceActivityContext]);
+
+  useEffect(() => {
+    if (!screenGlancePluginAvailable()) {
+      void refreshScreenGlanceState();
+      return undefined;
+    }
+
+    const refreshAndConsume = () => {
+      if (document.visibilityState !== "visible") return;
+      void refreshScreenGlanceState().then((state) => {
+        if (state?.pendingCapture) void consumeLatestScreenGlance();
+      });
+    };
+    refreshAndConsume();
+    const timer = window.setInterval(refreshAndConsume, 30_000);
+    document.addEventListener("visibilitychange", refreshAndConsume);
+    window.addEventListener("focus", refreshAndConsume);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshAndConsume);
+      window.removeEventListener("focus", refreshAndConsume);
+    };
+  }, [consumeLatestScreenGlance, refreshScreenGlanceState]);
+
+  useEffect(() => {
+    flushPendingScreenGlanceTurn();
+  }, [
+    flushPendingScreenGlanceTurn,
+    hasLoadedSettings,
+    isCompanionResponding,
+    isOnline,
+    isSending,
+    voiceState,
+  ]);
 
   useEffect(() => {
     companionStatusRef.current = companionStatus;
@@ -2733,17 +2913,34 @@ function App({ accountControl = null, userName = "" }) {
   }
 
   async function sendMessage() {
-    const text = message.trim();
-    const turnContextDraftAtRequest = turnContextRef.current;
+    const options =
+      arguments[0] && typeof arguments[0] === "object" ? arguments[0] : {};
+    const preserveComposer = options?.preserveComposer === true;
+    const text = String(options?.text ?? message).trim();
+    const turnContextDraftAtRequest = String(
+      options?.turnContext ?? turnContextRef.current,
+    );
     const turnContextSnapshot = turnContextDraftAtRequest
       .trim()
       .slice(0, PROMPT_FIELD_LIMITS.turn_context);
-    const messageReferenceAtRequest =
-      normalizeMessageReference(messageReference);
-    const attachmentsToSend = [...chatAttachmentsRef.current];
-    const attachmentInstructionMode = attachmentSafetyEnabled
-      ? "untrusted"
-      : "system";
+    const messageReferenceAtRequest = normalizeMessageReference(
+      options?.messageReference ?? messageReference,
+    );
+    const attachmentsToSend = Array.isArray(options?.attachments)
+      ? [...options.attachments]
+      : [...chatAttachmentsRef.current];
+    const attachmentInstructionMode =
+      options?.attachmentInstructionMode === "system"
+        ? "system"
+        : options?.attachmentInstructionMode === "untrusted"
+          ? "untrusted"
+          : attachmentSafetyEnabled
+            ? "untrusted"
+            : "system";
+    const attachmentStorageMode =
+      options?.attachmentStorageMode === "ephemeral"
+        ? "ephemeral"
+        : "persistent";
     if (
       (!text && attachmentsToSend.length === 0) ||
       isSendingRef.current ||
@@ -2769,11 +2966,13 @@ function App({ accountControl = null, userName = "" }) {
       void stopVoicePlayback();
     }
 
-    setMessage("");
-    setMessageReference(null);
-    chatAttachmentsRef.current = [];
-    setChatAttachments([]);
-    setAttachmentSafetyEnabled(true);
+    if (!preserveComposer) {
+      setMessage("");
+      setMessageReference(null);
+      chatAttachmentsRef.current = [];
+      setChatAttachments([]);
+      setAttachmentSafetyEnabled(true);
+    }
     setNotice("");
 
     let sessionId = activeSessionId;
@@ -2831,6 +3030,7 @@ function App({ accountControl = null, userName = "" }) {
           messageReference: messageReferenceAtRequest,
           attachments: attachmentsToSend,
           attachmentInstructionMode,
+          attachmentStorageMode,
         },
       );
       userMessageCommitted = clientMessage.userMessageCommitted === true;
@@ -2869,8 +3069,16 @@ function App({ accountControl = null, userName = "" }) {
                 content: text || "（发送了附件）",
                 attachments: draftsForLocalMessage(attachmentsToSend),
                 tool_calls:
-                  attachmentInstructionMode === "system"
-                    ? { attachment_instruction_mode: "system" }
+                  attachmentInstructionMode === "system" ||
+                  attachmentStorageMode === "ephemeral"
+                    ? {
+                        ...(attachmentInstructionMode === "system"
+                          ? { attachment_instruction_mode: "system" }
+                          : {}),
+                        ...(attachmentStorageMode === "ephemeral"
+                          ? { ephemeral_visual: true }
+                          : {}),
+                      }
                     : undefined,
                 created_at: new Date().toISOString(),
               },
@@ -2912,6 +3120,7 @@ function App({ accountControl = null, userName = "" }) {
           timezone: SHANGHAI_TIME_ZONE,
           emotion_understanding_enabled: emotionUnderstandingEnabled,
           attachment_instruction_mode: attachmentInstructionMode,
+          attachment_storage_mode: attachmentStorageMode,
           companion_status: companionStatusForRequest(companionStatus),
           environment_context: environmentContextRef.current,
           turn_context: turnContextSnapshot,
@@ -3126,6 +3335,7 @@ function App({ accountControl = null, userName = "" }) {
       }
       sendSucceeded = true;
       if (
+        !preserveComposer &&
         turnContextSnapshot &&
         turnContextRef.current === turnContextDraftAtRequest
       ) {
@@ -3181,10 +3391,12 @@ function App({ accountControl = null, userName = "" }) {
         generationInProgress ||
         error?.generationInProgress === true ||
         isChatGenerationInProgress(error);
-      const restoreDraft = shouldRestoreAttachmentDrafts({
-        requestWasAborted,
-        cancelReason: request.cancelReason,
-      });
+      const restoreDraft =
+        !preserveComposer &&
+        shouldRestoreAttachmentDrafts({
+          requestWasAborted,
+          cancelReason: request.cancelReason,
+        });
       if (restoreDraft) {
         pendingChatClientMessageRef.current = updateChatClientMessage(
           pendingChatClientMessageRef.current,
@@ -3244,13 +3456,17 @@ function App({ accountControl = null, userName = "" }) {
         return;
       }
 
-      const retryGuidance = generationStillInProgress
-        ? "这条消息正在服务器处理中，文字和附件已保留。稍后点“检查进度”即可继续使用同一条消息。"
-        : userMessageWasCommitted
-          ? `你的消息${
-              attachmentsToSend.length > 0 ? "和附件" : ""
-            }已经保存。文字和附件仍保留，点“重试”会继续生成，不会重复保存。`
-          : "本轮没有确认保存，文字和附件已保留，可以直接点“重试”。";
+      const retryGuidance = preserveComposer
+        ? userMessageWasCommitted
+          ? "这次屏幕画面消息已经保存；原图不会在本机长期保留。"
+          : "这次屏幕画面没有确认保存，原图已从临时缓存清除。"
+        : generationStillInProgress
+          ? "这条消息正在服务器处理中，文字和附件已保留。稍后点“检查进度”即可继续使用同一条消息。"
+          : userMessageWasCommitted
+            ? `你的消息${
+                attachmentsToSend.length > 0 ? "和附件" : ""
+              }已经保存。文字和附件仍保留，点“重试”会继续生成，不会重复保存。`
+            : "本轮没有确认保存，文字和附件已保留，可以直接点“重试”。";
       setNotice(`${publicErrorMessage} ${retryGuidance}`);
       if (!sendSucceeded) {
         if (restoreDraft) {
@@ -3320,6 +3536,8 @@ function App({ accountControl = null, userName = "" }) {
       }
     }
   }
+
+  sendMessageRef.current = sendMessage;
 
   function scheduleSettingsAutosave(value, { immediate = false } = {}) {
     if (!hasLoadedSettingsRef.current) {
@@ -3650,6 +3868,116 @@ function App({ accountControl = null, userName = "" }) {
       });
     } finally {
       setIsDeviceActivityBusy(false);
+    }
+  }
+
+  async function saveScreenGlanceConfig(nextValue = screenGlanceConfig) {
+    if (!screenGlancePluginAvailable() || isScreenGlanceBusy) return;
+    const next = normalizeScreenGlanceConfig(nextValue);
+    setScreenGlanceConfig(next);
+    setIsScreenGlanceBusy(true);
+    try {
+      applyScreenGlanceState(await ScreenGlance.configure(next));
+      setScreenGlanceFeedback({
+        status: "success",
+        message: next.randomEnabled
+          ? `随机查看范围已设为 ${next.minimumMinutes}–${next.maximumMinutes} 分钟；敏感 App 无法确认时会跳过。`
+          : "随机查看已关闭；仍可从系统常驻通知手动允许看一眼。",
+      });
+    } catch (error) {
+      setScreenGlanceFeedback({
+        status: "error",
+        message: error?.message || "屏幕共看设置暂时无法保存。",
+      });
+    } finally {
+      setIsScreenGlanceBusy(false);
+    }
+  }
+
+  async function startScreenGlanceSession() {
+    if (!screenGlancePluginAvailable() || isScreenGlanceBusy) return;
+    setIsScreenGlanceBusy(true);
+    setScreenGlanceFeedback({
+      status: "checking",
+      message: "正在交给 Android 系统确认共享范围…",
+    });
+    try {
+      const notificationState = await prepareLocalNotificationPermission();
+      if (notificationState.status === "error") {
+        throw new Error(notificationState.message);
+      }
+      await ScreenGlance.configure(normalizeScreenGlanceConfig(screenGlanceConfig));
+      const result = await ScreenGlance.startSession();
+      if (result?.consentDenied === true) {
+        applyScreenGlanceState(result);
+        setScreenGlanceFeedback({
+          status: "idle",
+          message: "系统屏幕共享没有开始，DengTa 无法取得任何画面。",
+        });
+        return;
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, 700));
+      const state = await refreshScreenGlanceState();
+      setScreenGlanceFeedback({
+        status: state?.active ? "success" : "error",
+        message: state?.active
+          ? "屏幕共看已开始。Android 常驻通知可随时看一眼、暂停或结束。"
+          : state?.lastError || "系统没有建立共享，请重新确认一次。",
+      });
+    } catch (error) {
+      setScreenGlanceFeedback({
+        status: "error",
+        message: error?.message || "无法开始屏幕共看。",
+      });
+    } finally {
+      setIsScreenGlanceBusy(false);
+    }
+  }
+
+  async function setScreenGlancePaused(paused) {
+    if (!screenGlancePluginAvailable() || isScreenGlanceBusy) return;
+    setIsScreenGlanceBusy(true);
+    try {
+      await ScreenGlance.setPaused({ paused });
+      await new Promise((resolve) => window.setTimeout(resolve, 120));
+      const state = await refreshScreenGlanceState();
+      setScreenGlanceFeedback({
+        status: "success",
+        message: state?.paused
+          ? "已经暂停，不会读取新的画面；系统共享提示仍保留。"
+          : "已经继续，仍只在获准条件内读取单帧。",
+      });
+    } catch (error) {
+      setScreenGlanceFeedback({
+        status: "error",
+        message: error?.message || "暂时无法改变屏幕共看状态。",
+      });
+    } finally {
+      setIsScreenGlanceBusy(false);
+    }
+  }
+
+  async function stopScreenGlanceSession() {
+    if (!screenGlancePluginAvailable() || isScreenGlanceBusy) return;
+    setIsScreenGlanceBusy(true);
+    try {
+      await ScreenGlance.stopSession();
+      const pending = pendingScreenGlanceTurnRef.current;
+      if (pending?.attachment) revokeAttachmentDraft(pending.attachment);
+      pendingScreenGlanceTurnRef.current = null;
+      await new Promise((resolve) => window.setTimeout(resolve, 180));
+      await refreshScreenGlanceState();
+      setScreenGlanceFeedback({
+        status: "idle",
+        message: "屏幕共看已结束，尚未发送的临时画面已经清除。",
+      });
+    } catch (error) {
+      setScreenGlanceFeedback({
+        status: "error",
+        message: error?.message || "暂时无法结束屏幕共看。",
+      });
+    } finally {
+      setIsScreenGlanceBusy(false);
     }
   }
 
@@ -5133,6 +5461,175 @@ function App({ accountControl = null, userName = "" }) {
               </div>
               <small>
                 Android 的“使用情况访问”是单独的系统权限；关闭本功能会立即停止附带摘要，撤销系统权限仍需在授权页操作。
+              </small>
+            </div>
+            <div className="notification-feature-panel screen-glance-panel">
+              <div className="device-activity-heading">
+                <div>
+                  <strong>屏幕共看</strong>
+                  <span>
+                    {screenGlanceState.active
+                      ? screenGlanceState.paused
+                        ? "Android · 已暂停"
+                        : "Android · 系统正在共享"
+                      : "Android · 默认关闭"}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={`privacy-switch${
+                    screenGlanceConfig.randomEnabled ? " is-on" : ""
+                  }`}
+                  role="switch"
+                  aria-checked={screenGlanceConfig.randomEnabled}
+                  aria-label={
+                    screenGlanceConfig.randomEnabled
+                      ? "关闭随机查看"
+                      : "允许随机查看"
+                  }
+                  disabled={isScreenGlanceBusy || !screenGlanceState.supported}
+                  onClick={() =>
+                    void saveScreenGlanceConfig({
+                      ...screenGlanceConfig,
+                      randomEnabled: !screenGlanceConfig.randomEnabled,
+                    })
+                  }
+                >
+                  <span aria-hidden="true" />
+                </button>
+              </div>
+              <p>
+                每次会话都由 Android 系统确认，并持续显示共享通知。单帧会缩小、去除图片元数据，只作当轮不可信视觉背景。
+              </p>
+              <p>
+                锁屏、支付、银行、密码、验证器、系统权限页或无法确认前台 App
+                时，随机查看会直接跳过；画面不会进入作品库或长期记忆。
+              </p>
+              <div className="screen-glance-options">
+                <label>
+                  最短间隔（分钟）
+                  <input
+                    type="number"
+                    min="1"
+                    max="600"
+                    value={screenGlanceConfig.minimumMinutes}
+                    disabled={isScreenGlanceBusy}
+                    onChange={(event) =>
+                      setScreenGlanceConfig((current) =>
+                        normalizeScreenGlanceConfig({
+                          ...current,
+                          minimumMinutes: event.target.value,
+                        }),
+                      )
+                    }
+                    onBlur={() => void saveScreenGlanceConfig()}
+                  />
+                </label>
+                <label>
+                  最长间隔（分钟）
+                  <input
+                    type="number"
+                    min="1"
+                    max="600"
+                    value={screenGlanceConfig.maximumMinutes}
+                    disabled={isScreenGlanceBusy}
+                    onChange={(event) =>
+                      setScreenGlanceConfig((current) =>
+                        normalizeScreenGlanceConfig({
+                          ...current,
+                          maximumMinutes: event.target.value,
+                        }),
+                      )
+                    }
+                    onBlur={() => void saveScreenGlanceConfig()}
+                  />
+                </label>
+                <label className="screen-glance-check">
+                  <input
+                    type="checkbox"
+                    checked={screenGlanceConfig.wifiOnly}
+                    disabled={isScreenGlanceBusy}
+                    onChange={(event) =>
+                      void saveScreenGlanceConfig({
+                        ...screenGlanceConfig,
+                        wifiOnly: event.target.checked,
+                      })
+                    }
+                  />
+                  仅 Wi-Fi
+                </label>
+                <label className="screen-glance-check">
+                  <input
+                    type="checkbox"
+                    checked={screenGlanceConfig.chargingOnly}
+                    disabled={isScreenGlanceBusy}
+                    onChange={(event) =>
+                      void saveScreenGlanceConfig({
+                        ...screenGlanceConfig,
+                        chargingOnly: event.target.checked,
+                      })
+                    }
+                  />
+                  仅充电时
+                </label>
+              </div>
+              {(screenGlanceState.capturedAt ||
+                screenGlanceState.nextCaptureAt) && (
+                <div className="screen-glance-times">
+                  {screenGlanceState.capturedAt && (
+                    <span>
+                      最近查看：{formatDateTime(screenGlanceState.capturedAt)}
+                    </span>
+                  )}
+                  {screenGlanceState.nextCaptureAt && (
+                    <span>
+                      下次随机窗口：
+                      {formatDateTime(screenGlanceState.nextCaptureAt)}
+                    </span>
+                  )}
+                </div>
+              )}
+              <p
+                className={`notification-feature-feedback ${screenGlanceFeedback.status}`}
+                role="status"
+                aria-live="polite"
+              >
+                {screenGlanceFeedback.message}
+              </p>
+              <div className="device-activity-actions">
+                {!screenGlanceState.active ? (
+                  <button
+                    type="button"
+                    disabled={
+                      isScreenGlanceBusy || !screenGlanceState.supported
+                    }
+                    onClick={() => void startScreenGlanceSession()}
+                  >
+                    开始系统屏幕共享
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      disabled={isScreenGlanceBusy}
+                      onClick={() =>
+                        void setScreenGlancePaused(!screenGlanceState.paused)
+                      }
+                    >
+                      {screenGlanceState.paused ? "继续捕获" : "暂停捕获"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isScreenGlanceBusy}
+                      onClick={() => void stopScreenGlanceSession()}
+                    >
+                      结束并清除
+                    </button>
+                  </>
+                )}
+              </div>
+              <small>
+                常驻通知里的“看一眼”和随机查看都需要“使用情况访问”来避开敏感 App；没有该权限时只会跳过，不会冒险截图。
               </small>
             </div>
           </div>
