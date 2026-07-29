@@ -2231,8 +2231,12 @@ body,
 
 :root[data-dengta-appearance="night"] {
   --theme-ink: #eef0f0;
-  --line: rgba(255, 255, 255, 0.1);
+  --ink: var(--theme-ink);
+  --muted: var(--theme-muted);
+  --line: var(--theme-control-border);
+  --paper: var(--theme-control-background);
   --native-glass-dark: rgba(20, 23, 28, 0.9);
+  color-scheme: dark;
 }
 
 .app-shell {
@@ -3130,4 +3134,45 @@ body,
     gap: 7px;
     padding: 6px 10px;
   }
+}
+
+/* Keep the final night cascade readable without inverting media or glass. */
+:root[data-dengta-appearance="night"] .creative-invitation-card,
+:root[data-dengta-appearance="night"] .creative-permission-form,
+:root[data-dengta-appearance="night"] .creative-provider-form,
+:root[data-dengta-appearance="night"] .artwork-card,
+:root[data-dengta-appearance="night"] .artwork-empty {
+  border-color: var(--theme-control-border);
+  color: var(--theme-ink);
+  background:
+    linear-gradient(145deg, rgb(var(--theme-ink-rgb) / 0.08), transparent 52%),
+    var(--theme-control-background);
+  box-shadow:
+    0 16px 42px rgb(5 9 16 / 0.32),
+    inset 0 1px 0 rgb(var(--theme-ink-rgb) / 0.12);
+}
+
+:root[data-dengta-appearance="night"] .creative-invitation-card p,
+:root[data-dengta-appearance="night"] .creative-settings-heading p,
+:root[data-dengta-appearance="night"] .creative-provider-form small,
+:root[data-dengta-appearance="night"] .creative-permission-form small,
+:root[data-dengta-appearance="night"] .artwork-empty p,
+:root[data-dengta-appearance="night"] .artwork-card-copy small,
+:root[data-dengta-appearance="night"] .creative-provider-summary span {
+  color: var(--theme-muted);
+}
+
+:root[data-dengta-appearance="night"] .creative-permission-form input,
+:root[data-dengta-appearance="night"] .creative-permission-form select,
+:root[data-dengta-appearance="night"] .creative-provider-grid input,
+:root[data-dengta-appearance="night"] .creative-provider-grid select,
+:root[data-dengta-appearance="night"] .settings-sheet-header button {
+  border-color: var(--theme-control-border);
+  color: var(--theme-ink);
+  background: var(--theme-control-background);
+}
+
+:root[data-dengta-appearance="night"] .artwork-card-copy .artwork-error,
+:root[data-dengta-appearance="night"] .creative-feedback {
+  color: #ffb3bb;
 }

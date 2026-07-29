@@ -19,10 +19,34 @@ const EMPTY_STATUS = {
     enabled: false,
     auth_configured: false,
     last_status: "untested",
+    last_error_code: null,
   },
   usage: { day: 0, month: 0 },
   surprise_shutdown_required: false,
 };
+
+const CREATIVE_FAILURE_MESSAGES = Object.freeze({
+  creative_provider_not_enabled: "图片接口尚未启用，请先在设置里勾选启用并保存。",
+  creative_provider_auth_failed: "图片接口拒绝了密钥，请检查 API Key。",
+  creative_provider_rate_limited: "图片接口额度不足或当前请求过于频繁。",
+  creative_provider_rejected: "图片接口拒绝了请求，请核对模型名和接口协议。",
+  creative_provider_unavailable: "暂时无法连接图片接口，请检查 Base URL 和网络。",
+  creative_provider_timeout: "图片供应商生成超时，可以稍后重试。",
+  creative_provider_image_missing: "接口有响应，但返回格式里没有可识别的图片。",
+  creative_provider_image_invalid: "接口返回的内容不是有效的 JPG、PNG 或 WebP 图片。",
+  creative_provider_image_download_failed: "接口给出了图片地址，但服务器无法安全下载。",
+  creative_provider_image_too_large: "接口返回的图片超过 12MB。",
+  creative_output_too_large: "生成结果超过私人作品库的 5MB 保存上限。",
+  creative_daily_limit_reached: "已达到你设置的今日图片调用上限。",
+  creative_monthly_limit_reached: "已达到你设置的本月图片调用上限。",
+});
+
+function creativeFailureMessage(code) {
+  return (
+    CREATIVE_FAILURE_MESSAGES[String(code || "")] ||
+    "图片生成没有完成，请查看图片接口状态后重试。"
+  );
+}
 
 function creativeRequest(path, options) {
   return apiRequest(`/api/v2/creative${path}`, options);
@@ -354,7 +378,9 @@ export function CompanionArtworkLibrary({ aiName = "小灯", onNotice }) {
                 )}
                 {artwork.failure_code && (
                   <small className="artwork-error">
-                    供应商错误：{artwork.failure_code}
+                    生成失败：{creativeFailureMessage(artwork.failure_code)}
+                    <br />
+                    错误码：{artwork.failure_code}
                   </small>
                 )}
               </div>
@@ -717,6 +743,14 @@ export default function CompanionCreativeSettings() {
           <span>
             状态 <strong>{status.provider.last_status}</strong>
           </span>
+          {status.provider.last_error_code && (
+            <span className="artwork-error">
+              最近失败：
+              <strong>
+                {creativeFailureMessage(status.provider.last_error_code)}
+              </strong>
+            </span>
+          )}
         </div>
         <button className="primary-button" disabled={Boolean(busy)}>
           {busy === "provider" ? "安全保存中…" : "保存配置（不调用图片模型）"}

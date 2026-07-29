@@ -302,6 +302,14 @@ export function applyThemePreferences(preferences, snapshot, root) {
   const backgroundRgb = hexToRgbChannels(resolvedBackground);
   const resolvedInk = isNight ? "#eef0f0" : preset.ink;
   const inkRgb = hexToRgbChannels(resolvedInk);
+  const themeMuted = `rgb(${inkRgb} / ${isNight ? 0.68 : 0.56})`;
+  const themeInkSoft = `rgb(${inkRgb} / ${isNight ? 0.84 : 0.72})`;
+  const themeControlBorder = isNight
+    ? `rgb(${inkRgb} / 0.24)`
+    : `rgb(${inkRgb} / 0.12)`;
+  const themeControlBackground = isNight
+    ? `rgb(${cardRgb} / 0.78)`
+    : `rgb(${cardRgb} / 0.66)`;
   root.dataset.dengtaTheme = normalized.preset;
   root.dataset.dengtaAppearance = snapshot.resolvedAppearance;
   root.dataset.dengtaPhase = snapshot.phase;
@@ -317,6 +325,13 @@ export function applyThemePreferences(preferences, snapshot, root) {
   root.style.setProperty("--theme-background-rgb", backgroundRgb);
   root.style.setProperty("--theme-ink", resolvedInk);
   root.style.setProperty("--theme-ink-rgb", inkRgb);
+  root.style.setProperty("--theme-muted", themeMuted);
+  root.style.setProperty("--theme-ink-soft", themeInkSoft);
+  root.style.setProperty("--theme-control-border", themeControlBorder);
+  root.style.setProperty(
+    "--theme-control-background",
+    themeControlBackground,
+  );
   root.style.setProperty("--theme-wallpaper-tint-rgb", accentRgb);
   root.style.setProperty(
     "--theme-wallpaper-tint-opacity",

@@ -3,6 +3,7 @@ import { authSession as defaultAuthSession } from "./auth-session.js";
 
 export const VOICE_MAX_DURATION_MS = 60_000;
 export const VOICE_MIN_DURATION_MS = 650;
+export const VOICE_TURN_TIMEOUT_MS = 75_000;
 
 export const VOICE_STATES = Object.freeze({
   idle: "idle",
@@ -28,6 +29,14 @@ export const VOICE_STATE_LABELS = Object.freeze({
   speaking: "AI 正在播放回复…",
   error: "语音没有发送，按住可重试",
 });
+
+export function voiceBlocksComposer(state) {
+  return [
+    VOICE_STATES.requesting,
+    VOICE_STATES.recording,
+    VOICE_STATES.uploading,
+  ].includes(state);
+}
 
 const RECORDER_MIME_TYPES = [
   "audio/webm;codecs=opus",
@@ -257,7 +266,7 @@ function parsedResponse(xhr) {
 export function createVoiceTurnRequest(
   formData,
   {
-    timeoutMs = 120_000,
+    timeoutMs = VOICE_TURN_TIMEOUT_MS,
     onUploadComplete,
     XMLHttpRequestImpl = globalThis.XMLHttpRequest,
     authSession = defaultAuthSession,
@@ -268,6 +277,10 @@ export function createVoiceTurnRequest(
   }
 
   const xhr = new XMLHttpRequestImpl();
+  const safeTimeoutMs = Math.min(
+    VOICE_TURN_TIMEOUT_MS,
+    Math.max(5_000, Number(timeoutMs) || VOICE_TURN_TIMEOUT_MS),
+  );
   let settled = false;
   let uploadReported = false;
 
@@ -319,7 +332,12 @@ export function createVoiceTurnRequest(
     );
     xhr.addEventListener(
       "timeout",
-      () => fail(new Error("语音理解等待超过两分钟，本次不会自动重复发送。")),
+      () =>
+        fail(
+          new Error(
+            `语音转写或回复等待超过${Math.ceil(safeTimeoutMs / 1000)}秒，本次不会自动重复发送。`,
+          ),
+        ),
       { once: true },
     );
     xhr.addEventListener(
@@ -335,7 +353,7 @@ export function createVoiceTurnRequest(
       .then((authContext) => {
         if (settled) return;
         xhr.open("POST", `${API_BASE_URL}/voice/turn`, true);
-        xhr.timeout = timeoutMs;
+        xhr.timeout = safeTimeoutMs;
         xhr.responseType = "json";
         if (authContext?.accessToken) {
           xhr.setRequestHeader(

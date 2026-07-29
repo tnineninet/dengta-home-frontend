@@ -134,6 +134,7 @@ import {
   VOICE_PLAYBACK_MODES,
   VOICE_STATES,
   VOICE_STATE_LABELS,
+  voiceBlocksComposer,
   buildVoiceTurnFormData,
   createVoiceTurnRequest,
   formatVoiceConfidence,
@@ -676,7 +677,7 @@ function App({ accountControl = null, userName = "" }) {
   const activeSession = sessions.find(
     (session) => session.id === activeSessionId,
   );
-  const isVoiceInputBusy = voiceInputBusy(voiceState);
+  const isVoiceInputBusy = voiceBlocksComposer(voiceState);
   const voiceServiceAvailable = voiceService.available;
   const voiceAutoSpeakEnabled =
     voicePlaybackMode === VOICE_PLAYBACK_MODES.expressive &&
@@ -1930,6 +1931,10 @@ function App({ accountControl = null, userName = "" }) {
     setVoiceTapToSendMode(false);
     clearVoiceRecordingTimers();
 
+    const pendingRequest = voiceRequestRef.current;
+    voiceRequestRef.current = null;
+    pendingRequest?.abort?.();
+
     const recorder = voiceRecorderRef.current;
     voiceRecorderRef.current = null;
     if (recorder && recorder.state !== "inactive") {
@@ -2949,7 +2954,7 @@ function App({ accountControl = null, userName = "" }) {
       (!text && attachmentsToSend.length === 0) ||
       isSendingRef.current ||
       companionInteractionInFlightRef.current ||
-      voiceInputBusy(voiceStateRef.current)
+      voiceBlocksComposer(voiceStateRef.current)
     ) {
       return;
     }
@@ -4605,6 +4610,21 @@ function App({ accountControl = null, userName = "" }) {
                     onClick={() => void stopVoicePlayback()}
                   >
                     停止朗读
+                  </button>
+                )}
+                {[VOICE_STATES.uploading, VOICE_STATES.thinking].includes(
+                  voiceState,
+                ) && (
+                  <button
+                    className="voice-stop-button"
+                    type="button"
+                    onClick={() =>
+                      cancelVoiceCapture({
+                        message: "语音处理已取消，文字聊天仍可继续。",
+                      })
+                    }
+                  >
+                    取消语音处理
                   </button>
                 )}
                 <span

@@ -120,3 +120,44 @@ test("theme colours reach the sky and shared optical-glass material", () => {
     "assistant glass must use the same live card colour as Theme Studio",
   );
 });
+
+test("night mode exposes readable semantic text and control tokens", () => {
+  const values = new Map();
+  const root = {
+    dataset: {},
+    style: {
+      setProperty(name, value) {
+        values.set(name, value);
+      },
+    },
+  };
+  applyThemePreferences(
+    DEFAULT_THEME_PREFERENCES,
+    getCelestialSnapshot(new Date("2026-07-28T15:30:00.000Z"), "night"),
+    root,
+  );
+
+  assert.equal(root.dataset.dengtaAppearance, "night");
+  assert.match(values.get("--theme-muted"), /rgb\(/);
+  assert.match(values.get("--theme-ink-soft"), /rgb\(/);
+  assert.match(values.get("--theme-control-border"), /rgb\(/);
+  assert.match(values.get("--theme-control-background"), /rgb\(/);
+
+  const styles = fs.readFileSync(
+    new URL("../src/native-feel.css", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    styles,
+    /:root\[data-dengta-appearance="night"\][\s\S]*?--muted:\s*var\(--theme-muted\)/,
+  );
+  assert.match(
+    styles,
+    /:root\[data-dengta-appearance="night"\][\s\S]*?creative-invitation-card[\s\S]*?--theme-control-border/,
+  );
+  assert.doesNotMatch(
+    styles,
+    /data-dengta-appearance="night"[^{}]*\{[^}]*filter:\s*invert/i,
+    "night mode must not invert images and glass highlights",
+  );
+});

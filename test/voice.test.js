@@ -6,6 +6,7 @@ import {
   VOICE_PLAYBACK_MODES,
   VOICE_STATES,
   VOICE_STATE_LABELS,
+  VOICE_TURN_TIMEOUT_MS,
   buildVoiceTurnFormData,
   formatVoiceConfidence,
   hydrateStoredVoiceAnalysis,
@@ -18,6 +19,7 @@ import {
   selectRecorderMimeType,
   validateVoiceDuration,
   voiceCaptureErrorMessage,
+  voiceBlocksComposer,
   voiceRecordingSupported,
 } from "../src/voice.js";
 
@@ -158,6 +160,15 @@ assert.equal(formData.get("file").type, "audio/webm");
 assert.equal(VOICE_STATES.recording, "recording");
 assert.match(VOICE_STATE_LABELS.recording, /松开发送/);
 assert.match(VOICE_STATE_LABELS.speaking, /播放/);
+assert.ok(VOICE_TURN_TIMEOUT_MS <= 75_000);
+assert.equal(voiceBlocksComposer(VOICE_STATES.requesting), true);
+assert.equal(voiceBlocksComposer(VOICE_STATES.recording), true);
+assert.equal(voiceBlocksComposer(VOICE_STATES.uploading), true);
+assert.equal(
+  voiceBlocksComposer(VOICE_STATES.thinking),
+  false,
+  "remote analysis must not lock text chat",
+);
 assert.equal(
   normalizeVoicePlaybackMode("expressive"),
   VOICE_PLAYBACK_MODES.expressive,
@@ -181,6 +192,11 @@ assert.doesNotMatch(
   `${voiceSource}\n${appSource}\n${packageSource}`,
   /speechSynthesis|SpeechSynthesisUtterance|TextToSpeech|capacitor-community\/text-to-speech/,
   "device and browser system reading paths must stay removed",
+);
+assert.match(
+  appSource,
+  /取消语音处理/,
+  "a pending voice request must always have a visible escape hatch",
 );
 
 let expressiveRequest;
