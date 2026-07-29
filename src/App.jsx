@@ -3666,8 +3666,9 @@ function App({ accountControl = null, userName = "" }) {
           }
 
           const receipt = {
-            unifiedSystemPromptLength:
+            customInstructionsLength:
               nextSettings.unified_system_prompt.length,
+            userDetailsLength: nextSettings.user_details.length,
             promptMode: nextSettings.prompt_mode,
             intimateExpressionEnabled:
               nextSettings.intimate_expression_enabled === true,
@@ -5069,12 +5070,13 @@ function App({ accountControl = null, userName = "" }) {
           <div className="settings-card prompt-settings-card">
             <div className="prompt-settings-heading">
               <div>
-                <h3>角色与主系统提示词</h3>
+                <h3>个性化与长期详情</h3>
                 <p className="card-hint">
-                  主系统提示词作为一个完整指令块发送给模型；长期记忆、聊天历史和本轮临时补充由后端按固定顺序另行注入。
+                  “个性化指令”和“你的详情”都会原样进入 DengTa
+                  可控范围内最高应用级的 instructions / system，不会改成普通聊天消息；稳定长期记忆、聊天历史和本轮临时补充仍保持独立。
                 </p>
               </div>
-              <span className="prompt-compatibility-badge">统一模式</span>
+              <span className="prompt-compatibility-badge">最高应用级</span>
             </div>
 
             <label className="prompt-name-field">
@@ -5094,17 +5096,17 @@ function App({ accountControl = null, userName = "" }) {
             <div className="prompt-layer-list unified-prompt-layout">
               <label className="prompt-layer highest-priority unified-prompt-layer">
                 <span className="prompt-layer-title">
-                  <span className="prompt-priority-number">主</span>
+                  <span className="prompt-priority-number">指</span>
                   <span>
-                    <strong>主系统提示词</strong>
+                    <strong>个性化指令</strong>
                     <small>
-                      直接进入模型的 system / instructions
+                      原文进入模型的 instructions / system
                     </small>
                   </span>
                   <em>长期保存</em>
                 </span>
                 <p>
-                  把稳定身份、关系设定、表达方式和重要规则写在同一个地方。旧版三个输入区的原文会带着分段标题无损合并到这里。
+                  写下希望伴侣长期遵循的身份、关系、表达方式和规则。保存与发送时不解析内容，也不删除开头、结尾的空格或换行；旧版三个输入区只会在首次迁移时带标题合并到这里。
                 </p>
                 <textarea
                   data-setting-field="unified_system_prompt"
@@ -5113,11 +5115,41 @@ function App({ accountControl = null, userName = "" }) {
                   onChange={(event) =>
                     updateUnifiedPrompt(event.target.value)
                   }
-                  placeholder="例如：你是 DengTa home 的 AI 伙伴小灯。写清楚稳定身份、与桃桃的关系、说话习惯、边界和重要规则……"
+                  placeholder="例如：你是 DengTa home 的 AI 伙伴小灯。写清楚稳定身份、关系和表达习惯……"
                   rows="12"
                 />
                 <small className="prompt-field-count">
                   {(draftSettings.unified_system_prompt || "").length} / {PROMPT_FIELD_LIMITS.unified_system_prompt}
+                </small>
+              </label>
+
+              <label className="prompt-layer highest-priority unified-prompt-layer">
+                <span className="prompt-layer-title">
+                  <span className="prompt-priority-number">详</span>
+                  <span>
+                    <strong>你的详情</strong>
+                    <small>
+                      与个性化指令同属最高应用级
+                    </small>
+                  </span>
+                  <em>长期保存</em>
+                </span>
+                <p>
+                  写下希望伴侣在每轮对话都了解的长期详情。这里的原文同样不做语义解析或
+                  trim，并与个性化指令一起放入最高应用级 instructions / system。
+                </p>
+                <textarea
+                  data-setting-field="user_details"
+                  maxLength={PROMPT_FIELD_LIMITS.user_details}
+                  value={draftSettings.user_details || ""}
+                  onChange={(event) =>
+                    updateDraft("user_details", event.target.value)
+                  }
+                  placeholder="例如：称呼、长期偏好、重要背景，以及希望伴侣始终记得的个人详情……"
+                  rows="10"
+                />
+                <small className="prompt-field-count">
+                  {(draftSettings.user_details || "").length} / {PROMPT_FIELD_LIMITS.user_details}
                 </small>
               </label>
 
@@ -5126,7 +5158,7 @@ function App({ accountControl = null, userName = "" }) {
                   <span className="prompt-memory-icon" aria-hidden="true">∞</span>
                   <span>
                     <strong>稳定长期记忆摘要</strong>
-                    <small>由后端筛选后放在主系统提示词之后</small>
+                    <small>由后端筛选，独立放在两项最高应用级指令之后</small>
                   </span>
                 </div>
                 <p>
@@ -5193,11 +5225,14 @@ function App({ accountControl = null, userName = "" }) {
               </label>
             </div>
 
-            {(draftSettings.unified_system_prompt || "").length >= 12000 && (
+            {((draftSettings.unified_system_prompt || "").length >= 12000 ||
+              (draftSettings.user_details || "").length >= 12000) && (
               <div className="prompt-effect-warning" role="note">
-                <strong>主系统提示词较长</strong>
+                <strong>最高应用级指令较长</strong>
                 <p>
-                  当前有 {(draftSettings.unified_system_prompt || "").length} 字。
+                  个性化指令当前有{" "}
+                  {(draftSettings.unified_system_prompt || "").length} 字，你的详情有{" "}
+                  {(draftSettings.user_details || "").length} 字。
                   后端仍会完整尝试发送，但中转供应商可能有自己的上下文上限；把最重要且稳定的规则放在前面更可靠。
                 </p>
               </div>
@@ -5708,7 +5743,10 @@ function App({ accountControl = null, userName = "" }) {
             <div className="settings-save-receipt" role="status">
               <strong>✓ 服务器已保存并回读</strong>
               <span>
-                主系统提示词 {settingsSaveReceipt.unifiedSystemPromptLength} 字
+                个性化指令 {settingsSaveReceipt.customInstructionsLength} 字
+              </span>
+              <span>
+                你的详情 {settingsSaveReceipt.userDetailsLength} 字
               </span>
               <span>
                 统一提示词模式 · 亲密表达
@@ -5730,9 +5768,23 @@ function App({ accountControl = null, userName = "" }) {
                 {lastPromptReceipt.delivery ? (
                   <>
                     <span>
-                      主系统提示词：
+                      个性化指令：
+                      {lastPromptReceipt.delivery.persistentInstructions
+                        ?.customInstructions?.applied
+                        ? `已发送 ${lastPromptReceipt.delivery.persistentInstructions.customInstructions.chars ?? "—"} 字`
+                        : "未发送"}
+                    </span>
+                    <span>
+                      你的详情：
+                      {lastPromptReceipt.delivery.persistentInstructions
+                        ?.userDetails?.applied
+                        ? `已发送 ${lastPromptReceipt.delivery.persistentInstructions.userDetails.chars ?? "—"} 字`
+                        : "未发送"}
+                    </span>
+                    <span>
+                      最高应用级指令合计：
                       {lastPromptReceipt.delivery.mainSystem.applied
-                        ? `已发送 ${lastPromptReceipt.delivery.mainSystem.chars ?? "—"} 字`
+                        ? `${lastPromptReceipt.delivery.mainSystem.chars ?? "—"} 字`
                         : "未发送"}
                     </span>
                     <span>

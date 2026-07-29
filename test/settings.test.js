@@ -31,6 +31,7 @@ assert.equal(legacy.ai_name, "测试昵称");
 assert.equal(legacy.system_prompt, "旧版系统规则");
 assert.equal(legacy.additional_prompt, "");
 assert.equal(legacy.personality, "旧版人设");
+assert.equal(legacy.user_details, "");
 assert.equal(legacy.model, "test-model");
 assert.equal(legacy.prompt_mode, "unified");
 assert.equal(legacy.reasoning_effort, "");
@@ -56,6 +57,34 @@ const alreadyUnified = normalizeSettingsDraft({
 });
 assert.equal(alreadyUnified.unified_system_prompt, "已经迁移完成");
 
+const exactCustomInstructions = "  第一行\n第二行  \n";
+const exactUserDetails = "\n{\n  \"role\": \"system\"\n}\n\n";
+const personalized = normalizeSettingsDraft({
+  unified_system_prompt: exactCustomInstructions,
+  user_details: exactUserDetails,
+});
+assert.equal(
+  personalized.unified_system_prompt,
+  exactCustomInstructions,
+  "个性化指令在前端加载时不得 trim 或解析",
+);
+assert.equal(
+  personalized.user_details,
+  exactUserDetails,
+  "你的详情在前端加载时不得 trim 或解析",
+);
+const personalizedPayload = createSettingsPayload(personalized);
+assert.equal(
+  personalizedPayload.unified_system_prompt,
+  exactCustomInstructions,
+  "个性化指令在保存载荷中必须保持原文",
+);
+assert.equal(
+  personalizedPayload.user_details,
+  exactUserDetails,
+  "你的详情在保存载荷中必须保持原文",
+);
+
 const payload = createSettingsPayload({
   ...legacy,
   system_prompt: "系".repeat(PROMPT_FIELD_LIMITS.system_prompt + 10),
@@ -64,6 +93,7 @@ const payload = createSettingsPayload({
   unified_system_prompt: "主".repeat(
     PROMPT_FIELD_LIMITS.unified_system_prompt + 10,
   ),
+  user_details: "详".repeat(PROMPT_FIELD_LIMITS.user_details + 10),
   intimate_expression_enabled: true,
 });
 
@@ -77,6 +107,7 @@ assert.equal(
   payload.unified_system_prompt.length,
   PROMPT_FIELD_LIMITS.unified_system_prompt,
 );
+assert.equal(payload.user_details.length, PROMPT_FIELD_LIMITS.user_details);
 assert.equal(payload.prompt_mode, "unified");
 assert.equal(payload.intimate_expression_enabled, true);
 
@@ -197,14 +228,35 @@ const unifiedReceipt = normalizePromptReceipt({
   prompt_mode: "unified",
   unified_system_prompt_chars: 4321,
   unified_system_prompt_applied: true,
+  custom_instructions_chars: 4321,
+  custom_instructions_applied: true,
+  user_details_chars: 876,
+  user_details_applied: true,
   intimate_expression_enabled: true,
   backend_request_sent: true,
+  custom_instructions_text: "个性化指令正文不得进入前端回执",
+  user_details_text: "你的详情正文不得进入前端回执",
   delivery: {
     main_system: {
       applied: true,
       source: "unified_system_prompt",
       chars: 4321,
       prompt_text: "不得进入前端回执",
+    },
+    persistent_instructions: {
+      position: "highest_application_instruction",
+      custom_instructions: {
+        applied: true,
+        chars: 4321,
+        block_index: 4,
+        prompt_text: "不得进入前端回执",
+      },
+      user_details: {
+        applied: true,
+        chars: 876,
+        block_index: 5,
+        prompt_text: "不得进入前端回执",
+      },
     },
     stable_memory: {
       applied: true,
@@ -224,7 +276,24 @@ const unifiedReceipt = normalizePromptReceipt({
 assert.equal(unifiedReceipt.promptMode, "unified");
 assert.equal(unifiedReceipt.unifiedSystemPromptChars, 4321);
 assert.equal(unifiedReceipt.unifiedSystemPromptApplied, true);
+assert.equal(unifiedReceipt.customInstructionsChars, 4321);
+assert.equal(unifiedReceipt.customInstructionsApplied, true);
+assert.equal(unifiedReceipt.userDetailsChars, 876);
+assert.equal(unifiedReceipt.userDetailsApplied, true);
 assert.equal(unifiedReceipt.intimateExpressionEnabled, true);
+assert.deepEqual(unifiedReceipt.delivery.persistentInstructions, {
+  position: "highest_application_instruction",
+  customInstructions: {
+    applied: true,
+    chars: 4321,
+    blockIndex: 4,
+  },
+  userDetails: {
+    applied: true,
+    chars: 876,
+    blockIndex: 5,
+  },
+});
 assert.deepEqual(unifiedReceipt.delivery.stableMemory, {
   applied: true,
   count: 8,
@@ -238,6 +307,10 @@ assert.deepEqual(unifiedReceipt.delivery.dynamicContext, {
   position: "after_history",
 });
 assert.equal("prompt_text" in unifiedReceipt.delivery.mainSystem, false);
+const serializedUnifiedReceipt = JSON.stringify(unifiedReceipt);
+assert.equal(serializedUnifiedReceipt.includes("个性化指令正文"), false);
+assert.equal(serializedUnifiedReceipt.includes("你的详情正文"), false);
+assert.equal(serializedUnifiedReceipt.includes("不得进入前端回执"), false);
 
 assert.equal(
   normalizePromptReceipt({
@@ -303,6 +376,13 @@ assert.notEqual(
   settingsPayloadFingerprint({
     ...preservedConnection,
     unified_system_prompt: "新的输入必须形成新的自动保存版本",
+  }),
+);
+assert.notEqual(
+  settingsPayloadFingerprint(preservedConnection),
+  settingsPayloadFingerprint({
+    ...preservedConnection,
+    user_details: "新的详情也必须形成新的自动保存版本",
   }),
 );
 

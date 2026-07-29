@@ -7,6 +7,7 @@ export const emptySettings = {
   personality: "",
   prompt_mode: "unified",
   unified_system_prompt: "",
+  user_details: "",
   intimate_expression_enabled: false,
   provider: "custom",
   api_url: "",
@@ -28,6 +29,7 @@ export const PROMPT_FIELD_LIMITS = {
   additional_prompt: 8000,
   personality: 1000,
   unified_system_prompt: 30000,
+  user_details: 30000,
   turn_context: 4000,
 };
 
@@ -83,6 +85,7 @@ export function normalizeSettingsDraft(value) {
     ),
     prompt_mode: "unified",
     unified_system_prompt: migratedPrompt,
+    user_details: textOrFallback(source.user_details),
     intimate_expression_enabled:
       source.intimate_expression_enabled === true,
   };
@@ -109,6 +112,10 @@ export function createSettingsPayload(value) {
     unified_system_prompt: normalized.unified_system_prompt.slice(
       0,
       PROMPT_FIELD_LIMITS.unified_system_prompt,
+    ),
+    user_details: normalized.user_details.slice(
+      0,
+      PROMPT_FIELD_LIMITS.user_details,
     ),
     intimate_expression_enabled:
       normalized.intimate_expression_enabled === true,
@@ -241,9 +248,17 @@ export function normalizePromptReceipt(value, fallbackAppliedAt) {
   const unifiedSystemPromptChars = firstCharacterCount(source, [
     "unified_system_prompt_chars",
   ]);
+  const customInstructionsChars = firstCharacterCount(source, [
+    "custom_instructions_chars",
+  ]);
+  const userDetailsChars = firstCharacterCount(source, [
+    "user_details_chars",
+  ]);
   const rawDelivery = objectOrEmpty(source.delivery);
   const hasUnifiedReceipt =
     unifiedSystemPromptChars !== null ||
+    customInstructionsChars !== null ||
+    userDetailsChars !== null ||
     Boolean(optionalText(source.prompt_architecture)) ||
     Boolean(optionalText(source.prompt_mode)) ||
     Object.keys(rawDelivery).length > 0;
@@ -321,6 +336,13 @@ export function normalizePromptReceipt(value, fallbackAppliedAt) {
   if (!hasUnifiedReceipt) return common;
 
   const mainSystem = objectOrEmpty(rawDelivery.main_system);
+  const persistentInstructions = objectOrEmpty(
+    rawDelivery.persistent_instructions,
+  );
+  const customInstructions = objectOrEmpty(
+    persistentInstructions.custom_instructions,
+  );
+  const userDetails = objectOrEmpty(persistentInstructions.user_details);
   const stableMemory = objectOrEmpty(rawDelivery.stable_memory);
   const history = objectOrEmpty(rawDelivery.history);
   const dynamicContext = objectOrEmpty(rawDelivery.dynamic_context);
@@ -332,6 +354,11 @@ export function normalizePromptReceipt(value, fallbackAppliedAt) {
     unifiedSystemPromptChars,
     unifiedSystemPromptApplied:
       source.unified_system_prompt_applied === true,
+    customInstructionsChars,
+    customInstructionsApplied:
+      source.custom_instructions_applied === true,
+    userDetailsChars,
+    userDetailsApplied: source.user_details_applied === true,
     intimateExpressionEnabled:
       source.intimate_expression_enabled === true,
     delivery: {
@@ -340,6 +367,19 @@ export function normalizePromptReceipt(value, fallbackAppliedAt) {
         ["source", "source", "text"],
         ["chars", "chars", "count"],
       ]),
+      persistentInstructions: {
+        position: safeReceiptMetadata(persistentInstructions.position),
+        customInstructions: deliveryBlock(customInstructions, [
+          ["applied", "applied", "boolean"],
+          ["chars", "chars", "count"],
+          ["blockIndex", "block_index", "count"],
+        ]),
+        userDetails: deliveryBlock(userDetails, [
+          ["applied", "applied", "boolean"],
+          ["chars", "chars", "count"],
+          ["blockIndex", "block_index", "count"],
+        ]),
+      },
       stableMemory: deliveryBlock(stableMemory, [
         ["applied", "applied", "boolean"],
         ["count", "count", "count"],

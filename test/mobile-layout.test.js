@@ -852,7 +852,22 @@ assert.match(
 assert.match(
   app,
   /data-setting-field="unified_system_prompt"/,
-  "settings must expose one unified main system prompt editor",
+  "settings must expose the persistent custom-instructions editor",
+);
+assert.match(
+  app,
+  /data-setting-field="user_details"/,
+  "settings must expose a separate persistent user-details editor",
+);
+assert.match(
+  app,
+  /“个性化指令”和“你的详情”都会原样进入 DengTa[\s\S]*最高应用级的 instructions \/ system/,
+  "settings must explain that both user-edited fields use the highest application instruction level",
+);
+assert.match(
+  app,
+  /稳定长期记忆、聊天历史和本轮临时补充仍保持独立/,
+  "settings must keep stable memory distinct from user-edited persistent instructions",
 );
 assert.doesNotMatch(
   app,
