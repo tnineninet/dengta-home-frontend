@@ -1,6 +1,7 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import { apiRequest } from "./api.js";
 import { AUTH_STATUS } from "./auth-session.js";
+import { BACKEND_WAKE_TIMEOUT_MS } from "./startup-reconnect.js";
 
 const DEVICE_ID_KEY = "dengta_android_installation_id_v1";
 const IDENTITY_RETRY_DELAYS_MS = [2_000, 5_000, 10_000, 30_000];
@@ -36,7 +37,7 @@ async function registerInstallation(deviceId) {
       platform: "android",
     }),
     retry: false,
-    timeoutMs: 15_000,
+    timeoutMs: BACKEND_WAKE_TIMEOUT_MS,
   });
 }
 

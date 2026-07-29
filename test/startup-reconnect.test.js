@@ -1,13 +1,20 @@
 import assert from "node:assert/strict";
+import { apiRequest } from "../src/api.js";
 import {
+  BACKEND_WAKE_TIMEOUT_MS,
   STARTUP_REQUEST_OPTIONS,
   createStartupReconnectController,
   mergeRecoveredStartupData,
 } from "../src/startup-reconnect.js";
 
+assert.equal(
+  BACKEND_WAKE_TIMEOUT_MS,
+  75_000,
+  "the first request must outlive the measured Render cold start",
+);
 assert.deepEqual(STARTUP_REQUEST_OPTIONS, {
   retry: false,
-  timeoutMs: 15_000,
+  timeoutMs: BACKEND_WAKE_TIMEOUT_MS,
 });
 
 function createFakeTimers() {
@@ -82,6 +89,83 @@ function deferred() {
 
 async function flushPromises() {
   for (let index = 0; index < 6; index += 1) await Promise.resolve();
+}
+
+{
+  const timers = createFakeTimers();
+  const originalWindow = globalThis.window;
+  const originalFetch = globalThis.fetch;
+  const requestContext = {
+    getRequestContext: async () => ({}),
+    captureCompanionFromResponse() {},
+  };
+  let fetchCalls = 0;
+
+  globalThis.window = {
+    ...originalWindow,
+    setTimeout: timers.setTimeout,
+    clearTimeout: timers.clearTimeout,
+  };
+  globalThis.fetch = (_url, options = {}) => {
+    fetchCalls += 1;
+    return new Promise((resolve, reject) => {
+      const responseTimer = timers.setTimeout(() => {
+        resolve({
+          status: 200,
+          ok: true,
+          json: async () =>
+            _url.endsWith("/settings")
+              ? { settings: {} }
+              : { sessions: [] },
+        });
+      }, 26_000);
+      options.signal?.addEventListener(
+        "abort",
+        () => {
+          timers.clearTimeout(responseTimer);
+          reject(new DOMException("The operation was aborted.", "AbortError"));
+        },
+        { once: true },
+      );
+    });
+  };
+
+  const controller = createStartupReconnectController({
+    attempt: () =>
+      Promise.all(
+        ["/api/v2/settings", "/api/v2/sessions"].map((path) =>
+          apiRequest(path, {
+            ...STARTUP_REQUEST_OPTIONS,
+            authSession: requestContext,
+          }),
+        ),
+      ),
+    setTimeoutFn: timers.setTimeout,
+    clearTimeoutFn: timers.clearTimeout,
+  });
+
+  try {
+    const startup = controller.start();
+    await flushPromises();
+    assert.equal(controller.getState().status, "connecting");
+
+    await timers.advanceBy(15_000);
+    assert.equal(
+      controller.getState().status,
+      "connecting",
+      "a measured 26-second cold start must not be reported as disconnected at 15 seconds",
+    );
+
+    await timers.advanceBy(11_000);
+    await startup;
+    assert.equal(controller.getState().status, "connected");
+    assert.equal(fetchCalls, 2, "cold start must complete without a retry storm");
+  } finally {
+    controller.stop();
+    globalThis.fetch = originalFetch;
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
 }
 
 {

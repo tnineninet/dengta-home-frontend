@@ -107,7 +107,7 @@ async function fetchFromApi(path, options = {}) {
       }
       if (timedOut) {
         const timeoutError = new Error(
-          `等待 AI 回应超过 ${Math.ceil(timeoutMs / 1000)} 秒，本次不会自动重复请求。`,
+          `等待 DengTa 后端响应超过 ${Math.ceil(timeoutMs / 1000)} 秒，本次不会自动重复请求。`,
           { cause: error },
         );
         timeoutError.code = "request_timeout";

@@ -12,6 +12,16 @@ const COMPANION_ID = "22222222-2222-4222-8222-222222222222";
 const DEVICE_ID = "33333333-3333-4333-8333-333333333333";
 const EXPIRES_AT = "2026-08-26T12:00:00.000Z";
 
+const notificationIdentitySource = fs.readFileSync(
+  new URL("../src/background-notification-identity.js", import.meta.url),
+  "utf8",
+);
+assert.match(
+  notificationIdentitySource,
+  /timeoutMs:\s*BACKEND_WAKE_TIMEOUT_MS/,
+  "notification registration must survive the same backend cold-start window",
+);
+
 function createStorage() {
   const values = new Map();
   return {

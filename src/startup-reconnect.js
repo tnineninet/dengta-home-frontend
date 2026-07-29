@@ -1,7 +1,8 @@
+export const BACKEND_WAKE_TIMEOUT_MS = 75_000;
 export const STARTUP_RETRY_DELAYS_MS = [2_000, 5_000, 10_000, 30_000];
 export const STARTUP_REQUEST_OPTIONS = Object.freeze({
   retry: false,
-  timeoutMs: 15_000,
+  timeoutMs: BACKEND_WAKE_TIMEOUT_MS,
 });
 
 function retryDelayForFailure(failureCount, retryDelays) {

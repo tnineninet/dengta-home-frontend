@@ -125,6 +125,7 @@ import {
 import { installInnerHeightViewportFallback } from "./mobile-viewport";
 import { toggleMomentLikeOptimistically } from "./moment-like";
 import {
+  BACKEND_WAKE_TIMEOUT_MS,
   STARTUP_REQUEST_OPTIONS,
   createStartupReconnectController,
   mergeRecoveredStartupData,
@@ -704,7 +705,7 @@ function App({ accountControl = null, userName = "" }) {
     const data = await apiRequest("/api/weather/current", {
       method: "POST",
       body: JSON.stringify({ latitude, longitude }),
-      timeoutMs: 8_000,
+      timeoutMs: BACKEND_WAKE_TIMEOUT_MS,
     });
     return data?.weather || data;
   }, []);
@@ -5881,8 +5882,9 @@ function App({ accountControl = null, userName = "" }) {
     memories: "Portrait",
   }[activeView];
   const showStartupRecovery =
-    startupConnection.failureCount > 0 &&
-    startupConnection.status !== "connected";
+    startupConnection.status === "connecting" ||
+    (startupConnection.failureCount > 0 &&
+      startupConnection.status !== "connected");
   const startupRetrySeconds = Math.ceil(
     Number(startupConnection.nextRetryDelayMs || 0) / 1_000,
   );
@@ -6079,11 +6081,17 @@ function App({ accountControl = null, userName = "" }) {
             <div>
               <strong>
                 {startupConnection.status === "connecting"
-                  ? "正在重新连接 DengTa 后端…"
+                  ? startupConnection.failureCount > 0
+                    ? "正在重新连接 DengTa 后端…"
+                    : "正在唤醒 DengTa 后端…"
                   : "DengTa 后端暂时没有响应"}
               </strong>
               <span>
-                {startupConnection.status === "waiting" && startupRetrySeconds
+                {startupConnection.status === "connecting" &&
+                startupConnection.failureCount === 0
+                  ? "服务休眠后的首次连接可能需要约一分钟，完成后会自动恢复设置和会话。"
+                  : startupConnection.status === "waiting" &&
+                      startupRetrySeconds
                   ? `将在 ${startupRetrySeconds} 秒后自动重试。`
                   : startupConnection.lastError?.message ||
                     "正在恢复设置和会话。"}

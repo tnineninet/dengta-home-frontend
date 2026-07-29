@@ -675,6 +675,16 @@ assert.match(
 );
 assert.match(
   app,
+  /apiRequest\("\/api\/weather\/current",[\s\S]*?timeoutMs:\s*BACKEND_WAKE_TIMEOUT_MS/,
+  "weather refresh must not fail before a sleeping backend can wake",
+);
+assert.match(
+  app,
+  /正在唤醒 DengTa 后端[\s\S]*?服务休眠后的首次连接可能需要约一分钟/,
+  "the first cold start must be described as waking rather than disconnected",
+);
+assert.match(
+  app,
   /settingsSaveRetryCountRef\.current >=[\s\S]*?SETTINGS_SAVE_RETRY_DELAYS_MS\.length[\s\S]*?window\.setTimeout\(\(\) => \{[\s\S]*?flushSettingsSaveQueue\(\)/,
   "autosave retries must stop at the configured limit and retry through the same queue",
 );
