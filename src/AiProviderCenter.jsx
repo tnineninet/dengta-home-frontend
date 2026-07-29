@@ -14,6 +14,10 @@ import {
   providerIsExpired,
   providerIsRoutable,
 } from "./ai-provider-health";
+import {
+  reasoningEffortForProvider,
+  reasoningEffortOptions,
+} from "./provider-reasoning-effort";
 
 const PROTOCOL_OPTIONS = [
   {
@@ -45,6 +49,7 @@ const EMPTY_PROVIDER_DRAFT = {
   auth_type: "bearer",
   credential: "",
   default_model: "",
+  reasoning_effort: "",
   enabled: false,
   is_default: false,
   priority: 100,
@@ -97,6 +102,10 @@ function providerPayload(profile) {
     auth_type: profile.auth_type,
     credential: profile.credential || "",
     default_model: profile.default_model,
+    reasoning_effort: reasoningEffortForProvider(
+      profile.protocol,
+      profile.reasoning_effort,
+    ),
     enabled: profile.enabled === true,
     is_default: profile.is_default === true && !providerIsExpired(profile),
     priority: Number(profile.priority) || 100,
@@ -135,6 +144,12 @@ function ProviderHealthSummary({ profile }) {
 
 function ProviderFields({ value, onChange, models = [], editing = false }) {
   const protocol = PROTOCOL_OPTIONS.find((item) => item.value === value.protocol);
+  const effortOptions = reasoningEffortOptions(value.protocol);
+  const reasoningHelp = value.protocol === "openai-responses"
+    ? "作为 reasoning.effort 发送。xhigh / max 可能明显增加等待时间与费用；实际请求会写入安全回执。"
+    : value.protocol === "openai-chat"
+      ? "为保留 DengTa 的函数工具，Chat 兼容接口只能显式使用 none；需要高推理请改用 Responses。"
+      : "当前原生协议不使用 OpenAI 推理强度参数。";
   const expired = providerIsExpired(value);
   const modelListId = editing
     ? "provider-models-" + (value.id || "edit")
@@ -216,6 +231,22 @@ function ProviderFields({ value, onChange, models = [], editing = false }) {
           {models.map((model) => <option value={model} key={model} />)}
         </datalist>
         <small>模型目录可读取后可从发现的模型中选择；也可按服务商说明手动填写。</small>
+      </label>
+      <label>
+        推理强度
+        <select
+          value={reasoningEffortForProvider(
+            value.protocol,
+            value.reasoning_effort,
+          )}
+          onChange={(event) => onChange("reasoning_effort", event.target.value)}
+          disabled={effortOptions.length === 1}
+        >
+          {effortOptions.map((item) => (
+            <option value={item.value} key={item.value || "default"}>{item.label}</option>
+          ))}
+        </select>
+        <small>{reasoningHelp}</small>
       </label>
       <label>
         优先级
@@ -348,7 +379,16 @@ export default function AiProviderCenter() {
   );
 
   function updateDraft(field, value) {
-    setDraft((current) => ({ ...current, [field]: value }));
+    setDraft((current) => {
+      const next = { ...current, [field]: value };
+      if (field === "protocol") {
+        next.reasoning_effort = reasoningEffortForProvider(
+          value,
+          current.reasoning_effort,
+        );
+      }
+      return next;
+    });
     if (["base_url", "protocol", "credential", "auth_type"].includes(field)) {
       setDraftModels([]);
     }
@@ -356,7 +396,16 @@ export default function AiProviderCenter() {
 
   function editProfile(id, field, value) {
     setProfiles((current) => current.map((profile) => {
-      if (profile.id === id) return { ...profile, [field]: value };
+      if (profile.id === id) {
+        const next = { ...profile, [field]: value };
+        if (field === "protocol") {
+          next.reasoning_effort = reasoningEffortForProvider(
+            value,
+            profile.reasoning_effort,
+          );
+        }
+        return next;
+      }
       if (field === "is_default" && value === true) {
         return { ...profile, is_default: false };
       }

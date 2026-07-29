@@ -93,6 +93,10 @@ import {
   settingsNeedsUnifiedPromptMigration,
   settingsPayloadFingerprint,
 } from "./settings";
+import {
+  reasoningEffortForProvider,
+  reasoningEffortOptions,
+} from "./provider-reasoning-effort";
 import { readReplySuggestions } from "./chat-reply-suggestions";
 import {
   readCachedCoordinates,
@@ -3779,6 +3783,12 @@ function App({ accountControl = null, userName = "" }) {
       ...draftSettingsRef.current,
       [field]: value,
     };
+    if (field === "provider") {
+      nextDraft.reasoning_effort = reasoningEffortForProvider(
+        value,
+        nextDraft.reasoning_effort,
+      );
+    }
     draftSettingsRef.current = nextDraft;
     setSettingsSaveReceipt(null);
     setDraftSettings(nextDraft);
@@ -5243,6 +5253,7 @@ function App({ accountControl = null, userName = "" }) {
                 >
                   <option value="custom">自定义 / OpenAI 兼容中转</option>
                   <option value="openai-compatible">OpenAI 兼容</option>
+                  <option value="openai-responses">OpenAI Responses</option>
                   <option value="gemini">Gemini 原生</option>
                   <option value="anthropic">Anthropic 原生</option>
                 </select>
@@ -5254,6 +5265,36 @@ function App({ accountControl = null, userName = "" }) {
                   onChange={(event) => updateDraft("model", event.target.value)}
                   placeholder="暂时留空即可"
                 />
+              </label>
+              <label>
+                推理强度
+                <select
+                  value={reasoningEffortForProvider(
+                    draftSettings.provider,
+                    draftSettings.reasoning_effort,
+                  )}
+                  onChange={(event) =>
+                    updateDraft("reasoning_effort", event.target.value)
+                  }
+                  disabled={
+                    reasoningEffortOptions(draftSettings.provider).length === 1
+                  }
+                >
+                  {reasoningEffortOptions(draftSettings.provider).map((item) => (
+                    <option value={item.value} key={item.value || "default"}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+                <small>
+                  {draftSettings.provider === "openai-responses"
+                    ? "Responses 会把该值作为 reasoning.effort 发送；极高推理会增加等待时间和模型费用。"
+                    : ["custom", "openai-compatible"].includes(
+                          draftSettings.provider,
+                        )
+                      ? "为保留聊天工具，Chat 兼容接口只能使用 none；需要极高推理请切换为 Responses。"
+                      : "当前接口类型不使用 OpenAI 推理强度参数。"}
+                </small>
               </label>
               <label className="full-width">
                 API 地址
@@ -5686,6 +5727,13 @@ function App({ accountControl = null, userName = "" }) {
                       {formatPromptReceiptProvider(lastPromptReceipt)} ·{" "}
                       {lastPromptReceipt.transport || "未知传输格式"}
                     </span>
+                    {lastPromptReceipt.reasoningEffortApplied && (
+                      <span>
+                        本轮推理强度请求：
+                        {lastPromptReceipt.reasoningEffortApplied} ·{" "}
+                        {lastPromptReceipt.reasoningEffortField || "未知字段"}
+                      </span>
+                    )}
                   </>
                 ) : (
                   <span>

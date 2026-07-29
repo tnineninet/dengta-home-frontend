@@ -1,3 +1,5 @@
+import { reasoningEffortForProvider } from "./provider-reasoning-effort.js";
+
 export const emptySettings = {
   ai_name: "小灯",
   system_prompt: "",
@@ -9,6 +11,7 @@ export const emptySettings = {
   provider: "custom",
   api_url: "",
   model: "",
+  reasoning_effort: "",
   temperature: 0.7,
   context_turns: 20,
   max_tokens: 2048,
@@ -73,6 +76,11 @@ export function normalizeSettingsDraft(value) {
     system_prompt: textOrFallback(source.system_prompt),
     additional_prompt: textOrFallback(source.additional_prompt),
     personality: textOrFallback(source.personality),
+    provider: textOrFallback(source.provider, emptySettings.provider),
+    reasoning_effort: reasoningEffortForProvider(
+      textOrFallback(source.provider, emptySettings.provider),
+      source.reasoning_effort,
+    ),
     prompt_mode: "unified",
     unified_system_prompt: migratedPrompt,
     intimate_expression_enabled:
@@ -168,6 +176,20 @@ function safeReceiptProviderProtocol(value) {
     : null;
 }
 
+function safeReceiptReasoningEffort(value) {
+  const effort = safeReceiptMetadata(value, 16)?.toLowerCase() || null;
+  return ["none", "low", "medium", "high", "xhigh", "max"].includes(effort)
+    ? effort
+    : null;
+}
+
+function safeReceiptReasoningField(value) {
+  const field = safeReceiptMetadata(value, 32);
+  return ["reasoning_effort", "reasoning.effort"].includes(field)
+    ? field
+    : null;
+}
+
 export function formatPromptReceiptProvider(receipt = {}) {
   const profileName = safeReceiptMetadata(receipt.providerProfileName, 80);
   const profileId = safeReceiptMetadata(receipt.providerProfileId, 80);
@@ -252,6 +274,15 @@ export function normalizePromptReceipt(value, fallbackAppliedAt) {
   const providerProtocol = safeReceiptProviderProtocol(
     source.provider_protocol,
   );
+  const reasoningEffortRequested = safeReceiptReasoningEffort(
+    source.reasoning_effort_requested,
+  );
+  const reasoningEffortApplied = safeReceiptReasoningEffort(
+    source.reasoning_effort_applied,
+  );
+  const reasoningEffortField = safeReceiptReasoningField(
+    source.reasoning_effort_field,
+  );
 
   const common = {
     promptContractVersion,
@@ -262,6 +293,9 @@ export function normalizePromptReceipt(value, fallbackAppliedAt) {
     ...(providerProfileId ? { providerProfileId } : {}),
     ...(providerProfileName ? { providerProfileName } : {}),
     ...(providerProtocol ? { providerProtocol } : {}),
+    ...(reasoningEffortRequested ? { reasoningEffortRequested } : {}),
+    ...(reasoningEffortApplied ? { reasoningEffortApplied } : {}),
+    ...(reasoningEffortField ? { reasoningEffortField } : {}),
     systemInstructionBlocks: firstCharacterCount(source, [
       "system_instruction_blocks",
     ]),

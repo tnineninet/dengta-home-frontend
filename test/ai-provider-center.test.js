@@ -10,6 +10,10 @@ import {
   providerHealthView,
   providerIsRoutable,
 } from "../src/ai-provider-health.js";
+import {
+  reasoningEffortForProvider,
+  reasoningEffortOptions,
+} from "../src/provider-reasoning-effort.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const component = fs.readFileSync(
@@ -20,6 +24,10 @@ const app = fs.readFileSync(path.join(here, "..", "src", "App.jsx"), "utf8");
 const css = fs.readFileSync(path.join(here, "..", "src", "index.css"), "utf8");
 const bridge = fs.readFileSync(
   path.join(here, "..", "src", "cc-switch-bridge.js"),
+  "utf8",
+);
+const reasoning = fs.readFileSync(
+  path.join(here, "..", "src", "provider-reasoning-effort.js"),
   "utf8",
 );
 
@@ -72,6 +80,12 @@ assert.match(component, /多供应商 API 控制台/);
 assert.match(component, /OpenAI Responses \/ Sub2API \/ Codex 网关/);
 assert.match(component, /Claude \/ Anthropic 原生接口/);
 assert.match(component, /Gemini 原生接口/);
+assert.match(component, /推理强度/);
+assert.match(component, /reasoning_effort/);
+assert.match(component, /reasoning\.effort/);
+assert.match(reasoning, /xhigh · 极高/);
+assert.match(component, /Chat 兼容接口只能显式使用 none/);
+assert.match(component, /实际请求会写入安全回执/);
 assert.match(component, /检查模型目录但不保存/);
 assert.match(component, /付款页 \/ 控制台地址/);
 assert.match(component, /到期时间/);
@@ -133,6 +147,12 @@ assert.doesNotMatch(bridge, /localStorage/);
 assert.doesNotMatch(bridge, /cc-switch\.db/);
 assert.match(app, /<AiProviderCenter \/>/);
 assert.match(app, /旧版单接口（兼容保留）/);
+assert.match(app, /<option value="openai-responses">OpenAI Responses<\/option>/);
+assert.match(app, /需要极高推理请切换为 Responses/);
+assert.equal(reasoningEffortForProvider("openai-responses", "xhigh"), "xhigh");
+assert.equal(reasoningEffortForProvider("openai-chat", "xhigh"), "");
+assert.equal(reasoningEffortOptions("openai-chat").length, 2);
+assert.match(app, /本轮推理强度请求/);
 assert.match(css, /\.ai-provider-center/);
 assert.match(css, /\.provider-form-grid/);
 assert.match(css, /\.provider-health-catalog_ok/);

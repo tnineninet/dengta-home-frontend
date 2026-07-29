@@ -10,6 +10,11 @@ import {
   settingsPayloadFingerprint,
 } from "../src/settings.js";
 import {
+  reasoningEffortForProvider,
+  reasoningEffortOptions,
+  reasoningProtocolForProvider,
+} from "../src/provider-reasoning-effort.js";
+import {
   pendingAutosaveAfterFailure,
   shouldScheduleSettingsOnViewChange,
   shouldFlushSettingsForLifecycle,
@@ -28,6 +33,7 @@ assert.equal(legacy.additional_prompt, "");
 assert.equal(legacy.personality, "旧版人设");
 assert.equal(legacy.model, "test-model");
 assert.equal(legacy.prompt_mode, "unified");
+assert.equal(legacy.reasoning_effort, "");
 assert.equal(settingsNeedsUnifiedPromptMigration(legacy), false);
 assert.equal(
   legacy.unified_system_prompt,
@@ -83,6 +89,9 @@ const receipt = normalizePromptReceipt({
   provider_profile_id: "provider-profile-1",
   provider_profile_name: "我的主接口",
   provider_protocol: "openai-responses",
+  reasoning_effort_requested: "xhigh",
+  reasoning_effort_applied: "xhigh",
+  reasoning_effort_field: "reasoning.effort",
   system_instruction_blocks: 7,
   system_message_count: 1,
   system_payload_chars: 560,
@@ -105,6 +114,9 @@ assert.deepEqual(receipt, {
   providerProfileId: "provider-profile-1",
   providerProfileName: "我的主接口",
   providerProtocol: "openai-responses",
+  reasoningEffortRequested: "xhigh",
+  reasoningEffortApplied: "xhigh",
+  reasoningEffortField: "reasoning.effort",
   systemInstructionBlocks: 7,
   systemMessageCount: 1,
   systemPayloadChars: 560,
@@ -265,6 +277,22 @@ const preservedConnection = createSettingsPayload({
 assert.equal(preservedConnection.provider, "openai-compatible");
 assert.equal(preservedConnection.api_url, "https://example.invalid/v1");
 assert.equal(preservedConnection.model, "test-model");
+assert.equal(preservedConnection.reasoning_effort, "");
+
+const responsesReasoning = createSettingsPayload({
+  ...legacy,
+  provider: "openai-responses",
+  reasoning_effort: "XHIGH",
+});
+assert.equal(responsesReasoning.reasoning_effort, "xhigh");
+assert.equal(
+  reasoningEffortForProvider("openai-compatible", "xhigh"),
+  "",
+);
+assert.equal(reasoningEffortForProvider("custom", "none"), "none");
+assert.equal(reasoningProtocolForProvider("custom"), "openai-chat");
+assert.equal(reasoningEffortOptions("openai-responses").length, 7);
+assert.equal(reasoningEffortOptions("anthropic").length, 1);
 
 assert.equal(
   settingsPayloadFingerprint(preservedConnection),
