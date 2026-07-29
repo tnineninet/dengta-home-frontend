@@ -1138,6 +1138,15 @@ function App({ accountControl = null, userName = "" }) {
         expressiveProvider:
           data?.features?.expressive_tts_provider || "none",
       });
+      if (available) {
+        void apiRequest("/voice/warmup", {
+          method: "POST",
+          timeoutMs: 5_000,
+          retry: false,
+        }).catch(() => {
+          // Prewarming is optional; voice upload still reports its own error.
+        });
+      }
       setServiceHealth({
         checking: false,
         data,

@@ -198,6 +198,11 @@ assert.match(
   /取消语音处理/,
   "a pending voice request must always have a visible escape hatch",
 );
+assert.match(
+  appSource,
+  /\/voice\/warmup/,
+  "voice service should be warmed in the background before recording",
+);
 
 let expressiveRequest;
 const expressiveSpeech = await requestExpressiveSpeech("65", {
