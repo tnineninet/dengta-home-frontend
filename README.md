@@ -20,6 +20,10 @@ npm run lint
 npm run build
 ```
 
+旧版单接口设置现在也提供 OpenAI Responses 与推理强度选择。Responses 会把
+`xhigh` 作为 `reasoning.effort` 发送；保留函数工具的 Chat 兼容接口只允许
+`none`。多供应商控制台和旧版设置页共用同一套校验规则。
+
 ## Android
 
 Android 原生壳使用 Capacitor，应用编号为 `home.dengta.app`，最低支持 Android 7。
