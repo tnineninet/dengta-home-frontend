@@ -1327,6 +1327,450 @@ body {
   }
 }
 
+/* Nursery */
+.nursery-page {
+  display: grid;
+  gap: 14px;
+  width: min(100%, 920px);
+  margin: 0 auto;
+  padding-bottom: 28px;
+}
+
+.nursery-page.is-loading {
+  min-height: 240px;
+  place-items: center;
+  color: #6d6470;
+}
+
+.nursery-hero {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+  padding: 22px 0 18px;
+  border-bottom: 1px solid rgba(128, 107, 119, 0.2);
+}
+
+.nursery-child-orbit {
+  display: grid;
+  width: 92px;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 1px solid rgba(126, 100, 113, 0.28);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.54);
+  box-shadow: 0 14px 32px rgba(72, 53, 63, 0.12);
+}
+
+.nursery-child-orbit > span {
+  display: grid;
+  width: 62px;
+  aspect-ratio: 1;
+  place-items: center;
+  border-radius: 50%;
+  color: #5f4a55;
+  background: rgba(255, 248, 250, 0.92);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 30px;
+}
+
+.nursery-hero > div:nth-child(2) {
+  min-width: 0;
+}
+
+.nursery-hero small,
+.nursery-hero p,
+.nursery-meter small,
+.nursery-care-grid small,
+.nursery-bonds small {
+  color: #756b72;
+}
+
+.nursery-hero h2 {
+  margin: 5px 0 6px;
+  overflow-wrap: anywhere;
+  color: #382f34;
+  font-size: clamp(24px, 4vw, 38px);
+  letter-spacing: 0;
+}
+
+.nursery-hero p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+
+.nursery-local-badge {
+  align-self: start;
+  padding: 5px 7px;
+  border: 1px solid rgba(76, 122, 100, 0.25);
+  border-radius: 6px;
+  color: #3f7059;
+  background: rgba(232, 247, 239, 0.72);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.nursery-name-form,
+.nursery-speech-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.nursery-name-form input,
+.nursery-speech-composer textarea {
+  min-width: 0;
+  border: 1px solid rgba(111, 92, 103, 0.24);
+  border-radius: 8px;
+  color: #392f35;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.nursery-name-form input {
+  min-height: 46px;
+  padding: 0 13px;
+}
+
+.nursery-name-form button,
+.nursery-speech-composer button {
+  min-width: 48px;
+  min-height: 46px;
+  border-radius: 8px;
+}
+
+.nursery-state-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.nursery-meter {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(120, 99, 110, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.46);
+}
+
+.nursery-meter > span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.nursery-meter strong {
+  color: #4f3d47;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+
+.nursery-meter > i {
+  display: block;
+  height: 5px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: rgba(85, 72, 79, 0.12);
+}
+
+.nursery-meter > i > b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #c0718a;
+}
+
+.nursery-meter.is-inverse > i > b {
+  background: #6d9a8c;
+}
+
+.nursery-speech-form {
+  display: grid;
+  gap: 8px;
+}
+
+.nursery-segments {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+  padding: 3px;
+  border-radius: 8px;
+  background: rgba(77, 62, 70, 0.08);
+}
+
+.nursery-segments button {
+  min-height: 38px;
+  border-radius: 6px;
+  color: #6a5c64;
+  background: transparent;
+}
+
+.nursery-segments button.active {
+  color: #3e3038;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 2px 8px rgba(67, 48, 58, 0.1);
+}
+
+.nursery-speech-composer textarea {
+  min-height: 78px;
+  resize: vertical;
+  padding: 12px;
+  line-height: 1.55;
+}
+
+.nursery-speech-composer button {
+  align-self: end;
+  width: 48px;
+  height: 48px;
+  color: #fff;
+  background: #7c5262;
+  font-size: 21px;
+}
+
+.nursery-care-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.nursery-care-grid button {
+  display: grid;
+  min-width: 0;
+  min-height: 76px;
+  place-items: center;
+  align-content: center;
+  gap: 6px;
+  border: 1px solid rgba(112, 93, 103, 0.18);
+  border-radius: 8px;
+  color: #54454d;
+  background: rgba(255, 255, 255, 0.55);
+}
+
+.nursery-care-grid button > span {
+  font-size: 20px;
+}
+
+.nursery-companion-action {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 54px;
+  padding: 8px 12px;
+  border: 1px solid rgba(96, 82, 90, 0.17);
+  border-radius: 8px;
+  color: #463942;
+  background: rgba(240, 244, 248, 0.72);
+  text-align: left;
+}
+
+.nursery-companion-action > span {
+  display: grid;
+  width: 36px;
+  aspect-ratio: 1;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #667986;
+}
+
+.nursery-bonds {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.nursery-bonds > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 10px;
+  min-width: 0;
+  padding: 13px;
+  border-top: 1px solid rgba(112, 90, 102, 0.2);
+}
+
+.nursery-bonds strong {
+  font-size: 20px;
+}
+
+.nursery-bonds small {
+  grid-column: 1 / -1;
+}
+
+.nursery-album,
+.nursery-portrait {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(112, 90, 102, 0.2);
+}
+
+.nursery-album > header,
+.nursery-portrait > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.nursery-album h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.nursery-album > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.nursery-album article {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 12px;
+  border-left: 2px solid rgba(166, 97, 119, 0.45);
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.nursery-album time,
+.nursery-album p {
+  color: #756a70;
+  font-size: 12px;
+}
+
+.nursery-album p {
+  margin: 0;
+  overflow-wrap: anywhere;
+  line-height: 1.55;
+}
+
+.nursery-portrait > button {
+  min-height: 48px;
+  padding: 0;
+  color: #4f4249;
+  background: transparent;
+}
+
+.nursery-portrait > div {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.nursery-portrait > div > span {
+  padding: 10px 6px;
+  border-radius: 6px;
+  color: #5b4c54;
+  background: rgba(255, 255, 255, 0.52);
+  text-align: center;
+  font-size: 12px;
+}
+
+.nursery-empty-state,
+.nursery-birth-scene {
+  display: grid;
+  min-height: 420px;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.nursery-birth-mark {
+  display: grid;
+  width: 90px;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 1px solid rgba(119, 96, 108, 0.24);
+  border-radius: 50%;
+  color: #9c6076;
+  background: rgba(255, 255, 255, 0.6);
+  font-size: 28px;
+}
+
+.nursery-birth-scene h2 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.nursery-birth-scene button {
+  min-height: 46px;
+  padding: 0 18px;
+  border-radius: 8px;
+}
+
+@media (max-width: 640px) {
+  .nursery-page {
+    gap: 11px;
+  }
+
+  .nursery-hero {
+    grid-template-columns: 68px minmax(0, 1fr) auto;
+    gap: 11px;
+    padding-top: 12px;
+  }
+
+  .nursery-child-orbit {
+    width: 68px;
+  }
+
+  .nursery-child-orbit > span {
+    width: 46px;
+    font-size: 23px;
+  }
+
+  .nursery-hero h2 {
+    font-size: 24px;
+  }
+
+  .nursery-state-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .nursery-care-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .nursery-album > div {
+    grid-template-columns: 1fr;
+  }
+
+  .nursery-portrait > div {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 340px) {
+  .nursery-hero {
+    grid-template-columns: 58px minmax(0, 1fr);
+  }
+
+  .nursery-child-orbit {
+    width: 58px;
+  }
+
+  .nursery-child-orbit > span {
+    width: 40px;
+    font-size: 20px;
+  }
+
+  .nursery-local-badge {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  .nursery-state-grid,
+  .nursery-bonds {
+    grid-template-columns: 1fr;
+  }
+}
+
 @media (max-height: 500px) and (max-width: 900px) {
   :root {
     --mobile-nav-reserved-height: calc(52px + env(safe-area-inset-bottom));

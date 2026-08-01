@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { API_BASE_URL, apiRequest, streamChat } from "./api";
@@ -167,9 +174,11 @@ import {
   writeStoredChatSkinPreferences,
 } from "./chat-skin";
 import {
-  dismissChatErrorMessage,
-  publicChatErrorMessage,
+    dismissChatErrorMessage,
+    publicChatErrorMessage,
 } from "./chat-errors";
+
+const Nursery = lazy(() => import("./Nursery"));
 
 const PUSH_CURSOR_KEY = "dengta_push_cursor";
 const PUSH_SEEN_IDS_KEY = "dengta_push_seen_ids";
@@ -278,6 +287,7 @@ const navItems = [
   { id: "chat", icon: "⌁", label: "Chat" },
   { id: "moments", icon: "◌", label: "Moments" },
   { id: "diary", icon: "▱", label: "Diary" },
+  { id: "nursery", icon: "♡", label: "Family" },
   { id: "memories", icon: "◇", label: "Memory" },
 ];
 
@@ -4937,6 +4947,23 @@ function App({ accountControl = null, userName = "" }) {
     );
   }
 
+  function renderNursery() {
+    return (
+      <Suspense
+        fallback={
+          <section className="feature-page nursery-page is-loading">
+            正在回家…
+          </section>
+        }
+      >
+        <Nursery
+          aiName={settings.ai_name || "小灯"}
+          onNotice={setNotice}
+        />
+      </Suspense>
+    );
+  }
+
   function renderSettings() {
     const serviceCards = buildServiceStatusCards({
       health: serviceHealth.data,
@@ -5870,6 +5897,7 @@ function App({ accountControl = null, userName = "" }) {
     chat: activeSession?.title || "欢迎回家",
     moments: "Moments",
     diary: "Diary",
+    nursery: "Family",
     memories: "Portrait",
   }[activeView];
   const showStartupRecovery =
@@ -6105,6 +6133,7 @@ function App({ accountControl = null, userName = "" }) {
           {activeView === "chat" && renderChat()}
           {activeView === "moments" && renderMoments()}
           {activeView === "diary" && renderDiary()}
+          {activeView === "nursery" && renderNursery()}
           {activeView === "memories" && renderMemories()}
         </div>
       </main>
