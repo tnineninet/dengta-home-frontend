@@ -558,14 +558,14 @@ assert.equal(
       aiName: "祂",
       companionMood: "有点害羞",
     }),
-    "祂悄悄想一会儿",
+    "正在请求所选模型",
   );
   assert.equal(
     personalizedThinkingStatus("正在生成回复", {
       aiName: "小灯",
       companionMood: "不开心",
     }),
-    "小灯心里有点闷，正在想怎么告诉你",
+    "正在生成回复",
   );
   assert.equal(
     thinkingPanelVisible({ isStreaming: false, thinkingStatuses: statuses }),

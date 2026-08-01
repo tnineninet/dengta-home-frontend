@@ -68,6 +68,7 @@ import {
 import { hydrateChatHistory } from "./chat-history";
 import {
   captureChatScrollState,
+  claimPendingChatScrollRestore,
   restoreChatScrollState,
 } from "./chat-scroll-state";
 import {
@@ -1705,35 +1706,37 @@ function App({ accountControl = null, userName = "" }) {
 
   useEffect(() => {
     if (activeView !== "chat") return undefined;
-
-    const pending = pendingChatScrollRestoreRef.current;
-    if (
-      pending?.sessionId === activeSessionId &&
-      pending.waitForMessages &&
-      messages.length === 0
-    ) {
-      return undefined;
-    }
-
+    const pending = claimPendingChatScrollRestore(
+      pendingChatScrollRestoreRef,
+      activeSessionId,
+      messages.length > 0,
+    );
+    if (!pending) return undefined;
     let secondAnimationFrame = 0;
     let lateCorrectionTimer = 0;
     const animationFrame = window.requestAnimationFrame(() => {
-      if (pending?.sessionId === activeSessionId) {
-        secondAnimationFrame = window.requestAnimationFrame(() => {
-          const messageList = messageListRef.current;
-          if (!messageList) return;
+      secondAnimationFrame = window.requestAnimationFrame(() => {
+        const messageList = messageListRef.current;
+        if (!messageList) return;
+        restoreChatScrollState(messageList, pending.snapshot);
+        lateCorrectionTimer = window.setTimeout(() => {
+          restoreChatScrollState(messageListRef.current, pending.snapshot);
+        }, 120);
+      });
+    });
 
-          restoreChatScrollState(messageList, pending.snapshot);
-          if (pendingChatScrollRestoreRef.current === pending) {
-            pendingChatScrollRestoreRef.current = null;
-          }
-          lateCorrectionTimer = window.setTimeout(() => {
-            restoreChatScrollState(messageListRef.current, pending.snapshot);
-          }, 120);
-        });
-        return;
-      }
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.cancelAnimationFrame(secondAnimationFrame);
+      window.clearTimeout(lateCorrectionTimer);
+    };
+  }, [activeView, activeSessionId, messages.length]);
 
+  useEffect(() => {
+    if (activeView !== "chat" || pendingChatScrollRestoreRef.current) {
+      return undefined;
+    }
+    const animationFrame = window.requestAnimationFrame(() => {
       const messageList = messageListRef.current;
       if (!messageList || !shouldAutoScrollRef.current) return;
       restoreChatScrollState(messageList, {
@@ -1744,8 +1747,6 @@ function App({ accountControl = null, userName = "" }) {
 
     return () => {
       window.cancelAnimationFrame(animationFrame);
-      window.cancelAnimationFrame(secondAnimationFrame);
-      window.clearTimeout(lateCorrectionTimer);
     };
   }, [activeView, activeSessionId, messages, isSending]);
 
@@ -3214,24 +3215,14 @@ function App({ accountControl = null, userName = "" }) {
           if (
             event.type === "reasoning" &&
             event.public === true &&
-            ["companion_progress", "provider_summary"].includes(event.source)
+            event.source === "provider_summary"
           ) {
-            const isProviderSummary = event.source === "provider_summary";
-            const reasoningChunk =
-              isProviderSummary &&
-              streamThinkingRef.current.summary &&
-              streamThinkingRef.current.lastReasoningSource !==
-                "provider_summary"
-                ? `\n\n${event.content || ""}`
-                : event.content;
             const summary = appendThinkingSummary(
               streamThinkingRef.current.summary,
-              reasoningChunk,
+              event.content,
             );
             streamThinkingRef.current.summary = summary;
-            streamThinkingRef.current.lastReasoningSource = isProviderSummary
-              ? "provider_summary"
-              : String(event.source || "");
+            streamThinkingRef.current.lastReasoningSource = "provider_summary";
             setMessages((current) =>
               current.map((item) =>
                 item.id === localAssistantId

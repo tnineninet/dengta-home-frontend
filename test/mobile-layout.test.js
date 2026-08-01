@@ -851,13 +851,13 @@ assert.match(
 );
 assert.match(
   app,
-  /event\.public === true[\s\S]*\["companion_progress", "provider_summary"\]\.includes\(event\.source\)/,
-  "chat streaming must reject unmarked or unknown reasoning events",
+  /event\.public === true[\s\S]*event\.source === "provider_summary"/,
+  "chat streaming must accept only provider-marked public reasoning summaries",
 );
-assert.match(
+assert.doesNotMatch(
   app,
-  /event\.source === "provider_summary"[\s\S]*`\\n\\n\$\{event\.content \|\| ""\}`/,
-  "provider summaries must be visually separated from companion progress",
+  /\["companion_progress", "provider_summary"\]\.includes\(event\.source\)/,
+  "application progress copy must never be merged into the model summary",
 );
 assert.match(
   app,

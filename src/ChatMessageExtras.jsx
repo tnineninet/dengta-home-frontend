@@ -201,7 +201,7 @@ export function ThinkingPanel({ message, aiName = "小灯", companionMood = "" }
         </span>
         <small>
           {hasPublicSummary
-            ? "模型公开思考摘要"
+            ? "模型提供的公开推理摘要"
             : "处理中 · 暂无模型公开摘要"}
         </small>
       </summary>

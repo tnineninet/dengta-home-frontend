@@ -35,3 +35,21 @@ export function restoreChatScrollState(messageList, snapshot) {
     : finiteNonNegative(snapshot.scrollTop);
   return true;
 }
+
+export function claimPendingChatScrollRestore(
+  pendingRef,
+  sessionId,
+  messagesReady,
+) {
+  const pending = pendingRef?.current;
+  if (
+    !pending ||
+    pending.sessionId !== sessionId ||
+    (pending.waitForMessages && !messagesReady)
+  ) {
+    return null;
+  }
+
+  pendingRef.current = null;
+  return pending;
+}
