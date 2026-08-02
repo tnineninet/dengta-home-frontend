@@ -29,21 +29,6 @@ function policyLabel(value) {
   return value === "auto" ? "允许 AI 自动执行" : "禁止自动执行（默认）";
 }
 
-export function DeviceActionReceipts({ actions }) {
-  if (!Array.isArray(actions) || actions.length === 0) return null;
-  return (
-    <div className="device-action-receipts" aria-label="外部设备执行回执">
-      <strong>设备操作回执</strong>
-      {actions.map((action, index) => (
-        <span className={action?.ok === false ? "failed" : "success"} key={`${action?.tool || "tool"}-${index}`}>
-          {action?.ok === false ? "未完成" : "已执行"} · {action?.connection || "外部设备"} · {action?.tool || "工具"}
-        </span>
-      ))}
-      <small>这里显示服务器实际调用记录，不代表 AI 具有意识。</small>
-    </div>
-  );
-}
-
 export default function McpDeviceCenter() {
   const [status, setStatus] = useState({ checking: true });
   const [connections, setConnections] = useState([]);

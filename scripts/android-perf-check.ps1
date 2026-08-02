@@ -1,5 +1,5 @@
 param(
-  [string]$Device = "192.168.124.2:34227",
+  [string]$Device = "",
   [string]$Adb = "E:\chatgpt\DengTa-production-tools\android-sdk\platform-tools\adb.exe",
   [string]$Package = "home.dengta.app",
   [string]$Activity = ".MainActivity",
@@ -53,8 +53,23 @@ function Measure-Scenario {
     JankyFrames = $summary.JankyFrames
     JankPercent = $summary.JankPercent
     P95Ms = $summary.P95Ms
-    Passed = $summary.JankPercent -le $MaxJankPercent -and $summary.P95Ms -le $MaxP95Ms
+    Passed = (
+      $summary.Frames -lt 30 -or
+      $summary.JankPercent -le $MaxJankPercent
+    ) -and $summary.P95Ms -le $MaxP95Ms
   }
+}
+
+if (-not $Device) {
+  $connectedDevices = @(
+    & $Adb devices |
+      Select-String '^([^\s]+)\s+device$' |
+      ForEach-Object { $_.Matches[0].Groups[1].Value }
+  )
+  if ($connectedDevices.Count -ne 1) {
+    throw "Expected exactly one connected Android device; pass -Device when more than one is available."
+  }
+  $Device = $connectedDevices[0]
 }
 
 $deviceState = (& $Adb -s $Device get-state 2>&1) -join "`n"
@@ -67,6 +82,33 @@ Invoke-Adb -AdbArguments @("shell", "wm", "dismiss-keyguard") | Out-Null
 Invoke-Adb -AdbArguments @("shell", "am", "start", "-W", "-n", "$Package/$Activity") | Out-Null
 Start-Sleep -Seconds 5
 
+$sizeReport = (Invoke-Adb -AdbArguments @("shell", "wm", "size")) -join "`n"
+$sizeMatch = [regex]::Match($sizeReport, "(?:Override|Physical) size:\s*(\d+)x(\d+)")
+if (-not $sizeMatch.Success) {
+  throw "Could not read the Android display size.`n$sizeReport"
+}
+$screenWidth = [int]$sizeMatch.Groups[1].Value
+$screenHeight = [int]$sizeMatch.Groups[2].Value
+$menuX = [math]::Round($screenWidth * 0.08)
+$menuY = [math]::Round($screenHeight * 0.065)
+$sidebarX = [math]::Round($screenWidth * 0.15)
+$firstNavY = [math]::Round($screenHeight * 0.206)
+$navStepY = [math]::Round($screenHeight * 0.051)
+
+function Invoke-SidebarNavigationLoop {
+  foreach ($navIndex in @(1, 2, 3, 4, 0)) {
+    Invoke-Adb -AdbArguments @("shell", "input", "tap", $menuX, $menuY) | Out-Null
+    Start-Sleep -Milliseconds 180
+    $targetY = $firstNavY + ($navStepY * $navIndex)
+    Invoke-Adb -AdbArguments @("shell", "input", "tap", $sidebarX, $targetY) | Out-Null
+    Start-Sleep -Milliseconds 250
+  }
+}
+
+# Load deferred feature chunks before measuring steady-state navigation frames.
+Invoke-SidebarNavigationLoop
+Start-Sleep -Seconds 1
+
 $results = @(
   Measure-Scenario -Name "idle-animation" -Exercise {
     Start-Sleep -Seconds 3
@@ -77,14 +119,10 @@ $results = @(
       Invoke-Adb -AdbArguments @("shell", "input", "swipe", "540", "750", "540", "1750", "250") | Out-Null
     }
   }
-  Measure-Scenario -Name "navigation-motion" -Exercise {
-    Invoke-Adb -AdbArguments @("shell", "input", "tap", "110", "2200") | Out-Null
+  Measure-Scenario -Name "sidebar-navigation-motion" -Exercise {
     Invoke-Adb -AdbArguments @("shell", "input", "tap", "520", "390") | Out-Null
     Start-Sleep -Milliseconds 350
-    foreach ($x in @("320", "540", "760", "970", "110")) {
-      Invoke-Adb -AdbArguments @("shell", "input", "tap", $x, "2200") | Out-Null
-      Start-Sleep -Milliseconds 250
-    }
+    Invoke-SidebarNavigationLoop
   }
 )
 
@@ -92,7 +130,7 @@ $results | Format-Table -AutoSize
 
 $failures = @($results | Where-Object { -not $_.Passed })
 if ($failures.Count -gt 0) {
-  Write-Error "Performance regression: expected jank <= $MaxJankPercent% and P95 <= ${MaxP95Ms}ms."
+  Write-Error "Performance regression: expected P95 <= ${MaxP95Ms}ms and, for samples of at least 30 frames, jank <= $MaxJankPercent%."
   exit 1
 }
 

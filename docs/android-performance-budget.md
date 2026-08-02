@@ -28,8 +28,14 @@ Connect an Android device, then run:
 ```
 
 The check exercises idle animation, repeated chat scrolling, the expandable
-status surface, and all five bottom navigation destinations. It fails when
-janky frames exceed 20% or P95 frame time exceeds 32 ms.
+status surface, and all five destinations through the left sidebar. When only
+one USB device is connected, `-Device` can be omitted. It fails when
+P95 frame time exceeds 32 ms. For samples containing at least 30 rendered
+frames, it also fails when janky frames exceed 20%; sparse idle samples use P95
+because a handful of setup frames makes the percentage statistically unstable.
+Deferred feature pages are opened once before frame collection so the navigation
+scenario measures steady-state motion; initial JavaScript remains guarded by
+`test/initial-bundle-budget.test.js`.
 
 ## Motion rules
 

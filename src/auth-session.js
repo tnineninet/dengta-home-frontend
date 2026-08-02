@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { GoTrueClient } from "@supabase/auth-js";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -11,6 +11,20 @@ const DEFAULT_SUPABASE_URL = String(
 const DEFAULT_SUPABASE_ANON_KEY = String(
   import.meta.env?.VITE_SUPABASE_ANON_KEY || "",
 ).trim();
+
+function createAuthOnlyClient(supabaseUrl, supabaseAnonKey, options = {}) {
+  return {
+    auth: new GoTrueClient({
+      url: `${supabaseUrl}/auth/v1`,
+      headers: {
+        Authorization: `Bearer ${supabaseAnonKey}`,
+        apikey: supabaseAnonKey,
+        "X-Client-Info": "dengta-home/auth-js",
+      },
+      ...options.auth,
+    }),
+  };
+}
 
 export const AUTH_STATUS = Object.freeze({
   unconfigured: "unconfigured",
@@ -113,7 +127,7 @@ export function createAuthSessionManager({
   supabaseUrl = DEFAULT_SUPABASE_URL,
   supabaseAnonKey = DEFAULT_SUPABASE_ANON_KEY,
   storage = globalThis.localStorage,
-  createClientFn = createClient,
+  createClientFn = createAuthOnlyClient,
 } = {}) {
   const normalizedUrl = String(supabaseUrl || "").trim().replace(/\/$/, "");
   const normalizedKey = String(supabaseAnonKey || "").trim();

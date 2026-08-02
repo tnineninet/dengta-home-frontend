@@ -632,6 +632,36 @@ select:focus-visible {
   padding: clamp(18px, 3vw, 32px);
 }
 
+.deferred-feature {
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 18px 20px;
+  border: 1px solid var(--apple-hairline);
+  border-radius: var(--apple-radius-card);
+  color: var(--apple-muted);
+  background: var(--apple-canvas);
+  font-size: 13px;
+}
+
+.deferred-feature > span {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-radius: 50%;
+  background: var(--apple-blue);
+  animation: apple-loading-pulse 1s ease-in-out infinite alternate;
+}
+
+@keyframes apple-loading-pulse {
+  to {
+    opacity: 0.35;
+    transform: scale(0.78);
+  }
+}
+
 .view-diary .topbar {
   display: flex;
 }

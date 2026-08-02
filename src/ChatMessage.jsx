@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef } from "react";
-import { DeviceActionReceipts } from "./McpDeviceCenter";
+import DeviceActionReceipts from "./DeviceActionReceipts";
 import { MessageAttachments, ThinkingPanel } from "./ChatMessageExtras";
 import { AuthenticatedImage } from "./PrivateMedia";
 import {

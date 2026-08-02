@@ -9,17 +9,10 @@ import {
 import { Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { API_BASE_URL, apiRequest, streamChat } from "./api";
-import OmbreMemories from "./OmbreMemories";
 import CompanionStatus from "./CompanionStatus";
 import AmbientContextBadge from "./AmbientContextBadge";
 import ChatMessage from "./ChatMessage";
-import McpDeviceCenter from "./McpDeviceCenter";
-import AiProviderCenter from "./AiProviderCenter";
-import CompanionCreativeSettings from "./CompanionCreativeStudio";
-import CompanionDiary from "./CompanionDiary";
-import CompanionProfile from "./CompanionProfile";
 import CelestialBackdrop from "./CelestialBackdrop";
-import ThemeStudio from "./ThemeStudio";
 import { AuthenticatedImage } from "./PrivateMedia";
 import { SelectedAttachmentStrip } from "./ChatMessageExtras";
 import {
@@ -178,7 +171,25 @@ import {
     publicChatErrorMessage,
 } from "./chat-errors";
 
+const AiProviderCenter = lazy(() => import("./AiProviderCenter"));
+const CompanionCreativeSettings = lazy(
+  () => import("./CompanionCreativeStudio"),
+);
+const CompanionDiary = lazy(() => import("./CompanionDiary"));
+const CompanionProfile = lazy(() => import("./CompanionProfile"));
+const McpDeviceCenter = lazy(() => import("./McpDeviceCenter"));
 const Nursery = lazy(() => import("./Nursery"));
+const OmbreMemories = lazy(() => import("./OmbreMemories"));
+const ThemeStudio = lazy(() => import("./ThemeStudio"));
+
+function DeferredFeature({ label }) {
+  return (
+    <div className="deferred-feature" role="status" aria-live="polite">
+      <span aria-hidden="true" />
+      {label}
+    </div>
+  );
+}
 
 const PUSH_CURSOR_KEY = "dengta_push_cursor";
 const PUSH_SEEN_IDS_KEY = "dengta_push_seen_ids";
@@ -4903,16 +4914,20 @@ function App({ accountControl = null, userName = "" }) {
   function renderMemories() {
     return (
       <section className="feature-page memory-page">
-        <CompanionProfile
-          aiName={settings.ai_name || "小灯"}
-          onNotice={setNotice}
-        />
+        <Suspense fallback={<DeferredFeature label="正在打开伴侣画像…" />}>
+          <CompanionProfile
+            aiName={settings.ai_name || "小灯"}
+            onNotice={setNotice}
+          />
+        </Suspense>
         <div className="section-intro">
           <span className="eyebrow">长期记忆</span>
           <h2>留在家里的事情</h2>
           <p>这些摘要会作为真实模型回复时的长期背景。</p>
         </div>
-        <OmbreMemories />
+        <Suspense fallback={<DeferredFeature label="正在打开记忆档案…" />}>
+          <OmbreMemories />
+        </Suspense>
         <div className="memory-source-heading local-memory-heading">
           <div>
             <span className="eyebrow">SUPABASE</span>
@@ -4940,10 +4955,12 @@ function App({ accountControl = null, userName = "" }) {
 
   function renderDiary() {
     return (
-      <CompanionDiary
-        aiName={settings.ai_name || "小灯"}
-        onNotice={setNotice}
-      />
+      <Suspense fallback={<DeferredFeature label="正在打开记忆手记…" />}>
+        <CompanionDiary
+          aiName={settings.ai_name || "小灯"}
+          onNotice={setNotice}
+        />
+      </Suspense>
     );
   }
 
@@ -4989,12 +5006,14 @@ function App({ accountControl = null, userName = "" }) {
           </button>
         </div>
 
-        <ThemeStudio
-          preferences={themePreferences}
-          updateTheme={updateTheme}
-          chatSkinPreferences={chatSkinPreferences}
-          updateChatSkin={updateChatSkinPreferences}
-        />
+        <Suspense fallback={<DeferredFeature label="正在打开外观设置…" />}>
+          <ThemeStudio
+            preferences={themePreferences}
+            updateTheme={updateTheme}
+            chatSkinPreferences={chatSkinPreferences}
+            updateChatSkin={updateChatSkinPreferences}
+          />
+        </Suspense>
 
         <form className="settings-form" onSubmit={saveSettings}>
           <div className="settings-card service-manager-card">
@@ -5886,9 +5905,15 @@ function App({ accountControl = null, userName = "" }) {
             </span>
           </div>
         </form>
-        <AiProviderCenter />
-        <CompanionCreativeSettings />
-        <McpDeviceCenter />
+        <Suspense fallback={<DeferredFeature label="正在打开 AI 接口管理…" />}>
+          <AiProviderCenter />
+        </Suspense>
+        <Suspense fallback={<DeferredFeature label="正在打开创作中心…" />}>
+          <CompanionCreativeSettings />
+        </Suspense>
+        <Suspense fallback={<DeferredFeature label="正在打开设备连接…" />}>
+          <McpDeviceCenter />
+        </Suspense>
       </section>
     );
   }
