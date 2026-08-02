@@ -4,6 +4,7 @@ import "./index.css";
 import "./cozy-theme.css";
 import "./auth.css";
 import "./native-feel.css";
+import "./apple-ui.css";
 import App from "./App.jsx";
 import AuthGate from "./AuthGate.jsx";
 import DengTaPrelude from "./DengTaPrelude.jsx";

@@ -102,7 +102,13 @@ function sourceBetween(startMarker, endMarker) {
 
 assert.deepEqual(
   cssCascade.stylesheets.map((stylesheet) => stylesheet.name),
-  ["index.css", "cozy-theme.css", "auth.css", "native-feel.css"],
+  [
+    "index.css",
+    "cozy-theme.css",
+    "auth.css",
+    "native-feel.css",
+    "apple-ui.css",
+  ],
   "layout tests must use the same stylesheet order as the application entrypoint",
 );
 assert.match(
@@ -112,16 +118,22 @@ assert.match(
 );
 assert.deepEqual(
   narrowCssCascade.stylesheets.map((stylesheet) => stylesheet.name),
-  ["index.css", "cozy-theme.css", "auth.css", "native-feel.css"],
+  [
+    "index.css",
+    "cozy-theme.css",
+    "auth.css",
+    "native-feel.css",
+    "apple-ui.css",
+  ],
   "the 280px regression must use the complete application stylesheet cascade",
 );
 
 const rootLayout = cssCascade.declarations(":root");
 const mainPanelLayout = cssCascade.declarations(".main-panel");
-const mobileNavLayout = cssCascade.declarations(".mobile-nav");
 const mobileEdgeNavigationLayout = cssCascade.declarations(
   ".mobile-edge-navigation",
 );
+const diaryTopbarLayout = cssCascade.declarations(".view-diary .topbar");
 const chatContentLayout = cssCascade.declarations(".view-chat .view-content");
 const expandedChatContentLayout = cssCascade.declarations(
   ".main-panel.view-chat:has(.companion-status.expanded) .view-content",
@@ -161,31 +173,32 @@ const narrowComposerToolbarLayout =
   narrowCssCascade.declarations(".composer-toolbar");
 const narrowStatusSummaryLayout =
   narrowCssCascade.declarations(".status-summary");
-const narrowMobileNavLayout = narrowCssCascade.declarations(".mobile-nav");
 
 assert.equal(
   rootLayout["--mobile-nav-reserved-height"]?.value,
   "0px",
-  "the edge navigation must not reserve a bottom bar",
+  "mobile pages must not reserve space for a bottom navigation bar",
 );
 assert.equal(
   mainPanelLayout["padding-bottom"]?.value,
   "0",
   "chat layout must use the pixels released by the old bottom bar",
 );
-assert.equal(
-  mobileNavLayout.height?.value,
-  "auto",
-  "the side navigation must size to its own controls",
-);
 assert.equal(mainPanelLayout.height?.value, "var(--app-height)");
-assert.equal(mobileNavLayout.position?.value, "absolute");
-assert.equal(mobileNavLayout.bottom?.value, "0");
-assert.equal(mobileNavLayout.display?.value, "grid");
+assert.equal(
+  mobileEdgeNavigationLayout.display?.value,
+  "none",
+  "mobile navigation must stay in the sidebar instead of a bottom bar",
+);
+assert.equal(
+  diaryTopbarLayout.display?.value,
+  "flex",
+  "Diary must keep the top bar and its sidebar menu button visible",
+);
 assert.equal(
   composerLayout.padding?.value,
-  "7px 9px max(8px, env(safe-area-inset-bottom))",
-  "the compact composer must retain Android safe-area padding",
+  "8px 10px max(8px, env(safe-area-inset-bottom))",
+  "the compact composer must clear only the device safe area",
 );
 assert.equal(
   chatContentLayout.display?.value,
@@ -227,8 +240,8 @@ assert.equal(
 );
 assert.equal(
   messageListLayout.padding?.value,
-  "18px 12px",
-  "the 390px message scroller must include the later cozy-theme mobile override",
+  "16px 12px 14px",
+  "the 390px message scroller must include the Apple mobile spacing",
 );
 assert.equal(expandedStatusLayout.display?.value, "flex");
 assert.equal(
@@ -280,14 +293,6 @@ assert.equal(
 assert.ok(
   Number.parseInt(presenceStackLayout["z-index"]?.value || "0", 10) > 0,
   "the status and weather stack must not fall behind chat messages",
-);
-assert.ok(
-  Number.parseInt(
-    mobileEdgeNavigationLayout["z-index"]?.value || "0",
-    10,
-  ) >
-    Number.parseInt(composerLayout["z-index"]?.value || "0", 10),
-  "the side navigation handle must remain above the composer",
 );
 assert.equal(
   keyboardRootLayout["--mobile-nav-reserved-height"]?.value,
@@ -349,12 +354,6 @@ assert.equal(
   "auto minmax(0, 1fr) auto auto",
   "the 280px status summary must keep only its text column shrinkable",
 );
-assert.equal(
-  narrowMobileNavLayout["grid-template-columns"]?.value,
-  "1fr",
-  "the 280px side navigation must remain a vertical one-column drawer",
-);
-
 const landscapeExpandedStatus = shortLandscapeCascade.declarations(
   ".companion-status.expanded",
 );
@@ -363,7 +362,7 @@ assert.equal(
     "--mobile-nav-reserved-height"
   ]?.value,
   "0px",
-  "short landscape navigation must stay at the edge without reserving a bottom bar",
+  "short landscape must also use sidebar-only navigation",
 );
 assert.equal(
   landscapeExpandedStatus.height?.value,
@@ -497,8 +496,8 @@ assert.equal(
 );
 assert.equal(
   cssCascade.declarations(".status-pulse-bg").opacity?.value,
-  "1",
-  "the heartbeat trace must remain visible on mobile displays",
+  "0.38",
+  "the heartbeat trace must remain visible without overpowering the dark status tile",
 );
 
 assert.match(

@@ -24,7 +24,7 @@ export default function CompanionDiary({ aiName = "小灯", onNotice }) {
   const [available, setAvailable] = useState(null);
   const [generation, setGeneration] = useState({
     state: "watching",
-    message: "正在检查最近的真实对话。",
+    message: "正在检查最近的对话。",
   });
   const [loading, setLoading] = useState(true);
 
@@ -40,7 +40,7 @@ export default function CompanionDiary({ aiName = "小灯", onNotice }) {
         setGeneration(
           data.generation || {
             state: "watching",
-            message: "正在等待新的真实对话。",
+            message: "正在等待新的对话。",
           },
         );
       } catch (error) {
@@ -70,7 +70,8 @@ export default function CompanionDiary({ aiName = "小灯", onNotice }) {
           <span>Private notes · written from what really happened</span>
           <h2>{aiName} 的记忆手记</h2>
           <p>
-            只在积累了足够的新对话后写作。感受可以自由表达，发生过的事情不能虚构。
+            积累了足够的新对话后，由 {aiName}
+            以第一人称写下自己认为值得留下的片段。
           </p>
         </div>
       </header>
@@ -84,7 +85,7 @@ export default function CompanionDiary({ aiName = "小灯", onNotice }) {
           <strong>
             {generation.state === "writing"
               ? `${aiName} 正在写`
-              : "真实记忆自动更新"}
+              : "记忆手记自动更新"}
           </strong>
           <span>{generation.message}</span>
         </div>
@@ -99,7 +100,7 @@ export default function CompanionDiary({ aiName = "小灯", onNotice }) {
           </p>
         </div>
       ) : loading ? (
-        <div className="diary-empty">正在读取我们的真实记忆…</div>
+        <div className="diary-empty">正在读取我们的记忆手记…</div>
       ) : entries.length === 0 ? (
         <div className="diary-empty">
           <h3>第一页还留着空白</h3>
