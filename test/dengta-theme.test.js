@@ -11,6 +11,10 @@ import {
   formatSolarTime,
   getSolarSchedule,
 } from "../src/solar-cycle.js";
+import {
+  getSunGlassSky,
+  weatherModeFromAmbient,
+} from "../src/sun-glass-sky.js";
 
 test("theme preferences reject invalid colours, opacity and modes", () => {
   assert.deepEqual(
@@ -32,6 +36,20 @@ test("global glass accepts the full transparent-to-frosted range", () => {
     normalizeThemePreferences({ cardOpacity: 0.27 }).cardOpacity,
     0.27,
   );
+});
+
+test("production sky preserves the accepted prototype colour stops and weather mapping", () => {
+  const sunrise = getSunGlassSky(450);
+  const sunset = getSunGlassSky(1080);
+  const night = getSunGlassSky(1320);
+
+  assert.equal(sunrise.colors[0], "rgb(156 200 220)");
+  assert.equal(sunset.colors.at(-1), "rgb(255 73 63)");
+  assert.ok(night.night > 0.9);
+  assert.ok(night.milkyOpacity > 0.8);
+  assert.equal(weatherModeFromAmbient({ weatherCode: 0 }), "clear");
+  assert.equal(weatherModeFromAmbient({ weatherCode: 63 }), "rain");
+  assert.equal(weatherModeFromAmbient({ weatherCode: 95 }), "storm");
 });
 
 test("the China-time light cycle resolves deterministic phases and shadows", () => {

@@ -539,6 +539,7 @@ function App({ accountControl = null, userName = "" }) {
   const [celestialCoordinates, setCelestialCoordinates] = useState(
     () => readCachedCoordinates().coordinates,
   );
+  const [ambientWeather, setAmbientWeather] = useState(null);
   const {
     preferences: themePreferences,
     snapshot: celestialSnapshot,
@@ -752,6 +753,7 @@ function App({ accountControl = null, userName = "" }) {
   const handleAmbientContextChange = useCallback((context) => {
     ambientContextRef.current =
       context && typeof context === "object" ? context : {};
+    setAmbientWeather(ambientContextRef.current.weather || null);
     environmentContextRef.current = mergeDeviceActivityContext(
       ambientContextRef.current,
       deviceActivitySummaryRef.current,
@@ -6044,7 +6046,10 @@ function App({ accountControl = null, userName = "" }) {
       data-chat-skin={chatSkinPreferences.skin}
       data-ornament-activity={chatSkinPreferences.ornamentActivity}
     >
-      <CelestialBackdrop snapshot={celestialSnapshot} />
+      <CelestialBackdrop
+        snapshot={celestialSnapshot}
+        weather={ambientWeather}
+      />
 
       {isSidebarOpen && (
         <button

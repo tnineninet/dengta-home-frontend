@@ -5,7 +5,8 @@ import {
   phaseProgress,
 } from "./solar-cycle.js";
 
-export const DENGTA_THEME_STORAGE_KEY = "dengta.ui-theme.v1";
+export const DENGTA_THEME_STORAGE_KEY = "dengta.ui-theme.v2";
+const LEGACY_THEME_STORAGE_KEY = "dengta.ui-theme.v1";
 
 export const THEME_PRESETS = [
   {
@@ -62,7 +63,7 @@ export const DEFAULT_THEME_PREFERENCES = {
   preset: "ivory",
   accent: "#a96854",
   card: "#fffdf8",
-  cardOpacity: 0.82,
+  cardOpacity: 0.18,
   appearance: "auto",
   sunIntensity: 1,
   moonIntensity: 0.86,
@@ -125,9 +126,17 @@ export function normalizeThemePreferences(value = {}) {
 export function readThemePreferences(storage = globalThis.localStorage) {
   try {
     const stored = storage?.getItem(DENGTA_THEME_STORAGE_KEY);
-    return stored
-      ? normalizeThemePreferences(JSON.parse(stored))
-      : DEFAULT_THEME_PREFERENCES;
+    if (stored) return normalizeThemePreferences(JSON.parse(stored));
+    const legacy = storage?.getItem(LEGACY_THEME_STORAGE_KEY);
+    if (!legacy) return DEFAULT_THEME_PREFERENCES;
+    const parsed = JSON.parse(legacy);
+    return normalizeThemePreferences({
+      ...parsed,
+      cardOpacity:
+        Number(parsed?.cardOpacity) === 0.82
+          ? DEFAULT_THEME_PREFERENCES.cardOpacity
+          : parsed?.cardOpacity,
+    });
   } catch {
     return DEFAULT_THEME_PREFERENCES;
   }
@@ -278,6 +287,7 @@ export function getCelestialSnapshot(
   return {
     dateKey,
     hour,
+    minute: Number(parts.hour) * 60 + Number(parts.minute),
     phase,
     pattern,
     resolvedAppearance,
@@ -382,6 +392,14 @@ export function applyThemePreferences(preferences, snapshot, root) {
   root.style.setProperty(
     "--dengta-glass-border-alpha",
     (0.32 + glassAmount * 0.38).toFixed(3),
+  );
+  root.style.setProperty(
+    "--dengta-glass-haze-opacity",
+    (0.015 + glassAmount * 0.9).toFixed(3),
+  );
+  root.style.setProperty(
+    "--dengta-glass-sheen-opacity",
+    (0.12 + glassAmount * 0.7).toFixed(3),
   );
   root.style.setProperty("--theme-background", resolvedBackground);
   root.style.setProperty("--theme-background-rgb", backgroundRgb);

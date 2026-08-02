@@ -741,13 +741,18 @@ assert.match(
 );
 assert.match(
   css,
-  /\.celestial-body\s*\{[^}]*top:\s*clamp\(150px,\s*20vh,\s*184px\)/s,
-  "the sun and moon orbit must stay visible behind the glass canopy",
+  /\.celestial-prototype-sky\s*>\s*\.celestial-sun\s*\{[^}]*top:\s*var\(--sun-y\)/s,
+  "the accepted prototype sun must follow the continuous sky coordinates",
 );
 assert.match(
   celestialBackdrop,
-  /snapshot\.arc \* -52/,
-  "the celestial arc must not lift the light source behind the opaque top bar",
+  /getSunGlassSky\(displayedMinute\)/,
+  "the production background must use the accepted prototype sky engine",
+);
+assert.match(
+  celestialBackdrop,
+  /length:\s*520/,
+  "the sharp night background must preserve the prototype galaxy density",
 );
 assert.doesNotMatch(
   app,

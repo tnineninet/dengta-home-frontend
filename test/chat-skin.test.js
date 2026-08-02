@@ -170,7 +170,7 @@ test("cream ornaments stay clear of the previous bubble and remain recognizable"
   );
 });
 
-test("the composer uses the layered iridescent agent mark from the reference", () => {
+test("the composer uses the motion crop from the supplied iridescent reference", () => {
   const app = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
   const mark = fs.readFileSync(
     new URL("../src/RainbowAgentMark.jsx", import.meta.url),
@@ -182,9 +182,15 @@ test("the composer uses the layered iridescent agent mark from the reference", (
   );
 
   assert.match(app, /<RainbowAgentMark\s*\/>/);
-  assert.match(mark, /rainbow-agent-mark-lens/);
-  assert.match(mark, /rainbow-agent-mark-caustic/);
-  assert.match(mark, /rainbow-agent-mark-star/);
-  assert.match(css, /@keyframes rainbow-agent-ring/);
-  assert.match(css, /@keyframes rainbow-agent-star-top/);
+  assert.match(mark, /\/assets\/rainbow-agent-mark\.webp/);
+  assert.match(mark, /rainbow-agent-mark-reference/);
+  assert.match(mark, /rainbow-agent-mark-glint/);
+  assert.match(css, /direct circular crop of the supplied reference video/);
+  assert.match(css, /\.rainbow-agent-mark-reference\s*\{/);
+  assert.ok(
+    fs.existsSync(
+      new URL("../public/assets/rainbow-agent-mark.webp", import.meta.url),
+    ),
+    "the reference motion asset must ship with the production bundle",
+  );
 });
