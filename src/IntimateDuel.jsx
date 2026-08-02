@@ -10,7 +10,7 @@ import {
   winnerLabel,
 } from "./intimate-duel";
 
-const STORAGE_KEY = "dengta_intimate_duel_v1";
+const STORAGE_KEY = "dengta_intimate_duel_v2";
 
 function readStoredDuel(names) {
   try {
@@ -123,10 +123,10 @@ export default function IntimateDuel({ aiName, userName, conversationId }) {
   }
 
   return (
-    <section className="feature-page intimate-duel" aria-label="双人回合对战">
+    <section className="feature-page intimate-duel" aria-label="成人双人回合对战">
       <header className="duel-stage-header">
         <div>
-          <span>PRIVATE MATCH</span>
+          <span>ADULT PRIVATE MATCH</span>
           <h2>{duel.status === "finished" ? winnerLabel(duel) : `ROUND ${duel.round}`}</h2>
         </div>
         <button type="button" className="duel-restart" onClick={restart}>

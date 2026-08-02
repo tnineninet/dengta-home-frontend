@@ -1,11 +1,11 @@
-const DUEL_STATE_VERSION = 1;
+const DUEL_STATE_VERSION = 2;
 const MAX_LOG_ENTRIES = 36;
 
 export const DUEL_SKILLS = Object.freeze([
   Object.freeze({
     id: "neck",
-    name: "颈侧试探",
-    description: "轻触颈侧，扰乱对方的节奏",
+    name: "骑乘",
+    description: "骑上去主动掌握起伏节奏",
     staminaCost: 8,
     pleasureDamage: 13,
     selfPleasure: 1,
@@ -14,8 +14,8 @@ export const DUEL_SKILLS = Object.freeze([
   }),
   Object.freeze({
     id: "whisper",
-    name: "耳畔低语",
-    description: "贴近耳边，用声音持续施压",
+    name: "口交",
+    description: "用嘴和舌头直接刺激对方",
     staminaCost: 10,
     pleasureDamage: 16,
     selfPleasure: 2,
@@ -24,8 +24,8 @@ export const DUEL_SKILLS = Object.freeze([
   }),
   Object.freeze({
     id: "waist",
-    name: "腰侧环抱",
-    description: "收紧距离，双方都会受到影响",
+    name: "夹紧",
+    description: "收缩内壁绞紧，对双方都有刺激",
     staminaCost: 12,
     pleasureDamage: 19,
     selfPleasure: 5,
@@ -34,8 +34,8 @@ export const DUEL_SKILLS = Object.freeze([
   }),
   Object.freeze({
     id: "thigh",
-    name: "腿侧追击",
-    description: "从腿侧逼近，打出稳定连击",
+    name: "挑逗",
+    description: "用露骨语言和动作持续撩拨",
     staminaCost: 14,
     pleasureDamage: 22,
     selfPleasure: 3,
@@ -44,8 +44,8 @@ export const DUEL_SKILLS = Object.freeze([
   }),
   Object.freeze({
     id: "reverse",
-    name: "反客为主",
-    description: "高消耗终结技，四回合后再用",
+    name: "Pegging",
+    description: "反客为主的高伤害终结大招",
     staminaCost: 25,
     pleasureDamage: 34,
     selfPleasure: 7,
@@ -54,7 +54,7 @@ export const DUEL_SKILLS = Object.freeze([
   }),
   Object.freeze({
     id: "breathe",
-    name: "缓口气",
+    name: "喘口气",
     description: "恢复体力，并压低自己的快感",
     staminaCost: 0,
     pleasureDamage: 0,
@@ -117,7 +117,7 @@ export function createDuelState({ playerName = "你", companionName = "小灯" }
         id: `${id}-start`,
         round: 0,
         title: "对战开始",
-        text: "距离已经拉近。先让对方失去节奏的人会拿下这一局。",
+        text: "性爱格斗开始了。谁先高潮或先耗尽体力，谁就输掉这一局。",
         kind: "system",
       }),
     ],
@@ -278,9 +278,17 @@ export function chooseCompanionSkill(state, random = Math.random) {
 }
 
 function localRoundText(playerSkill, companionSkill, outcome) {
-  const opening = `你使出「${playerSkill.name}」，把这一回合的压力推向对面。`;
+  const playerScenes = {
+    neck: "你跨坐上去，扶稳对方的肩，主动用身体掌握起伏节奏。",
+    whisper: "你俯下身含住对方最敏感的位置，舌尖和呼吸一起加重刺激。",
+    waist: "你故意收紧内壁，一阵阵绞住对方，不肯让人轻易抽身。",
+    thigh: "你贴着对方最敏感的位置磨蹭，动作和露骨话语一起撩拨。",
+    reverse: "你突然翻转姿势夺走主导，用 Pegging 发起高强度终结攻势。",
+    breathe: "你暂时放慢动作调整呼吸，让紧绷的身体稍微恢复。",
+  };
+  const opening = playerScenes[playerSkill.id] || `你使出「${playerSkill.name}」。`;
   const response = companionSkill
-    ? `对方随即用「${companionSkill.name}」反击，没有把主动权轻易让出来。`
+    ? `对方随即用「${companionSkill.name}」反击，想把你的快感推向失控。`
     : "对方还没来得及反击，这一局就已经分出了结果。";
   if (!outcome) return `${opening}${response}`;
   return `${opening}${response} 数值越过临界点，本局结束。`;

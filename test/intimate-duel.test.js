@@ -13,12 +13,24 @@ const initial = createDuelState({ playerName: "桃桃", companionName: "小灯" 
 assert.equal(initial.player.stamina, 100);
 assert.equal(initial.companion.pleasure, 0);
 assert.equal(DUEL_SKILLS.length, 6);
+assert.deepEqual(
+  DUEL_SKILLS.map((skill) => skill.name),
+  ["骑乘", "口交", "夹紧", "挑逗", "Pegging", "喘口气"],
+  "成人对战招式必须与用户提供的参考保持一致",
+);
+assert.deepEqual(
+  DUEL_SKILLS.map((skill) => skill.id),
+  ["neck", "whisper", "waist", "thigh", "reverse", "breathe"],
+  "保留内部技能 ID，避免破坏既有回合规则",
+);
+assert.match(initial.logs[0].text, /性爱格斗/);
 
 const first = playDuelRound(initial, "neck", () => 0);
 assert.equal(first.state.round, 2);
 assert.equal(first.state.player.combo, 1);
 assert.equal(first.event.playerSkill.id, "neck");
 assert.ok(first.event.companionSkill);
+assert.match(first.state.logs.at(-1).text, /跨坐|骑乘/);
 
 const second = playDuelRound(first.state, "whisper", () => 0);
 assert.equal(second.state.player.combo, 2, "alternating attacks build a combo");
