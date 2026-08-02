@@ -77,6 +77,8 @@ import {
 } from "./companion-interaction";
 import {
   companionStatusForRequest,
+  createDefaultCompanionInteractionStats,
+  createDefaultCompanionStatus,
   mergeCompanionStatus,
   readCompanionInteractionStats,
   readCompanionStatus,
@@ -94,6 +96,7 @@ import {
   settingsNeedsUnifiedPromptMigration,
   settingsPayloadFingerprint,
 } from "./settings";
+import { applyPersonaResetToLocalStorage } from "./persona-reset";
 import {
   reasoningEffortForProvider,
   reasoningEffortOptions,
@@ -1248,6 +1251,9 @@ function App({ accountControl = null, userName = "" }) {
       ]);
 
       if (cancelled) return null;
+      const localPersonaResetApplied = applyPersonaResetToLocalStorage(
+        settingsData.settings?.context_reset_at,
+      );
       const migrationNeeded = settingsNeedsUnifiedPromptMigration(
         settingsData.settings,
       );
@@ -1263,6 +1269,24 @@ function App({ accountControl = null, userName = "" }) {
         { activeSessionId: activeSessionIdRef.current },
         { settings: nextSettings, sessions: nextSessions },
       );
+
+      if (localPersonaResetApplied) {
+        const resetStatus = createDefaultCompanionStatus();
+        const resetInteractionStats = createDefaultCompanionInteractionStats();
+        setMessages([]);
+        setMessage("");
+        setMessageReference(null);
+        setTurnContext("");
+        setMemories([]);
+        setMoments([]);
+        setLastPromptReceipt(null);
+        setCompanionStatus(resetStatus);
+        setCompanionInteractionStats(resetInteractionStats);
+        companionStatusRef.current = resetStatus;
+        messagesSessionIdRef.current = null;
+        chatScrollStatesRef.current.clear();
+        pendingChatScrollRestoreRef.current = null;
+      }
 
       confirmedSettingsRef.current = nextSettings;
       if (!hasUnsavedSettingsDraft) {

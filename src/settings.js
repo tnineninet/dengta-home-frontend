@@ -21,6 +21,7 @@ export const emptySettings = {
   timezone: "Asia/Shanghai",
   push_enabled: false,
   max_push_per_day: 7,
+  context_reset_at: "",
 };
 
 export const PROMPT_FIELD_LIMITS = {
@@ -88,13 +89,17 @@ export function normalizeSettingsDraft(value) {
     user_details: textOrFallback(source.user_details),
     intimate_expression_enabled:
       source.intimate_expression_enabled === true,
+    context_reset_at: textOrFallback(source.context_reset_at),
   };
 }
 
 export function createSettingsPayload(value) {
   const normalized = normalizeSettingsDraft(value);
+  const editableSettings = Object.fromEntries(
+    Object.entries(normalized).filter(([key]) => key !== "context_reset_at"),
+  );
   return {
-    ...normalized,
+    ...editableSettings,
     ai_name: normalized.ai_name.slice(0, PROMPT_FIELD_LIMITS.ai_name),
     system_prompt: normalized.system_prompt.slice(
       0,
