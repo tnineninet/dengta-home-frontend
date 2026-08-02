@@ -454,6 +454,11 @@ assert.doesNotMatch(
   "expanded status must not collapse the message scroller to zero height",
 );
 assert.match(
+  css,
+  /@media \(max-width: 820px\)[\s\S]*?\.status-interaction-card,\s*\.status-recovery-card,\s*\.status-panel-grid\.lower-grid\s*\{[^}]*grid-template-columns:\s*1fr/s,
+  "the recovery card must stack its copy and actions on narrow screens",
+);
+assert.match(
   status,
   /LIVE COMPANION SIGNAL/,
   "expanded status must expose the live companion signal heading",

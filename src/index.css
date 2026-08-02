@@ -4498,7 +4498,8 @@ button:disabled {
 
   .status-panel-grid,
   .status-panel-grid.lower-grid,
-  .status-interaction-card {
+  .status-interaction-card,
+  .status-recovery-card {
     grid-template-columns: 1fr;
   }
 
@@ -6697,6 +6698,7 @@ body,
   }
 
   .status-interaction-card,
+  .status-recovery-card,
   .status-panel-grid.lower-grid {
     grid-template-columns: 1fr;
   }
