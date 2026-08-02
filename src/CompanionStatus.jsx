@@ -21,6 +21,24 @@ import {
   settleExpiredCountdown,
 } from "./companion-status";
 
+const STATUS_MINIMIZED_STORAGE_KEY = "dengta_companion_status_minimized_v1";
+
+function readStatusMinimized() {
+  try {
+    return localStorage.getItem(STATUS_MINIMIZED_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function storeStatusMinimized(value) {
+  try {
+    localStorage.setItem(STATUS_MINIMIZED_STORAGE_KEY, String(value));
+  } catch {
+    // Local preference persistence is optional.
+  }
+}
+
 function CompanionStatus({
   active = true,
   closeRequest = 0,
@@ -56,6 +74,7 @@ function CompanionStatus({
     [normalizedInteractionStats],
   );
   const [expanded, setExpanded] = useState(false);
+  const [minimized, setMinimized] = useState(readStatusMinimized);
   const [clockNow, setClockNow] = useState(() => Date.now());
   const rootRef = useRef(null);
   const panelRef = useRef(null);
@@ -97,6 +116,19 @@ function CompanionStatus({
     setExpanded(true);
     onExpandedChange?.(true);
   }, [onExpandedChange]);
+
+  const minimizePanel = useCallback(() => {
+    panelRef.current?.scrollTo({ top: 0 });
+    setExpanded(false);
+    setMinimized(true);
+    storeStatusMinimized(true);
+    onExpandedChange?.(false);
+  }, [onExpandedChange]);
+
+  const restorePanel = useCallback(() => {
+    setMinimized(false);
+    storeStatusMinimized(false);
+  }, []);
 
   useEffect(() => {
     if (!normalized.countdown.isRunning) return undefined;
@@ -315,6 +347,29 @@ function CompanionStatus({
     setClockNow(Date.now());
   }
 
+  if (minimized) {
+    return (
+      <section
+        ref={rootRef}
+        className={`companion-status minimized${thresholdClass}`}
+        style={{ "--status-pulse-duration": pulseDuration }}
+        aria-label={`${displayName}的动态状态已缩到侧边`}
+      >
+        <button
+          type="button"
+          className="status-restore-button"
+          onClick={restorePanel}
+          aria-label={`展开${displayName}的动态状态`}
+          title="展开动态状态"
+        >
+          <span className="status-restore-mark" aria-hidden="true">D</span>
+          <span className="status-restore-signal" aria-hidden="true" />
+          <span className="status-restore-chevron" aria-hidden="true">›</span>
+        </button>
+      </section>
+    );
+  }
+
   return (
     <section
       ref={rootRef}
@@ -334,6 +389,16 @@ function CompanionStatus({
         />
       </svg>
       <span className="status-pulse-runner" aria-hidden="true" />
+
+      <button
+        type="button"
+        className="status-minimize-button"
+        onClick={minimizePanel}
+        aria-label="把动态状态缩到侧边"
+        title="缩到侧边"
+      >
+        ‹
+      </button>
 
       <button
         type="button"

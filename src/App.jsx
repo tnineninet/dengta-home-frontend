@@ -179,6 +179,7 @@ const CompanionDiary = lazy(() => import("./CompanionDiary"));
 const CompanionProfile = lazy(() => import("./CompanionProfile"));
 const McpDeviceCenter = lazy(() => import("./McpDeviceCenter"));
 const Nursery = lazy(() => import("./Nursery"));
+const IntimateDuel = lazy(() => import("./IntimateDuel"));
 const OmbreMemories = lazy(() => import("./OmbreMemories"));
 const ThemeStudio = lazy(() => import("./ThemeStudio"));
 
@@ -299,6 +300,7 @@ const navItems = [
   { id: "moments", icon: "◌", label: "Moments" },
   { id: "diary", icon: "▱", label: "Diary" },
   { id: "nursery", icon: "♡", label: "Family" },
+  { id: "duel", icon: "⚔", label: "Duel" },
   { id: "memories", icon: "◇", label: "Memory" },
 ];
 
@@ -4981,6 +4983,18 @@ function App({ accountControl = null, userName = "" }) {
     );
   }
 
+  function renderIntimateDuel() {
+    return (
+      <Suspense fallback={<DeferredFeature label="正在打开双人对战…" />}>
+        <IntimateDuel
+          aiName={settings.ai_name || "小灯"}
+          userName={userName}
+          conversationId={activeSessionId}
+        />
+      </Suspense>
+    );
+  }
+
   function renderSettings() {
     const serviceCards = buildServiceStatusCards({
       health: serviceHealth.data,
@@ -5923,6 +5937,7 @@ function App({ accountControl = null, userName = "" }) {
     moments: "Moments",
     diary: "Diary",
     nursery: "Family",
+    duel: "Duel",
     memories: "Portrait",
   }[activeView];
   const showStartupRecovery =
@@ -6159,6 +6174,7 @@ function App({ accountControl = null, userName = "" }) {
           {activeView === "moments" && renderMoments()}
           {activeView === "diary" && renderDiary()}
           {activeView === "nursery" && renderNursery()}
+          {activeView === "duel" && renderIntimateDuel()}
           {activeView === "memories" && renderMemories()}
         </div>
       </main>
