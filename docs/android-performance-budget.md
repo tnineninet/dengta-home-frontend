@@ -28,9 +28,11 @@ Connect an Android device, then run:
 ```
 
 The check exercises idle animation, repeated chat scrolling, the expandable
-status surface, and all five destinations through the left sidebar. When only
+status surface, all five destinations through the left sidebar, and repeated
+Settings scrolling. When only
 one USB device is connected, `-Device` can be omitted. It fails when
-P95 frame time exceeds 32 ms. For samples containing at least 30 rendered
+P95 frame time exceeds 32 ms, while the Settings-specific path has a stricter
+24 ms limit. For samples containing at least 30 rendered
 frames, it also fails when janky frames exceed 20%; sparse idle samples use P95
 because a handful of setup frames makes the percentage statistically unstable.
 Deferred feature pages are opened once before frame collection so the navigation
@@ -42,6 +44,9 @@ scenario measures steady-state motion; initial JavaScript remains guarded by
 - Keep runtime motion on `transform` and `opacity`.
 - Do not force `LAYER_TYPE_SOFTWARE`.
 - Repeated cards must not use their own `backdrop-filter`.
+- Full-screen Settings backgrounds must use pre-feathered gradients; animated
+  Settings layers may only change `transform` and `opacity`, and pause while
+  the Settings scroller is moving.
 - Do not use fixed background attachment inside mobile WebView scrolling
   surfaces.
 - Keep the WebView renderer recovery listener and validate cold launch,

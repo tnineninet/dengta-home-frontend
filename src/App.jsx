@@ -634,6 +634,8 @@ function App({ accountControl = null, userName = "" }) {
   const [innerMonologueErrors, setInnerMonologueErrors] = useState({});
   const messageListRef = useRef(null);
   const messageScrollIdleTimerRef = useRef(null);
+  const settingsScrollRef = useRef(null);
+  const settingsScrollIdleTimerRef = useRef(null);
   const chatScrollStatesRef = useRef(new Map());
   const pendingChatScrollRestoreRef = useRef(null);
   const messageEndRef = useRef(null);
@@ -1413,6 +1415,7 @@ function App({ accountControl = null, userName = "" }) {
       );
       chatAttachmentsRef.current = [];
       window.clearTimeout(settingsAutosaveTimerRef.current);
+      window.clearTimeout(settingsScrollIdleTimerRef.current);
     };
   }, []);
 
@@ -1825,6 +1828,16 @@ function App({ accountControl = null, userName = "" }) {
         snapshot,
       );
     }
+  }
+
+  function handleSettingsScroll(event) {
+    const settingsScroll = event.currentTarget;
+    const settingsSheet = settingsScroll.closest(".settings-sheet");
+    settingsSheet?.classList.add("is-scrolling");
+    window.clearTimeout(settingsScrollIdleTimerRef.current);
+    settingsScrollIdleTimerRef.current = window.setTimeout(() => {
+      settingsSheet?.classList.remove("is-scrolling");
+    }, 180);
   }
 
   useEffect(() => {
@@ -4342,6 +4355,10 @@ function App({ accountControl = null, userName = "" }) {
         immediate: true,
       });
     }
+    window.clearTimeout(settingsScrollIdleTimerRef.current);
+    settingsScrollRef.current
+      ?.closest(".settings-sheet")
+      ?.classList.remove("is-scrolling");
     setIsSettingsOpen(false);
   }
 
@@ -6299,7 +6316,13 @@ function App({ accountControl = null, userName = "" }) {
                 Done
               </button>
             </header>
-            <div className="settings-sheet-scroll">{renderSettings()}</div>
+            <div
+              ref={settingsScrollRef}
+              className="settings-sheet-scroll"
+              onScroll={handleSettingsScroll}
+            >
+              {renderSettings()}
+            </div>
           </section>
         </div>
       )}

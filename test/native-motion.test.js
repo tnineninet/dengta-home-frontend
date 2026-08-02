@@ -82,3 +82,28 @@ test("long repeated content can skip offscreen layout and reduced motion is supp
   assert.match(styles, /contain-intrinsic-size:/);
   assert.match(styles, /@media \(prefers-reduced-motion:\s*reduce\)/);
 });
+
+test("the settings flow stays compositor-only and pauses while scrolling", () => {
+  const appSource = read("src/App.jsx");
+  const styles = read("src/sun-glass-ui.css");
+  const flowStart = styles.indexOf(".settings-flow-field {");
+  const flowEnd = styles.indexOf("\n.sidebar {", flowStart);
+  const flowStyles = styles.slice(flowStart, flowEnd);
+
+  assert.ok(flowStart >= 0 && flowEnd > flowStart);
+  assert.doesNotMatch(flowStyles, /filter:\s*blur\(/);
+  assert.doesNotMatch(flowStyles, /mix-blend-mode:\s*(?:multiply|screen|soft-light)/);
+  assert.doesNotMatch(
+    keyframeBlocks(styles, "settings-flow").join("\n"),
+    /border-radius\s*:/,
+  );
+  assert.match(
+    styles,
+    /\.settings-sheet\.is-scrolling[\s\S]{0,260}animation-play-state:\s*paused/,
+  );
+  assert.match(
+    styles,
+    /\.settings-sheet[\s\S]{0,260}backdrop-filter:\s*none/,
+  );
+  assert.match(appSource, /onScroll=\{handleSettingsScroll\}/);
+});

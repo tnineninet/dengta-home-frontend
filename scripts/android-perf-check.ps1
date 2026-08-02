@@ -4,7 +4,8 @@ param(
   [string]$Package = "home.dengta.app",
   [string]$Activity = ".MainActivity",
   [double]$MaxJankPercent = 20,
-  [int]$MaxP95Ms = 32
+  [int]$MaxP95Ms = 32,
+  [int]$SettingsMaxP95Ms = 24
 )
 
 $ErrorActionPreference = "Stop"
@@ -40,7 +41,8 @@ function Read-GfxSummary {
 function Measure-Scenario {
   param(
     [string]$Name,
-    [scriptblock]$Exercise
+    [scriptblock]$Exercise,
+    [int]$ScenarioMaxP95Ms = $MaxP95Ms
   )
 
   Invoke-Adb -AdbArguments @("shell", "dumpsys", "gfxinfo", $Package, "reset") | Out-Null
@@ -56,7 +58,7 @@ function Measure-Scenario {
     Passed = (
       $summary.Frames -lt 30 -or
       $summary.JankPercent -le $MaxJankPercent
-    ) -and $summary.P95Ms -le $MaxP95Ms
+    ) -and $summary.P95Ms -le $ScenarioMaxP95Ms
   }
 }
 
@@ -94,6 +96,8 @@ $menuY = [math]::Round($screenHeight * 0.065)
 $sidebarX = [math]::Round($screenWidth * 0.15)
 $firstNavY = [math]::Round($screenHeight * 0.206)
 $navStepY = [math]::Round($screenHeight * 0.051)
+$settingsX = [math]::Round($screenWidth * 0.91)
+$settingsY = [math]::Round($screenHeight * 0.08)
 
 function Invoke-SidebarNavigationLoop {
   foreach ($navIndex in @(1, 2, 3, 4, 0)) {
@@ -124,13 +128,23 @@ $results = @(
     Start-Sleep -Milliseconds 350
     Invoke-SidebarNavigationLoop
   }
+  Measure-Scenario -Name "settings-scroll" -ScenarioMaxP95Ms $SettingsMaxP95Ms -Exercise {
+    Invoke-Adb -AdbArguments @("shell", "input", "tap", $settingsX, $settingsY) | Out-Null
+    Start-Sleep -Milliseconds 500
+    1..5 | ForEach-Object {
+      Invoke-Adb -AdbArguments @("shell", "input", "swipe", "540", "2050", "540", "550", "550") | Out-Null
+      Start-Sleep -Milliseconds 180
+      Invoke-Adb -AdbArguments @("shell", "input", "swipe", "540", "550", "540", "2050", "550") | Out-Null
+      Start-Sleep -Milliseconds 180
+    }
+  }
 )
 
 $results | Format-Table -AutoSize
 
 $failures = @($results | Where-Object { -not $_.Passed })
 if ($failures.Count -gt 0) {
-  Write-Error "Performance regression: expected P95 <= ${MaxP95Ms}ms and, for samples of at least 30 frames, jank <= $MaxJankPercent%."
+  Write-Error "Performance regression: expected general P95 <= ${MaxP95Ms}ms, settings P95 <= ${SettingsMaxP95Ms}ms and, for samples of at least 30 frames, jank <= $MaxJankPercent%."
   exit 1
 }
 
