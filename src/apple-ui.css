@@ -1333,6 +1333,15 @@ select:focus-visible {
   grid-template-columns: 52px minmax(0, 1fr);
 }
 
+.chat-presence-stack:has(.companion-status.minimized) .ambient-context-badge,
+.chat-presence-stack:has(.companion-status.minimized) .ambient-context-badge:not(.is-minimized),
+.chat-presence-stack:has(.companion-status.minimized) .ambient-context-badge.is-minimized {
+  height: 72px;
+  min-height: 72px;
+  max-height: 72px;
+  overflow: hidden;
+}
+
 .companion-status.minimized,
 .companion-status.minimized.high-energy,
 .companion-status.minimized.low-energy {

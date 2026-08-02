@@ -67,6 +67,7 @@ assert.match(componentSource, /conversation_id: conversationId \|\| undefined/);
 assert.match(statusSource, /dengta_companion_status_minimized_v1/);
 assert.match(statusSource, /className="status-restore-button"/);
 assert.match(cssSource, /\.chat-presence-stack:has\(\.companion-status\.minimized\)/);
+assert.match(cssSource, /\.chat-presence-stack:has\(\.companion-status\.minimized\)[\s\S]*?height: 72px/);
 assert.match(cssSource, /\.duel-skill-grid\s*\{[\s\S]*?grid-template-columns: repeat\(3/);
 
 console.log("frontend intimate duel tests passed");
