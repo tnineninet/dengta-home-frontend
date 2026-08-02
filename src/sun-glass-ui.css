@@ -509,19 +509,43 @@ body,
 .nursery-portrait,
 .nursery-empty-state,
 .nursery-birth-scene,
-.settings-card,
 :root[data-dengta-appearance="night"] .message-row.assistant .message-bubble,
 :root[data-dengta-appearance="night"] .moment-card,
 :root[data-dengta-appearance="night"] .diary-entry,
 :root[data-dengta-appearance="night"] .memory-card,
-:root[data-dengta-appearance="night"] .profile-card,
-:root[data-dengta-appearance="night"] .settings-card {
+:root[data-dengta-appearance="night"] .profile-card {
   border-color: rgb(255 255 255 / var(--dengta-glass-border-alpha));
   color: var(--theme-ink);
   background: rgb(var(--theme-card-rgb) / var(--dengta-glass-bubble-alpha));
   box-shadow: inset 0 1px rgb(255 255 255 / .48), 0 14px 38px rgb(20 25 41 / .1);
   backdrop-filter: blur(var(--dengta-glass-panel-blur)) saturate(var(--dengta-glass-saturation));
   -webkit-backdrop-filter: blur(var(--dengta-glass-panel-blur)) saturate(var(--dengta-glass-saturation));
+}
+
+.settings-sheet .settings-card,
+.settings-sheet .mcp-device-center,
+.settings-sheet .ai-provider-center {
+  content-visibility: auto;
+  contain: layout paint style;
+  contain-intrinsic-size: auto 520px;
+  background: rgb(var(--theme-card-rgb) / calc(.7 + var(--dengta-glass-level, .82) * .26));
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.settings-sheet .service-status,
+.settings-sheet .service-expiry-panel,
+.settings-sheet .prompt-layer,
+.settings-sheet .notification-feature-panel,
+.settings-sheet .prompt-memory-summary,
+.settings-sheet .prompt-intimacy-toggle,
+.settings-sheet .save-bar {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.settings-sheet .save-bar {
+  background: rgb(var(--theme-card-rgb) / .96);
 }
 
 .message-row.user .message-bubble {

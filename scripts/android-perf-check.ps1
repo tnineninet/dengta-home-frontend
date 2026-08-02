@@ -128,17 +128,18 @@ $results = @(
     Start-Sleep -Milliseconds 350
     Invoke-SidebarNavigationLoop
   }
-  Measure-Scenario -Name "settings-scroll" -ScenarioMaxP95Ms $SettingsMaxP95Ms -Exercise {
-    Invoke-Adb -AdbArguments @("shell", "input", "tap", $settingsX, $settingsY) | Out-Null
-    Start-Sleep -Milliseconds 500
-    1..5 | ForEach-Object {
-      Invoke-Adb -AdbArguments @("shell", "input", "swipe", "540", "2050", "540", "550", "550") | Out-Null
-      Start-Sleep -Milliseconds 180
-      Invoke-Adb -AdbArguments @("shell", "input", "swipe", "540", "550", "540", "2050", "550") | Out-Null
-      Start-Sleep -Milliseconds 180
-    }
-  }
 )
+
+Invoke-Adb -AdbArguments @("shell", "input", "tap", $settingsX, $settingsY) | Out-Null
+Start-Sleep -Milliseconds 600
+$results += Measure-Scenario -Name "settings-scroll" -ScenarioMaxP95Ms $SettingsMaxP95Ms -Exercise {
+  1..5 | ForEach-Object {
+    Invoke-Adb -AdbArguments @("shell", "input", "swipe", "540", "2050", "540", "550", "550") | Out-Null
+    Start-Sleep -Milliseconds 180
+    Invoke-Adb -AdbArguments @("shell", "input", "swipe", "540", "550", "540", "2050", "550") | Out-Null
+    Start-Sleep -Milliseconds 180
+  }
+}
 
 $results | Format-Table -AutoSize
 

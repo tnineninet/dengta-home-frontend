@@ -105,5 +105,17 @@ test("the settings flow stays compositor-only and pauses while scrolling", () =>
     styles,
     /\.settings-sheet[\s\S]{0,260}backdrop-filter:\s*none/,
   );
+  assert.match(
+    styles,
+    /\.settings-sheet \.settings-card[\s\S]{0,420}content-visibility:\s*auto/,
+  );
+  assert.match(
+    styles,
+    /\.settings-sheet \.save-bar[\s\S]{0,260}backdrop-filter:\s*none/,
+  );
+  assert.doesNotMatch(
+    styles,
+    /\.settings-card,[\s\S]{0,900}backdrop-filter:\s*blur\(/,
+  );
   assert.match(appSource, /onScroll=\{handleSettingsScroll\}/);
 });
