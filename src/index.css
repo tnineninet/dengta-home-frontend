@@ -730,6 +730,39 @@ button:disabled {
   font-size: 15px;
 }
 
+.status-recovery-card {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.6fr) minmax(0, 1.4fr);
+  align-items: center;
+  gap: 14px;
+}
+
+.recovery-action-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.recovery-action-grid button {
+  display: flex;
+  min-height: 50px;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid #d8c9dd;
+  border-radius: 11px;
+  color: #67546e;
+  background: rgba(255, 255, 255, 0.82);
+  text-align: left;
+}
+
+.recovery-action-grid button:hover,
+.recovery-action-grid button:focus-visible {
+  border-color: #9c809f;
+  background: #f4edf5;
+}
+
 .hot-zone-copy {
   display: grid;
   min-width: 0;
@@ -1241,6 +1274,42 @@ button:disabled {
   line-height: 1.65;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+}
+
+.inner-monologue-request {
+  display: grid;
+  gap: 8px;
+  margin-top: 9px;
+}
+
+.inner-monologue-request p,
+.inner-monologue-error {
+  margin: 0;
+  color: #777087;
+  line-height: 1.55;
+}
+
+.inner-monologue-request button {
+  min-height: 36px;
+  border: 1px solid #c9adba;
+  border-radius: 9px;
+  color: #694f5d;
+  background: rgba(255, 255, 255, 0.82);
+  font-weight: 700;
+}
+
+.inner-monologue-request button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.inner-monologue-error {
+  color: #a3485d;
+}
+
+.inner-monologue-text {
+  max-height: 360px;
+  overflow-y: auto;
 }
 
 .message-bubble time {
@@ -4441,12 +4510,17 @@ button:disabled {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 
-  .status-interaction-card {
+  .status-interaction-card,
+  .status-recovery-card {
     gap: 10px;
   }
 
   .hot-zone-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .recovery-action-grid {
+    grid-template-columns: 1fr;
   }
 
   .hot-zone-grid button,
@@ -6627,12 +6701,17 @@ body,
     grid-template-columns: 1fr;
   }
 
-  .status-interaction-card {
+  .status-interaction-card,
+  .status-recovery-card {
     gap: 10px;
   }
 
   .hot-zone-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .recovery-action-grid {
+    grid-template-columns: 1fr;
   }
 
   .status-record-card li {

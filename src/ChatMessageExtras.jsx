@@ -165,9 +165,25 @@ export function MessageAttachments({ value, apiBaseUrl, onPreview }) {
   );
 }
 
-export function ThinkingPanel({ message, aiName = "小灯", companionMood = "" }) {
-  const visible = thinkingPanelVisible(message);
+export function ThinkingPanel({
+  message,
+  aiName = "小灯",
+  companionMood = "",
+  innerMonologue = null,
+  innerMonologuePending = false,
+  innerMonologueError = "",
+  onRequestInnerMonologue,
+}) {
   const completed = thinkingPanelCompleted(message);
+  const canRequestInnerMonologue =
+    completed &&
+    /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(String(message?.id || "")) &&
+    typeof onRequestInnerMonologue === "function";
+  const visible =
+    !completed ||
+    thinkingPanelVisible(message) ||
+    Boolean(innerMonologue?.text) ||
+    canRequestInnerMonologue;
   const [open, setOpen] = useState(!completed);
 
   if (!visible) return null;
@@ -175,13 +191,9 @@ export function ThinkingPanel({ message, aiName = "小灯", companionMood = "" }
   const statuses = Array.isArray(message.thinkingStatuses)
     ? message.thinkingStatuses
     : [];
-  const summary =
-    typeof message.thinkingSummary === "string"
-      ? message.thinkingSummary.trim()
-      : "";
-  const hasPublicSummary = summary.length > 0;
   const displayName = String(aiName || "").trim() || "小灯";
   const mood = String(companionMood || "").trim();
+  const monologueText = String(innerMonologue?.text || "").trim();
 
   return (
     <details
@@ -190,19 +202,13 @@ export function ThinkingPanel({ message, aiName = "小灯", companionMood = "" }
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary>
-        <span>
-          {hasPublicSummary
-            ? completed
-              ? `${displayName}刚才在想`
-              : `${displayName}此刻在想`
-            : completed
-              ? `${displayName}已经回应`
-              : `${displayName}正在回应你`}
-        </span>
+        <span>{completed ? `${displayName}的心声` : `${displayName}正在回应你`}</span>
         <small>
-          {hasPublicSummary
-            ? "模型提供的公开推理摘要"
-            : "处理中 · 暂无模型公开摘要"}
+          {completed
+            ? monologueText
+              ? "仅保存在这台设备"
+              : "按需生成，不进入聊天记忆"
+            : "正在处理这条消息"}
         </small>
       </summary>
       <div className="thinking-panel-body">
@@ -210,7 +216,7 @@ export function ThinkingPanel({ message, aiName = "小灯", companionMood = "" }
           <strong>{displayName}</strong>
           {mood && <span>此刻：{mood}</span>}
         </div>
-        {hasPublicSummary && statuses.length > 0 && (
+        {!completed && statuses.length > 0 && (
           <ol>
             {statuses.map((status, index) => {
               const active = !completed && index === statuses.length - 1;
@@ -234,13 +240,29 @@ export function ThinkingPanel({ message, aiName = "小灯", companionMood = "" }
             })}
           </ol>
         )}
-        {hasPublicSummary ? (
-          <p className="thinking-summary-text">{summary}</p>
+        {completed && monologueText ? (
+          <p className="thinking-summary-text inner-monologue-text">
+            {monologueText}
+          </p>
+        ) : completed ? (
+          <div className="inner-monologue-request">
+            <button
+              type="button"
+              disabled={innerMonologuePending}
+              onClick={() => {
+                setOpen(true);
+                onRequestInnerMonologue?.(message);
+              }}
+            >
+              {innerMonologuePending ? "正在写下此刻的心声…" : "听听她此刻的心声"}
+            </button>
+            {innerMonologueError && (
+              <small className="inner-monologue-error">{innerMonologueError}</small>
+            )}
+          </div>
         ) : (
           <p className="thinking-availability-note">
-            {completed
-              ? "这一轮没有收到模型提供的公开思考内容，所以这里只显示处理状态，不会用固定文案冒充真实想法。"
-              : "正在等待模型返回可以公开展示的思考内容。"}
+            回复完成后可以按需生成这一次的可见心声。
           </p>
         )}
       </div>

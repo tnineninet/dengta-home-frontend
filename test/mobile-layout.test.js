@@ -843,15 +843,15 @@ assert.doesNotMatch(
   />保存设置</,
   "settings must not require the old bottom save button",
 );
-assert.match(
+assert.doesNotMatch(
   app,
   /event\.type === "reasoning"[\s\S]*appendThinkingSummary/,
-  "chat streaming must render only the backend's explicit public reasoning event",
+  "chat streaming must not render provider reasoning summaries",
 );
-assert.match(
+assert.doesNotMatch(
   app,
-  /event\.public === true[\s\S]*event\.source === "provider_summary"/,
-  "chat streaming must accept only provider-marked public reasoning summaries",
+  /event\.source === "provider_summary"/,
+  "the message UI must use the separate on-demand inner-monologue flow",
 );
 assert.doesNotMatch(
   app,

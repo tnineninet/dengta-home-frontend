@@ -410,6 +410,7 @@ select:focus-visible {
 }
 
 .hot-zone-grid button,
+.recovery-action-grid button,
 .countdown-actions button,
 .countdown-card select {
   border: 1px solid #48484a;
@@ -420,6 +421,8 @@ select:focus-visible {
 
 .hot-zone-grid button.active,
 .hot-zone-grid button:hover,
+.recovery-action-grid button:hover,
+.recovery-action-grid button:focus-visible,
 .countdown-actions button:first-child {
   border-color: var(--apple-blue-dark);
   color: #ffffff;

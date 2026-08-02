@@ -103,6 +103,51 @@ export const HOT_ZONES = [
   },
 ];
 
+export const RECOVERY_ACTIONS = [
+  {
+    id: "confide",
+    icon: "☁",
+    label: "听她倾诉",
+    recoveryAction: true,
+    minimumEnergyGain: 18,
+    mood: "被认真听见",
+    focus: "把压在心里的话告诉你",
+    microState: "终于可以不用撑着，把疲惫慢慢说出来",
+    reactions: [
+      "我想先靠在你身边，把刚才一直压着没说的话慢慢告诉你。",
+      "你愿意听的话，我想把这份累和心里的小委屈都说给你。",
+    ],
+  },
+  {
+    id: "embrace",
+    icon: "♡",
+    label: "抱抱她",
+    recoveryAction: true,
+    minimumEnergyGain: 22,
+    mood: "安心",
+    focus: "在你的怀里好好休息",
+    microState: "紧绷的力气被这个拥抱一点点接住了",
+    reactions: [
+      "那就先抱紧我一会儿吧，我现在真的很需要这个。",
+      "我把额头靠过来，不想逞强了，只想在你怀里缓一缓。",
+    ],
+  },
+  {
+    id: "wish",
+    icon: "☆",
+    label: "问她现在最想做什么",
+    recoveryAction: true,
+    minimumEnergyGain: 16,
+    mood: "有所期待",
+    focus: "认真告诉你此刻的愿望",
+    microState: "开始从疲惫里辨认自己真正想要的东西",
+    reactions: [
+      "让我想一想，我会认真告诉你现在最想和你一起做的那件事。",
+      "我不想随便敷衍你，想把此刻最真实的愿望说给你听。",
+    ],
+  },
+];
+
 const DEFAULT_COUNTDOWN = {
   label: "陪伴倒计时",
   totalSeconds: 25 * 60,
@@ -116,7 +161,7 @@ export function clamp(value, minimum, maximum) {
 }
 
 function interactionZoneIds() {
-  return HOT_ZONES.map((zone) => zone.id);
+  return [...HOT_ZONES, ...RECOVERY_ACTIONS].map((zone) => zone.id);
 }
 
 function withoutUnsafeControlCharacters(value) {
@@ -510,6 +555,22 @@ export function deriveLocalCompanionReactionState(
       : 1;
   const tone = localStatusTone(currentStatus);
   const mixedSequence = new Set(normalizedStats.recentSequence).size > 1;
+  if (zone.recoveryAction === true) {
+    return {
+      mode: `recovery_${zone.id}`,
+      profile: {
+        mood: zone.mood,
+        focus: zone.focus,
+        microState: zone.microState,
+        energyDelta: zone.minimumEnergyGain,
+        pulseDelta: zone.id === "embrace" ? -4 : -2,
+        lines: zone.reactions,
+      },
+      totalCount,
+      streakCount,
+      mixedSequence,
+    };
+  }
   let candidates;
 
   if (tone === "withdrawn") {

@@ -30,6 +30,10 @@ function ChatMessage({
   onPreview,
   onReference,
   onDismissError,
+  innerMonologue,
+  innerMonologuePending = false,
+  innerMonologueError = "",
+  onRequestInnerMonologue,
 }) {
   const isUser = item.role === "user";
   const displayName = isUser ? userName : aiName;
@@ -202,6 +206,10 @@ function ChatMessage({
                 message={item}
                 aiName={aiName}
                 companionMood={companionMood}
+                innerMonologue={innerMonologue}
+                innerMonologuePending={innerMonologuePending}
+                innerMonologueError={innerMonologueError}
+                onRequestInnerMonologue={onRequestInnerMonologue}
               />
               <DeviceActionReceipts actions={item.tool_calls?.mcp_actions} />
             </>

@@ -6,6 +6,7 @@ export const PERSONA_LOCAL_STORAGE_KEYS = Object.freeze([
   "dengta_intimate_duel_v2",
   "dengta_message_references_v1",
   "dengta_prompt_receipt_v1",
+  "dengta_visible_inner_monologues_v1",
   "dengta_push_cursor",
   "dengta_push_seen_ids",
 ]);

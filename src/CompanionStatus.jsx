@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
   HOT_ZONES,
+  RECOVERY_ACTIONS,
   addStatusRecord,
   clamp,
   companionStatusForRequest,
@@ -251,7 +252,12 @@ function CompanionStatus({
         note: reaction.text,
         microState: reaction.microState,
         energyLevel: clamp(
-          Math.round(current.energyLevel * 0.68 + energyTarget * 0.32),
+          zone.recoveryAction === true
+            ? Math.max(
+                current.energyLevel + zone.minimumEnergyGain,
+                Math.round(current.energyLevel * 0.68 + energyTarget * 0.32),
+              )
+            : Math.round(current.energyLevel * 0.68 + energyTarget * 0.32),
           0,
           100,
         ),
@@ -260,10 +266,13 @@ function CompanionStatus({
           30,
           220,
         ),
-        hotZones: [
-          zone.id,
-          ...current.hotZones.filter((id) => id !== zone.id),
-        ].slice(0, HOT_ZONES.length),
+        hotZones:
+          zone.recoveryAction === true
+            ? current.hotZones
+            : [
+                zone.id,
+                ...current.hotZones.filter((id) => id !== zone.id),
+              ].slice(0, HOT_ZONES.length),
         recentRecords: addStatusRecord(current, reaction.record),
       };
     });
@@ -550,6 +559,37 @@ function CompanionStatus({
                         ? `累计 ${normalizedInteractionStats.counts[zone.id]} 次`
                         : "等待第一次"}
                     </small>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="status-card status-recovery-card">
+            <div className="status-card-heading compact">
+              <div>
+                <span className="status-eyebrow">陪她恢复</span>
+                <h3>
+                  {normalized.energyLevel <= 25
+                    ? `${displayName}现在很累，陪她慢慢充回力气`
+                    : `问问${displayName}此刻真正需要什么`}
+                </h3>
+              </div>
+            </div>
+            <div className="recovery-action-grid">
+              {RECOVERY_ACTIONS.map((action) => (
+                <button
+                  type="button"
+                  key={action.id}
+                  data-recovery-action={action.id}
+                  onClick={() => touchZone(action)}
+                >
+                  <span className="hot-zone-icon" aria-hidden="true">
+                    {action.icon}
+                  </span>
+                  <span className="hot-zone-copy">
+                    <strong>{action.label}</strong>
+                    <small>立即恢复至少 {action.minimumEnergyGain}%</small>
                   </span>
                 </button>
               ))}

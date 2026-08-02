@@ -61,10 +61,14 @@ import {
 } from "./message-reference";
 import {
   attachThinkingTrace,
-  appendThinkingSummary,
   appendThinkingStatus,
   mergeStreamedAssistantMessage,
 } from "./chat-thinking";
+import {
+  innerMonologueForMessage,
+  readInnerMonologues,
+  storeInnerMonologue,
+} from "./inner-monologue";
 import { hydrateChatHistory } from "./chat-history";
 import {
   captureChatScrollState,
@@ -622,6 +626,9 @@ function App({ accountControl = null, userName = "" }) {
   const [companionInteractionStats, setCompanionInteractionStats] = useState(
     readCompanionInteractionStats,
   );
+  const [innerMonologues, setInnerMonologues] = useState(readInnerMonologues);
+  const [innerMonologuePending, setInnerMonologuePending] = useState({});
+  const [innerMonologueErrors, setInnerMonologueErrors] = useState({});
   const messageListRef = useRef(null);
   const messageScrollIdleTimerRef = useRef(null);
   const chatScrollStatesRef = useRef(new Map());
@@ -1282,6 +1289,9 @@ function App({ accountControl = null, userName = "" }) {
         setLastPromptReceipt(null);
         setCompanionStatus(resetStatus);
         setCompanionInteractionStats(resetInteractionStats);
+        setInnerMonologues({});
+        setInnerMonologuePending({});
+        setInnerMonologueErrors({});
         companionStatusRef.current = resetStatus;
         messagesSessionIdRef.current = null;
         chatScrollStatesRef.current.clear();
@@ -2637,6 +2647,66 @@ function App({ accountControl = null, userName = "" }) {
 
   companionInteractionHandlerRef.current = registerCompanionInteraction;
 
+  async function requestVisibleInnerMonologue(item) {
+    const messageId = String(item?.id || "");
+    const sessionId = activeSessionIdRef.current;
+    if (
+      !sessionId ||
+      !/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(messageId) ||
+      innerMonologuePending[messageId] ||
+      innerMonologueForMessage(innerMonologues, messageId)
+    ) {
+      return;
+    }
+
+    setInnerMonologuePending((current) => ({
+      ...current,
+      [messageId]: true,
+    }));
+    setInnerMonologueErrors((current) => ({
+      ...current,
+      [messageId]: "",
+    }));
+
+    try {
+      if (!(await flushLatestSettingsDraft())) {
+        throw new Error("最新个性化指令尚未保存成功，请恢复网络后重试。");
+      }
+      const data = await apiRequest("/companion/inner-monologue", {
+        method: "POST",
+        body: JSON.stringify({
+          session_id: sessionId,
+          message_id: messageId,
+          model:
+            readStoredSessionChatModel(sessionId) ||
+            selectedChatModel ||
+            settings.model ||
+            "",
+          companion_status: companionStatusForRequest(
+            companionStatusRef.current,
+          ),
+        }),
+        timeoutMs: 120 * 1000,
+      });
+      const next = storeInnerMonologue({
+        messageId,
+        text: data?.inner_monologue,
+        createdAt: new Date().toISOString(),
+      });
+      setInnerMonologues(next);
+    } catch (error) {
+      setInnerMonologueErrors((current) => ({
+        ...current,
+        [messageId]: error?.message || "这次心声没有生成成功，请稍后再试。",
+      }));
+    } finally {
+      setInnerMonologuePending((current) => ({
+        ...current,
+        [messageId]: false,
+      }));
+    }
+  }
+
   async function processCompanionInteractionQueue() {
     if (companionInteractionQueueRef.current.length === 0) return;
 
@@ -3254,26 +3324,6 @@ function App({ accountControl = null, userName = "" }) {
               current.map((item) =>
                 item.id === localAssistantId
                   ? { ...item, thinkingStatuses: statuses }
-                  : item,
-              ),
-            );
-          }
-
-          if (
-            event.type === "reasoning" &&
-            event.public === true &&
-            event.source === "provider_summary"
-          ) {
-            const summary = appendThinkingSummary(
-              streamThinkingRef.current.summary,
-              event.content,
-            );
-            streamThinkingRef.current.summary = summary;
-            streamThinkingRef.current.lastReasoningSource = "provider_summary";
-            setMessages((current) =>
-              current.map((item) =>
-                item.id === localAssistantId
-                  ? { ...item, thinkingSummary: summary }
                   : item,
               ),
             );
@@ -4359,6 +4409,15 @@ function App({ accountControl = null, userName = "" }) {
                 onPreview={handleImagePreview}
                 onReference={selectMessageForReference}
                 onDismissError={dismissChatError}
+                innerMonologue={innerMonologueForMessage(
+                  innerMonologues,
+                  item.id,
+                )}
+                innerMonologuePending={
+                  innerMonologuePending[item.id] === true
+                }
+                innerMonologueError={innerMonologueErrors[item.id] || ""}
+                onRequestInnerMonologue={requestVisibleInnerMonologue}
               />
             ))
           )}

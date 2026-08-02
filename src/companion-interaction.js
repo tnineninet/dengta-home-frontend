@@ -1,9 +1,9 @@
+import { HOT_ZONES, RECOVERY_ACTIONS } from "./companion-status.js";
+
 export const COMPANION_INTERACTION_TYPES = [
-  "hand",
-  "shoulder",
-  "heart",
-  "lamp",
-];
+  ...HOT_ZONES,
+  ...RECOVERY_ACTIONS,
+].map((item) => item.id);
 
 export function emptyCompanionInteractionCounts() {
   return Object.fromEntries(

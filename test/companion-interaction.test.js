@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   HOT_ZONES,
+  RECOVERY_ACTIONS,
   companionStatusForRequest,
   createDefaultCompanionStatus,
   createResetCompanionStatus,
@@ -23,6 +24,18 @@ const handZone = HOT_ZONES.find((zone) => zone.id === "hand");
 const shoulderZone = HOT_ZONES.find((zone) => zone.id === "shoulder");
 assert.ok(handZone);
 assert.ok(shoulderZone);
+assert.deepEqual(
+  RECOVERY_ACTIONS.map((action) => action.id),
+  ["confide", "embrace", "wish"],
+);
+assert.ok(
+  RECOVERY_ACTIONS.every((action) => action.minimumEnergyGain >= 16),
+  "每次恢复互动都必须在低电量时产生明显恢复",
+);
+assert.ok(
+  RECOVERY_ACTIONS.some((action) => action.id === "wish" && /想做什么/.test(action.label)),
+  "状态栏必须允许伴侣主动表达此刻想做的事",
+);
 
 assert.equal(
   personalizeCompanionStatusText("用户要我直接作画。", "桃桃"),
@@ -39,6 +52,21 @@ assert.equal(
 
 let stats = createDefaultCompanionInteractionStats();
 const startedAt = Date.parse("2026-07-21T08:00:00.000Z");
+
+for (const action of RECOVERY_ACTIONS) {
+  const recoveryStats = recordCompanionInteraction(
+    createDefaultCompanionInteractionStats(),
+    action.id,
+    startedAt,
+  );
+  const recovery = localCompanionInteractionReaction(
+    action,
+    recoveryStats,
+    1,
+    { energyLevel: 1, pulseBpm: 72 },
+  );
+  assert.ok(recovery.energyTarget >= 1 + action.minimumEnergyGain);
+}
 
 for (let index = 0; index < 100; index += 1) {
   stats = recordCompanionInteraction(stats, "hand", startedAt + index * 100);
@@ -134,6 +162,9 @@ assert.deepEqual(interactionQueue[1].batchCounts, {
   shoulder: 0,
   heart: 1,
   lamp: 0,
+  confide: 0,
+  embrace: 0,
+  wish: 0,
 });
 assert.equal(interactionQueue[1].interactionCounts.hand, 101);
 assert.equal(interactionQueue[1].interactionCounts.heart, 1);
@@ -319,6 +350,9 @@ assert.deepEqual(normalized.counts, {
   shoulder: 0,
   heart: 3,
   lamp: 0,
+  confide: 0,
+  embrace: 0,
+  wish: 0,
 });
 assert.equal(normalized.lastZoneId, null);
 assert.equal(normalized.streakCount, 0);
