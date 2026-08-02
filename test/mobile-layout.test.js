@@ -109,6 +109,7 @@ assert.deepEqual(
     "native-feel.css",
     "apple-ui.css",
     "sun-glass-ui.css",
+    "jelly-motion.css",
   ],
   "layout tests must use the same stylesheet order as the application entrypoint",
 );
@@ -126,6 +127,7 @@ assert.deepEqual(
     "native-feel.css",
     "apple-ui.css",
     "sun-glass-ui.css",
+    "jelly-motion.css",
   ],
   "the 280px regression must use the complete application stylesheet cascade",
 );

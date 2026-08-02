@@ -83,8 +83,9 @@ test("long repeated content can skip offscreen layout and reduced motion is supp
   assert.match(styles, /@media \(prefers-reduced-motion:\s*reduce\)/);
 });
 
-test("the settings flow stays compositor-only and pauses while scrolling", () => {
+test("the settings flow stays GPU-backed and throttles while scrolling", () => {
   const appSource = read("src/App.jsx");
+  const flowSource = read("src/SettingsFlowField.jsx");
   const styles = read("src/sun-glass-ui.css");
   const flowStart = styles.indexOf(".settings-flow-field {");
   const flowEnd = styles.indexOf("\n.sidebar {", flowStart);
@@ -93,14 +94,10 @@ test("the settings flow stays compositor-only and pauses while scrolling", () =>
   assert.ok(flowStart >= 0 && flowEnd > flowStart);
   assert.doesNotMatch(flowStyles, /filter:\s*blur\(/);
   assert.doesNotMatch(flowStyles, /mix-blend-mode:\s*(?:multiply|screen|soft-light)/);
-  assert.doesNotMatch(
-    keyframeBlocks(styles, "settings-flow").join("\n"),
-    /border-radius\s*:/,
-  );
-  assert.match(
-    styles,
-    /\.settings-sheet\.is-scrolling[\s\S]{0,260}animation-play-state:\s*paused/,
-  );
+  assert.match(flowSource, /powerPreference:\s*"high-performance"/);
+  assert.match(flowSource, /const SCROLL_FRAME_MS = 1000 \/ 5/);
+  assert.match(flowSource, /classList\.contains\("is-scrolling"\)/);
+  assert.match(flowSource, /Math\.min\(0\.82, 760 \/ Math\.max\(longestSide, 1\)\)/);
   assert.match(
     styles,
     /\.settings-sheet[\s\S]{0,260}backdrop-filter:\s*none/,
@@ -118,4 +115,21 @@ test("the settings flow stays compositor-only and pauses while scrolling", () =>
     /\.settings-card,[\s\S]{0,900}backdrop-filter:\s*blur\(/,
   );
   assert.match(appSource, /onScroll=\{handleSettingsScroll\}/);
+});
+
+test("dialogs share a layout-free jelly spring on the compositor", () => {
+  const mainSource = read("src/main.jsx");
+  const styles = read("src/jelly-motion.css");
+  const jellyFrames = keyframeBlocks(styles, "dengta-jelly").join("\n");
+
+  assert.match(mainSource, /import "\.\/jelly-motion\.css"/);
+  assert.match(styles, /\.settings-sheet,[\s\S]*?\.account-menu-popover/);
+  assert.match(styles, /@keyframes dengta-jelly-pop/);
+  assert.match(styles, /@keyframes dengta-jelly-sheet-pop/);
+  assert.match(styles, /scale3d\(1\.035, 1\.02, 1\)/);
+  assert.doesNotMatch(
+    jellyFrames,
+    /(?:height|width|margin|padding|top|left|border-radius)\s*:/,
+  );
+  assert.match(styles, /@media \(prefers-reduced-motion:\s*reduce\)/);
 });

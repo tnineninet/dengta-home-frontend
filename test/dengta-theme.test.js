@@ -227,11 +227,15 @@ test("settings opens over the bright fluid-glass field", () => {
   );
 
   assert.match(app, /<SettingsFlowField\s*\/>/);
-  assert.match(field, /settings-flow-cloud--violet/);
-  assert.match(field, /settings-flow-cloud--cyan/);
-  assert.match(field, /settings-flow-cloud--gold/);
-  assert.match(styles, /@keyframes settings-flow-violet/);
+  assert.match(field, /getContext\("webgl"/);
+  assert.match(field, /const LOOP_SECONDS = 15\.466667/);
+  assert.match(field, /settings-flow-canvas/);
+  assert.match(field, /settings-flow-field--fallback/);
+  assert.match(field, /vec3\(0\.04, 0\.48, 0\.04\)/);
+  assert.match(field, /vec3\(0\.91, 0\.08, 0\.58\)/);
+  assert.match(field, /vec3\(0\.02, 0\.34, 0\.7\)/);
   assert.match(styles, /\.settings-sheet\s*\{[\s\S]*?isolation:\s*isolate/);
+  assert.match(styles, /\.settings-flow-canvas\s*\{[\s\S]*?transform:\s*translateZ\(0\)/);
   assert.doesNotMatch(
     styles,
     /\.settings-flow-field\s*\{[^}]*background:\s*#0{3,6}/,
