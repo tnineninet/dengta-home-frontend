@@ -77,13 +77,13 @@ export default function ThemeStudio({
         </label>
         <label className="theme-opacity-control">
           <span>
-            <strong>Glass opacity</strong>
+            <strong>Global glass</strong>
             <output>{Math.round(preferences.cardOpacity * 100)}%</output>
           </span>
           <input
             type="range"
-            min="56"
-            max="96"
+            min="0"
+            max="100"
             value={Math.round(preferences.cardOpacity * 100)}
             onChange={(event) =>
               updateTheme({ cardOpacity: Number(event.target.value) / 100 })

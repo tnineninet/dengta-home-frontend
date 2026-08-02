@@ -60,7 +60,16 @@ export default function CelestialBackdrop({ snapshot }) {
   const x = `${Math.round(snapshot.progress * 84)}vw`;
   const y = `${Math.round(snapshot.arc * -52)}px`;
   const sourceX = `${Math.round(7 + snapshot.progress * 84)}%`;
+  const sourceY = `${Math.round(78 - snapshot.arc * 61)}%`;
   const activeIntensity = snapshot.activeIntensity;
+  const transitionAura = Math.max(
+    snapshot.sunriseAura,
+    snapshot.sunsetAura,
+    snapshot.blueHourAura,
+  );
+  const dayAura = snapshot.isSun
+    ? Math.max(0, 1 - transitionAura * 0.82) * activeIntensity * 0.58
+    : 0;
 
   return (
     <div
@@ -85,6 +94,23 @@ export default function CelestialBackdrop({ snapshot }) {
         "--celestial-active-intensity": snapshot.activeIntensity,
         "--celestial-light-angle": `${snapshot.lightAngle}deg`,
         "--celestial-source-x": sourceX,
+        "--celestial-source-y": sourceY,
+        "--celestial-day-aura-opacity": dayAura.toFixed(3),
+        "--celestial-sunrise-aura-opacity": (
+          snapshot.sunriseAura * activeIntensity
+        ).toFixed(3),
+        "--celestial-sunset-aura-opacity": (
+          snapshot.sunsetAura * activeIntensity
+        ).toFixed(3),
+        "--celestial-blue-aura-opacity": (
+          snapshot.blueHourAura * 0.86
+        ).toFixed(3),
+        "--celestial-falloff-opacity": Math.min(
+          0.46,
+          snapshot.sunriseAura * 0.18 +
+            snapshot.sunsetAura * 0.38 +
+            snapshot.blueHourAura * 0.25,
+        ).toFixed(3),
         "--celestial-sky-opacity": Math.min(
           0.92,
           0.38 + activeIntensity * 0.26,
@@ -127,6 +153,11 @@ export default function CelestialBackdrop({ snapshot }) {
         <i className="celestial-cloud cloud-three" />
       </div>
       <div className="celestial-light-field" />
+      <div className="celestial-solar-falloff" />
+      <div className="celestial-aura celestial-aura-day" />
+      <div className="celestial-aura celestial-aura-sunrise" />
+      <div className="celestial-aura celestial-aura-sunset" />
+      <div className="celestial-aura celestial-aura-blue" />
       <div className="celestial-body">
         <span className="celestial-sun" />
         <span className="celestial-moon" />

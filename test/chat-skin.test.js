@@ -169,3 +169,22 @@ test("cream ornaments stay clear of the previous bubble and remain recognizable"
     "at least 80% of the character must sit above the bubble edge",
   );
 });
+
+test("the composer uses the layered iridescent agent mark from the reference", () => {
+  const app = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
+  const mark = fs.readFileSync(
+    new URL("../src/RainbowAgentMark.jsx", import.meta.url),
+    "utf8",
+  );
+  const css = fs.readFileSync(
+    new URL("../src/sun-glass-ui.css", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(app, /<RainbowAgentMark\s*\/>/);
+  assert.match(mark, /rainbow-agent-mark-lens/);
+  assert.match(mark, /rainbow-agent-mark-caustic/);
+  assert.match(mark, /rainbow-agent-mark-star/);
+  assert.match(css, /@keyframes rainbow-agent-ring/);
+  assert.match(css, /@keyframes rainbow-agent-star-top/);
+});

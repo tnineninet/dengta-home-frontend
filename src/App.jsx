@@ -13,6 +13,9 @@ import CompanionStatus from "./CompanionStatus";
 import AmbientContextBadge from "./AmbientContextBadge";
 import ChatMessage from "./ChatMessage";
 import CelestialBackdrop from "./CelestialBackdrop";
+import FeatureAtmosphere from "./FeatureAtmosphere";
+import RainbowAgentMark from "./RainbowAgentMark";
+import SettingsFlowField from "./SettingsFlowField";
 import { AuthenticatedImage } from "./PrivateMedia";
 import { SelectedAttachmentStrip } from "./ChatMessageExtras";
 import {
@@ -4590,9 +4593,7 @@ function App({ accountControl = null, userName = "" }) {
                 }}
                 onClick={toggleComposerMenu}
               >
-                <span className="composer-menu-icon" aria-hidden="true">
-                  {isComposerMenuOpen ? "×" : "+"}
-                </span>
+                <RainbowAgentMark />
               </button>
               <button
                 className="send-button"
@@ -4803,21 +4804,7 @@ function App({ accountControl = null, userName = "" }) {
 
     return (
       <section className="feature-page moments-page">
-        <header className="moments-journal-hero">
-          <img
-            src="/assets/moments-paper-banner.webp"
-            alt=""
-            aria-hidden="true"
-          />
-          <div>
-            <span>Moments · little things we keep</span>
-            <h2>我们悄悄留下的日常</h2>
-            <p>
-              这里会记住真实发生过的对话、靠近和回应。AI
-              伴侣也可以按自己的感受发布动态。
-            </p>
-          </div>
-        </header>
+        <FeatureAtmosphere kind="moments" />
         <form className="moment-composer" onSubmit={postMoment}>
           <div className="moment-avatar user-avatar" aria-hidden="true">
             我
@@ -4999,6 +4986,7 @@ function App({ accountControl = null, userName = "" }) {
   function renderMemories() {
     return (
       <section className="feature-page memory-page">
+        <FeatureAtmosphere kind="memory" />
         <Suspense fallback={<DeferredFeature label="正在打开伴侣画像…" />}>
           <CompanionProfile
             aiName={settings.ai_name || "小灯"}
@@ -6301,6 +6289,7 @@ function App({ accountControl = null, userName = "" }) {
             aria-labelledby="settings-sheet-title"
             onPointerDown={(event) => event.stopPropagation()}
           >
+            <SettingsFlowField />
             <header className="settings-sheet-header">
               <div>
                 <span>PERSONAL SPACE</span>

@@ -79,9 +79,16 @@ function safeColor(value, fallback) {
 
 function boundedOpacity(value) {
   const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0.56 && parsed <= 0.96
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1
     ? parsed
     : DEFAULT_THEME_PREFERENCES.cardOpacity;
+}
+
+function temporalProximity(date, center, radiusMs) {
+  return Math.max(
+    0,
+    Math.min(1, 1 - Math.abs(date.valueOf() - center.valueOf()) / radiusMs),
+  );
 }
 
 function boundedLightIntensity(value, fallback) {
@@ -253,6 +260,20 @@ export function getCelestialSnapshot(
   );
   const activeIntensity =
     (isSun ? sunIntensity : moonIntensity) * (0.44 + arc * 0.56);
+  const sunriseAura = temporalProximity(
+    date,
+    schedule.sunrise,
+    105 * 60 * 1000,
+  );
+  const sunsetAura = temporalProximity(
+    date,
+    schedule.sunset,
+    105 * 60 * 1000,
+  );
+  const blueHourAura = Math.max(
+    temporalProximity(date, schedule.civilDawn, 80 * 60 * 1000),
+    temporalProximity(date, schedule.civilDusk, 80 * 60 * 1000),
+  );
 
   return {
     dateKey,
@@ -273,6 +294,9 @@ export function getCelestialSnapshot(
     sunriseLabel: formatSolarTime(schedule.sunrise),
     sunsetLabel: formatSolarTime(schedule.sunset),
     moonPeak: phase === "night" && (hour >= 22 || hour < 2),
+    sunriseAura,
+    sunsetAura,
+    blueHourAura,
   };
 }
 
@@ -310,6 +334,7 @@ export function applyThemePreferences(preferences, snapshot, root) {
   const themeControlBackground = isNight
     ? `rgb(${cardRgb} / 0.78)`
     : `rgb(${cardRgb} / 0.66)`;
+  const glassAmount = normalized.cardOpacity;
   root.dataset.dengtaTheme = normalized.preset;
   root.dataset.dengtaAppearance = snapshot.resolvedAppearance;
   root.dataset.dengtaPhase = snapshot.phase;
@@ -320,6 +345,43 @@ export function applyThemePreferences(preferences, snapshot, root) {
   root.style.setProperty(
     "--theme-card-opacity",
     String(normalized.cardOpacity),
+  );
+  root.style.setProperty("--dengta-glass-level", glassAmount.toFixed(3));
+  root.style.setProperty(
+    "--dengta-glass-panel-alpha",
+    (0.025 + glassAmount * 0.46).toFixed(3),
+  );
+  root.style.setProperty(
+    "--dengta-glass-bubble-alpha",
+    (0.035 + glassAmount * 0.5).toFixed(3),
+  );
+  root.style.setProperty(
+    "--dengta-glass-popover-alpha",
+    (0.045 + glassAmount * 0.56).toFixed(3),
+  );
+  root.style.setProperty(
+    "--dengta-glass-control-alpha",
+    (0.045 + glassAmount * 0.34).toFixed(3),
+  );
+  root.style.setProperty(
+    "--dengta-glass-dome-alpha",
+    (glassAmount * 0.13).toFixed(3),
+  );
+  root.style.setProperty(
+    "--dengta-glass-panel-blur",
+    `${(glassAmount * 30).toFixed(1)}px`,
+  );
+  root.style.setProperty(
+    "--dengta-glass-dome-blur",
+    `${(glassAmount * 10).toFixed(1)}px`,
+  );
+  root.style.setProperty(
+    "--dengta-glass-saturation",
+    (1.03 + glassAmount * 0.36).toFixed(3),
+  );
+  root.style.setProperty(
+    "--dengta-glass-border-alpha",
+    (0.32 + glassAmount * 0.38).toFixed(3),
   );
   root.style.setProperty("--theme-background", resolvedBackground);
   root.style.setProperty("--theme-background-rgb", backgroundRgb);

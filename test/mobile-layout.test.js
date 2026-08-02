@@ -108,6 +108,7 @@ assert.deepEqual(
     "auth.css",
     "native-feel.css",
     "apple-ui.css",
+    "sun-glass-ui.css",
   ],
   "layout tests must use the same stylesheet order as the application entrypoint",
 );
@@ -124,6 +125,7 @@ assert.deepEqual(
     "auth.css",
     "native-feel.css",
     "apple-ui.css",
+    "sun-glass-ui.css",
   ],
   "the 280px regression must use the complete application stylesheet cascade",
 );
@@ -570,8 +572,8 @@ assert.doesNotMatch(
 );
 assert.match(
   app,
-  /aria-label=\{\s*isComposerMenuOpen \? "关闭更多功能" : "打开更多功能"[\s\S]*?\{isComposerMenuOpen \? "×" : "\+"\}/,
-  "the plus menu trigger must expose its open state without rotating the whole button",
+  /aria-label=\{\s*isComposerMenuOpen \? "关闭更多功能" : "打开更多功能"[\s\S]*?aria-expanded=\{isComposerMenuOpen\}[\s\S]*?<RainbowAgentMark\s*\/>/,
+  "the composer menu trigger must expose its open state while keeping the reference mark stable",
 );
 assert.doesNotMatch(
   css,

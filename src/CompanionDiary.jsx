@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiRequest } from "./api";
+import FeatureAtmosphere from "./FeatureAtmosphere";
 
 function formatDiaryDate(value) {
   if (!value) return "刚刚";
@@ -64,18 +65,7 @@ export default function CompanionDiary({ aiName = "小灯", onNotice }) {
 
   return (
     <section className="feature-page companion-diary-page">
-      <header className="diary-journal-hero">
-        <img src="/assets/moments-paper-banner.webp" alt="" aria-hidden="true" />
-        <div>
-          <span>Private notes · written from what really happened</span>
-          <h2>{aiName} 的记忆手记</h2>
-          <p>
-            积累了足够的新对话后，由 {aiName}
-            以第一人称写下自己认为值得留下的片段。
-          </p>
-        </div>
-      </header>
-
+      <FeatureAtmosphere kind="diary" />
       <div
         className={`diary-generation-state state-${generation.state || "watching"}`}
         role="status"

@@ -25,6 +25,15 @@ test("theme preferences reject invalid colours, opacity and modes", () => {
   );
 });
 
+test("global glass accepts the full transparent-to-frosted range", () => {
+  assert.equal(normalizeThemePreferences({ cardOpacity: 0 }).cardOpacity, 0);
+  assert.equal(normalizeThemePreferences({ cardOpacity: 1 }).cardOpacity, 1);
+  assert.equal(
+    normalizeThemePreferences({ cardOpacity: 0.27 }).cardOpacity,
+    0.27,
+  );
+});
+
 test("the China-time light cycle resolves deterministic phases and shadows", () => {
   const dawn = getCelestialSnapshot(
     new Date("2026-07-27T22:30:00.000Z"),
@@ -99,6 +108,10 @@ test("theme colours reach the sky and shared optical-glass material", () => {
   assert.ok(values.has("--theme-glass-shadow"));
   assert.equal(values.get("--sun-light-intensity"), "1.00");
   assert.equal(values.get("--moon-light-intensity"), "0.86");
+  assert.ok(values.has("--dengta-glass-panel-alpha"));
+  assert.ok(values.has("--dengta-glass-bubble-alpha"));
+  assert.ok(values.has("--dengta-glass-panel-blur"));
+  assert.ok(values.has("--dengta-glass-saturation"));
 
   const styles = fs.readFileSync(
     new URL("../src/native-feel.css", import.meta.url),
@@ -119,6 +132,25 @@ test("theme colours reach the sky and shared optical-glass material", () => {
     /\.message-row\.assistant \.message-bubble[\s\S]*?--theme-card-rgb/,
     "assistant glass must use the same live card colour as Theme Studio",
   );
+});
+
+test("daylight snapshots expose continuous sunrise, sunset and blue-hour aura", () => {
+  const dawn = getCelestialSnapshot(
+    new Date("2026-07-27T22:30:00.000Z"),
+    "auto",
+  );
+  const sunset = getCelestialSnapshot(
+    new Date("2026-07-28T10:55:00.000Z"),
+    "auto",
+  );
+
+  for (const snapshot of [dawn, sunset]) {
+    assert.ok(snapshot.sunriseAura >= 0 && snapshot.sunriseAura <= 1);
+    assert.ok(snapshot.sunsetAura >= 0 && snapshot.sunsetAura <= 1);
+    assert.ok(snapshot.blueHourAura >= 0 && snapshot.blueHourAura <= 1);
+  }
+  assert.ok(dawn.sunriseAura > dawn.sunsetAura);
+  assert.ok(sunset.sunsetAura > sunset.sunriseAura);
 });
 
 test("night mode exposes readable semantic text and control tokens", () => {
@@ -159,5 +191,32 @@ test("night mode exposes readable semantic text and control tokens", () => {
     styles,
     /data-dengta-appearance="night"[^{}]*\{[^}]*filter:\s*invert/i,
     "night mode must not invert images and glass highlights",
+  );
+});
+
+test("settings opens over the bright fluid-glass field", () => {
+  const app = fs.readFileSync(
+    new URL("../src/App.jsx", import.meta.url),
+    "utf8",
+  );
+  const field = fs.readFileSync(
+    new URL("../src/SettingsFlowField.jsx", import.meta.url),
+    "utf8",
+  );
+  const styles = fs.readFileSync(
+    new URL("../src/sun-glass-ui.css", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(app, /<SettingsFlowField\s*\/>/);
+  assert.match(field, /settings-flow-cloud--violet/);
+  assert.match(field, /settings-flow-cloud--cyan/);
+  assert.match(field, /settings-flow-cloud--gold/);
+  assert.match(styles, /@keyframes settings-flow-violet/);
+  assert.match(styles, /\.settings-sheet\s*\{[\s\S]*?isolation:\s*isolate/);
+  assert.doesNotMatch(
+    styles,
+    /\.settings-flow-field\s*\{[^}]*background:\s*#0{3,6}/,
+    "the Settings reference must be reflected onto a bright field instead of copied onto black",
   );
 });

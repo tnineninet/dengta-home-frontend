@@ -1,0 +1,977 @@
+/* Accepted sun-glass direction: one live sky, one global material, distinct page anchors. */
+:root {
+  --dengta-glass-panel-alpha: .402;
+  --dengta-glass-bubble-alpha: .445;
+  --dengta-glass-popover-alpha: .504;
+  --dengta-glass-control-alpha: .324;
+  --dengta-glass-dome-alpha: .107;
+  --dengta-glass-panel-blur: 24.6px;
+  --dengta-glass-dome-blur: 8.2px;
+  --dengta-glass-saturation: 1.325;
+  --dengta-glass-border-alpha: .632;
+}
+
+html,
+body,
+#root {
+  background: #10131d;
+}
+
+.celestial-backdrop {
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  display: block;
+  overflow: hidden;
+  pointer-events: none;
+  background: linear-gradient(180deg, #8ec8e2 0%, #b7dde1 42%, #f8d99c 100%);
+}
+
+.celestial-backdrop.phase-dawn {
+  background: linear-gradient(180deg, #4e91cb 0%, #8bd0d6 38%, #f5dfa0 72%, #ffc77c 100%);
+}
+
+.celestial-backdrop.phase-day {
+  background: linear-gradient(180deg, #64a8dc 0%, #9ed3e1 45%, #dcead8 74%, #f3dea5 100%);
+}
+
+.celestial-backdrop.phase-dusk {
+  background: linear-gradient(180deg, #315f9c 0%, #7d82bc 34%, #dc7ca1 67%, #ff725e 100%);
+}
+
+.celestial-backdrop.phase-night {
+  background: linear-gradient(180deg, #071127 0%, #111b42 48%, #27335e 100%);
+}
+
+.celestial-sky-wash,
+.celestial-milky-way,
+.celestial-stars,
+.celestial-clouds,
+.celestial-light-field,
+.celestial-body,
+.celestial-lens-flare,
+.celestial-aura,
+.celestial-solar-falloff {
+  display: block;
+}
+
+.celestial-window-lattice,
+.celestial-shadow-cast {
+  display: none;
+}
+
+.celestial-sky-wash,
+.celestial-light-field,
+.celestial-stars,
+.celestial-clouds,
+.celestial-milky-way,
+.celestial-solar-falloff {
+  position: absolute;
+  inset: 0;
+}
+
+.celestial-sky-wash {
+  opacity: var(--celestial-sky-opacity);
+  background:
+    radial-gradient(circle at var(--celestial-source-x) var(--celestial-source-y), rgb(255 248 216 / .28), transparent 24%),
+    linear-gradient(116deg, rgb(91 166 255 / .22), rgb(91 215 203 / .13) 31%, rgb(255 222 117 / .2) 55%, rgb(255 114 132 / .17) 77%, rgb(123 94 219 / .19));
+  mix-blend-mode: soft-light;
+  filter: saturate(1.2);
+}
+
+.celestial-light-field {
+  opacity: var(--celestial-light-opacity);
+  background: radial-gradient(circle at var(--celestial-source-x) var(--celestial-source-y), rgb(255 251 230 / .44), transparent 36%);
+  mix-blend-mode: screen;
+}
+
+.celestial-solar-falloff {
+  z-index: 1;
+  opacity: var(--celestial-falloff-opacity, 0);
+  background: radial-gradient(circle at var(--celestial-source-x) var(--celestial-source-y), transparent 0 9%, rgb(7 17 42 / .025) 29%, rgb(5 11 30 / .17) 62%, rgb(3 7 20 / .42) 100%);
+}
+
+.celestial-aura {
+  position: absolute;
+  z-index: 2;
+  left: var(--celestial-source-x);
+  top: var(--celestial-source-y);
+  width: min(124vw, 1280px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  mix-blend-mode: screen;
+  filter: blur(12px) saturate(1.35);
+  pointer-events: none;
+}
+
+.celestial-aura-day {
+  opacity: var(--celestial-day-aura-opacity, 0);
+  background: radial-gradient(circle, rgb(255 252 223 / .92) 0 4%, rgb(255 232 150 / .52) 12%, rgb(255 207 96 / .22) 29%, rgb(118 188 255 / .08) 50%, transparent 72%);
+}
+
+.celestial-aura-sunrise {
+  opacity: var(--celestial-sunrise-aura-opacity, 0);
+  background: radial-gradient(circle, rgb(255 253 216 / .98) 0 3%, rgb(255 225 111 / .84) 10%, rgb(255 187 65 / .44) 23%, rgb(63 219 216 / .28) 39%, rgb(73 150 244 / .14) 56%, transparent 74%);
+}
+
+.celestial-aura-sunset {
+  opacity: var(--celestial-sunset-aura-opacity, 0);
+  background: radial-gradient(circle, rgb(255 247 202 / .98) 0 3%, rgb(255 188 71 / .82) 11%, rgb(255 75 49 / .6) 25%, rgb(240 50 99 / .34) 39%, rgb(74 101 219 / .2) 57%, transparent 76%);
+}
+
+.celestial-aura-blue {
+  opacity: var(--celestial-blue-aura-opacity, 0);
+  background: radial-gradient(circle, rgb(220 244 255 / .9) 0 3%, rgb(89 190 255 / .62) 12%, rgb(48 115 244 / .45) 27%, rgb(79 59 205 / .28) 45%, rgb(22 43 112 / .12) 61%, transparent 77%);
+}
+
+.celestial-body {
+  position: absolute;
+  z-index: 4;
+  left: var(--celestial-source-x);
+  top: var(--celestial-source-y);
+  width: clamp(48px, 6vw, 72px);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+}
+
+.celestial-sun,
+.celestial-moon {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+
+.celestial-sun {
+  opacity: 0;
+  background: rgb(255 248 211 / .96);
+  box-shadow: 0 0 var(--sun-glow-near) rgb(255 240 184 / .82), 0 0 var(--sun-glow-mid) 30px rgb(255 202 112 / .42), 0 0 var(--sun-glow-far) 60px rgb(255 118 91 / .15);
+}
+
+.celestial-backdrop.is-sun .celestial-sun {
+  opacity: 1;
+}
+
+.celestial-moon {
+  opacity: 0;
+  background: radial-gradient(circle at 34% 30%, #ffffff 0 8%, #e8edf6 39%, #a8b4d2 100%);
+  box-shadow: 0 0 var(--moon-glow-near) rgb(219 235 255 / .8), 0 0 var(--moon-glow-mid) 26px rgb(129 165 235 / .32), 0 0 var(--moon-glow-far) 58px rgb(92 100 209 / .14);
+}
+
+.celestial-backdrop.is-moon .celestial-moon {
+  opacity: 1;
+}
+
+.celestial-milky-way {
+  z-index: 1;
+  left: -18%;
+  top: 14%;
+  width: 138%;
+  height: 45%;
+  opacity: 0;
+  transform: rotate(-23deg);
+  background: radial-gradient(ellipse at 38% 50%, rgb(255 229 209 / .32), transparent 22%), radial-gradient(ellipse at 63% 51%, rgb(197 179 238 / .3), transparent 24%), linear-gradient(180deg, transparent 5%, rgb(115 146 221 / .1) 25%, rgb(226 216 246 / .24) 46%, rgb(255 240 219 / .31) 52%, rgb(174 155 221 / .19) 64%, transparent 94%);
+  filter: blur(10px) saturate(1.32);
+  mix-blend-mode: screen;
+}
+
+.phase-night .celestial-milky-way {
+  opacity: calc(.96 - var(--dengta-glass-level, .82) * .2);
+}
+
+.celestial-stars {
+  z-index: 2;
+  opacity: 0;
+  background-image: radial-gradient(circle, rgb(255 255 255 / .72) 0 1px, transparent 1.4px), radial-gradient(circle, rgb(175 210 255 / .62) 0 1px, transparent 1.5px), radial-gradient(circle, rgb(255 224 201 / .56) 0 .8px, transparent 1.3px);
+  background-position: 0 0, 23px 17px, 48px 39px;
+  background-size: 64px 64px, 91px 91px, 117px 117px;
+}
+
+.phase-night .celestial-stars {
+  opacity: calc(1 - var(--dengta-glass-level, .82) * .18);
+}
+
+.celestial-star {
+  position: absolute;
+  left: var(--star-left);
+  top: var(--star-top);
+  width: 4px;
+  height: 4px;
+  opacity: var(--star-opacity);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 8px rgb(190 220 255 / .92);
+  animation: sun-glass-star-twinkle 4.2s ease-in-out var(--star-delay) infinite;
+}
+
+.celestial-star.shape-four,
+.celestial-star.shape-five {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  transform: rotate(45deg) scale(.72, 1.45);
+}
+
+.celestial-clouds {
+  z-index: 5;
+  overflow: hidden;
+}
+
+.celestial-cloud {
+  position: absolute;
+  display: block;
+  width: 120px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / .46);
+  box-shadow: 42px -12px 0 7px rgb(255 255 255 / .38), 78px 3px 0 -2px rgb(255 255 255 / .36);
+  filter: blur(7px);
+  animation: sun-glass-cloud-drift 54s ease-in-out infinite alternate;
+}
+
+.cloud-one { left: -8%; top: 22%; }
+.cloud-two { left: 48%; top: 38%; animation-delay: -17s; transform: scale(.72); }
+.cloud-three { right: -9%; top: 14%; animation-delay: -31s; transform: scale(1.16); }
+
+.phase-night .celestial-cloud {
+  background: rgb(127 148 194 / .18);
+  box-shadow: 42px -12px 0 7px rgb(127 148 194 / .15), 78px 3px 0 -2px rgb(127 148 194 / .13);
+}
+
+.celestial-lens-flare {
+  z-index: 3;
+  opacity: var(--celestial-flare-opacity);
+}
+
+.celestial-glass-grain {
+  position: absolute;
+  z-index: 6;
+  inset: 0;
+  display: block;
+  opacity: calc(.02 + var(--dengta-glass-level, .82) * .08);
+  background-image: radial-gradient(circle at 20% 10%, rgb(255 255 255 / .22) 0 1px, transparent 1.4px);
+  background-size: 13px 13px;
+  mix-blend-mode: soft-light;
+}
+
+.app-shell,
+.main-panel,
+.view-content,
+.feature-page,
+.settings-page,
+:root[data-dengta-appearance="night"] .app-shell,
+:root[data-dengta-appearance="night"] .main-panel,
+:root[data-dengta-appearance="night"] .view-content,
+:root[data-dengta-appearance="night"] .feature-page,
+:root[data-dengta-appearance="night"] .settings-page {
+  background: transparent;
+}
+
+.app-shell {
+  position: relative;
+  z-index: 1;
+}
+
+.sidebar,
+.topbar,
+.composer,
+.composer-wrap,
+.companion-status,
+.status-summary,
+.status-panel,
+.ambient-context-badge,
+.settings-sheet,
+.settings-sheet-header,
+.settings-sheet-scroll,
+.dialog-card,
+.composer-tool-menu,
+.sticker-picker,
+:root[data-dengta-appearance="night"] .topbar,
+:root[data-dengta-appearance="night"] .composer-wrap,
+:root[data-dengta-appearance="night"] .companion-status,
+:root[data-dengta-appearance="night"] .status-panel,
+:root[data-dengta-appearance="night"] .settings-sheet,
+:root[data-dengta-appearance="night"] .settings-sheet-header,
+:root[data-dengta-appearance="night"] .settings-sheet-scroll {
+  border-color: rgb(255 255 255 / var(--dengta-glass-border-alpha));
+  background: rgb(var(--theme-card-rgb) / var(--dengta-glass-panel-alpha));
+  box-shadow: inset 0 1px rgb(255 255 255 / .54), 0 18px 48px rgb(13 19 35 / .13);
+  backdrop-filter: blur(var(--dengta-glass-panel-blur)) saturate(var(--dengta-glass-saturation));
+  -webkit-backdrop-filter: blur(var(--dengta-glass-panel-blur)) saturate(var(--dengta-glass-saturation));
+}
+
+.settings-sheet {
+  position: relative;
+  isolation: isolate;
+  background:
+    linear-gradient(145deg, rgb(255 253 246 / .58), rgb(234 246 250 / .46) 46%, rgb(252 238 246 / .5)),
+    rgb(var(--theme-card-rgb) / var(--dengta-glass-panel-alpha));
+}
+
+.settings-sheet-header,
+.settings-sheet-scroll {
+  position: relative;
+  z-index: 2;
+  background: rgb(var(--theme-card-rgb) / max(.28, var(--dengta-glass-panel-alpha)));
+}
+
+.settings-flow-field {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 18% 14%, rgb(255 255 255 / .82), transparent 25%),
+    linear-gradient(150deg, #fffdf5 0%, #eef8fa 42%, #f8edf5 72%, #f9f4e8 100%);
+}
+
+.settings-flow-cloud {
+  position: absolute;
+  display: block;
+  width: min(68vw, 560px);
+  aspect-ratio: 1;
+  border-radius: 43% 57% 61% 39% / 48% 35% 65% 52%;
+  filter: blur(28px) saturate(1.38);
+  opacity: .56;
+  mix-blend-mode: multiply;
+  will-change: transform, border-radius;
+}
+
+.settings-flow-cloud::before,
+.settings-flow-cloud::after {
+  content: "";
+  position: absolute;
+  border-radius: inherit;
+}
+
+.settings-flow-cloud::before {
+  inset: 8%;
+  border: 12px solid rgb(255 255 255 / .58);
+  filter: blur(13px);
+  mix-blend-mode: screen;
+}
+
+.settings-flow-cloud::after {
+  inset: 28%;
+  background: rgb(17 24 41 / .42);
+  filter: blur(26px);
+  mix-blend-mode: multiply;
+}
+
+.settings-flow-cloud--violet {
+  left: -48%;
+  top: -6%;
+  background:
+    conic-gradient(from 72deg, #43268d, #df4acf 21%, #5639bc 42%, #162b67 65%, #8d45cd 82%, #43268d);
+  animation: settings-flow-violet 19s ease-in-out infinite alternate;
+}
+
+.settings-flow-cloud--cyan {
+  right: -54%;
+  top: 24%;
+  background:
+    conic-gradient(from -38deg, #0b4455, #33d4d2 20%, #5477e7 45%, #8d50e7 65%, #174a65 83%, #0b4455);
+  animation: settings-flow-cyan 23s ease-in-out infinite alternate;
+}
+
+.settings-flow-cloud--gold {
+  left: -18%;
+  bottom: -36%;
+  width: min(66vw, 540px);
+  background:
+    conic-gradient(from 118deg, #99512a, #f6d45d 20%, #ef7a8a 43%, #693a91 70%, #224259 88%, #99512a);
+  opacity: .46;
+  animation: settings-flow-gold 26s ease-in-out infinite alternate;
+}
+
+.settings-flow-cloud--ink {
+  right: 8%;
+  bottom: -24%;
+  width: min(52vw, 430px);
+  background:
+    conic-gradient(from 34deg, #162336, #53334f 28%, #183e53 52%, #10212d 75%, #162336);
+  opacity: .28;
+  animation: settings-flow-ink 21s ease-in-out infinite alternate;
+}
+
+.settings-flow-prism {
+  position: absolute;
+  left: -18%;
+  top: 34%;
+  width: 136%;
+  height: 24%;
+  display: block;
+  background: linear-gradient(90deg, transparent 5%, rgb(255 215 88 / .36), rgb(91 224 237 / .34) 44%, rgb(212 91 229 / .38) 64%, transparent 91%);
+  filter: blur(24px);
+  mix-blend-mode: multiply;
+  transform: rotate(-8deg);
+  animation: settings-flow-prism 17s ease-in-out infinite alternate;
+}
+
+.settings-flow-grain {
+  position: absolute;
+  inset: 0;
+  display: block;
+  opacity: .11;
+  background-image: radial-gradient(circle, rgb(35 45 62 / .32) 0 .7px, transparent .9px);
+  background-size: 9px 9px;
+  mix-blend-mode: soft-light;
+}
+
+.sidebar {
+  color: var(--theme-ink);
+  background: rgb(var(--theme-card-rgb) / calc(var(--dengta-glass-panel-alpha) + .08));
+}
+
+.companion-status,
+.companion-status .status-summary,
+.companion-status .status-name-line strong,
+.companion-status .status-chevron,
+.companion-status .status-mini-vitals,
+.companion-status .status-mini-vitals strong {
+  color: var(--theme-ink);
+}
+
+.companion-status .status-glance,
+.companion-status .status-reaction-preview,
+.companion-status .status-disclaimer {
+  color: rgb(var(--theme-ink-rgb) / .64);
+}
+
+.companion-status .status-mood,
+.companion-status .status-mini-vitals > span {
+  border-color: rgb(var(--theme-ink-rgb) / .1);
+  color: var(--theme-accent);
+  background: rgb(var(--theme-card-rgb) / var(--dengta-glass-control-alpha));
+}
+
+.feature-page,
+.moments-page,
+.companion-diary-page,
+.memory-page,
+:root[data-dengta-appearance="night"] .feature-page,
+:root[data-dengta-appearance="night"] .moments-page,
+:root[data-dengta-appearance="night"] .companion-diary-page,
+:root[data-dengta-appearance="night"] .memory-page {
+  color: var(--theme-ink);
+  background: transparent;
+}
+
+.message-row.assistant .message-bubble,
+.message-row.user .message-bubble,
+.moment-card,
+.moment-composer,
+.empty-card,
+.diary-generation-state,
+.diary-empty,
+.diary-entry,
+.memory-card,
+.profile-card,
+.ombre-memory-section,
+.ombre-memory-item,
+.nursery-state-grid,
+.nursery-speech-form,
+.nursery-care-grid > button,
+.nursery-bonds,
+.nursery-album,
+.nursery-portrait,
+.nursery-empty-state,
+.nursery-birth-scene,
+.settings-card,
+:root[data-dengta-appearance="night"] .message-row.assistant .message-bubble,
+:root[data-dengta-appearance="night"] .moment-card,
+:root[data-dengta-appearance="night"] .diary-entry,
+:root[data-dengta-appearance="night"] .memory-card,
+:root[data-dengta-appearance="night"] .profile-card,
+:root[data-dengta-appearance="night"] .settings-card {
+  border-color: rgb(255 255 255 / var(--dengta-glass-border-alpha));
+  color: var(--theme-ink);
+  background: rgb(var(--theme-card-rgb) / var(--dengta-glass-bubble-alpha));
+  box-shadow: inset 0 1px rgb(255 255 255 / .48), 0 14px 38px rgb(20 25 41 / .1);
+  backdrop-filter: blur(var(--dengta-glass-panel-blur)) saturate(var(--dengta-glass-saturation));
+  -webkit-backdrop-filter: blur(var(--dengta-glass-panel-blur)) saturate(var(--dengta-glass-saturation));
+}
+
+.message-row.user .message-bubble {
+  background: rgb(var(--theme-accent-rgb) / calc(var(--dengta-glass-bubble-alpha) + .05));
+}
+
+.app-shell .composer .chat-attach-button {
+  position: relative;
+  width: 46px;
+  min-width: 46px;
+  height: 46px;
+  min-height: 46px;
+  overflow: visible;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: inherit;
+  background: transparent;
+  box-shadow: none;
+  transition: transform 260ms cubic-bezier(.2, .86, .24, 1.2), opacity 180ms ease;
+}
+
+.app-shell .composer .chat-attach-button:hover,
+.app-shell .composer .chat-attach-button:focus-visible,
+.app-shell .composer .chat-attach-button.active {
+  color: inherit;
+  background: transparent;
+  box-shadow: none;
+}
+
+.app-shell .composer .chat-attach-button:active {
+  transform: scale(.88);
+}
+
+.app-shell .composer .chat-attach-button:disabled {
+  opacity: .46;
+  filter: grayscale(.32);
+}
+
+.rainbow-agent-mark {
+  position: relative;
+  display: block;
+  width: 46px;
+  height: 46px;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / .82);
+  border-radius: 50%;
+  background: radial-gradient(circle at 31% 21%, rgb(255 255 255 / .88), rgb(255 255 255 / .27) 31%, rgb(212 230 242 / .15) 62%, rgb(128 167 199 / .22));
+  box-shadow: inset 0 1px 1px rgb(255 255 255 / .95), inset 0 -2px 4px rgb(60 77 96 / .2), 0 5px 12px rgb(21 34 52 / .2), 0 0 0 1px rgb(255 255 255 / .28);
+  isolation: isolate;
+}
+
+.rainbow-agent-mark::before {
+  content: "";
+  position: absolute;
+  z-index: 5;
+  inset: 2px 7px auto;
+  height: 10px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, rgb(255 255 255 / .9), transparent);
+  filter: blur(1px);
+  pointer-events: none;
+}
+
+.rainbow-agent-mark::after {
+  content: "";
+  position: absolute;
+  z-index: 6;
+  inset: 2px;
+  padding: 1px;
+  border-radius: 50%;
+  background: conic-gradient(from 18deg, #ff6c64, #ffd95c, #6ce6ff, #6c8dff, #e784ff, #ff6c64);
+  opacity: .7;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: rainbow-agent-ring 16s linear infinite;
+  pointer-events: none;
+}
+
+.rainbow-agent-mark-lens {
+  position: absolute;
+  z-index: 2;
+  inset: 5px;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / .86);
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 22%, rgb(255 255 255 / .24), transparent 24%), radial-gradient(circle at 50% 62%, #596064 0%, #353c3f 62%, #1c2327 100%);
+  box-shadow: inset 0 2px 5px rgb(255 255 255 / .28), inset 0 -4px 8px rgb(0 0 0 / .38), 0 0 0 1px rgb(20 30 38 / .46);
+}
+
+.rainbow-agent-mark-lens::after {
+  content: "";
+  position: absolute;
+  z-index: 4;
+  inset: 1px;
+  border-radius: 50%;
+  background: linear-gradient(132deg, rgb(255 255 255 / .34), transparent 29% 68%, rgb(255 255 255 / .14));
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+.rainbow-agent-mark-caustic {
+  position: absolute;
+  z-index: 1;
+  inset: -52%;
+  border-radius: 44%;
+  background: conic-gradient(from 12deg, transparent 0 8%, rgb(255 91 69 / .76) 11%, rgb(255 218 77 / .88) 15%, rgb(82 231 255 / .7) 19%, transparent 25% 43%, rgb(255 101 157 / .68) 48%, rgb(114 109 255 / .72) 53%, rgb(91 236 225 / .62) 58%, transparent 64% 82%, rgb(255 188 69 / .74) 88%, transparent 94%);
+  filter: blur(4px) saturate(1.55);
+  mix-blend-mode: screen;
+  animation: rainbow-agent-caustic 12s linear infinite;
+}
+
+.rainbow-agent-mark-caustic::after {
+  content: "";
+  position: absolute;
+  inset: 31%;
+  border: 4px solid rgb(255 255 255 / .13);
+  border-radius: 42% 58% 54% 46%;
+  box-shadow: 11px -4px 0 rgb(255 207 73 / .27), -9px 7px 0 rgb(78 191 255 / .24);
+}
+
+.rainbow-agent-mark-star {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: 50%;
+  width: 25px;
+  height: 25px;
+  overflow: visible;
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 1px 1px rgb(255 255 255 / .72)) drop-shadow(0 3px 5px rgb(39 64 112 / .42));
+  animation: rainbow-agent-star-breathe 3.8s ease-in-out infinite;
+}
+
+.rainbow-star-stop-top {
+  stop-color: #ffe255;
+  animation: rainbow-agent-star-top 12s ease-in-out infinite;
+}
+
+.rainbow-star-stop-middle { stop-color: #fffef5; }
+.rainbow-star-stop-bottom { stop-color: #559cff; }
+
+.feature-atmosphere {
+  position: relative;
+  min-height: 190px;
+  margin: calc(-1 * clamp(18px, 3vw, 32px)) calc(-1 * clamp(18px, 3vw, 32px)) 24px;
+  overflow: hidden;
+  padding: 34px clamp(24px, 5vw, 72px);
+  border-bottom: 1px solid rgb(255 255 255 / var(--dengta-glass-border-alpha));
+  color: var(--theme-ink);
+  background: linear-gradient(108deg, rgb(var(--theme-card-rgb) / calc(var(--dengta-glass-panel-alpha) * .72)), transparent 68%);
+  isolation: isolate;
+}
+
+.feature-atmosphere::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background: radial-gradient(circle at 76% 45%, rgb(var(--theme-accent-rgb) / .18), transparent 37%);
+  mix-blend-mode: screen;
+}
+
+.feature-atmosphere-copy {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  width: min(56%, 480px);
+  align-content: center;
+}
+
+.feature-atmosphere-copy > span {
+  color: var(--theme-ink-soft);
+  font-size: 11px;
+  font-weight: 720;
+  letter-spacing: .14em;
+}
+
+.feature-atmosphere-copy > strong {
+  margin-top: 7px;
+  font-family: Georgia, "Songti SC", "Noto Serif CJK SC", serif;
+  font-size: clamp(34px, 5vw, 56px);
+  font-weight: 560;
+  line-height: 1;
+}
+
+.feature-atmosphere-copy > em {
+  margin-top: 8px;
+  color: var(--theme-muted);
+  font-family: "Segoe Print", "Bradley Hand", "KaiTi", cursive;
+  font-size: clamp(13px, 1.7vw, 19px);
+  letter-spacing: 0;
+}
+
+.feature-atmosphere-art {
+  position: absolute;
+  z-index: 2;
+  inset: 0 0 0 44%;
+}
+
+.feature-cloud {
+  position: absolute;
+  display: block;
+  width: 142px;
+  height: 58px;
+  border: 1px solid rgb(255 255 255 / .64);
+  border-radius: 52% 48% 48% 52%;
+  background: rgb(var(--theme-card-rgb) / calc(var(--dengta-glass-panel-alpha) * .72));
+  box-shadow: inset 0 1px rgb(255 255 255 / .7), 0 18px 44px rgb(30 45 78 / .12);
+  backdrop-filter: blur(calc(var(--dengta-glass-panel-blur) * .72));
+}
+
+.feature-cloud::before,
+.feature-cloud::after {
+  content: "";
+  position: absolute;
+  border: inherit;
+  border-radius: 50%;
+  background: inherit;
+}
+
+.feature-cloud::before { width: 72px; height: 72px; left: 19px; top: -31px; }
+.feature-cloud::after { width: 62px; height: 62px; right: 14px; top: -22px; }
+.cloud-back { right: 7%; top: 42%; opacity: .48; transform: scale(.72); animation: feature-cloud-float 8s ease-in-out infinite alternate; }
+.cloud-anchor { right: 21%; top: 47%; animation: feature-cloud-float 6.5s ease-in-out -2s infinite alternate; }
+
+.feature-anchor-object {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: 42%;
+  display: block;
+  width: 58px;
+  height: 58px;
+  transform: translate(-50%, -50%);
+}
+
+.feature-atmosphere--memory .feature-anchor-object {
+  border: 3px solid var(--theme-ink);
+  border-radius: 50%;
+  background: rgb(var(--theme-card-rgb) / .3);
+  box-shadow: 0 0 0 5px rgb(255 255 255 / .14);
+}
+
+.feature-atmosphere--memory .feature-anchor-object::before,
+.feature-atmosphere--memory .feature-anchor-object::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--theme-ink);
+  transform-origin: 50% 100%;
+}
+
+.feature-atmosphere--memory .feature-anchor-object::before { height: 18px; transform: translate(-50%, -100%) rotate(18deg); }
+.feature-atmosphere--memory .feature-anchor-object::after { height: 14px; transform: translate(-50%, -100%) rotate(126deg); }
+
+.feature-atmosphere--moments .feature-anchor-object {
+  width: 66px;
+  height: 52px;
+  border: 3px solid var(--theme-ink);
+  border-radius: 9px;
+  transform: translate(-50%, -50%) rotate(-7deg);
+}
+
+.feature-atmosphere--moments .feature-anchor-object::before {
+  content: "";
+  position: absolute;
+  left: 9px;
+  bottom: 8px;
+  width: 42px;
+  height: 23px;
+  background: linear-gradient(145deg, transparent 42%, var(--theme-ink) 44% 48%, transparent 50%), linear-gradient(35deg, transparent 42%, var(--theme-ink) 44% 48%, transparent 50%);
+}
+
+.feature-atmosphere--moments .feature-anchor-object::after {
+  content: "";
+  position: absolute;
+  right: 9px;
+  top: 8px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ffd866;
+  box-shadow: 0 0 12px #ffd866;
+}
+
+.feature-atmosphere--diary .feature-anchor-object {
+  width: 62px;
+  height: 54px;
+  border: 3px solid var(--theme-ink);
+  border-radius: 6px 12px 12px 6px;
+  transform: translate(-50%, -50%) rotate(5deg);
+}
+
+.feature-atmosphere--diary .feature-anchor-object::before {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 10px;
+  width: 35px;
+  height: 3px;
+  background: var(--theme-ink);
+  box-shadow: 0 9px var(--theme-ink), 0 18px var(--theme-ink);
+  opacity: .55;
+}
+
+.feature-orbit {
+  position: absolute;
+  right: 15%;
+  top: 31%;
+  width: 180px;
+  height: 86px;
+  border: 1px solid rgb(255 255 255 / .54);
+  border-radius: 50%;
+  transform: rotate(-12deg);
+  opacity: .6;
+}
+
+.feature-spark {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  transform: rotate(45deg) scale(.62, 1.35);
+  border-radius: 2px;
+  background: linear-gradient(135deg, #66d8ff, #ffd861 48%, #ff7bc5);
+  box-shadow: 0 0 14px rgb(255 223 121 / .58);
+  animation: feature-spark-pulse 3.6s ease-in-out infinite;
+}
+
+.spark-one { right: 12%; top: 24%; }
+.spark-two { right: 45%; top: 68%; width: 10px; height: 10px; animation-delay: -1.7s; }
+
+.feature-chibi {
+  position: absolute;
+  right: 7%;
+  bottom: 11px;
+  display: block;
+  width: 55px;
+  height: 55px;
+  border: 2px solid rgb(var(--theme-ink-rgb) / .72);
+  border-radius: 50% 50% 44% 46%;
+  background: rgb(var(--theme-card-rgb) / .72);
+  box-shadow: 0 10px 24px rgb(24 31 51 / .14);
+}
+
+.feature-chibi-ear {
+  position: absolute;
+  top: -7px;
+  width: 20px;
+  height: 20px;
+  border: inherit;
+  border-radius: 50%;
+  background: inherit;
+}
+
+.feature-chibi-ear.ear-left { left: 2px; }
+.feature-chibi-ear.ear-right { right: 2px; }
+.feature-chibi-face { position: absolute; inset: 0; }
+.feature-chibi-face > i { position: absolute; top: 25px; width: 4px; height: 5px; border-radius: 50%; background: var(--theme-ink); }
+.feature-chibi-face > i:first-child { left: 17px; }
+.feature-chibi-face > i:last-child { right: 17px; }
+.feature-chibi-face::after { content: ""; position: absolute; left: 24px; top: 34px; width: 8px; height: 4px; border-bottom: 2px solid var(--theme-ink); border-radius: 50%; }
+
+@keyframes sun-glass-star-twinkle {
+  50% { opacity: .26; transform: scale(.72); }
+}
+
+@keyframes sun-glass-cloud-drift {
+  to { translate: 12vw 4px; }
+}
+
+@keyframes feature-cloud-float {
+  to { translate: 10px -7px; }
+}
+
+@keyframes feature-spark-pulse {
+  50% { opacity: .42; transform: rotate(45deg) scale(.45, 1.05); }
+}
+
+@keyframes rainbow-agent-ring {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes rainbow-agent-caustic {
+  to { transform: rotate(360deg) scale(1.04); }
+}
+
+@keyframes rainbow-agent-star-top {
+  0%,
+  100% { stop-color: #ffe255; }
+  42%,
+  67% { stop-color: #ff6d61; }
+}
+
+@keyframes rainbow-agent-star-breathe {
+  50% {
+    transform: translate(-50%, -50%) scale(.94);
+    filter: drop-shadow(0 1px 1px rgb(255 255 255 / .92)) drop-shadow(0 0 6px rgb(255 218 105 / .54));
+  }
+}
+
+@keyframes settings-flow-violet {
+  0% { transform: translate3d(-7%, -5%, 0) rotate(-12deg) scale(.88); border-radius: 43% 57% 61% 39% / 48% 35% 65% 52%; }
+  48% { transform: translate3d(46%, 18%, 0) rotate(34deg) scale(1.08); border-radius: 62% 38% 45% 55% / 35% 61% 39% 65%; }
+  100% { transform: translate3d(72%, 42%, 0) rotate(78deg) scale(.96); border-radius: 37% 63% 58% 42% / 56% 44% 63% 37%; }
+}
+
+@keyframes settings-flow-cyan {
+  0% { transform: translate3d(8%, -12%, 0) rotate(18deg) scale(.92); }
+  55% { transform: translate3d(-38%, 15%, 0) rotate(-42deg) scale(1.12); }
+  100% { transform: translate3d(-58%, 46%, 0) rotate(-86deg) scale(.98); }
+}
+
+@keyframes settings-flow-gold {
+  0% { transform: translate3d(-12%, 16%, 0) rotate(8deg) scale(.9); }
+  100% { transform: translate3d(68%, -58%, 0) rotate(88deg) scale(1.14); }
+}
+
+@keyframes settings-flow-ink {
+  0% { transform: translate3d(18%, 20%, 0) rotate(-18deg) scale(.88); }
+  100% { transform: translate3d(-72%, -58%, 0) rotate(72deg) scale(1.18); }
+}
+
+@keyframes settings-flow-prism {
+  0% { transform: translate3d(-8%, 14%, 0) rotate(-8deg) scaleX(.84); opacity: .35; }
+  50% { opacity: .74; }
+  100% { transform: translate3d(16%, -34%, 0) rotate(10deg) scaleX(1.08); opacity: .42; }
+}
+
+@media (max-width: 820px) {
+  .settings-sheet-backdrop {
+    padding: 0;
+  }
+
+  .settings-sheet {
+    width: 100%;
+    max-height: 100dvh;
+    height: 100dvh;
+    border: 0;
+    border-radius: 0;
+  }
+
+  .settings-flow-cloud {
+    width: 96vw;
+  }
+
+  .feature-atmosphere {
+    min-height: 158px;
+    margin: -16px -12px 18px;
+    padding: 25px 18px;
+  }
+
+  .feature-atmosphere-copy { width: 58%; }
+  .feature-atmosphere-copy > strong { font-size: 38px; }
+  .feature-atmosphere-copy > em { font-size: 12px; }
+  .feature-atmosphere-art { inset: 0 0 0 37%; }
+  .cloud-anchor { right: 5%; top: 49%; transform: scale(.76); }
+  .cloud-back { right: -12%; }
+  .feature-orbit { right: -4%; transform: rotate(-12deg) scale(.74); }
+  .feature-chibi { right: 3%; width: 46px; height: 46px; }
+  .feature-chibi-face > i { top: 21px; }
+  .feature-chibi-face > i:first-child { left: 14px; }
+  .feature-chibi-face > i:last-child { right: 14px; }
+  .feature-chibi-face::after { left: 20px; top: 29px; width: 7px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .celestial-star,
+  .celestial-cloud,
+  .feature-cloud,
+  .feature-spark,
+  .rainbow-agent-mark::after,
+  .rainbow-agent-mark-caustic,
+  .rainbow-agent-mark-star,
+  .rainbow-star-stop-top,
+  .settings-flow-cloud,
+  .settings-flow-prism {
+    animation: none;
+  }
+}
