@@ -65,6 +65,7 @@ function CompanionStatus({
     () => normalizeCompanionInteractionStats(interactionStats),
     [interactionStats],
   );
+  const resetBlank = normalized.resetBlank === true;
   const interactionTotal = useMemo(
     () =>
       Object.values(normalizedInteractionStats.counts).reduce(
@@ -99,7 +100,9 @@ function CompanionStatus({
   const interactionDisplay =
     interactionTotal > 999 ? "999+" : String(interactionTotal);
   const thresholdClass =
-    normalized.energyLevel >= 85
+    resetBlank
+      ? ""
+      : normalized.energyLevel >= 85
       ? " high-energy"
       : normalized.energyLevel <= 25
         ? " low-energy"
@@ -205,6 +208,7 @@ function CompanionStatus({
       return normalizeCompanionStatus(
         {
           ...transformed,
+          resetBlank: false,
           revision: current.revision + 1,
           updatedAt: new Date().toISOString(),
         },
@@ -412,24 +416,34 @@ function CompanionStatus({
         <span className="status-summary-copy">
           <span className="status-name-line">
             <strong>{displayName}</strong>
-            <span className="status-mood">{normalized.mood}</span>
+            <span className="status-mood">
+              {resetBlank ? "未设定" : normalized.mood}
+            </span>
           </span>
           <span className="status-glance">
-            <span>⌖ {normalized.place}</span>
-            <span>·</span>
-            <span>{personalized(normalized.focus)}</span>
+            {resetBlank ? (
+              <span>状态内容已清空</span>
+            ) : (
+              <>
+                <span>⌖ {normalized.place}</span>
+                <span>·</span>
+                <span>{personalized(normalized.focus)}</span>
+              </>
+            )}
           </span>
           <span className="status-reaction-preview">
-            {personalized(normalized.note)}
+            {resetBlank ? "等待新的设定" : personalized(normalized.note)}
           </span>
         </span>
-        <span className="status-mini-vitals" aria-label="角色氛围数值">
-          <span>{normalized.energyLevel}%</span>
-          <span>{normalized.pulseBpm} BPM</span>
-          {normalized.countdown.isRunning && (
-            <span>{formatCountdown(remainingSeconds)}</span>
-          )}
-        </span>
+        {!resetBlank && (
+          <span className="status-mini-vitals" aria-label="角色氛围数值">
+            <span>{normalized.energyLevel}%</span>
+            <span>{normalized.pulseBpm} BPM</span>
+            {normalized.countdown.isRunning && (
+              <span>{formatCountdown(remainingSeconds)}</span>
+            )}
+          </span>
+        )}
         <span className="status-chevron" aria-hidden="true">
           {expanded ? "⌃" : "⌄"}
         </span>

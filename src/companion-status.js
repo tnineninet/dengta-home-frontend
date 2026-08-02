@@ -236,6 +236,24 @@ export function createDefaultCompanionStatus() {
   };
 }
 
+export function createResetCompanionStatus() {
+  return {
+    resetBlank: true,
+    mood: "",
+    place: "",
+    focus: "",
+    note: "",
+    energyLevel: 0,
+    pulseBpm: 0,
+    hotZones: [],
+    microState: "",
+    recentRecords: [],
+    countdown: { ...DEFAULT_COUNTDOWN },
+    revision: 0,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
 export function createDefaultCompanionInteractionStats() {
   return {
     counts: Object.fromEntries(interactionZoneIds().map((id) => [id, 0])),
@@ -630,6 +648,14 @@ export function localCompanionInteractionReaction(
 export function normalizeCompanionStatus(value, fallbackValue) {
   const fallback = fallbackValue || createDefaultCompanionStatus();
   const source = value && typeof value === "object" ? value : {};
+  if (source.resetBlank === true) {
+    const reset = createResetCompanionStatus();
+    return {
+      ...reset,
+      countdown: normalizeCountdown(source.countdown, reset.countdown),
+      updatedAt: safeIsoDate(source.updatedAt, reset.updatedAt),
+    };
+  }
   const allowedZoneIds = new Set(HOT_ZONES.map((zone) => zone.id));
   const hotZones = Array.isArray(source.hotZones)
     ? [...new Set(source.hotZones.filter((item) => allowedZoneIds.has(item)))].slice(
@@ -639,6 +665,7 @@ export function normalizeCompanionStatus(value, fallbackValue) {
     : [...(fallback.hotZones || [])];
 
   return {
+    resetBlank: false,
     mood: cleanText(source.mood, 24, fallback.mood || "平静"),
     place: cleanText(source.place, 64, fallback.place || "DengTa home"),
     focus: cleanText(source.focus, 120, fallback.focus || "陪着你"),
@@ -780,6 +807,7 @@ export function mergeCompanionStatus(
     {
       ...current,
       ...incomingValue,
+      resetBlank: false,
       revision: mergedRevision,
       recentRecords: incomingValue.recentRecords ?? current.recentRecords,
       countdown: incomingValue.countdown ?? current.countdown,

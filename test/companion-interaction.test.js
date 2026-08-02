@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import {
   HOT_ZONES,
+  companionStatusForRequest,
   createDefaultCompanionStatus,
+  createResetCompanionStatus,
   createDefaultCompanionInteractionStats,
   deriveLocalCompanionReactionState,
   localCompanionInteractionReaction,
@@ -11,6 +13,11 @@ import {
   recordCompanionInteraction,
 } from "../src/companion-status.js";
 import { enqueueCompanionInteraction } from "../src/companion-interaction.js";
+
+const resetBlankStatus = createResetCompanionStatus();
+assert.equal(resetBlankStatus.resetBlank, true);
+assert.equal(resetBlankStatus.note, "");
+assert.equal(companionStatusForRequest(resetBlankStatus).note, "");
 
 const handZone = HOT_ZONES.find((zone) => zone.id === "hand");
 const shoulderZone = HOT_ZONES.find((zone) => zone.id === "shoulder");

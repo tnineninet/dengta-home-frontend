@@ -78,7 +78,7 @@ import {
 import {
   companionStatusForRequest,
   createDefaultCompanionInteractionStats,
-  createDefaultCompanionStatus,
+  createResetCompanionStatus,
   mergeCompanionStatus,
   readCompanionInteractionStats,
   readCompanionStatus,
@@ -1271,7 +1271,7 @@ function App({ accountControl = null, userName = "" }) {
       );
 
       if (localPersonaResetApplied) {
-        const resetStatus = createDefaultCompanionStatus();
+        const resetStatus = createResetCompanionStatus();
         const resetInteractionStats = createDefaultCompanionInteractionStats();
         setMessages([]);
         setMessage("");
