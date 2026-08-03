@@ -2,15 +2,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "./api";
 import {
   DUEL_SKILLS,
-  applyDuelNarration,
+  beginDuelRound,
+  completeDuelRound,
   createDuelState,
   normalizeDuelState,
-  playDuelRound,
   skillAvailability,
   winnerLabel,
 } from "./intimate-duel";
 
-const STORAGE_KEY = "dengta_intimate_duel_v2";
+const STORAGE_KEY = "dengta_intimate_duel_v3";
 
 function readStoredDuel(names) {
   try {
@@ -82,43 +82,58 @@ export default function IntimateDuel({ aiName, userName, conversationId }) {
     setNotice("");
   }
 
-  async function narrateRound(event) {
-    setIsNarrating(true);
+  async function handleSkill(skill) {
+    if (isNarrating || duel.status !== "active") return;
+    let pending;
     try {
+      pending = beginDuelRound(duel, skill.id);
+      setDuel(pending.previewState);
+      setIsNarrating(true);
+      setNotice("");
+      const turn = pending.turn;
       const data = await apiRequest("/api/v2/intimate-duel/narrate", {
         method: "POST",
         body: JSON.stringify({
           conversation_id: conversationId || undefined,
-          duel_id: duel.id,
-          round: event.round,
-          player_skill: event.playerSkill.id,
-          companion_skill: event.companionSkill?.id || null,
-          player: event.player,
-          companion: event.companion,
-          player_combo: event.playerCombo,
-          companion_combo: event.companionCombo,
-          winner: event.winner,
+          duel_id: pending.current.id,
+          round: turn.round,
+          player_name: turn.player.name,
+          companion_name: turn.companion.name,
+          player_skill: turn.playerSkill.id,
+          companion_skill: null,
+          available_companion_skills: turn.availableCompanionSkills,
+          player: {
+            stamina: turn.player.stamina,
+            pleasure: turn.player.pleasure,
+          },
+          companion: {
+            stamina: turn.companion.stamina,
+            pleasure: turn.companion.pleasure,
+          },
+          player_combo: turn.playerCombo,
+          companion_combo: turn.companionCombo,
+          winner: turn.winner,
         }),
       });
-      if (data?.narration) {
-        setDuel((current) => applyDuelNarration(current, event.id, data.narration));
-      }
+      const result = completeDuelRound(pending, {
+        companionSkillId: data?.companion_skill || null,
+        reaction: data?.reaction || "",
+        narration: data?.narration || "",
+      });
+      setDuel(result.state);
     } catch (error) {
-      setNotice(error.message || "这一回合的场景文字暂时没有生成，数值结果已经保留。");
+      if (pending) {
+        const fallback = completeDuelRound(pending);
+        setDuel(fallback.state);
+        setNotice(
+          error.message ||
+            "小灯这次没有连上模型，已按当前状态自行完成回应。",
+        );
+      } else {
+        setNotice(error.message);
+      }
     } finally {
       setIsNarrating(false);
-    }
-  }
-
-  function handleSkill(skill) {
-    if (isNarrating || duel.status !== "active") return;
-    try {
-      const result = playDuelRound(duel, skill.id);
-      setDuel(result.state);
-      setNotice("");
-      void narrateRound(result.event);
-    } catch (error) {
-      setNotice(error.message);
     }
   }
 
@@ -143,13 +158,19 @@ export default function IntimateDuel({ aiName, userName, conversationId }) {
         {duel.logs.map((entry) => (
           <article key={entry.id} className={entry.kind}>
             <small>{entry.title}</small>
+            {entry.reaction && (
+              <div className="duel-visible-reaction">
+                <small>{duel.companion.name}此刻的反应</small>
+                <span>{entry.reaction}</span>
+              </div>
+            )}
             <p>{entry.text}</p>
           </article>
         ))}
         {isNarrating && (
           <div className="duel-narrating" role="status">
             <span aria-hidden="true" />
-            {duel.companion.name}正在接住这一回合…
+            {duel.companion.name}正在感受这一招并选择回应…
           </div>
         )}
       </section>

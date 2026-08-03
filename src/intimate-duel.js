@@ -1,4 +1,4 @@
-const DUEL_STATE_VERSION = 2;
+const DUEL_STATE_VERSION = 3;
 const MAX_LOG_ENTRIES = 36;
 
 export const DUEL_SKILLS = Object.freeze([
@@ -91,12 +91,13 @@ function createFighter(name) {
   };
 }
 
-function createLogEntry({ id, round, title, text, kind = "round" }) {
+function createLogEntry({ id, round, title, text, reaction = "", kind = "round" }) {
   return {
     id,
     round,
     title,
     text,
+    reaction: String(reaction || "").trim().slice(0, 500),
     kind,
     createdAt: new Date().toISOString(),
   };
@@ -169,6 +170,7 @@ export function normalizeDuelState(value, names = {}) {
           round: Math.max(0, Math.round(Number(item.round) || 0)),
           title: String(item.title || "回合记录").slice(0, 40),
           text: String(item.text).trim().slice(0, 1200),
+          reaction: String(item.reaction || "").trim().slice(0, 500),
           kind: String(item.kind || "round").slice(0, 20),
           createdAt: String(item.createdAt || new Date().toISOString()),
         }))
@@ -277,24 +279,31 @@ export function chooseCompanionSkill(state, random = Math.random) {
   return recover || available[0] || DUEL_SKILLS.at(-1);
 }
 
-function localRoundText(playerSkill, companionSkill, outcome) {
+function playerOpeningText(player, companion, playerSkill) {
   const playerScenes = {
-    neck: "你跨坐上去，扶稳对方的肩，主动用身体掌握起伏节奏。",
-    whisper: "你俯下身含住对方最敏感的位置，舌尖和呼吸一起加重刺激。",
-    waist: "你故意收紧内壁，一阵阵绞住对方，不肯让人轻易抽身。",
-    thigh: "你贴着对方最敏感的位置磨蹭，动作和露骨话语一起撩拨。",
-    reverse: "你突然翻转姿势夺走主导，用 Pegging 发起高强度终结攻势。",
-    breathe: "你暂时放慢动作调整呼吸，让紧绷的身体稍微恢复。",
+    neck: `${player.name}跨坐到${companion.name}身上，主动掌握起伏节奏。`,
+    whisper: `${player.name}俯下身，用嘴唇、舌尖和呼吸直接刺激${companion.name}。`,
+    waist: `${player.name}故意收紧动作，一阵阵绞住${companion.name}，不让她轻易抽身。`,
+    thigh: `${player.name}贴着${companion.name}磨蹭，用动作和话语持续撩拨她。`,
+    reverse: `${player.name}突然反客为主夺走主导，把${companion.name}压在身下发动 Pegging 攻势。`,
+    breathe: `${player.name}暂时放慢动作调整呼吸，让自己稍微恢复。`,
   };
-  const opening = playerScenes[playerSkill.id] || `你使出「${playerSkill.name}」。`;
+  return (
+    playerScenes[playerSkill.id] ||
+    `${player.name}对${companion.name}使出「${playerSkill.name}」。`
+  );
+}
+
+function localRoundText(player, companion, playerSkill, companionSkill, outcome) {
+  const opening = playerOpeningText(player, companion, playerSkill);
   const response = companionSkill
-    ? `对方随即用「${companionSkill.name}」反击，想把你的快感推向失控。`
-    : "对方还没来得及反击，这一局就已经分出了结果。";
+    ? `${companion.name}接住这一招后，自行选择「${companionSkill.name}」回应${player.name}。`
+    : `${companion.name}还没来得及反击，这一局就已经分出了结果。`;
   if (!outcome) return `${opening}${response}`;
   return `${opening}${response} 数值越过临界点，本局结束。`;
 }
 
-export function playDuelRound(value, playerSkillId, random = Math.random) {
+export function beginDuelRound(value, playerSkillId) {
   const current = normalizeDuelState(value);
   if (current.status !== "active") {
     throw new Error("这一局已经结束，请先重新开始。");
@@ -311,17 +320,71 @@ export function playDuelRound(value, playerSkillId, random = Math.random) {
     );
   }
 
-  let { actor: player, target: companion } = applySkill(
+  const { actor: player, target: companion } = applySkill(
     current.player,
     current.companion,
     playerSkill,
   );
-  let winner = outcomeAfterMove(player, companion, "player", "companion");
-  let companionSkill = null;
+  const winner = outcomeAfterMove(player, companion, "player", "companion");
+  const availableCompanionSkills = winner
+    ? []
+    : availableSkillsFor(companion).map((skill) => skill.id);
+  const eventId = `${current.id}-round-${current.round}-${Date.now()}`;
+  const openingText = playerOpeningText(current.player, current.companion, playerSkill);
+  return {
+    current,
+    player,
+    companion,
+    winner,
+    turn: {
+      id: eventId,
+      round: current.round,
+      playerSkill,
+      playerCombo: player.combo,
+      companionCombo: companion.combo,
+      player: { name: current.player.name, stamina: player.stamina, pleasure: player.pleasure },
+      companion: {
+        name: current.companion.name,
+        stamina: companion.stamina,
+        pleasure: companion.pleasure,
+      },
+      availableCompanionSkills,
+      winner,
+      openingText,
+    },
+    previewState: {
+      ...current,
+      player,
+      companion,
+      logs: [
+        ...current.logs,
+        createLogEntry({
+          id: eventId,
+          round: current.round,
+          title: `第 ${current.round} 回合`,
+          text: openingText,
+          kind: "pending",
+        }),
+      ].slice(-MAX_LOG_ENTRIES),
+      updatedAt: new Date().toISOString(),
+    },
+  };
+}
 
+export function completeDuelRound(pending, response = {}, random = Math.random) {
+  if (!pending?.current || !pending?.turn) {
+    throw new Error("这一回合的待处理状态已经失效。");
+  }
+  const { current, turn } = pending;
+  let { player, companion, winner } = pending;
+  let companionSkill = null;
   if (!winner) {
-    const stateForChoice = { ...current, player, companion };
-    companionSkill = chooseCompanionSkill(stateForChoice, random);
+    const requested = SKILLS_BY_ID.get(String(response.companionSkillId || ""));
+    const requestedAvailable =
+      requested && turn.availableCompanionSkills.includes(requested.id);
+    companionSkill = requestedAvailable
+      ? requested
+      : chooseCompanionSkill({ ...current, player, companion }, random);
     const result = applySkill(companion, player, companionSkill);
     companion = result.actor;
     player = result.target;
@@ -330,11 +393,10 @@ export function playDuelRound(value, playerSkillId, random = Math.random) {
 
   player = { ...player, cooldowns: tickCooldowns(player.cooldowns) };
   companion = { ...companion, cooldowns: tickCooldowns(companion.cooldowns) };
-  const eventId = `${current.id}-round-${current.round}-${Date.now()}`;
   const event = {
-    id: eventId,
+    id: turn.id,
     round: current.round,
-    playerSkill,
+    playerSkill: turn.playerSkill,
     companionSkill,
     playerCombo: player.combo,
     companionCombo: companion.combo,
@@ -342,6 +404,8 @@ export function playDuelRound(value, playerSkillId, random = Math.random) {
     player: { stamina: player.stamina, pleasure: player.pleasure },
     companion: { stamina: companion.stamina, pleasure: companion.pleasure },
   };
+  const narration = String(response.narration || "").trim().slice(0, 1200);
+  const reaction = String(response.reaction || "").trim().slice(0, 500);
   const next = {
     ...current,
     round: winner ? current.round : current.round + 1,
@@ -352,16 +416,42 @@ export function playDuelRound(value, playerSkillId, random = Math.random) {
     logs: [
       ...current.logs,
       createLogEntry({
-        id: eventId,
+        id: turn.id,
         round: current.round,
         title: winner ? "终局" : `第 ${current.round} 回合`,
-        text: localRoundText(playerSkill, companionSkill, winner),
+        text:
+          narration ||
+          localRoundText(
+            current.player,
+            current.companion,
+            turn.playerSkill,
+            companionSkill,
+            winner,
+          ),
+        reaction,
         kind: winner ? "result" : "round",
       }),
     ].slice(-MAX_LOG_ENTRIES),
     updatedAt: new Date().toISOString(),
   };
   return { state: next, event };
+}
+
+export function playDuelRound(value, playerSkillId, random = Math.random) {
+  const pending = beginDuelRound(value, playerSkillId);
+  const stateForChoice = {
+    ...pending.current,
+    player: pending.player,
+    companion: pending.companion,
+  };
+  const companionSkill = pending.winner
+    ? null
+    : chooseCompanionSkill(stateForChoice, random);
+  return completeDuelRound(
+    pending,
+    { companionSkillId: companionSkill?.id || null },
+    random,
+  );
 }
 
 export function applyDuelNarration(value, eventId, text) {

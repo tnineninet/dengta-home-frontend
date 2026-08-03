@@ -1624,6 +1624,26 @@ select:focus-visible {
   margin-top: 14px;
 }
 
+.duel-visible-reaction {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0 12px;
+  padding: 10px 12px;
+  border-left: 3px solid rgba(214, 125, 165, 0.72);
+  background: rgba(214, 125, 165, 0.09);
+}
+
+.duel-visible-reaction small {
+  color: rgba(142, 72, 105, 0.78);
+  font-size: 11px;
+}
+
+.duel-visible-reaction span {
+  color: inherit;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
 .duel-skills h3 {
   margin: 0 0 9px;
   color: #8e8e93;

@@ -3,7 +3,9 @@ import { readFile } from "node:fs/promises";
 import {
   DUEL_SKILLS,
   applyDuelNarration,
+  beginDuelRound,
   chooseCompanionSkill,
+  completeDuelRound,
   createDuelState,
   playDuelRound,
   skillAvailability,
@@ -31,6 +33,25 @@ assert.equal(first.state.player.combo, 1);
 assert.equal(first.event.playerSkill.id, "neck");
 assert.ok(first.event.companionSkill);
 assert.match(first.state.logs.at(-1).text, /跨坐|骑乘/);
+
+const pending = beginDuelRound(initial, "reverse");
+assert.equal(pending.turn.playerSkill.id, "reverse");
+assert.equal(pending.turn.player.name, "桃桃");
+assert.equal(pending.turn.companion.name, "小灯");
+assert.match(
+  pending.turn.openingText,
+  /桃桃.*小灯/,
+  "玩家招式的本地主客体必须明确为桃桃作用于小灯",
+);
+const completed = completeDuelRound(pending, {
+  companionSkillId: "breathe",
+  reaction: "被桃桃反客为主压住后，我先稳住呼吸，再想下一步。",
+  narration: "桃桃突然夺走主导，把小灯压在身下；小灯被迫接住动作，随后才放慢呼吸。",
+});
+assert.equal(completed.event.playerSkill.id, "reverse");
+assert.equal(completed.event.companionSkill.id, "breathe");
+assert.match(completed.state.logs.at(-1).reaction, /被桃桃反客为主压住/);
+assert.match(completed.state.logs.at(-1).text, /桃桃突然夺走主导/);
 
 const second = playDuelRound(first.state, "whisper", () => 0);
 assert.equal(second.state.player.combo, 2, "alternating attacks build a combo");
