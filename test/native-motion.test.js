@@ -95,9 +95,11 @@ test("the settings flow stays GPU-backed and throttles while scrolling", () => {
   assert.doesNotMatch(flowStyles, /filter:\s*blur\(/);
   assert.doesNotMatch(flowStyles, /mix-blend-mode:\s*(?:multiply|screen|soft-light)/);
   assert.match(flowSource, /powerPreference:\s*"high-performance"/);
-  assert.match(flowSource, /const SCROLL_FRAME_MS = 1000 \/ 5/);
+  assert.match(flowSource, /const ACTIVE_FRAME_MS = 1000 \/ 24/);
+  assert.match(flowSource, /const SCROLL_FRAME_MS = 1000 \/ 3/);
   assert.match(flowSource, /classList\.contains\("is-scrolling"\)/);
-  assert.match(flowSource, /Math\.min\(0\.82, 760 \/ Math\.max\(longestSide, 1\)\)/);
+  assert.match(flowSource, /\? 0\.64\s*:\s*0\.82/);
+  assert.match(flowSource, /760 \/ Math\.max\(longestSide, 1\)/);
   assert.match(
     styles,
     /\.settings-sheet[\s\S]{0,260}backdrop-filter:\s*none/,

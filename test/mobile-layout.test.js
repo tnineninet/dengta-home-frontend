@@ -446,8 +446,8 @@ assert.match(
 );
 assert.match(
   status,
-  /aria-expanded=\{expanded\}[\s\S]*?onClick=\{\(\) => \(expanded \? closePanel\(\) : openPanel\(\)\)\}/,
-  "the status summary must explicitly toggle open and closed",
+  /aria-expanded=\{expanded\}[\s\S]*?onClick=\{togglePanel\}/,
+  "the rainbow capsule must explicitly toggle open and closed",
 );
 assert.match(
   css,
@@ -461,18 +461,18 @@ assert.doesNotMatch(
 );
 assert.match(
   status,
-  /sun-glass-liquid-action-stage[\s\S]*?QUICK_ACTIONS\.map/,
-  "the floating summary must expose the animated rainbow capsule actions",
+  /sun-glass-liquid-action-stage[\s\S]*?sun-glass-capsule-decoration[\s\S]*?Heart[\s\S]*?MessageCircle[\s\S]*?Sparkles/,
+  "the floating capsule must keep the three decorative icons",
 );
 assert.match(
   status,
   /className="sun-glass-status-scroll"[\s\S]*?DESIRE_ACTIONS\.map[\s\S]*?HOT_ZONES\.map[\s\S]*?RECOVERY_ACTIONS\.map/,
   "the expanded glass panel must keep every desire, touch and recovery action in its scroll region",
 );
-assert.match(
+assert.doesNotMatch(
   status,
-  /className="status-restore-button"[\s\S]*?onClick=\{restorePanel\}/,
-  "the floating status must restore from its side tab",
+  /className="status-restore-button"/,
+  "the single capsule layout must not leave a second side restore control",
 );
 assert.match(
   css,

@@ -9,10 +9,11 @@ import {
 import {
   BatteryMedium,
   BookOpen,
-  ChevronRight,
   Headphones,
   Heart,
+  Menu,
   MessageCircle,
+  Settings,
   Sparkles,
   Tv,
   X,
@@ -32,14 +33,6 @@ import {
   remainingAt,
   settleExpiredCountdown,
 } from "./companion-status";
-
-const STATUS_MINIMIZED_STORAGE_KEY = "dengta_companion_status_minimized_v1";
-
-const QUICK_ACTIONS = [
-  { id: "embrace", label: "抱抱", Icon: Heart },
-  { id: "confide", label: "倾诉", Icon: MessageCircle },
-  { id: "wish", label: "陪她做点什么", Icon: Sparkles },
-];
 
 const DESIRE_ACTIONS = [
   {
@@ -71,22 +64,6 @@ const DESIRE_ACTIONS = [
   },
 ];
 
-function readStatusMinimized() {
-  try {
-    return localStorage.getItem(STATUS_MINIMIZED_STORAGE_KEY) === "true";
-  } catch {
-    return false;
-  }
-}
-
-function storeStatusMinimized(value) {
-  try {
-    localStorage.setItem(STATUS_MINIMIZED_STORAGE_KEY, String(value));
-  } catch {
-    // The floating layout still works when local storage is unavailable.
-  }
-}
-
 function CompanionStatus({
   active = true,
   closeRequest = 0,
@@ -100,6 +77,8 @@ function CompanionStatus({
   onExpandedChange,
   onInteract,
   onWatchTogether,
+  onOpenNavigation,
+  onOpenSettings,
 }) {
   const displayName = String(aiName || "").trim() || "小灯";
   const personalized = useCallback(
@@ -124,8 +103,6 @@ function CompanionStatus({
   );
   const resetBlank = normalized.resetBlank === true;
   const [expanded, setExpanded] = useState(false);
-  const [minimized, setMinimized] = useState(readStatusMinimized);
-  const [liquidPulse, setLiquidPulse] = useState("");
   const [dragPosition, setDragPosition] = useState(null);
   const [clockNow, setClockNow] = useState(() => Date.now());
   const rootRef = useRef(null);
@@ -161,18 +138,10 @@ function CompanionStatus({
     onExpandedChange?.(true);
   }, [onExpandedChange]);
 
-  const minimizePanel = useCallback(() => {
-    panelRef.current?.scrollTo({ top: 0 });
-    setExpanded(false);
-    setMinimized(true);
-    storeStatusMinimized(true);
-    onExpandedChange?.(false);
-  }, [onExpandedChange]);
-
-  const restorePanel = useCallback(() => {
-    setMinimized(false);
-    storeStatusMinimized(false);
-  }, []);
+  const togglePanel = useCallback(() => {
+    if (expanded) closePanel();
+    else openPanel();
+  }, [closePanel, expanded, openPanel]);
 
   useEffect(() => {
     if (!normalized.countdown.isRunning) return undefined;
@@ -352,14 +321,6 @@ function CompanionStatus({
     });
   }
 
-  function runQuickAction(actionId) {
-    const action = RECOVERY_ACTIONS.find((item) => item.id === actionId);
-    if (!action) return;
-    setLiquidPulse(actionId);
-    touchZone(action);
-    window.setTimeout(() => setLiquidPulse(""), 640);
-  }
-
   function runDesireAction(action) {
     const baseAction = RECOVERY_ACTIONS.find((item) => item.id === "wish");
     if (!baseAction) return;
@@ -459,27 +420,6 @@ function CompanionStatus({
       : {}),
   };
 
-  if (minimized) {
-    return (
-      <section
-        ref={rootRef}
-        className={`companion-status sun-glass-floating-status-shell minimized${thresholdClass}`}
-        style={floatingStyle}
-        aria-label={`${displayName}的动态状态已缩到侧边`}
-      >
-        <button
-          type="button"
-          className="status-restore-button"
-          onClick={restorePanel}
-          aria-label={`展开${displayName}的动态状态`}
-        >
-          <Sparkles aria-hidden="true" />
-          <span aria-hidden="true">‹</span>
-        </button>
-      </section>
-    );
-  }
-
   return (
     <section
       ref={rootRef}
@@ -489,25 +429,35 @@ function CompanionStatus({
       style={floatingStyle}
       aria-label={`${displayName}的动态状态`}
     >
-      <button
-        type="button"
-        className="status-minimize-button sun-glass-status-minimize"
-        onClick={minimizePanel}
-        aria-label="把动态状态缩到侧边"
-      >
-        ‹
-      </button>
+      <section className="sun-glass-liquid-action-stage" aria-label="动态状态">
+        <span className="sun-glass-liquid-color-flow" aria-hidden="true" />
+        <button
+          type="button"
+          className="sun-glass-liquid-capsule-toggle"
+          aria-label={expanded ? "收起动态状态" : `展开${displayName}的动态状态`}
+          aria-expanded={expanded}
+          onClick={togglePanel}
+          data-status-drag-handle
+          onPointerDown={beginStatusDrag}
+          onPointerMove={moveStatusDrag}
+          onPointerUp={endStatusDrag}
+          onPointerCancel={endStatusDrag}
+        >
+          <span className="sun-glass-capsule-decoration" aria-hidden="true">
+            <Heart />
+            <MessageCircle />
+            <Sparkles />
+          </span>
+        </button>
+      </section>
 
-      <button
-        type="button"
-        className="sun-glass-status-ribbon sun-glass-panel"
+      <div
+        className="sun-glass-status-ribbon"
         data-status-drag-handle
-        aria-expanded={expanded}
         onPointerDown={beginStatusDrag}
         onPointerMove={moveStatusDrag}
         onPointerUp={endStatusDrag}
         onPointerCancel={endStatusDrag}
-        onClick={() => (expanded ? closePanel() : openPanel())}
       >
         <span className="sun-glass-status-ribbon-icon" aria-hidden="true">
           <Sparkles />
@@ -520,26 +470,7 @@ function CompanionStatus({
               : personalized(normalized.note)}
           </strong>
         </span>
-        <ChevronRight aria-hidden="true" />
-      </button>
-
-      <section className="sun-glass-liquid-action-stage" aria-label="快捷互动">
-        <span className="sun-glass-liquid-color-flow" aria-hidden="true" />
-        <div className="sun-glass-liquid-action-module">
-          {QUICK_ACTIONS.map(({ id, label, Icon }) => (
-            <button
-              type="button"
-              key={id}
-              className={liquidPulse === id ? "is-pulsing" : ""}
-              aria-label={label}
-              title={label}
-              onClick={() => runQuickAction(id)}
-            >
-              <Icon aria-hidden="true" />
-            </button>
-          ))}
-        </div>
-      </section>
+      </div>
 
       {expanded && (
         <div
@@ -559,34 +490,38 @@ function CompanionStatus({
               <small>{displayName}此刻</small>
               <h2>{resetBlank ? "在这里" : normalized.mood}</h2>
             </div>
-            <section
-              className="sun-glass-popover-liquid-actions"
-              aria-label="弹窗快捷互动"
-            >
-              <span className="sun-glass-popover-color-flow" aria-hidden="true" />
-              <div className="sun-glass-popover-liquid-module">
-                {QUICK_ACTIONS.map(({ id, label, Icon }) => (
-                  <button
-                    type="button"
-                    key={id}
-                    className={liquidPulse === id ? "is-pulsing" : ""}
-                    aria-label={label}
-                    title={label}
-                    onClick={() => runQuickAction(id)}
-                  >
-                    <Icon aria-hidden="true" />
-                  </button>
-                ))}
-              </div>
-            </section>
-            <button
-              type="button"
-              className="sun-glass-popover-close"
-              aria-label="关闭动态状态"
-              onClick={closePanel}
-            >
-              <X aria-hidden="true" />
-            </button>
+            <div className="sun-glass-status-window-actions">
+              <button
+                type="button"
+                aria-label="打开侧边导航"
+                title="导航"
+                onClick={() => {
+                  closePanel();
+                  onOpenNavigation?.();
+                }}
+              >
+                <Menu aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                aria-label="打开设置"
+                title="设置"
+                onClick={() => {
+                  closePanel();
+                  onOpenSettings?.();
+                }}
+              >
+                <Settings aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="sun-glass-popover-close"
+                aria-label="关闭动态状态"
+                onClick={closePanel}
+              >
+                <X aria-hidden="true" />
+              </button>
+            </div>
           </header>
 
           <div ref={panelRef} className="sun-glass-status-scroll">

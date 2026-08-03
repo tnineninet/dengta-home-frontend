@@ -4486,19 +4486,6 @@ function App({ accountControl = null, userName = "" }) {
         </section>
 
         <div className="composer-wrap">
-          <SunGlassTimeDeck
-            snapshot={celestialSnapshot}
-            previewMinute={previewMinute}
-            onPreviewMinute={setPreviewMinute}
-            onNow={() => setPreviewMinute(null)}
-            weather={ambientWeather}
-            weatherMode={weatherPreviewMode}
-            onWeatherMode={setWeatherPreviewMode}
-            glassLevel={themePreferences.cardOpacity * 100}
-            onGlassLevel={(value) =>
-              updateTheme({ cardOpacity: Number(value) / 100 })
-            }
-          />
           {isComposerMenuOpen && (
             <button
               type="button"
@@ -4691,6 +4678,19 @@ function App({ accountControl = null, userName = "" }) {
           </div>
           {isComposerMenuOpen && (
             <section className="composer-tool-menu" aria-label="更多输入功能">
+              <SunGlassTimeDeck
+                snapshot={celestialSnapshot}
+                previewMinute={previewMinute}
+                onPreviewMinute={setPreviewMinute}
+                onNow={() => setPreviewMinute(null)}
+                weather={ambientWeather}
+                weatherMode={weatherPreviewMode}
+                onWeatherMode={setWeatherPreviewMode}
+                glassLevel={themePreferences.cardOpacity * 100}
+                onGlassLevel={(value) =>
+                  updateTheme({ cardOpacity: Number(value) / 100 })
+                }
+              />
               <div className="composer-tool-grid">
                 <button
                   type="button"
@@ -6336,6 +6336,8 @@ function App({ accountControl = null, userName = "" }) {
             onWatchTogether={() =>
               void startScreenGlanceSession({ watchTogether: true })
             }
+            onOpenNavigation={() => setIsSidebarOpen(true)}
+            onOpenSettings={openSettingsPanel}
           />
           <AmbientContextBadge
             onLoadWeather={loadAmbientWeather}

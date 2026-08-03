@@ -23,7 +23,8 @@ test("the approved Variant A controls are wired into the real chat screen", () =
   assert.match(deck, /晴空/);
   assert.match(deck, /aria-label="全局玻璃度"/);
   assert.match(status, /sun-glass-liquid-action-stage/);
-  assert.match(status, /sun-glass-popover-liquid-actions/);
+  assert.match(status, /sun-glass-liquid-capsule-toggle/);
+  assert.match(status, /sun-glass-capsule-decoration/);
   assert.match(status, /Heart/);
   assert.match(status, /MessageCircle/);
   assert.match(status, /Sparkles/);
@@ -101,7 +102,7 @@ test("the accepted sky keeps the real preview minute and exposes weather control
   assert.doesNotMatch(sunRule, /inset:\s*auto/);
 });
 
-test("expanded status is centered independently from its draggable shell", () => {
+test("expanded status stays below the single mobile capsule", () => {
   const app = read("src/App.jsx");
   const status = read("src/CompanionStatus.jsx");
   const styles = read("src/sun-glass-chat.css");
@@ -121,14 +122,14 @@ test("expanded status is centered independently from its draggable shell", () =>
   assert.match(app, /isStatusPanelExpanded \? " status-panel-open"/);
   assert.match(
     styles,
-    /\.main-panel\.view-chat\.status-panel-open \.message-list,[\s\S]*?opacity:\s*0;/,
+    /\.main-panel\.view-chat\.status-panel-open \.message-list,[\s\S]*?opacity:\s*1;/,
   );
   assert.match(
     styles,
-    /\.sun-glass-floating-status-shell\.expanded[\s\S]*?> \.sun-glass-liquid-action-stage[\s\S]*?display:\s*none;/,
+    /\.sun-glass-floating-status-shell\.expanded[\s\S]*?> \.sun-glass-liquid-action-stage[\s\S]*?display:\s*grid;/,
   );
   assert.match(
     styles,
-    /\.sun-glass-floating-status-shell\.expanded[\s\S]*?\.sun-glass-floating-status-panel[\s\S]*?left:\s*max\(10px, calc\(50vw - 215px\)\);[\s\S]*?transform:\s*none;/,
+    /\.sun-glass-floating-status-shell\.expanded[\s\S]*?\.sun-glass-floating-status-panel[\s\S]*?left:\s*8px;[\s\S]*?transform:\s*none;/,
   );
 });

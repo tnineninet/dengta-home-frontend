@@ -46,10 +46,17 @@ export default function SunGlassTimeDeck({
   onGlassLevel,
 }) {
   const [isOpen, setIsOpen] = useState(true);
+  const [isScrubbing, setIsScrubbing] = useState(false);
   const rootRef = useRef(null);
-  const displayedMinute = Number.isFinite(previewMinute)
+  const frameRef = useRef(0);
+  const pendingMinuteRef = useRef(null);
+  const externalMinute = Number.isFinite(previewMinute)
     ? previewMinute
     : snapshot.minute;
+  const [scrubMinute, setScrubMinute] = useState(null);
+  const displayedMinute = Number.isFinite(scrubMinute)
+    ? scrubMinute
+    : externalMinute;
   const displayedWeather =
     weatherMode || weatherModeFromAmbient(weather) || "clear";
   const displayedWeatherLabel =
@@ -75,11 +82,52 @@ export default function SunGlassTimeDeck({
     };
   }, [isOpen]);
 
+  useEffect(
+    () => () => {
+      if (frameRef.current) cancelAnimationFrame(frameRef.current);
+    },
+    [],
+  );
+
+  function scheduleMinute(value) {
+    const nextMinute = Math.max(0, Math.min(1439, Number(value) || 0));
+    setScrubMinute(nextMinute);
+    pendingMinuteRef.current = nextMinute;
+    if (frameRef.current) return;
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = 0;
+      const pendingMinute = pendingMinuteRef.current;
+      pendingMinuteRef.current = null;
+      if (pendingMinute !== null) onPreviewMinute?.(pendingMinute);
+    });
+  }
+
+  function finishScrubbing() {
+    if (frameRef.current) {
+      cancelAnimationFrame(frameRef.current);
+      frameRef.current = 0;
+    }
+    const pendingMinute = pendingMinuteRef.current;
+    pendingMinuteRef.current = null;
+    if (pendingMinute !== null) onPreviewMinute?.(pendingMinute);
+    setIsScrubbing(false);
+    setScrubMinute(null);
+  }
+
+  function selectMinute(value) {
+    if (frameRef.current) cancelAnimationFrame(frameRef.current);
+    frameRef.current = 0;
+    pendingMinuteRef.current = null;
+    setScrubMinute(null);
+    onPreviewMinute?.(value);
+  }
+
   return (
     <section
       ref={rootRef}
       className="sun-glass-time-deck sun-glass-panel"
       aria-label="时间光线控制器"
+      data-time-scrubbing={isScrubbing ? "true" : "false"}
     >
       <div className="sun-glass-time-deck-top">
         <button
@@ -87,6 +135,7 @@ export default function SunGlassTimeDeck({
           className="sun-glass-button compact"
           onClick={() => {
             onNow?.();
+            setScrubMinute(null);
             setIsOpen(false);
           }}
         >
@@ -121,7 +170,11 @@ export default function SunGlassTimeDeck({
         step="1"
         value={Math.round(displayedMinute)}
         aria-label="一天中的时间"
-        onChange={(event) => onPreviewMinute?.(Number(event.target.value))}
+        onPointerDown={() => setIsScrubbing(true)}
+        onPointerUp={finishScrubbing}
+        onPointerCancel={finishScrubbing}
+        onBlur={finishScrubbing}
+        onChange={(event) => scheduleMinute(event.target.value)}
       />
 
       <div
@@ -134,7 +187,7 @@ export default function SunGlassTimeDeck({
             <button
               type="button"
               key={minute}
-              onClick={() => onPreviewMinute?.(minute)}
+              onClick={() => selectMinute(minute)}
             >
               <Icon aria-hidden="true" />
               <span>{label}</span>

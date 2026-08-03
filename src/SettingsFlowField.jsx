@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react";
 
 const LOOP_SECONDS = 15.466667;
-const ACTIVE_FRAME_MS = 1000 / 30;
-const SCROLL_FRAME_MS = 1000 / 5;
+const ACTIVE_FRAME_MS = 1000 / 24;
+const SCROLL_FRAME_MS = 1000 / 3;
 
 const VERTEX_SHADER = `
 attribute vec2 a_position;
@@ -218,7 +218,13 @@ export default function SettingsFlowField() {
       const resize = () => {
         const rect = canvas.getBoundingClientRect();
         const longestSide = Math.max(rect.width, rect.height);
-        const renderScale = Math.min(0.82, 760 / Math.max(longestSide, 1));
+        const mobileScale = window.matchMedia("(max-width: 820px)").matches
+          ? 0.64
+          : 0.82;
+        const renderScale = Math.min(
+          mobileScale,
+          760 / Math.max(longestSide, 1),
+        );
         const width = Math.max(2, Math.round(rect.width * renderScale));
         const height = Math.max(2, Math.round(rect.height * renderScale));
         if (canvas.width !== width || canvas.height !== height) {
@@ -294,7 +300,9 @@ export default function SettingsFlowField() {
       };
     };
 
-    const warmupTimer = window.setTimeout(startRenderer, 440);
+    // Wait until the jelly sheet has fully settled so WebGL does not resize
+    // through every animation frame on Android WebView.
+    const warmupTimer = window.setTimeout(startRenderer, 720);
     return () => {
       window.clearTimeout(warmupTimer);
       disposeRenderer();
