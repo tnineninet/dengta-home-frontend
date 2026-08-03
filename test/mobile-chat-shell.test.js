@@ -50,7 +50,7 @@ test("mobile chat uses one decorative rainbow capsule as the status toggle", () 
   );
   assert.match(
     styles,
-    /\.sun-glass-floating-status-shell\.expanded[\s\S]*?\.sun-glass-floating-status-panel\s*\{[^}]*top:\s*calc\(var\(--dengta-mobile-capsule-top\) \+ 70px\) !important/s,
+    /\.sun-glass-floating-status-shell\.expanded[\s\S]*?\.sun-glass-floating-status-panel\s*\{[^}]*position:\s*absolute !important;[^}]*top:\s*70px !important/s,
     "the expanded panel must remain connected beneath the safe capsule",
   );
 });

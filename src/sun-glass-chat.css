@@ -2600,7 +2600,8 @@
   .main-panel.view-chat
     .sun-glass-floating-status-shell.expanded
     .sun-glass-floating-status-panel {
-    top: calc(var(--dengta-mobile-capsule-top) + 70px) !important;
+    position: absolute !important;
+    top: 70px !important;
     right: 8px;
     left: 8px;
     max-height: calc(
