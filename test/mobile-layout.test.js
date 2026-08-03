@@ -460,55 +460,34 @@ assert.doesNotMatch(
   "expanded status must not collapse the message scroller to zero height",
 );
 assert.match(
+  status,
+  /sun-glass-liquid-action-stage[\s\S]*?QUICK_ACTIONS\.map/,
+  "the floating summary must expose the animated rainbow capsule actions",
+);
+assert.match(
+  status,
+  /className="sun-glass-status-scroll"[\s\S]*?DESIRE_ACTIONS\.map[\s\S]*?HOT_ZONES\.map[\s\S]*?RECOVERY_ACTIONS\.map/,
+  "the expanded glass panel must keep every desire, touch and recovery action in its scroll region",
+);
+assert.match(
+  status,
+  /className="status-restore-button"[\s\S]*?onClick=\{restorePanel\}/,
+  "the floating status must restore from its side tab",
+);
+assert.match(
   css,
-  /@media \(max-width: 820px\)[\s\S]*?\.status-interaction-card,\s*\.status-recovery-card,\s*\.status-panel-grid\.lower-grid\s*\{[^}]*grid-template-columns:\s*1fr/s,
-  "the recovery card must stack its copy and actions on narrow screens",
+  /\.sun-glass-status-scroll\s*\{[^}]*overflow-y:\s*auto/s,
+  "the expanded glass panel must scroll independently",
 );
 assert.match(
-  status,
-  /LIVE COMPANION SIGNAL/,
-  "expanded status must expose the live companion signal heading",
-);
-assert.match(
-  status,
-  /className="status-reaction-preview">[\s\S]*?\{personalized\(normalized\.note\)\}/,
-  "collapsed status must expose the latest companion reaction",
-);
-assert.match(
-  cssCascade.declarations(".status-reaction-preview")["text-overflow"]?.value ||
-    "",
-  /^ellipsis$/,
-  "collapsed reaction must stay readable without resizing the mobile header",
-);
-assert.equal(
-  cssCascade.declarations(".status-reaction-preview")["white-space"]?.value,
-  "nowrap",
-);
-assert.match(
-  status,
-  /status-vital-tile energy[\s\S]*status-vital-tile resonance[\s\S]*status-vital-tile pulse/,
-  "expanded status must show energy, interaction resonance and pulse tiles",
+  css,
+  /\.sun-glass-liquid-color-flow\s*\{[\s\S]*?sun-glass-rainbow-shimmer[\s\S]*?sun-glass-rainbow-breathe/s,
+  "the rainbow capsule must stay visibly animated",
 );
 assert.match(
   status,
   /formatUpdatedAt\(record\.createdAt, clockNow\)/,
   "recent status records must expose readable timestamps",
-);
-assert.match(
-  cssCascade.declarations(".status-vitals-grid")["grid-template-columns"]
-    ?.value || "",
-  /^repeat\(3,/,
-  "the live signal metrics must keep three stable columns",
-);
-assert.equal(
-  cssCascade.declarations(".status-vital-tile")["min-height"]?.value,
-  "96px",
-  "mobile metric tiles must reserve a stable height",
-);
-assert.equal(
-  cssCascade.declarations(".status-pulse-bg").opacity?.value,
-  "0.38",
-  "the heartbeat trace must remain visible without overpowering the dark status tile",
 );
 
 assert.match(
@@ -533,7 +512,7 @@ assert.match(
 );
 assert.match(
   status,
-  /const closePanel = useCallback\(\(\) => \{[\s\S]*?scrollTo\(\{ top: 0 \}\);[\s\S]*?setExpanded\(false\)[\s\S]*?if \(active\) return undefined;[\s\S]*?requestAnimationFrame\(\(\) => \{[\s\S]*?closePanel\(\)/,
+  /const closePanel = useCallback\(\(\) => \{[\s\S]*?scrollTo\(\{ top: 0 \}\);[\s\S]*?setExpanded\(false\)[\s\S]*?if \(active\) return undefined;[\s\S]*?requestAnimationFrame\(closePanel\)/,
   "an inactive status panel must close and reset its private scroll position",
 );
 assert.match(

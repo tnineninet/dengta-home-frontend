@@ -29,7 +29,15 @@ test("the approved Variant A controls are wired into the real chat screen", () =
   assert.match(status, /Sparkles/);
   assert.match(status, /听歌/);
   assert.match(status, /看书/);
-  assert.match(status, /看一会儿/);
+  assert.match(status, /看电视/);
+  assert.match(status, /sun-glass-floating-status-shell/);
+  assert.match(status, /sun-glass-status-scroll/);
+  assert.match(status, /data-status-drag-handle/);
+  assert.doesNotMatch(
+    status,
+    /status-advanced-content/,
+    "the legacy dark status dashboard must not remain behind the glass template",
+  );
 });
 
 test("the mobile layer preserves the prototype dimensions and jelly motion", () => {
@@ -48,8 +56,18 @@ test("the mobile layer preserves the prototype dimensions and jelly motion", () 
     /\.sun-glass-time-deck\s*\{[\s\S]*?border-radius:\s*25px;/,
   );
   assert.match(styles, /@keyframes sun-glass-liquid-color-crossing/);
+  assert.match(styles, /@keyframes sun-glass-rainbow-shimmer/);
+  assert.match(styles, /@keyframes sun-glass-rainbow-breathe/);
   assert.match(styles, /@keyframes sun-glass-jelly-open/);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+});
+
+test("the local visual preview is isolated from production startup data", () => {
+  const app = read("src/App.jsx");
+
+  assert.match(app, /const visualPreview = arguments\[0\]\?\.visualPreview === true/);
+  assert.match(app, /if \(visualPreview\)[\s\S]*?setIsLoading\(false\)/);
+  assert.match(app, /showStartupRecovery =\s*!visualPreview/);
 });
 
 test("time preview changes the shared sky snapshot without changing system time", () => {

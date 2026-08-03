@@ -26,8 +26,8 @@ import {
   formatCountdown,
   formatUpdatedAt,
   localCompanionInteractionReaction,
-  normalizeCompanionStatus,
   normalizeCompanionInteractionStats,
+  normalizeCompanionStatus,
   personalizeCompanionStatusText,
   remainingAt,
   settleExpiredCountdown,
@@ -62,7 +62,7 @@ const DESIRE_ACTIONS = [
   },
   {
     id: "watching",
-    label: "看一会儿",
+    label: "看电视",
     Icon: Tv,
     mood: "放松",
     focus: "和你窝在一起看点喜欢的东西",
@@ -83,7 +83,7 @@ function storeStatusMinimized(value) {
   try {
     localStorage.setItem(STATUS_MINIMIZED_STORAGE_KEY, String(value));
   } catch {
-    // Local preference persistence is optional.
+    // The floating layout still works when local storage is unavailable.
   }
 }
 
@@ -113,7 +113,6 @@ function CompanionStatus({
     () => normalizeCompanionInteractionStats(interactionStats),
     [interactionStats],
   );
-  const resetBlank = normalized.resetBlank === true;
   const interactionTotal = useMemo(
     () =>
       Object.values(normalizedInteractionStats.counts).reduce(
@@ -122,12 +121,16 @@ function CompanionStatus({
       ),
     [normalizedInteractionStats],
   );
+  const resetBlank = normalized.resetBlank === true;
   const [expanded, setExpanded] = useState(false);
   const [minimized, setMinimized] = useState(readStatusMinimized);
   const [liquidPulse, setLiquidPulse] = useState("");
+  const [dragPosition, setDragPosition] = useState(null);
   const [clockNow, setClockNow] = useState(() => Date.now());
   const rootRef = useRef(null);
   const panelRef = useRef(null);
+  const dragStateRef = useRef(null);
+  const draggedRef = useRef(false);
   const lastCloseRequestRef = useRef(closeRequest);
   const remainingSeconds = remainingAt(normalized.countdown, clockNow);
   const rawCountdownEnd = Date.parse(status?.countdown?.endsAt);
@@ -136,22 +139,9 @@ function CompanionStatus({
     Number.isFinite(rawCountdownEnd) &&
     rawCountdownEnd <= clockNow;
   const pulseDuration = `${clamp(60 / normalized.pulseBpm, 0.35, 1.7)}s`;
-  const interactionMeter = clamp(
-    Math.round(Math.log2(interactionTotal + 1) * 16),
-    0,
-    100,
-  );
-  const pulseMeter = clamp(
-    Math.round(((normalized.pulseBpm - 30) / 190) * 100),
-    0,
-    100,
-  );
-  const interactionDisplay =
-    interactionTotal > 999 ? "999+" : String(interactionTotal);
-  const thresholdClass =
-    resetBlank
-      ? ""
-      : normalized.energyLevel >= 85
+  const thresholdClass = resetBlank
+    ? ""
+    : normalized.energyLevel >= 85
       ? " high-energy"
       : normalized.energyLevel <= 25
         ? " low-energy"
@@ -185,12 +175,10 @@ function CompanionStatus({
   useEffect(() => {
     if (!normalized.countdown.isRunning) return undefined;
     let timerId;
-
     function tick() {
       setClockNow(Date.now());
       timerId = window.setTimeout(tick, 1000);
     }
-
     tick();
     return () => window.clearTimeout(timerId);
   }, [normalized.countdown.endsAt, normalized.countdown.isRunning]);
@@ -202,7 +190,6 @@ function CompanionStatus({
     ) {
       return;
     }
-
     onChange((currentValue) => settleExpiredCountdown(currentValue));
   }, [
     countdownExpiredWhileAway,
@@ -213,9 +200,7 @@ function CompanionStatus({
 
   useEffect(() => {
     if (active) return undefined;
-    const animationFrame = window.requestAnimationFrame(() => {
-      closePanel();
-    });
+    const animationFrame = window.requestAnimationFrame(closePanel);
     return () => window.cancelAnimationFrame(animationFrame);
   }, [active, closePanel]);
 
@@ -227,21 +212,15 @@ function CompanionStatus({
 
   useEffect(() => {
     if (!expanded) return undefined;
-
     panelRef.current?.scrollTo({ top: 0 });
-
     function closeFromOutside(event) {
       if (!rootRef.current?.contains(event.target)) {
         closePanel();
       }
     }
-
     function closeFromEscape(event) {
-      if (event.key === "Escape") {
-        closePanel();
-      }
+      if (event.key === "Escape") closePanel();
     }
-
     document.addEventListener("pointerdown", closeFromOutside);
     document.addEventListener("keydown", closeFromEscape);
     return () => {
@@ -249,6 +228,55 @@ function CompanionStatus({
       document.removeEventListener("keydown", closeFromEscape);
     };
   }, [closePanel, expanded]);
+
+  function beginStatusDrag(event) {
+    if (event.button !== 0 || !rootRef.current) return;
+    const rect = rootRef.current.getBoundingClientRect();
+    draggedRef.current = false;
+    dragStateRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      left: rect.left,
+      top: rect.top,
+    };
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  function moveStatusDrag(event) {
+    const drag = dragStateRef.current;
+    if (!drag || drag.pointerId !== event.pointerId || !rootRef.current) return;
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (Math.hypot(deltaX, deltaY) > 4) draggedRef.current = true;
+    const rect = rootRef.current.getBoundingClientRect();
+    setDragPosition({
+      left: clamp(
+        drag.left + deltaX,
+        8,
+        Math.max(8, window.innerWidth - rect.width - 8),
+      ),
+      top: clamp(drag.top + deltaY, 8, Math.max(8, window.innerHeight - 96)),
+    });
+  }
+
+  function endStatusDrag(event) {
+    const drag = dragStateRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dragStateRef.current = null;
+    if (draggedRef.current) {
+      event.currentTarget.addEventListener(
+        "click",
+        (clickEvent) => {
+          clickEvent.preventDefault();
+          clickEvent.stopPropagation();
+          draggedRef.current = false;
+        },
+        { capture: true, once: true },
+      );
+    }
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+  }
 
   function updateStatus(transform) {
     onChange((currentValue) => {
@@ -276,10 +304,7 @@ function CompanionStatus({
         current,
         { intimateExpressionEnabled },
       );
-      const streakIntensity = Math.min(
-        8,
-        Math.max(0, reaction.streakCount - 1),
-      );
+      const streakIntensity = Math.min(8, Math.max(0, reaction.streakCount - 1));
       const energyTarget = clamp(
         reaction.energyTarget + Math.round(streakIntensity / 2),
         0,
@@ -292,7 +317,6 @@ function CompanionStatus({
         30,
         220,
       );
-
       return {
         ...current,
         mood: reaction.mood,
@@ -317,28 +341,28 @@ function CompanionStatus({
         hotZones:
           zone.recoveryAction === true
             ? current.hotZones
-            : [
-                zone.id,
-                ...current.hotZones.filter((id) => id !== zone.id),
-              ].slice(0, HOT_ZONES.length),
+            : [zone.id, ...current.hotZones.filter((id) => id !== zone.id)].slice(
+                0,
+                HOT_ZONES.length,
+              ),
         recentRecords: addStatusRecord(current, reaction.record),
       };
     });
   }
 
   function runQuickAction(actionId) {
-    const zone = RECOVERY_ACTIONS.find((item) => item.id === actionId);
-    if (!zone) return;
+    const action = RECOVERY_ACTIONS.find((item) => item.id === actionId);
+    if (!action) return;
     setLiquidPulse(actionId);
-    touchZone(zone);
+    touchZone(action);
     window.setTimeout(() => setLiquidPulse(""), 640);
   }
 
   function runDesireAction(action) {
-    const baseZone = RECOVERY_ACTIONS.find((item) => item.id === "wish");
-    if (!baseZone) return;
+    const baseAction = RECOVERY_ACTIONS.find((item) => item.id === "wish");
+    if (!baseAction) return;
     touchZone({
-      ...baseZone,
+      ...baseAction,
       mood: action.mood,
       focus: action.focus,
       microState: action.microState,
@@ -348,11 +372,7 @@ function CompanionStatus({
   }
 
   function chooseDuration(event) {
-    const totalSeconds = clamp(
-      Number(event.target.value),
-      60,
-      24 * 60 * 60,
-    );
+    const totalSeconds = clamp(Number(event.target.value), 60, 24 * 60 * 60);
     const minutes = Math.round(totalSeconds / 60);
     updateStatus((current) => ({
       ...current,
@@ -391,9 +411,7 @@ function CompanionStatus({
           },
         };
       }
-
-      const nextRemaining =
-        remaining > 0 ? remaining : current.countdown.totalSeconds;
+      const nextRemaining = remaining > 0 ? remaining : current.countdown.totalSeconds;
       return {
         ...current,
         note: "你按下了开始，我会陪你守着这段时间。",
@@ -405,9 +423,7 @@ function CompanionStatus({
           ...current.countdown,
           remainingSeconds: nextRemaining,
           isRunning: true,
-          endsAt: new Date(
-            Date.now() + nextRemaining * 1000,
-          ).toISOString(),
+          endsAt: new Date(Date.now() + nextRemaining * 1000).toISOString(),
         },
       };
     });
@@ -429,12 +445,23 @@ function CompanionStatus({
     setClockNow(Date.now());
   }
 
+  const floatingStyle = {
+    "--status-pulse-duration": pulseDuration,
+    ...(dragPosition
+      ? {
+          left: `${dragPosition.left}px`,
+          top: `${dragPosition.top}px`,
+          transform: "none",
+        }
+      : {}),
+  };
+
   if (minimized) {
     return (
       <section
         ref={rootRef}
-        className={`companion-status minimized${thresholdClass}`}
-        style={{ "--status-pulse-duration": pulseDuration }}
+        className={`companion-status sun-glass-floating-status-shell minimized${thresholdClass}`}
+        style={floatingStyle}
         aria-label={`${displayName}的动态状态已缩到侧边`}
       >
         <button
@@ -442,11 +469,9 @@ function CompanionStatus({
           className="status-restore-button"
           onClick={restorePanel}
           aria-label={`展开${displayName}的动态状态`}
-          title="展开动态状态"
         >
-          <span className="status-restore-mark" aria-hidden="true">D</span>
-          <span className="status-restore-signal" aria-hidden="true" />
-          <span className="status-restore-chevron" aria-hidden="true">›</span>
+          <Sparkles aria-hidden="true" />
+          <span aria-hidden="true">‹</span>
         </button>
       </section>
     );
@@ -455,29 +480,17 @@ function CompanionStatus({
   return (
     <section
       ref={rootRef}
-      className={`companion-status${expanded ? " expanded" : ""}${thresholdClass}`}
-      style={{ "--status-pulse-duration": pulseDuration }}
+      className={`companion-status sun-glass-floating-status-shell${
+        expanded ? " expanded" : ""
+      }${thresholdClass}`}
+      style={floatingStyle}
       aria-label={`${displayName}的动态状态`}
     >
-      <svg
-        className="status-pulse-bg"
-        viewBox="0 0 680 140"
-        aria-hidden="true"
-      >
-        <path
-          className="status-pulse-line"
-          pathLength="1"
-          d="M0 78H74l16-10 18 22 22-56 28 78 24-34 22 10H302l15-9 18 20 23-52 28 72 25-31 24 9H520l14-8 17 18 20-45 25 63 22-27 18 8H680"
-        />
-      </svg>
-      <span className="status-pulse-runner" aria-hidden="true" />
-
       <button
         type="button"
-        className="status-minimize-button"
+        className="status-minimize-button sun-glass-status-minimize"
         onClick={minimizePanel}
         aria-label="把动态状态缩到侧边"
-        title="缩到侧边"
       >
         ‹
       </button>
@@ -485,7 +498,12 @@ function CompanionStatus({
       <button
         type="button"
         className="sun-glass-status-ribbon sun-glass-panel"
+        data-status-drag-handle
         aria-expanded={expanded}
+        onPointerDown={beginStatusDrag}
+        onPointerMove={moveStatusDrag}
+        onPointerUp={endStatusDrag}
+        onPointerCancel={endStatusDrag}
         onClick={() => (expanded ? closePanel() : openPanel())}
       >
         <span className="sun-glass-status-ribbon-icon" aria-hidden="true">
@@ -494,7 +512,9 @@ function CompanionStatus({
         <span>
           <small>{resetBlank ? "在这里" : normalized.mood}</small>
           <strong>
-            {resetBlank ? "等你写下新的此刻。" : personalized(normalized.note)}
+            {resetBlank
+              ? "等你写下新的此刻。"
+              : personalized(normalized.note)}
           </strong>
         </span>
         <ChevronRight aria-hidden="true" />
@@ -518,94 +538,61 @@ function CompanionStatus({
         </div>
       </section>
 
-      <button
-        type="button"
-        className="status-summary"
-        aria-expanded={expanded}
-        onClick={() => (expanded ? closePanel() : openPanel())}
-      >
-        <span className="status-presence" aria-hidden="true">
-          <span>D</span>
-        </span>
-        <span className="status-summary-copy">
-          <span className="status-name-line">
-            <strong>{displayName}</strong>
-            <span className="status-mood">
-              {resetBlank ? "未设定" : normalized.mood}
-            </span>
-          </span>
-          <span className="status-glance">
-            {resetBlank ? (
-              <span>状态内容已清空</span>
-            ) : (
-              <>
-                <span>⌖ {normalized.place}</span>
-                <span>·</span>
-                <span>{personalized(normalized.focus)}</span>
-              </>
-            )}
-          </span>
-          <span className="status-reaction-preview">
-            {resetBlank ? "等待新的设定" : personalized(normalized.note)}
-          </span>
-        </span>
-        {!resetBlank && (
-          <span className="status-mini-vitals" aria-label="角色氛围数值">
-            <span>{normalized.energyLevel}%</span>
-            <span>{normalized.pulseBpm} BPM</span>
-            {normalized.countdown.isRunning && (
-              <span>{formatCountdown(remainingSeconds)}</span>
-            )}
-          </span>
-        )}
-        <span className="status-chevron" aria-hidden="true">
-          {expanded ? "⌃" : "⌄"}
-        </span>
-      </button>
-
       {expanded && (
-        <div ref={panelRef} className="status-panel">
-          <section className="sun-glass-status-popover-core">
-            <header>
-              <div>
-                <small>{displayName}此刻</small>
-                <h2>{resetBlank ? "在这里" : normalized.mood}</h2>
+        <div
+          className="status-panel sun-glass-floating-status-panel"
+          role="dialog"
+          aria-label={`${displayName}状态`}
+        >
+          <header className="sun-glass-floating-status-header">
+            <div
+              className="sun-glass-status-drag-title"
+              data-status-drag-handle
+              onPointerDown={beginStatusDrag}
+              onPointerMove={moveStatusDrag}
+              onPointerUp={endStatusDrag}
+              onPointerCancel={endStatusDrag}
+            >
+              <small>{displayName}此刻</small>
+              <h2>{resetBlank ? "在这里" : normalized.mood}</h2>
+            </div>
+            <section
+              className="sun-glass-popover-liquid-actions"
+              aria-label="弹窗快捷互动"
+            >
+              <span className="sun-glass-popover-color-flow" aria-hidden="true" />
+              <div className="sun-glass-popover-liquid-module">
+                {QUICK_ACTIONS.map(({ id, label, Icon }) => (
+                  <button
+                    type="button"
+                    key={id}
+                    className={liquidPulse === id ? "is-pulsing" : ""}
+                    aria-label={label}
+                    title={label}
+                    onClick={() => runQuickAction(id)}
+                  >
+                    <Icon aria-hidden="true" />
+                  </button>
+                ))}
               </div>
-              <section
-                className="sun-glass-popover-liquid-actions"
-                aria-label="弹窗快捷互动"
-              >
-                <span
-                  className="sun-glass-popover-color-flow"
-                  aria-hidden="true"
-                />
-                <div className="sun-glass-popover-liquid-module">
-                  {QUICK_ACTIONS.map(({ id, label, Icon }) => (
-                    <button
-                      type="button"
-                      key={id}
-                      className={liquidPulse === id ? "is-pulsing" : ""}
-                      aria-label={label}
-                      title={label}
-                      onClick={() => runQuickAction(id)}
-                    >
-                      <Icon aria-hidden="true" />
-                    </button>
-                  ))}
-                </div>
-              </section>
-              <button
-                type="button"
-                className="sun-glass-popover-close"
-                aria-label="关闭动态状态"
-                onClick={closePanel}
-              >
-                <X aria-hidden="true" />
-              </button>
-            </header>
-            <p>
-              {resetBlank ? "等你写下新的此刻。" : personalized(normalized.note)}
+            </section>
+            <button
+              type="button"
+              className="sun-glass-popover-close"
+              aria-label="关闭动态状态"
+              onClick={closePanel}
+            >
+              <X aria-hidden="true" />
+            </button>
+          </header>
+
+          <div ref={panelRef} className="sun-glass-status-scroll">
+            <p className="sun-glass-status-note">
+              {resetBlank
+                ? "等你写下新的此刻。"
+                : personalized(normalized.note)}
             </p>
+
             <div className="sun-glass-energy-row">
               <span>
                 <BatteryMedium aria-hidden="true" />
@@ -616,174 +603,100 @@ function CompanionStatus({
             <div className="sun-glass-energy-track" aria-hidden="true">
               <span style={{ width: `${normalized.energyLevel}%` }} />
             </div>
+
             <div className="sun-glass-wish-row">
               <Heart aria-hidden="true" />
               <span>
                 {resetBlank
-                  ? `想和你待在一起`
+                  ? "想和你待在一起"
                   : personalized(normalized.focus)}
               </span>
             </div>
-            <div className="sun-glass-desire-actions">
-              {DESIRE_ACTIONS.map((action) => (
-                <button
-                  type="button"
-                  key={action.id}
-                  onClick={() => runDesireAction(action)}
-                >
-                  <action.Icon aria-hidden="true" />
-                  <span>{action.label}</span>
-                </button>
-              ))}
-            </div>
-          </section>
 
-          <div className="status-advanced-content">
-          <section className="status-signal-hero">
-            <div className="status-signal-kicker">
-              <span className="status-live-indicator" aria-hidden="true" />
-              <span>LIVE COMPANION SIGNAL</span>
-              <time>{formatUpdatedAt(normalized.updatedAt, clockNow)}</time>
-            </div>
-            <div className="status-signal-title">
-              <div>
-                <span className="status-eyebrow">此刻心绪</span>
-                <h2>{personalized(normalized.microState)}</h2>
+            <section className="sun-glass-status-section">
+              <div className="sun-glass-section-heading">
+                <small>一起做点什么</small>
+                <strong>陪她消磨一小段时光</strong>
               </div>
-              <span className="status-signal-state">{normalized.mood}</span>
-            </div>
-            <p>{personalized(normalized.note)}</p>
-            <dl className="status-facts">
-              <div>
-                <dt>所在</dt>
-                <dd>{normalized.place}</dd>
+              <div className="sun-glass-desire-actions">
+                {DESIRE_ACTIONS.map((action) => (
+                  <button
+                    type="button"
+                    key={action.id}
+                    onClick={() => runDesireAction(action)}
+                  >
+                    <action.Icon aria-hidden="true" />
+                    <span>{action.label}</span>
+                  </button>
+                ))}
               </div>
-              <div>
-                <dt>在意</dt>
-                <dd>{personalized(normalized.focus)}</dd>
-              </div>
-              <div>
-                <dt>同步</dt>
-                <dd>{isResponding ? "正在回应" : "陪伴在线"}</dd>
-              </div>
-            </dl>
-          </section>
+            </section>
 
-          <section className="status-vitals-grid" aria-label="实时氛围数值">
-            <article className="status-vital-tile energy">
-              <div className="status-vital-heading">
-                <span>能量</span>
-                <small>{normalized.mood}</small>
+            <section className="sun-glass-status-section">
+              <div className="sun-glass-section-heading">
+                <small>触碰她</small>
+                <strong>轻轻碰一下，她会回应你</strong>
               </div>
-              <strong>{normalized.energyLevel}%</strong>
-              <div className="status-vital-track" aria-hidden="true">
-                <span style={{ width: `${normalized.energyLevel}%` }} />
-              </div>
-            </article>
-            <article className="status-vital-tile resonance">
-              <div className="status-vital-heading">
-                <span>互动共鸣</span>
-                <small>累计触碰</small>
-              </div>
-              <strong>{interactionDisplay}<em>次</em></strong>
-              <div className="status-vital-track" aria-hidden="true">
-                <span style={{ width: `${interactionMeter}%` }} />
-              </div>
-            </article>
-            <article className="status-vital-tile pulse">
-              <div className="status-vital-heading">
-                <span>心动节拍</span>
-                <small>虚拟氛围</small>
-              </div>
-              <strong>{normalized.pulseBpm}<em>BPM</em></strong>
-              <div className="status-vital-track" aria-hidden="true">
-                <span style={{ width: `${pulseMeter}%` }} />
-              </div>
-            </article>
-          </section>
-          <small className="status-disclaimer">
-            以上是 AI 角色的界面氛围值，不是手机传感器或健康数据。
-          </small>
-
-          <section className="status-card status-interaction-card">
-            <div className="status-card-heading compact">
-              <div>
-                <span className="status-eyebrow">互动热区</span>
-                <h3>
-                  {isResponding
-                    ? `${displayName}正在回应你的靠近…`
-                    : "轻轻碰一下，会在聊天里回应你"}
-                </h3>
-              </div>
-            </div>
-            <div className="hot-zone-grid">
-              {HOT_ZONES.map((zone) => (
-                <button
-                  type="button"
-                  key={zone.id}
-                  data-interaction-zone={zone.id}
-                  className={
-                    normalized.hotZones.includes(zone.id) ? "active" : ""
-                  }
-                  aria-pressed={normalized.hotZones.includes(zone.id)}
-                  onClick={() => touchZone(zone)}
-                >
-                  <span className="hot-zone-icon" aria-hidden="true">
-                    {zone.icon}
-                  </span>
-                  <span className="hot-zone-copy">
+              <div className="sun-glass-interaction-grid">
+                {HOT_ZONES.map((zone) => (
+                  <button
+                    type="button"
+                    key={zone.id}
+                    data-interaction-zone={zone.id}
+                    aria-pressed={normalized.hotZones.includes(zone.id)}
+                    onClick={() => touchZone(zone)}
+                  >
+                    <span aria-hidden="true">{zone.icon}</span>
                     <strong>{zone.label}</strong>
                     <small>
                       {normalizedInteractionStats.counts[zone.id] > 0
-                        ? `累计 ${normalizedInteractionStats.counts[zone.id]} 次`
-                        : "等待第一次"}
+                        ? `${normalizedInteractionStats.counts[zone.id]} 次`
+                        : "碰碰看"}
                     </small>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </section>
+                  </button>
+                ))}
+              </div>
+            </section>
 
-          <section className="status-card status-recovery-card">
-            <div className="status-card-heading compact">
-              <div>
-                <span className="status-eyebrow">陪她恢复</span>
-                <h3>
+            <section className="sun-glass-status-section">
+              <div className="sun-glass-section-heading">
+                <small>陪她恢复</small>
+                <strong>
                   {normalized.energyLevel <= 25
                     ? `${displayName}现在很累，陪她慢慢充回力气`
-                    : `问问${displayName}此刻真正需要什么`}
-                </h3>
+                    : `问问${displayName}现在真正想要什么`}
+                </strong>
               </div>
-            </div>
-            <div className="recovery-action-grid">
-              {RECOVERY_ACTIONS.map((action) => (
-                <button
-                  type="button"
-                  key={action.id}
-                  data-recovery-action={action.id}
-                  onClick={() => touchZone(action)}
-                >
-                  <span className="hot-zone-icon" aria-hidden="true">
-                    {action.icon}
-                  </span>
-                  <span className="hot-zone-copy">
-                    <strong>{action.label}</strong>
-                    <small>立即恢复至少 {action.minimumEnergyGain}%</small>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </section>
+              <div className="sun-glass-recovery-grid">
+                {RECOVERY_ACTIONS.map((action) => (
+                  <button
+                    type="button"
+                    key={action.id}
+                    data-recovery-action={action.id}
+                    onClick={() => touchZone(action)}
+                  >
+                    <span aria-hidden="true">{action.icon}</span>
+                    <span>
+                      <strong>{action.label}</strong>
+                      <small>恢复至少 {action.minimumEnergyGain}%</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
 
-          <div className="status-panel-grid lower-grid">
-            <section className="status-card countdown-card">
-              <div className="status-card-heading compact">
-                <div>
-                  <span className="status-eyebrow">
-                    {normalized.countdown.label}
-                  </span>
-                  <h3>{formatCountdown(remainingSeconds)}</h3>
-                </div>
+            <div className="sun-glass-vitals-inline">
+              <span>互动 {interactionTotal} 次</span>
+              <span>{normalized.pulseBpm} BPM</span>
+              <span>{isResponding ? "正在回应" : "陪伴在线"}</span>
+            </div>
+
+            <section className="sun-glass-status-section sun-glass-countdown-card">
+              <div className="sun-glass-section-heading">
+                <small>{normalized.countdown.label}</small>
+                <strong>{formatCountdown(remainingSeconds)}</strong>
+              </div>
+              <div className="sun-glass-countdown-controls">
                 <select
                   aria-label="选择倒计时时长"
                   value={normalized.countdown.totalSeconds}
@@ -794,54 +707,31 @@ function CompanionStatus({
                   <option value={45 * 60}>45 分钟</option>
                   <option value={60 * 60}>60 分钟</option>
                 </select>
-              </div>
-              <div className="countdown-progress" aria-hidden="true">
-                <span
-                  style={{
-                    width: `${clamp(
-                      (remainingSeconds / normalized.countdown.totalSeconds) *
-                        100,
-                      0,
-                      100,
-                    )}%`,
-                  }}
-                />
-              </div>
-              <div className="countdown-actions">
                 <button type="button" onClick={toggleCountdown}>
                   {normalized.countdown.isRunning ? "暂停" : "开始"}
                 </button>
-                <button type="button" onClick={resetCountdown}>
-                  重置
-                </button>
+                <button type="button" onClick={resetCountdown}>重置</button>
               </div>
             </section>
 
-            <section className="status-card status-record-card">
-              <div className="status-card-heading compact">
-                <div>
-                  <span className="status-eyebrow">最近记录</span>
-                  <h3>刚刚发生了什么</h3>
-                </div>
+            <section className="sun-glass-status-section sun-glass-records">
+              <div className="sun-glass-section-heading">
+                <small>最近记录</small>
+                <strong>刚刚发生了什么</strong>
               </div>
               {normalized.recentRecords.length > 0 ? (
                 <ul>
                   {normalized.recentRecords.map((record, index) => (
                     <li key={`${record.createdAt}-${index}`}>
-                      <time>
-                        {formatUpdatedAt(record.createdAt, clockNow)}
-                      </time>
+                      <time>{formatUpdatedAt(record.createdAt, clockNow)}</time>
                       <span>{personalized(record.text)}</span>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="status-record-empty">
-                  还没有记录，试着碰一碰上面的热区。
-                </p>
+                <p>还没有记录，试着碰一碰上面的互动。</p>
               )}
             </section>
-          </div>
           </div>
         </div>
       )}

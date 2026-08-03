@@ -518,6 +518,7 @@ function hydrateSessionChatHistory(messages, sessionId) {
 }
 
 function App({ accountControl = null, userName = "" }) {
+  const visualPreview = arguments[0]?.visualPreview === true;
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -555,7 +556,7 @@ function App({ accountControl = null, userName = "" }) {
   const [momentDraft, setMomentDraft] = useState("");
   const [momentImages, setMomentImages] = useState([]);
   const [commentDrafts, setCommentDrafts] = useState({});
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(!visualPreview);
   const [isSending, setIsSending] = useState(false);
   const [isCompanionResponding, setIsCompanionResponding] = useState(false);
   const [hasLoadedSettings, setHasLoadedSettings] = useState(false);
@@ -596,7 +597,7 @@ function App({ accountControl = null, userName = "" }) {
   const [installPrompt, setInstallPrompt] = useState(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [startupConnection, setStartupConnection] = useState({
-    status: "connecting",
+    status: visualPreview ? "connected" : "connecting",
     failureCount: 0,
     nextRetryDelayMs: null,
     lastError: null,
@@ -1223,6 +1224,29 @@ function App({ accountControl = null, userName = "" }) {
   useEffect(() => {
     let cancelled = false;
 
+    if (visualPreview) {
+      const previewSettings = {
+        ...emptySettings,
+        ai_name: "小灯",
+      };
+      confirmedSettingsRef.current = previewSettings;
+      draftSettingsRef.current = previewSettings;
+      hasLoadedSettingsRef.current = true;
+      setSettings(previewSettings);
+      setDraftSettings(previewSettings);
+      setHasLoadedSettings(true);
+      setIsLoading(false);
+      setStartupConnection({
+        status: "connected",
+        failureCount: 0,
+        nextRetryDelayMs: null,
+        lastError: null,
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
     function applyInitialModelCatalog(data, fallbackModel = "") {
       if (cancelled) return;
       const catalog = reconcileModelCatalog(data, {
@@ -1359,7 +1383,7 @@ function App({ accountControl = null, userName = "" }) {
         startupReconnectRef.current = null;
       }
     };
-  }, [loadChatSkinPreferences, refreshServiceHealth]);
+  }, [loadChatSkinPreferences, refreshServiceHealth, visualPreview]);
 
   useEffect(() => {
     if (
@@ -2649,6 +2673,8 @@ function App({ accountControl = null, userName = "" }) {
     );
     companionInteractionStatsRef.current = nextStats;
     setCompanionInteractionStats(nextStats);
+
+    if (visualPreview) return nextStats;
 
     const sessionId = activeSessionIdRef.current;
     companionInteractionQueueRef.current = enqueueCompanionInteraction({
@@ -6048,9 +6074,10 @@ function App({ accountControl = null, userName = "" }) {
     memories: "Portrait",
   }[activeView];
   const showStartupRecovery =
-    startupConnection.status === "connecting" ||
+    !visualPreview &&
+    (startupConnection.status === "connecting" ||
     (startupConnection.failureCount > 0 &&
-      startupConnection.status !== "connected");
+      startupConnection.status !== "connected"));
   const startupRetrySeconds = Math.ceil(
     Number(startupConnection.nextRetryDelayMs || 0) / 1_000,
   );
