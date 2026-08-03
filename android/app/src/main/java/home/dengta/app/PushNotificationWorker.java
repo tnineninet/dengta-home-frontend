@@ -178,10 +178,6 @@ public final class PushNotificationWorker extends Worker {
             "/api/v2/settings"
         );
         JSONObject settings = settingsResponse.optJSONObject("settings");
-        if (settings == null || !settings.optBoolean("push_enabled", false)) {
-            preferences.edit().putString(CURSOR_KEY, nowIso()).apply();
-            return Result.success();
-        }
 
         String cursor = preferences.getString(CURSOR_KEY, "");
         if (cursor == null || cursor.isEmpty()) {
@@ -218,7 +214,9 @@ public final class PushNotificationWorker extends Worker {
 
         boolean appVisible = isAppVisible(context);
         String aiName = cleanText(
-            settings.optString("ai_name", "DengTa home"),
+            settings == null
+                ? "DengTa home"
+                : settings.optString("ai_name", "DengTa home"),
             50
         );
         if (aiName.isEmpty()) aiName = "DengTa home";

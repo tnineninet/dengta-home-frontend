@@ -365,6 +365,16 @@ const activitySource = fs.readFileSync(
 );
 assert.match(workerSource, /\/api\/v2\/settings/);
 assert.match(workerSource, /\/api\/v2\/push\/messages/);
+assert.doesNotMatch(
+  workerSource,
+  /!settings\.optBoolean\("push_enabled", false\)/,
+  "manual and co-watch push messages must still be delivered when autonomous generation is disabled",
+);
+assert.doesNotMatch(
+  workerSource,
+  /settings == null[\s\S]{0,160}putString\(CURSOR_KEY, nowIso\(\)\)/,
+  "a missing settings payload must not advance the cursor and discard pending push messages",
+);
 assert.match(workerSource, /X-DengTa-Companion-Id/);
 assert.match(workerSource, /cancelUniqueWork/);
 assert.match(workerSource, /X-DengTa-Installation-Token/);
