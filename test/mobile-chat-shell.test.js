@@ -94,11 +94,16 @@ test("expanded status uses an opaque black interactive flow surface", () => {
   const styles = read("src/sun-glass-chat.css");
 
   assert.match(status, /<StatusFlowField active=\{expanded\} \/>/);
-  assert.match(flow, /uniform vec2 u_pointer/);
+  assert.match(flow, /const MAX_PARTICLES = 820/);
+  assert.match(flow, /const MAX_VORTICES = 18/);
   assert.match(flow, /MAX_CANVAS_PIXELS/);
-  assert.match(flow, /panel\.addEventListener\("pointerdown", startFlow/);
-  assert.match(flow, /panel\.addEventListener\("pointermove", moveFlow/);
-  assert.doesNotMatch(flow, /float cyan = glow|float magenta = glow/);
+  assert.match(flow, /pointerState\.vx/);
+  assert.match(flow, /addVortex/);
+  assert.match(flow, /distancePixels/);
+  assert.match(flow, /panel\.addEventListener\("pointerdown", startPointerFlow/);
+  assert.match(flow, /panel\.addEventListener\("pointermove", movePointerFlow/);
+  assert.match(flow, /panel\.addEventListener\("touchmove", moveTouchFlow/);
+  assert.match(flow, /gl\.drawArrays\(gl\.POINTS/);
   assert.match(
     styles,
     /\.sun-glass-floating-status-shell\.expanded[\s\S]*?\.sun-glass-floating-status-panel[\s\S]*?background:\s*#050507/,

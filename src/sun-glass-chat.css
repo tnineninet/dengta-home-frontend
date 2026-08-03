@@ -2554,7 +2554,7 @@
   }
 }
 
-/* Mobile 2.8.2: fixed safe capsule, connected panel and stable inline tools. */
+/* Mobile 2.8.3: fixed capsule, directional touch flow and stable inline tools. */
 .main-panel.view-chat
   .sun-glass-floating-status-panel[aria-hidden="true"] {
   visibility: hidden;

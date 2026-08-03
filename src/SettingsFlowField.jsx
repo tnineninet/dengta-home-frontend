@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 
 const LOOP_SECONDS = 15.466667;
 const ACTIVE_FRAME_MS = 1000 / 24;
-const SCROLL_FRAME_MS = 1000 / 3;
 
 const VERTEX_SHADER = `
 attribute vec2 a_position;
@@ -176,7 +175,7 @@ export default function SettingsFlowField() {
         stencil: false,
         premultipliedAlpha: false,
         powerPreference: "high-performance",
-        preserveDrawingBuffer: false,
+        preserveDrawingBuffer: true,
       });
       if (!gl) {
         showFallback();
@@ -235,9 +234,9 @@ export default function SettingsFlowField() {
       };
 
       const draw = (now) => {
-        if (disposed) return;
-        const interval = scrolling ? SCROLL_FRAME_MS : ACTIVE_FRAME_MS;
-        if (now - lastFrame >= interval || lastFrame < 0) {
+        animationFrame = 0;
+        if (disposed || scrolling) return;
+        if (now - lastFrame >= ACTIVE_FRAME_MS || lastFrame < 0) {
           resize();
           const elapsed = (now - startedAt) / 1000;
           gl.useProgram(program);
@@ -250,7 +249,9 @@ export default function SettingsFlowField() {
           canvas.parentElement?.classList.add("settings-flow-field--ready");
           lastFrame = now;
         }
-        if (!reducedMotion.matches) animationFrame = requestAnimationFrame(draw);
+        if (!reducedMotion.matches && !scrolling) {
+          animationFrame = requestAnimationFrame(draw);
+        }
       };
 
       const restart = () => {
@@ -266,7 +267,18 @@ export default function SettingsFlowField() {
 
       const scrollObserver = settingsSheet
         ? new MutationObserver(() => {
-            scrolling = settingsSheet.classList.contains("is-scrolling");
+            const nextScrolling = settingsSheet.classList.contains("is-scrolling");
+            if (scrolling === nextScrolling) return;
+            scrolling = nextScrolling;
+            if (scrolling) {
+              cancelAnimationFrame(animationFrame);
+              animationFrame = 0;
+              canvas.parentElement?.classList.add("settings-flow-field--paused");
+              return;
+            }
+            canvas.parentElement?.classList.remove("settings-flow-field--paused");
+            lastFrame = -Infinity;
+            if (!reducedMotion.matches) animationFrame = requestAnimationFrame(draw);
           })
         : null;
       scrollObserver?.observe(settingsSheet, {

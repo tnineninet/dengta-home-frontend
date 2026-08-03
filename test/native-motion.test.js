@@ -83,7 +83,7 @@ test("long repeated content can skip offscreen layout and reduced motion is supp
   assert.match(styles, /@media \(prefers-reduced-motion:\s*reduce\)/);
 });
 
-test("the settings flow stays GPU-backed and throttles while scrolling", () => {
+test("the settings flow stays GPU-backed and freezes its visible frame while scrolling", () => {
   const appSource = read("src/App.jsx");
   const flowSource = read("src/SettingsFlowField.jsx");
   const styles = read("src/sun-glass-ui.css");
@@ -96,8 +96,10 @@ test("the settings flow stays GPU-backed and throttles while scrolling", () => {
   assert.doesNotMatch(flowStyles, /mix-blend-mode:\s*(?:multiply|screen|soft-light)/);
   assert.match(flowSource, /powerPreference:\s*"high-performance"/);
   assert.match(flowSource, /const ACTIVE_FRAME_MS = 1000 \/ 24/);
-  assert.match(flowSource, /const SCROLL_FRAME_MS = 1000 \/ 3/);
   assert.match(flowSource, /classList\.contains\("is-scrolling"\)/);
+  assert.match(flowSource, /preserveDrawingBuffer:\s*true/);
+  assert.match(flowSource, /if \(disposed \|\| scrolling\) return/);
+  assert.match(flowSource, /cancelAnimationFrame\(animationFrame\)/);
   assert.match(flowSource, /\? 0\.64\s*:\s*0\.82/);
   assert.match(flowSource, /760 \/ Math\.max\(longestSide, 1\)/);
   assert.match(
@@ -106,7 +108,7 @@ test("the settings flow stays GPU-backed and throttles while scrolling", () => {
   );
   assert.match(
     styles,
-    /\.settings-sheet \.settings-card[\s\S]{0,420}content-visibility:\s*auto/,
+    /\.settings-sheet \.settings-card[\s\S]{0,420}content-visibility:\s*visible/,
   );
   assert.match(
     styles,
@@ -117,6 +119,14 @@ test("the settings flow stays GPU-backed and throttles while scrolling", () => {
     /\.settings-card,[\s\S]{0,900}backdrop-filter:\s*blur\(/,
   );
   assert.match(appSource, /onScroll=\{handleSettingsScroll\}/);
+  assert.doesNotMatch(
+    styles,
+    /\.settings-sheet\.is-scrolling\s+\.settings-flow-field\s*\{[^}]*visibility:\s*hidden/,
+  );
+  assert.match(
+    styles,
+    /\.settings-sheet \.settings-card,[\s\S]{0,260}content-visibility:\s*visible/,
+  );
 });
 
 test("the sky does not repaint invisible weather layers at animation speed", () => {
