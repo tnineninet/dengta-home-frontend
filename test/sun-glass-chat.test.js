@@ -60,6 +60,10 @@ test("the mobile layer preserves the prototype dimensions and jelly motion", () 
   assert.match(styles, /@keyframes sun-glass-rainbow-breathe/);
   assert.match(styles, /@keyframes sun-glass-jelly-open/);
   assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(
+    styles,
+    /@media \(min-width: 821px\)\s*\{[\s\S]*?\.sun-glass-time-deck\s*\{[\s\S]*?display:\s*block;/,
+  );
 });
 
 test("the local visual preview is isolated from production startup data", () => {
