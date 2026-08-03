@@ -121,10 +121,10 @@ test("the sky does not repaint invisible weather layers at animation speed", () 
   const backdropSource = read("src/CelestialBackdrop.jsx");
 
   assert.match(backdropSource, /const hasVisibleMotion =/);
-  assert.match(backdropSource, /currentSky\.night > 0\.08/);
+  assert.match(backdropSource, /const starsVisible = sky\.night > 0\.08/);
   assert.match(
     backdropSource,
-    /settingsOpen \? 180 : hasVisibleMotion \? 33 : 500/,
+    /if \(hasVisibleMotion\) animationFrame = requestAnimationFrame\(paint\)/,
   );
 });
 

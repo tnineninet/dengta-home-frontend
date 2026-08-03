@@ -37,6 +37,7 @@ function drawCloudShape(context, x, y, size, alpha, darkness) {
 
 function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode }) {
   const skyRef = useRef(sky);
+  const starsVisible = sky.night > 0.08;
 
   useEffect(() => {
     skyRef.current = sky;
@@ -127,13 +128,11 @@ function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode }) 
       const currentSky = skyRef.current;
       const settingsOpen = Boolean(document.querySelector(".settings-sheet"));
       const hasVisibleMotion =
-        currentSky.night > 0.08 ||
+        starsVisible ||
         mode === "cloudy" ||
         mode === "rain" ||
         mode === "storm";
-      // Clear daylight has no visible canvas animation. Keep the canvases ready
-      // for time/weather changes without invalidating the full WebView at 30fps.
-      const minimumInterval = settingsOpen ? 180 : hasVisibleMotion ? 33 : 500;
+      const minimumInterval = settingsOpen ? 180 : 33;
       if (now - lastPaintAt < minimumInterval) {
         animationFrame = requestAnimationFrame(paint);
         return;
@@ -182,25 +181,27 @@ function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode }) 
         }
         starsContext.restore();
       }
-      for (const point of starPoints) {
-        const pulse = point.steady
-          ? 0.6
-          : 0.5 + Math.sin(now / point.speed + point.phase) * 0.34;
-        const alpha = clamp(pulse) * (0.72 + currentSky.night * 0.28);
-        starsContext.beginPath();
-        starsContext.fillStyle = `rgba(255,250,231,${alpha})`;
-        starsContext.shadowColor = point.steady
-          ? "transparent"
-          : "rgba(210,225,255,.72)";
-        starsContext.shadowBlur = point.steady ? 0 : 4;
-        starsContext.arc(
-          point.x * width,
-          point.y * height,
-          point.radius,
-          0,
-          Math.PI * 2,
-        );
-        starsContext.fill();
+      if (starsVisible) {
+        for (const point of starPoints) {
+          const pulse = point.steady
+            ? 0.6
+            : 0.5 + Math.sin(now / point.speed + point.phase) * 0.34;
+          const alpha = clamp(pulse) * (0.72 + currentSky.night * 0.28);
+          starsContext.beginPath();
+          starsContext.fillStyle = `rgba(255,250,231,${alpha})`;
+          starsContext.shadowColor = point.steady
+            ? "transparent"
+            : "rgba(210,225,255,.72)";
+          starsContext.shadowBlur = point.steady ? 0 : 4;
+          starsContext.arc(
+            point.x * width,
+            point.y * height,
+            point.radius,
+            0,
+            Math.PI * 2,
+          );
+          starsContext.fill();
+        }
       }
       starsContext.shadowBlur = 0;
 
@@ -308,7 +309,7 @@ function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode }) 
         weatherContext.stroke();
         weatherContext.shadowBlur = 0;
       }
-      animationFrame = requestAnimationFrame(paint);
+      if (hasVisibleMotion) animationFrame = requestAnimationFrame(paint);
     };
 
     resize();
@@ -318,7 +319,7 @@ function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode }) 
       cancelAnimationFrame(animationFrame);
       window.removeEventListener("resize", resize);
     };
-  }, [cloudsRef, mode, starsRef, weatherRef]);
+  }, [cloudsRef, mode, starsRef, starsVisible, weatherRef]);
 }
 
 export default function CelestialBackdrop({ snapshot, weather = null }) {
