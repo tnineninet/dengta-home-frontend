@@ -124,14 +124,21 @@ function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode }) 
     };
 
     const paint = (now) => {
+      const currentSky = skyRef.current;
       const settingsOpen = Boolean(document.querySelector(".settings-sheet"));
-      const minimumInterval = settingsOpen ? 180 : 33;
+      const hasVisibleMotion =
+        currentSky.night > 0.08 ||
+        mode === "cloudy" ||
+        mode === "rain" ||
+        mode === "storm";
+      // Clear daylight has no visible canvas animation. Keep the canvases ready
+      // for time/weather changes without invalidating the full WebView at 30fps.
+      const minimumInterval = settingsOpen ? 180 : hasVisibleMotion ? 33 : 500;
       if (now - lastPaintAt < minimumInterval) {
         animationFrame = requestAnimationFrame(paint);
         return;
       }
       lastPaintAt = now;
-      const currentSky = skyRef.current;
       const starsRatio = Math.min(window.devicePixelRatio || 1, 2);
       const cloudRatio = Math.min(window.devicePixelRatio || 1, 1.5);
       const width = starsCanvas.width / starsRatio;

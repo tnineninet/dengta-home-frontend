@@ -117,6 +117,17 @@ test("the settings flow stays GPU-backed and throttles while scrolling", () => {
   assert.match(appSource, /onScroll=\{handleSettingsScroll\}/);
 });
 
+test("the sky does not repaint invisible weather layers at animation speed", () => {
+  const backdropSource = read("src/CelestialBackdrop.jsx");
+
+  assert.match(backdropSource, /const hasVisibleMotion =/);
+  assert.match(backdropSource, /currentSky\.night > 0\.08/);
+  assert.match(
+    backdropSource,
+    /settingsOpen \? 180 : hasVisibleMotion \? 33 : 500/,
+  );
+});
+
 test("dialogs share a layout-free jelly spring on the compositor", () => {
   const mainSource = read("src/main.jsx");
   const styles = read("src/jelly-motion.css");
