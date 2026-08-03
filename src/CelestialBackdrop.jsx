@@ -132,7 +132,9 @@ function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode }) 
         mode === "cloudy" ||
         mode === "rain" ||
         mode === "storm";
-      const minimumInterval = settingsOpen ? 180 : 33;
+      const timeScrubbing =
+        document.documentElement.dataset.timeScrubbing === "true";
+      const minimumInterval = timeScrubbing ? 120 : settingsOpen ? 180 : 33;
       if (now - lastPaintAt < minimumInterval) {
         animationFrame = requestAnimationFrame(paint);
         return;

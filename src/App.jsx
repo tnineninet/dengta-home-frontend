@@ -112,6 +112,7 @@ import {
 import { readReplySuggestions } from "./chat-reply-suggestions";
 import {
   readCachedCoordinates,
+  readCachedWeather,
   SHANGHAI_TIME_ZONE,
 } from "./ambient-context";
 import {
@@ -541,7 +542,9 @@ function App({ accountControl = null, userName = "" }) {
   const [celestialCoordinates, setCelestialCoordinates] = useState(
     () => readCachedCoordinates().coordinates,
   );
-  const [ambientWeather, setAmbientWeather] = useState(null);
+  const [ambientWeather, setAmbientWeather] = useState(
+    () => readCachedWeather().weather,
+  );
   const [weatherPreviewMode, setWeatherPreviewMode] = useState(null);
   const {
     preferences: themePreferences,

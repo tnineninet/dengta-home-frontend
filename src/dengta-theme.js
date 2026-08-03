@@ -65,8 +65,6 @@ export const DEFAULT_THEME_PREFERENCES = {
   card: "#fffdf8",
   cardOpacity: 0.18,
   appearance: "auto",
-  sunIntensity: 1,
-  moonIntensity: 0.86,
 };
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
@@ -92,13 +90,6 @@ function temporalProximity(date, center, radiusMs) {
   );
 }
 
-function boundedLightIntensity(value, fallback) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0.35 && parsed <= 1.6
-    ? parsed
-    : fallback;
-}
-
 export function normalizeThemePreferences(value = {}) {
   const source = value && typeof value === "object" ? value : {};
   const preset =
@@ -112,14 +103,6 @@ export function normalizeThemePreferences(value = {}) {
     appearance: APPEARANCE_MODES.has(source.appearance)
       ? source.appearance
       : DEFAULT_THEME_PREFERENCES.appearance,
-    sunIntensity: boundedLightIntensity(
-      source.sunIntensity,
-      DEFAULT_THEME_PREFERENCES.sunIntensity,
-    ),
-    moonIntensity: boundedLightIntensity(
-      source.moonIntensity,
-      DEFAULT_THEME_PREFERENCES.moonIntensity,
-    ),
   };
 }
 
@@ -219,7 +202,6 @@ export function getCelestialSnapshot(
   date = new Date(),
   appearance = "auto",
   coordinates,
-  lightPreferences = DEFAULT_THEME_PREFERENCES,
 ) {
   const parts = chinaTimeParts(date);
   const hour = Number(parts.hour) + Number(parts.minute) / 60;
@@ -269,14 +251,8 @@ export function getCelestialSnapshot(
     ? phaseProgress(date, schedule.civilDawn, schedule.civilDusk)
     : phaseProgress(date, nightStart, nightEnd);
   const arc = Math.sin(Math.PI * progress);
-  const sunIntensity = boundedLightIntensity(
-    lightPreferences.sunIntensity,
-    DEFAULT_THEME_PREFERENCES.sunIntensity,
-  );
-  const moonIntensity = boundedLightIntensity(
-    lightPreferences.moonIntensity,
-    DEFAULT_THEME_PREFERENCES.moonIntensity,
-  );
+  const sunIntensity = 1;
+  const moonIntensity = 1;
   const activeIntensity =
     (isSun ? sunIntensity : moonIntensity) * (0.44 + arc * 0.56);
   const sunriseAura = temporalProximity(
@@ -449,11 +425,11 @@ export function applyThemePreferences(preferences, snapshot, root) {
   );
   root.style.setProperty(
     "--sun-light-intensity",
-    normalized.sunIntensity.toFixed(2),
+    "1",
   );
   root.style.setProperty(
     "--moon-light-intensity",
-    normalized.moonIntensity.toFixed(2),
+    "1",
   );
 }
 
@@ -474,12 +450,11 @@ export function useDengTaTheme(coordinates = null) {
         displayedClock,
         preferences.appearance,
         coordinates,
-        preferences,
       ),
     [
       displayedClock,
       coordinates,
-      preferences,
+      preferences.appearance,
     ],
   );
 

@@ -90,9 +90,10 @@ test("the accepted sky keeps the real preview minute and exposes weather control
   const backdrop = read("src/CelestialBackdrop.jsx");
   const styles = read("src/sun-glass-ui.css");
 
-  assert.match(deck, /const \[isOpen, setIsOpen\] = useState\(true\)/);
+  assert.match(deck, /const \[isOpen, setIsOpen\] = useState\(false\)/);
   assert.match(deck, /WEATHER_PRESETS\.find/);
-  assert.match(deck, /<span>\{displayedWeatherLabel\} · 光线<\/span>/);
+  assert.match(deck, /实时\$\{displayedWeatherLabel\}/);
+  assert.match(deck, /onWeatherMode\?\.\(null\)/);
   assert.doesNotMatch(backdrop, /snapshot\.resolvedAppearance === "night"/);
   assert.match(backdrop, /getSunGlassSky\(minute\)/);
   const sunRule = styles.match(

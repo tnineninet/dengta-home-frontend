@@ -33,6 +33,7 @@ import {
   remainingAt,
   settleExpiredCountdown,
 } from "./companion-status";
+import StatusFlowField from "./StatusFlowField";
 
 const DESIRE_ACTIONS = [
   {
@@ -201,6 +202,7 @@ function CompanionStatus({
   }, [closePanel, expanded]);
 
   function beginStatusDrag(event) {
+    if (globalThis.matchMedia?.("(max-width: 820px)")?.matches) return;
     if (event.button !== 0 || !rootRef.current) return;
     const rect = rootRef.current.getBoundingClientRect();
     draggedRef.current = false;
@@ -472,13 +474,17 @@ function CompanionStatus({
         </span>
       </div>
 
-      {expanded && (
-        <div
-          className="status-panel sun-glass-floating-status-panel"
-          role="dialog"
-          aria-label={`${displayName}状态`}
-        >
-          <header className="sun-glass-floating-status-header">
+      <div
+        className={`status-panel sun-glass-floating-status-panel${
+          expanded ? " is-open" : ""
+        }`}
+        role="dialog"
+        aria-label={`${displayName}状态`}
+        aria-hidden={!expanded}
+        inert={expanded ? undefined : true}
+      >
+        <StatusFlowField active={expanded} />
+        <header className="sun-glass-floating-status-header">
             <div
               className="sun-glass-status-drag-title"
               data-status-drag-handle
@@ -671,8 +677,7 @@ function CompanionStatus({
               )}
             </section>
           </div>
-        </div>
-      )}
+      </div>
     </section>
   );
 }

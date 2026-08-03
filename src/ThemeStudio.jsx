@@ -90,38 +90,6 @@ export default function ThemeStudio({
             }
           />
         </label>
-        <label className="theme-opacity-control theme-light-control">
-          <span>
-            <strong>Sunlight</strong>
-            <output>{Math.round(preferences.sunIntensity * 100)}%</output>
-          </span>
-          <small>调节日出、正午与夕阳照亮玻璃的范围</small>
-          <input
-            type="range"
-            min="35"
-            max="160"
-            value={Math.round(preferences.sunIntensity * 100)}
-            onChange={(event) =>
-              updateTheme({ sunIntensity: Number(event.target.value) / 100 })
-            }
-          />
-        </label>
-        <label className="theme-opacity-control theme-light-control">
-          <span>
-            <strong>Moonlight</strong>
-            <output>{Math.round(preferences.moonIntensity * 100)}%</output>
-          </span>
-          <small>调节月光点光源的亮度与照射面积</small>
-          <input
-            type="range"
-            min="35"
-            max="160"
-            value={Math.round(preferences.moonIntensity * 100)}
-            onChange={(event) =>
-              updateTheme({ moonIntensity: Number(event.target.value) / 100 })
-            }
-          />
-        </label>
       </div>
 
       <div className="theme-appearance-control">

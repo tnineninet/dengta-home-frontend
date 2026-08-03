@@ -5,6 +5,7 @@ import {
   CloudRain,
   CloudSun,
   Droplets,
+  LocateFixed,
   MoonStar,
   SlidersHorizontal,
   Sparkles,
@@ -27,6 +28,8 @@ const WEATHER_PRESETS = [
   { id: "clear", label: "晴空", Icon: Sun },
 ];
 
+const SCRUB_COMMIT_INTERVAL_MS = 84;
+
 function formatMinute(value) {
   const minute = Math.max(0, Math.min(1439, Math.round(Number(value) || 0)));
   return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(
@@ -45,10 +48,12 @@ export default function SunGlassTimeDeck({
   glassLevel,
   onGlassLevel,
 }) {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
   const [isScrubbing, setIsScrubbing] = useState(false);
   const rootRef = useRef(null);
   const frameRef = useRef(0);
+  const commitTimerRef = useRef(0);
+  const lastCommitAtRef = useRef(0);
   const pendingMinuteRef = useRef(null);
   const externalMinute = Number.isFinite(previewMinute)
     ? previewMinute
@@ -57,8 +62,9 @@ export default function SunGlassTimeDeck({
   const displayedMinute = Number.isFinite(scrubMinute)
     ? scrubMinute
     : externalMinute;
-  const displayedWeather =
-    weatherMode || weatherModeFromAmbient(weather) || "clear";
+  const liveWeatherMode = weatherModeFromAmbient(weather) || "clear";
+  const usesLiveWeather = !weatherMode;
+  const displayedWeather = weatherMode || liveWeatherMode;
   const displayedWeatherLabel =
     WEATHER_PRESETS.find((preset) => preset.id === displayedWeather)?.label ||
     "晴空";
@@ -85,9 +91,25 @@ export default function SunGlassTimeDeck({
   useEffect(
     () => () => {
       if (frameRef.current) cancelAnimationFrame(frameRef.current);
+      if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
+      delete document.documentElement.dataset.timeScrubbing;
     },
     [],
   );
+
+  function flushPendingMinute() {
+    commitTimerRef.current = 0;
+    const pendingMinute = pendingMinuteRef.current;
+    pendingMinuteRef.current = null;
+    if (pendingMinute === null) return;
+    lastCommitAtRef.current = performance.now();
+    onPreviewMinute?.(pendingMinute);
+  }
+
+  function startScrubbing() {
+    document.documentElement.dataset.timeScrubbing = "true";
+    setIsScrubbing(true);
+  }
 
   function scheduleMinute(value) {
     const nextMinute = Math.max(0, Math.min(1439, Number(value) || 0));
@@ -96,9 +118,12 @@ export default function SunGlassTimeDeck({
     if (frameRef.current) return;
     frameRef.current = requestAnimationFrame(() => {
       frameRef.current = 0;
-      const pendingMinute = pendingMinuteRef.current;
-      pendingMinuteRef.current = null;
-      if (pendingMinute !== null) onPreviewMinute?.(pendingMinute);
+      const elapsed = performance.now() - lastCommitAtRef.current;
+      const wait = Math.max(0, SCRUB_COMMIT_INTERVAL_MS - elapsed);
+      if (wait === 0) flushPendingMinute();
+      else if (!commitTimerRef.current) {
+        commitTimerRef.current = window.setTimeout(flushPendingMinute, wait);
+      }
     });
   }
 
@@ -107,16 +132,23 @@ export default function SunGlassTimeDeck({
       cancelAnimationFrame(frameRef.current);
       frameRef.current = 0;
     }
+    if (commitTimerRef.current) {
+      clearTimeout(commitTimerRef.current);
+      commitTimerRef.current = 0;
+    }
     const pendingMinute = pendingMinuteRef.current;
     pendingMinuteRef.current = null;
     if (pendingMinute !== null) onPreviewMinute?.(pendingMinute);
+    delete document.documentElement.dataset.timeScrubbing;
     setIsScrubbing(false);
     setScrubMinute(null);
   }
 
   function selectMinute(value) {
     if (frameRef.current) cancelAnimationFrame(frameRef.current);
+    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
     frameRef.current = 0;
+    commitTimerRef.current = 0;
     pendingMinuteRef.current = null;
     setScrubMinute(null);
     onPreviewMinute?.(value);
@@ -151,7 +183,10 @@ export default function SunGlassTimeDeck({
           onClick={() => setIsOpen((current) => !current)}
         >
           <SlidersHorizontal aria-hidden="true" />
-          <span>{displayedWeatherLabel} · 光线</span>
+          <span>
+            {usesLiveWeather ? `实时${displayedWeatherLabel}` : displayedWeatherLabel}
+            {" · 光线"}
+          </span>
         </button>
       </div>
 
@@ -170,7 +205,7 @@ export default function SunGlassTimeDeck({
         step="1"
         value={Math.round(displayedMinute)}
         aria-label="一天中的时间"
-        onPointerDown={() => setIsScrubbing(true)}
+        onPointerDown={startScrubbing}
         onPointerUp={finishScrubbing}
         onPointerCancel={finishScrubbing}
         onBlur={finishScrubbing}
@@ -196,6 +231,16 @@ export default function SunGlassTimeDeck({
         </div>
 
         <div className="sun-glass-weather-options" aria-label="天气预览">
+          <button
+            type="button"
+            className={usesLiveWeather ? "is-active" : ""}
+            aria-pressed={usesLiveWeather}
+            aria-label="跟随实时天气"
+            onClick={() => onWeatherMode?.(null)}
+          >
+            <LocateFixed aria-hidden="true" />
+            <span>实时</span>
+          </button>
           {WEATHER_PRESETS.map(({ id, label, Icon }) => (
             <button
               type="button"

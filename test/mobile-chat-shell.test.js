@@ -27,6 +27,11 @@ test("mobile chat uses one decorative rainbow capsule as the status toggle", () 
   assert.match(status, /onOpenNavigation/);
   assert.match(status, /onOpenSettings/);
   assert.match(
+    status,
+    /matchMedia\?\.\("\(max-width: 820px\)"\)\?\.matches\) return/,
+    "touch dragging must not move the fixed mobile capsule",
+  );
+  assert.match(
     styles,
     /@media \(max-width: 820px\)[\s\S]*?\.main-panel\.view-chat > \.topbar\s*\{[^}]*display:\s*none/s,
   );
@@ -37,6 +42,16 @@ test("mobile chat uses one decorative rainbow capsule as the status toggle", () 
   assert.match(
     styles,
     /\.sun-glass-floating-status-header\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto/s,
+  );
+  assert.match(
+    styles,
+    /\.main-panel\.view-chat \.chat-presence-stack\s*\{[^}]*display:\s*block;[^}]*overflow:\s*visible;[^}]*transform:\s*none;[^}]*backdrop-filter:\s*none/s,
+    "the fixed capsule container must not clip or offset the connected panel",
+  );
+  assert.match(
+    styles,
+    /\.sun-glass-floating-status-shell\.expanded[\s\S]*?\.sun-glass-floating-status-panel\s*\{[^}]*top:\s*calc\(var\(--dengta-mobile-capsule-top\) \+ 70px\) !important/s,
+    "the expanded panel must remain connected beneath the safe capsule",
   );
 });
 
@@ -51,9 +66,13 @@ test("time and weather controls live inside the plus menu and coalesce scrubbing
     deckStart > menuStart,
     "the time deck must not occupy the always-visible composer area",
   );
+  assert.match(deck, /SCRUB_COMMIT_INTERVAL_MS = 84/);
   assert.match(deck, /requestAnimationFrame/);
   assert.match(deck, /cancelAnimationFrame/);
   assert.match(deck, /data-time-scrubbing/);
+  assert.match(deck, /document\.documentElement\.dataset\.timeScrubbing/);
+  assert.match(deck, /aria-label="跟随实时天气"/);
+  assert.match(app, /readCachedWeather\(\)\.weather/);
 });
 
 test("mobile message bubbles expand toward the screen edges", () => {
@@ -67,4 +86,20 @@ test("mobile message bubbles expand toward the screen edges", () => {
     styles,
     /@media \(max-width: 820px\)[\s\S]*?\.main-panel\.view-chat \.message-bubble[^{]*\{[^}]*max-width:\s*min\(94%,\s*720px\)/s,
   );
+});
+
+test("expanded status uses an opaque black interactive flow surface", () => {
+  const status = read("src/CompanionStatus.jsx");
+  const flow = read("src/StatusFlowField.jsx");
+  const styles = read("src/sun-glass-chat.css");
+
+  assert.match(status, /<StatusFlowField active=\{expanded\} \/>/);
+  assert.match(flow, /uniform vec2 u_pointer/);
+  assert.match(flow, /panel\.addEventListener\("pointerdown", moveFlow/);
+  assert.match(flow, /panel\.addEventListener\("pointermove", moveFlow/);
+  assert.match(
+    styles,
+    /\.sun-glass-floating-status-shell\.expanded[\s\S]*?\.sun-glass-floating-status-panel[\s\S]*?background:\s*#050507/,
+  );
+  assert.match(styles, /\.status-flow-canvas/);
 });

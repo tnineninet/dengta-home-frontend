@@ -124,8 +124,8 @@ test("theme colours reach the sky and shared optical-glass material", () => {
   assert.equal(values.get("--theme-wallpaper-tint-rgb"), "52 86 120");
   assert.ok(values.has("--theme-glass-highlight"));
   assert.ok(values.has("--theme-glass-shadow"));
-  assert.equal(values.get("--sun-light-intensity"), "1.00");
-  assert.equal(values.get("--moon-light-intensity"), "0.86");
+  assert.equal(values.get("--sun-light-intensity"), "1");
+  assert.equal(values.get("--moon-light-intensity"), "1");
   assert.ok(values.has("--dengta-glass-panel-alpha"));
   assert.ok(values.has("--dengta-glass-bubble-alpha"));
   assert.ok(values.has("--dengta-glass-panel-blur"));
@@ -152,7 +152,7 @@ test("theme colours reach the sky and shared optical-glass material", () => {
   );
 });
 
-test("sun glass point lights consume the live sunlight and moonlight controls", () => {
+test("sun glass point lights stay at fixed full intensity without settings sliders", () => {
   const backdrop = fs.readFileSync(
     new URL("../src/CelestialBackdrop.jsx", import.meta.url),
     "utf8",
@@ -161,12 +161,17 @@ test("sun glass point lights consume the live sunlight and moonlight controls", 
     new URL("../src/sun-glass-ui.css", import.meta.url),
     "utf8",
   );
+  const studio = fs.readFileSync(
+    new URL("../src/ThemeStudio.jsx", import.meta.url),
+    "utf8",
+  );
 
   assert.match(backdrop, /className="celestial-moon"/);
   assert.match(backdrop, /\["--moon-x", `\$\{sky\.moonX\}%`\]/);
   assert.match(styles, /\.celestial-prototype-sky > \.celestial-sun[\s\S]*?--sun-light-intensity/);
   assert.match(styles, /\.celestial-prototype-sky > \.celestial-moon[\s\S]*?--moon-light-intensity/);
   assert.match(styles, /\.celestial-prototype-sky \.celestial-milky-way[\s\S]*?--moon-light-intensity/);
+  assert.doesNotMatch(studio, /Sunlight|Moonlight|sunIntensity|moonIntensity/);
 });
 
 test("daylight snapshots expose continuous sunrise, sunset and blue-hour aura", () => {
