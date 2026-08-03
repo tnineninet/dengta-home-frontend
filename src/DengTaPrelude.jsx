@@ -160,7 +160,6 @@ export default function DengTaPrelude() {
         </svg>
         <div className="dengta-prelude-copy">
           <strong>DENGTA</strong>
-          <small>小灯与桃桃的小屋</small>
         </div>
       </div>
     </div>

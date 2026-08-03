@@ -1,6 +1,13 @@
 export const INNER_MONOLOGUE_STORAGE_KEY =
   "dengta_visible_inner_monologues_v1";
 
+function storageKey(accountScope = "") {
+  const scope = String(accountScope || "").trim();
+  return scope
+    ? `${INNER_MONOLOGUE_STORAGE_KEY}:${scope}`
+    : INNER_MONOLOGUE_STORAGE_KEY;
+}
+
 const MAX_RECORDS = 120;
 const MAX_TEXT_LENGTH = 12_000;
 
@@ -25,11 +32,14 @@ function normalizeRecord(value) {
   return { text, createdAt };
 }
 
-export function readInnerMonologues(storage = globalThis.localStorage) {
+export function readInnerMonologues(
+  storage = globalThis.localStorage,
+  accountScope = "",
+) {
   if (!storage) return {};
   try {
     const source = JSON.parse(
-      storage.getItem(INNER_MONOLOGUE_STORAGE_KEY) || "{}",
+      storage.getItem(storageKey(accountScope)) || "{}",
     );
     if (!source || typeof source !== "object" || Array.isArray(source)) {
       return {};
@@ -51,16 +61,19 @@ export function readInnerMonologues(storage = globalThis.localStorage) {
 export function storeInnerMonologue(
   { messageId, text, createdAt = new Date().toISOString() },
   storage = globalThis.localStorage,
+  accountScope = "",
 ) {
   const id = cleanText(messageId, 80);
   const record = normalizeRecord({ text, createdAt });
-  if (!storage || !id || !record) return readInnerMonologues(storage);
-  const current = readInnerMonologues(storage);
+  if (!storage || !id || !record) {
+    return readInnerMonologues(storage, accountScope);
+  }
+  const current = readInnerMonologues(storage, accountScope);
   const next = Object.fromEntries(
     [...Object.entries(current), [id, record]].slice(-MAX_RECORDS),
   );
   try {
-    storage.setItem(INNER_MONOLOGUE_STORAGE_KEY, JSON.stringify(next));
+    storage.setItem(storageKey(accountScope), JSON.stringify(next));
   } catch {
     // The generated text remains visible for this app session.
   }

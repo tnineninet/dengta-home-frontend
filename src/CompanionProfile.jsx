@@ -30,7 +30,7 @@ function identityLabel(field) {
   );
 }
 
-export default function CompanionProfile({ aiName = "小灯", onNotice }) {
+export default function CompanionProfile({ aiName = "伴侣", onNotice }) {
   const [payload, setPayload] = useState(() => normalizeProfilePayload());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

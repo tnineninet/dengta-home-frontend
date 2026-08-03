@@ -153,7 +153,7 @@ async function prepareArtworkUpload(file) {
   };
 }
 
-export function CompanionArtworkLibrary({ aiName = "小灯", onNotice }) {
+export function CompanionArtworkLibrary({ aiName = "伴侣", onNotice }) {
   const [artworks, setArtworks] = useState([]);
   const [status, setStatus] = useState(EMPTY_STATUS);
   const [busy, setBusy] = useState("");
@@ -271,7 +271,7 @@ export function CompanionArtworkLibrary({ aiName = "小灯", onNotice }) {
           ...prepared,
           kind: "doodle",
           title: file.name.replace(/\.[^.]+$/, "").slice(0, 120),
-          description: "由桃桃手动放进私人作品库的图片。",
+          description: "由当前账号手动放进私人作品库的图片。",
           alt_text: file.name.slice(0, 200),
         }),
       });

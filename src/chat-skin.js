@@ -45,9 +45,17 @@ export function chatSkinPreferencesApiPayload(value) {
   };
 }
 
-export function readStoredChatSkinPreferences(storage = globalThis.localStorage) {
+export function readStoredChatSkinPreferences(
+  storage = globalThis.localStorage,
+  accountScope = "",
+) {
   try {
-    const raw = storage?.getItem(CHAT_SKIN_STORAGE_KEY);
+    const raw = readAccountStorage(
+      storage,
+      CHAT_SKIN_STORAGE_KEY,
+      accountScope,
+      { migrateLegacy: true },
+    );
     return raw
       ? normalizeChatSkinPreferences(JSON.parse(raw))
       : DEFAULT_CHAT_SKIN_PREFERENCES;
@@ -59,10 +67,16 @@ export function readStoredChatSkinPreferences(storage = globalThis.localStorage)
 export function writeStoredChatSkinPreferences(
   value,
   storage = globalThis.localStorage,
+  accountScope = "",
 ) {
   const normalized = normalizeChatSkinPreferences(value);
   try {
-    storage?.setItem(CHAT_SKIN_STORAGE_KEY, JSON.stringify(normalized));
+    writeAccountStorage(
+      storage,
+      CHAT_SKIN_STORAGE_KEY,
+      accountScope,
+      JSON.stringify(normalized),
+    );
   } catch {
     // A restricted WebView can reject storage; in-memory state remains usable.
   }
@@ -108,3 +122,4 @@ export function getMessageSkinPresentation(
       !hasMessageMedia(message),
   };
 }
+import { readAccountStorage, writeAccountStorage } from "./account-storage.js";

@@ -20,7 +20,7 @@ function formatSourceWindow(entry) {
   )}`;
 }
 
-export default function CompanionDiary({ aiName = "小灯", onNotice }) {
+export default function CompanionDiary({ aiName = "伴侣", onNotice }) {
   const [entries, setEntries] = useState([]);
   const [available, setAvailable] = useState(null);
   const [generation, setGeneration] = useState({

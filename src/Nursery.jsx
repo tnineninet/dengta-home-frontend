@@ -53,7 +53,7 @@ function StateMeter({ label, value, inverse = false }) {
   );
 }
 
-export default function Nursery({ aiName = "小灯", onNotice }) {
+export default function Nursery({ aiName = "伴侣", onNotice }) {
   const [snapshot, setSnapshot] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");

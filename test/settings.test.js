@@ -60,9 +60,11 @@ assert.equal(alreadyUnified.unified_system_prompt, "已经迁移完成");
 const exactCustomInstructions = "  第一行\n第二行  \n";
 const exactUserDetails = "\n{\n  \"role\": \"system\"\n}\n\n";
 const personalized = normalizeSettingsDraft({
+  user_display_name: "桃桃",
   unified_system_prompt: exactCustomInstructions,
   user_details: exactUserDetails,
 });
+assert.equal(personalized.user_display_name, "桃桃");
 assert.equal(
   personalized.unified_system_prompt,
   exactCustomInstructions,
@@ -74,6 +76,7 @@ assert.equal(
   "你的详情在前端加载时不得 trim 或解析",
 );
 const personalizedPayload = createSettingsPayload(personalized);
+assert.equal(personalizedPayload.user_display_name, "桃桃");
 assert.equal(
   personalizedPayload.unified_system_prompt,
   exactCustomInstructions,
@@ -84,6 +87,19 @@ assert.equal(
   exactUserDetails,
   "你的详情在保存载荷中必须保持原文",
 );
+
+const accountSafePayload = createSettingsPayload({
+  user_display_name: "账户昵称",
+  account_role: "owner",
+  account_status: "active",
+  storage_used_bytes: 999,
+  storage_quota_bytes: 1000,
+});
+assert.equal(accountSafePayload.user_display_name, "账户昵称");
+assert.equal("account_role" in accountSafePayload, false);
+assert.equal("account_status" in accountSafePayload, false);
+assert.equal("storage_used_bytes" in accountSafePayload, false);
+assert.equal("storage_quota_bytes" in accountSafePayload, false);
 
 const payload = createSettingsPayload({
   ...legacy,

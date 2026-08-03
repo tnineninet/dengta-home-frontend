@@ -620,13 +620,13 @@ assert.match(
 );
 assert.match(
   app,
-  /const recovered = mergeRecoveredStartupData\([\s\S]*?activeSessionIdRef\.current = recovered\.activeSessionId;[\s\S]*?migrateLegacyChatModelToSession\(recovered\.activeSessionId\)/,
-  "startup must migrate the old global model selection into the first active session",
+  /const recovered = mergeRecoveredStartupData\([\s\S]*?activeSessionIdRef\.current = recovered\.activeSessionId;[\s\S]*?migrateLegacyChatModelToSession\(\s*recovered\.activeSessionId,\s*globalThis\.localStorage,\s*accountStorageScope/,
+  "startup must migrate the old model selection into the current account's first active session",
 );
 assert.match(
   app,
-  /function initializeSessionChatModel\(sessionId, serverModel = ""\)[\s\S]*?migrateLegacyChatModelToSession\(sessionId\)[\s\S]*?serverModel \|\| migratedModel \|\| settings\.model/,
-  "new sessions must consume a pending legacy model or fall back to the App default",
+  /function initializeSessionChatModel\(sessionId, serverModel = ""\)[\s\S]*?migrateLegacyChatModelToSession\(\s*sessionId,\s*globalThis\.localStorage,\s*accountStorageScope[\s\S]*?serverModel \|\| migratedModel \|\| settings\.model/,
+  "new sessions must consume only the current account's pending model or fall back to the App default",
 );
 const createSessionSource = sourceBetween(
   "async function createSession()",

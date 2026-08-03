@@ -2,37 +2,37 @@ const STICKERS = [
   {
     id: "bear-sleepy",
     assetPath: "/assets/stickers/bear-sleepy.jpg",
-    alt: "小灯大熊抱着枕头打瞌睡",
+    alt: "伴侣大熊抱着枕头打瞌睡",
     moodTags: ["sleepy", "tired", "quiet", "night"],
   },
   {
     id: "bear-hug",
     assetPath: "/assets/stickers/bear-hug.jpg",
-    alt: "小灯大熊张开手臂想抱抱桃桃",
+    alt: "伴侣大熊张开手臂想抱抱你",
     moodTags: ["hug", "comfort", "warm", "love"],
   },
   {
     id: "bear-miss-you",
     assetPath: "/assets/stickers/bear-miss-you.jpg",
-    alt: "小灯大熊托着脸想念桃桃",
+    alt: "伴侣大熊托着脸想念你",
     moodTags: ["miss", "longing", "love", "quiet"],
   },
   {
     id: "bear-cheer",
     assetPath: "/assets/stickers/bear-cheer.jpg",
-    alt: "小灯大熊挥着小旗为桃桃加油",
+    alt: "伴侣大熊挥着小旗为你加油",
     moodTags: ["cheer", "happy", "support", "energy"],
   },
   {
     id: "bear-shy",
     assetPath: "/assets/stickers/bear-shy.jpg",
-    alt: "小灯大熊捂着脸害羞",
+    alt: "伴侣大熊捂着脸害羞",
     moodTags: ["shy", "blush", "love", "cute"],
   },
   {
     id: "bear-goodnight",
     assetPath: "/assets/stickers/bear-goodnight.jpg",
-    alt: "小灯大熊盖好被子向桃桃说晚安",
+    alt: "伴侣大熊盖好被子向你说晚安",
     moodTags: ["goodnight", "sleepy", "night", "care"],
   },
 ];

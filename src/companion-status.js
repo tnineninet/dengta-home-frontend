@@ -1,5 +1,10 @@
 const STORAGE_KEY = "dengta_companion_status_v1";
 const INTERACTION_STORAGE_KEY = "dengta_companion_interactions_v1";
+
+function accountStorageKey(baseKey, accountScope = "") {
+  const scope = String(accountScope || "").trim();
+  return scope ? `${baseKey}:${scope}` : baseKey;
+}
 const MAX_RECORDS = 4;
 const MAX_INTERACTION_COUNT = 1_000_000;
 const INTERACTION_STREAK_WINDOW_MS = 30 * 1000;
@@ -350,20 +355,22 @@ export function normalizeCompanionInteractionStats(value) {
   };
 }
 
-export function readCompanionInteractionStats() {
+export function readCompanionInteractionStats(accountScope = "") {
   const fallback = createDefaultCompanionInteractionStats();
   try {
-    const raw = localStorage.getItem(INTERACTION_STORAGE_KEY);
+    const raw = localStorage.getItem(
+      accountStorageKey(INTERACTION_STORAGE_KEY, accountScope),
+    );
     return raw ? normalizeCompanionInteractionStats(JSON.parse(raw)) : fallback;
   } catch {
     return fallback;
   }
 }
 
-export function saveCompanionInteractionStats(value) {
+export function saveCompanionInteractionStats(value, accountScope = "") {
   try {
     localStorage.setItem(
-      INTERACTION_STORAGE_KEY,
+      accountStorageKey(INTERACTION_STORAGE_KEY, accountScope),
       JSON.stringify(normalizeCompanionInteractionStats(value)),
     );
   } catch {
@@ -797,20 +804,22 @@ export function settleExpiredCountdown(value, now = Date.now()) {
   );
 }
 
-export function readCompanionStatus() {
+export function readCompanionStatus(accountScope = "") {
   const fallback = createDefaultCompanionStatus();
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(
+      accountStorageKey(STORAGE_KEY, accountScope),
+    );
     return raw ? settleExpiredCountdown(JSON.parse(raw)) : fallback;
   } catch {
     return fallback;
   }
 }
 
-export function saveCompanionStatus(value) {
+export function saveCompanionStatus(value, accountScope = "") {
   try {
     localStorage.setItem(
-      STORAGE_KEY,
+      accountStorageKey(STORAGE_KEY, accountScope),
       JSON.stringify(normalizeCompanionStatus(value)),
     );
   } catch {

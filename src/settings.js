@@ -1,7 +1,8 @@
 import { reasoningEffortForProvider } from "./provider-reasoning-effort.js";
 
 export const emptySettings = {
-  ai_name: "小灯",
+  ai_name: "伴侣",
+  user_display_name: "",
   system_prompt: "",
   additional_prompt: "",
   personality: "",
@@ -22,10 +23,15 @@ export const emptySettings = {
   push_enabled: false,
   max_push_per_day: 7,
   context_reset_at: "",
+  account_role: "member",
+  account_status: "active",
+  storage_used_bytes: 0,
+  storage_quota_bytes: 0,
 };
 
 export const PROMPT_FIELD_LIMITS = {
   ai_name: 50,
+  user_display_name: 80,
   system_prompt: 12000,
   additional_prompt: 8000,
   personality: 1000,
@@ -76,6 +82,7 @@ export function normalizeSettingsDraft(value) {
     ...emptySettings,
     ...source,
     ai_name: textOrFallback(source.ai_name, emptySettings.ai_name),
+    user_display_name: textOrFallback(source.user_display_name),
     system_prompt: textOrFallback(source.system_prompt),
     additional_prompt: textOrFallback(source.additional_prompt),
     personality: textOrFallback(source.personality),
@@ -95,12 +102,23 @@ export function normalizeSettingsDraft(value) {
 
 export function createSettingsPayload(value) {
   const normalized = normalizeSettingsDraft(value);
+  const readOnlyFields = new Set([
+    "context_reset_at",
+    "account_role",
+    "account_status",
+    "storage_used_bytes",
+    "storage_quota_bytes",
+  ]);
   const editableSettings = Object.fromEntries(
-    Object.entries(normalized).filter(([key]) => key !== "context_reset_at"),
+    Object.entries(normalized).filter(([key]) => !readOnlyFields.has(key)),
   );
   return {
     ...editableSettings,
     ai_name: normalized.ai_name.slice(0, PROMPT_FIELD_LIMITS.ai_name),
+    user_display_name: normalized.user_display_name.slice(
+      0,
+      PROMPT_FIELD_LIMITS.user_display_name,
+    ),
     system_prompt: normalized.system_prompt.slice(
       0,
       PROMPT_FIELD_LIMITS.system_prompt,

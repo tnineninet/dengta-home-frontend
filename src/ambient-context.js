@@ -66,7 +66,7 @@ export function normalizeAmbientPreferences(value) {
   });
 }
 
-export function readAmbientPreferences(storage) {
+export function readAmbientPreferences(storage, accountScope = "") {
   const target = getStorage(storage);
   if (!target) {
     return {
@@ -76,7 +76,12 @@ export function readAmbientPreferences(storage) {
   }
 
   try {
-    const raw = target.getItem(AMBIENT_PREFERENCES_KEY);
+    const raw = readAccountStorage(
+      target,
+      AMBIENT_PREFERENCES_KEY,
+      accountScope,
+      { migrateLegacy: true },
+    );
     if (!raw) {
       return { state: "missing", preferences: DEFAULT_AMBIENT_PREFERENCES };
     }
@@ -86,7 +91,9 @@ export function readAmbientPreferences(storage) {
     };
   } catch {
     try {
-      target.removeItem(AMBIENT_PREFERENCES_KEY);
+      target.removeItem(
+        accountStorageKey(AMBIENT_PREFERENCES_KEY, accountScope),
+      );
     } catch {
       // Storage restrictions must not break the rest of the chat interface.
     }
@@ -94,13 +101,15 @@ export function readAmbientPreferences(storage) {
   }
 }
 
-export function storeAmbientPreferences(value, storage) {
+export function storeAmbientPreferences(value, storage, accountScope = "") {
   const target = getStorage(storage);
   if (!target) return false;
 
   try {
-    target.setItem(
+    writeAccountStorage(
+      target,
       AMBIENT_PREFERENCES_KEY,
+      accountScope,
       JSON.stringify(normalizeAmbientPreferences(value)),
     );
     return true;
@@ -447,3 +456,8 @@ export function buildAmbientContext({ clock, weather, locationEnabled }) {
       : null,
   });
 }
+import {
+  accountStorageKey,
+  readAccountStorage,
+  writeAccountStorage,
+} from "./account-storage.js";

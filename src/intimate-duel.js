@@ -103,7 +103,7 @@ function createLogEntry({ id, round, title, text, reaction = "", kind = "round" 
   };
 }
 
-export function createDuelState({ playerName = "你", companionName = "小灯" } = {}) {
+export function createDuelState({ playerName = "你", companionName = "伴侣" } = {}) {
   const id = globalThis.crypto?.randomUUID?.() || `duel-${Date.now()}`;
   return {
     version: DUEL_STATE_VERSION,
@@ -112,7 +112,7 @@ export function createDuelState({ playerName = "你", companionName = "小灯" }
     status: "active",
     winner: null,
     player: createFighter(normalizeName(playerName, "你")),
-    companion: createFighter(normalizeName(companionName, "小灯")),
+    companion: createFighter(normalizeName(companionName, "伴侣")),
     logs: [
       createLogEntry({
         id: `${id}-start`,
@@ -184,7 +184,7 @@ export function normalizeDuelState(value, names = {}) {
     player: normalizeFighter(value.player, normalizeName(names.playerName, "你")),
     companion: normalizeFighter(
       value.companion,
-      normalizeName(names.companionName, "小灯"),
+      normalizeName(names.companionName, "伴侣"),
     ),
     logs: logs.length > 0 ? logs : fallback.logs,
     updatedAt: String(value.updatedAt || new Date().toISOString()),

@@ -190,20 +190,36 @@ export function describeGroqExpiry(value, now = new Date()) {
   return { status: "ok", text: `距离到期约 ${days} 天。` };
 }
 
-export function readGroqExpiryDate(storage = globalThis.localStorage) {
+export function readGroqExpiryDate(
+  storage = globalThis.localStorage,
+  accountScope = "",
+) {
   try {
-    return storage?.getItem(GROQ_EXPIRY_STORAGE_KEY) || "";
+    return (
+      readAccountStorage(storage, GROQ_EXPIRY_STORAGE_KEY, accountScope, {
+        migrateLegacy: true,
+      }) || ""
+    );
   } catch {
     return "";
   }
 }
 
-export function storeGroqExpiryDate(value, storage = globalThis.localStorage) {
+export function storeGroqExpiryDate(
+  value,
+  storage = globalThis.localStorage,
+  accountScope = "",
+) {
   try {
     const normalized = String(value || "").trim();
-    if (normalized) storage?.setItem(GROQ_EXPIRY_STORAGE_KEY, normalized);
-    else storage?.removeItem(GROQ_EXPIRY_STORAGE_KEY);
+    writeAccountStorage(
+      storage,
+      GROQ_EXPIRY_STORAGE_KEY,
+      accountScope,
+      normalized || null,
+    );
   } catch {
     // 本地提醒写入失败不应影响聊天和服务器设置。
   }
 }
+import { readAccountStorage, writeAccountStorage } from "./account-storage.js";

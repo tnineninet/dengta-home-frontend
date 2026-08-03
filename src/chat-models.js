@@ -50,19 +50,31 @@ export function normalizeModelsResponse(value, fallbackModel = "") {
   return { models, currentModel };
 }
 
-export function readStoredChatModel(storage = globalThis.localStorage) {
+export function readStoredChatModel(
+  storage = globalThis.localStorage,
+  accountScope = "",
+) {
   try {
-    return cleanText(storage?.getItem(CHAT_MODEL_STORAGE_KEY));
+    return cleanText(
+      readAccountStorage(storage, CHAT_MODEL_STORAGE_KEY, accountScope, {
+        migrateLegacy: true,
+      }),
+    );
   } catch {
     return "";
   }
 }
 
-export function storeChatModel(value, storage = globalThis.localStorage) {
+export function storeChatModel(
+  value,
+  storage = globalThis.localStorage,
+  accountScope = "",
+) {
   const model = cleanText(value);
+  const storageKey = accountStorageKey(CHAT_MODEL_STORAGE_KEY, accountScope);
   try {
-    if (model) storage?.setItem(CHAT_MODEL_STORAGE_KEY, model);
-    else storage?.removeItem(CHAT_MODEL_STORAGE_KEY);
+    if (model) storage?.setItem(storageKey, model);
+    else storage?.removeItem(storageKey);
   } catch {
     // 本机存储不可用时只影响下次启动的选择，不影响当前聊天。
   }
@@ -130,19 +142,20 @@ export function storeSessionChatModel(
 export function migrateLegacyChatModelToSession(
   sessionId,
   storage = globalThis.localStorage,
+  accountScope = "",
 ) {
   const key = cleanText(sessionId);
   if (!key) return "";
 
   const storedSessionModel = readStoredSessionChatModel(key, storage);
-  const legacyModel = readStoredChatModel(storage);
+  const legacyModel = readStoredChatModel(storage, accountScope);
   if (!legacyModel) return storedSessionModel;
 
   const migratedModel =
     storedSessionModel ||
     storeSessionChatModel(key, legacyModel, storage);
   try {
-    storage?.removeItem(CHAT_MODEL_STORAGE_KEY);
+    storage?.removeItem(accountStorageKey(CHAT_MODEL_STORAGE_KEY, accountScope));
   } catch {
     // A failed cleanup may repeat a harmless migration on the next launch.
   }
@@ -172,3 +185,4 @@ export function reconcileModelCatalog(
     }),
   };
 }
+import { accountStorageKey, readAccountStorage } from "./account-storage.js";

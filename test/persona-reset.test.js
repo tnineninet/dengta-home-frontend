@@ -49,4 +49,29 @@ assert.equal(
   false,
 );
 
+const scopedStorage = memoryStorage({
+  "dengta_companion_status_v1:account-a": "status-a",
+  "dengta_companion_status_v1:account-b": "status-b",
+  "dengta_prompt_receipt_v1:account-a": "receipt-a",
+  "dengta_prompt_receipt_v1:account-b": "receipt-b",
+});
+assert.equal(
+  applyPersonaResetToLocalStorage(
+    "2026-08-03T09:00:00.000Z",
+    scopedStorage,
+    "account-a",
+  ),
+  true,
+);
+assert.equal(scopedStorage.getItem("dengta_companion_status_v1:account-a"), null);
+assert.equal(scopedStorage.getItem("dengta_prompt_receipt_v1:account-a"), null);
+assert.equal(
+  scopedStorage.getItem("dengta_companion_status_v1:account-b"),
+  "status-b",
+);
+assert.equal(
+  scopedStorage.getItem("dengta_prompt_receipt_v1:account-b"),
+  "receipt-b",
+);
+
 console.log("persona reset local cache tests passed");

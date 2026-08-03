@@ -50,7 +50,7 @@ export function appendThinkingStatus(current = [], value) {
 
 export function personalizedThinkingStatus(
   value,
-  { aiName = "小灯", companionMood = "" } = {},
+  { aiName = "伴侣", companionMood = "" } = {},
 ) {
   const status = cleanText(value, 160);
   void aiName;

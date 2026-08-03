@@ -81,7 +81,7 @@ function CompanionStatus({
   onOpenNavigation,
   onOpenSettings,
 }) {
-  const displayName = String(aiName || "").trim() || "小灯";
+  const displayName = String(aiName || "").trim() || "伴侣";
   const personalized = useCallback(
     (value) => personalizeCompanionStatusText(value, userName),
     [userName],

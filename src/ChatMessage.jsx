@@ -21,8 +21,8 @@ function formatMessageTime(value) {
 
 function ChatMessage({
   item,
-  aiName = "小灯",
-  userName = "桃桃",
+  aiName = "伴侣",
+  userName = "你",
   companionMood = "",
   skin = "classic-glass",
   skinPresentation = null,

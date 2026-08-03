@@ -122,7 +122,7 @@ export default function ThemeStudio({
         <div className="settings-card-heading">
           <div>
             <span className="settings-kicker">CHAT SKIN</span>
-            <h4 id="chat-skin-title">桃桃奶油</h4>
+            <h4 id="chat-skin-title">奶油挂件</h4>
           </div>
           <span className="theme-live-dot">Live</span>
         </div>

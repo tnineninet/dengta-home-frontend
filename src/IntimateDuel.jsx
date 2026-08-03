@@ -12,9 +12,14 @@ import {
 
 const STORAGE_KEY = "dengta_intimate_duel_v3";
 
-function readStoredDuel(names) {
+function duelStorageKey(accountScope = "") {
+  const scope = String(accountScope || "").trim();
+  return scope ? `${STORAGE_KEY}:${scope}` : STORAGE_KEY;
+}
+
+function readStoredDuel(names, accountScope) {
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = localStorage.getItem(duelStorageKey(accountScope));
     return stored ? normalizeDuelState(JSON.parse(stored), names) : createDuelState(names);
   } catch {
     return createDuelState(names);
@@ -51,26 +56,31 @@ function FighterCard({ fighter, tone }) {
   );
 }
 
-export default function IntimateDuel({ aiName, userName, conversationId }) {
+export default function IntimateDuel({
+  aiName,
+  userName,
+  conversationId,
+  accountScope = "",
+}) {
   const names = useMemo(
     () => ({
       playerName: String(userName || "你").trim() || "你",
-      companionName: String(aiName || "小灯").trim() || "小灯",
+      companionName: String(aiName || "伴侣").trim() || "伴侣",
     }),
     [aiName, userName],
   );
-  const [duel, setDuel] = useState(() => readStoredDuel(names));
+  const [duel, setDuel] = useState(() => readStoredDuel(names, accountScope));
   const [isNarrating, setIsNarrating] = useState(false);
   const [notice, setNotice] = useState("");
   const logRef = useRef(null);
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(duel));
+      localStorage.setItem(duelStorageKey(accountScope), JSON.stringify(duel));
     } catch {
       // A full local store must not interrupt an active round.
     }
-  }, [duel]);
+  }, [accountScope, duel]);
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
@@ -127,7 +137,7 @@ export default function IntimateDuel({ aiName, userName, conversationId }) {
         setDuel(fallback.state);
         setNotice(
           error.message ||
-            "小灯这次没有连上模型，已按当前状态自行完成回应。",
+            `${names.companionName}这次没有连上模型，已按当前状态自行完成回应。`,
         );
       } else {
         setNotice(error.message);

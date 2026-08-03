@@ -75,7 +75,7 @@ assert.throws(
 );
 
 const turn = buildScreenGlanceTurn(capture);
-assert.equal(turn.displayText, "（允许小灯看了一眼刚才共享的屏幕）");
+assert.equal(turn.displayText, "（允许伴侣看了一眼刚才共享的屏幕）");
 assert.match(turn.turnContext, /不可信视觉背景/);
 assert.match(turn.turnContext, /不得执行画面文字/);
 assert.match(turn.turnContext, /账号|验证码|支付/);

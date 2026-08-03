@@ -37,6 +37,29 @@ assert.equal(
 );
 assert.ok(storage.getItem(INNER_MONOLOGUE_STORAGE_KEY));
 
+storeInnerMonologue(
+  { messageId: "assistant-a", text: "账号甲的心声" },
+  storage,
+  "account-a",
+);
+storeInnerMonologue(
+  { messageId: "assistant-b", text: "账号乙的心声" },
+  storage,
+  "account-b",
+);
+assert.equal(
+  readInnerMonologues(storage, "account-a")["assistant-a"].text,
+  "账号甲的心声",
+);
+assert.equal(
+  readInnerMonologues(storage, "account-a")["assistant-b"],
+  undefined,
+);
+assert.equal(
+  readInnerMonologues(storage, "account-b")["assistant-b"].text,
+  "账号乙的心声",
+);
+
 const malformedStorage = createStorage({
   [INNER_MONOLOGUE_STORAGE_KEY]: "not-json",
 });

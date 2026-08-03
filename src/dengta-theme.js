@@ -4,6 +4,7 @@ import {
   getSolarSchedule,
   phaseProgress,
 } from "./solar-cycle.js";
+import { readAccountStorage, writeAccountStorage } from "./account-storage.js";
 
 export const DENGTA_THEME_STORAGE_KEY = "dengta.ui-theme.v2";
 const LEGACY_THEME_STORAGE_KEY = "dengta.ui-theme.v1";
@@ -106,11 +107,24 @@ export function normalizeThemePreferences(value = {}) {
   };
 }
 
-export function readThemePreferences(storage = globalThis.localStorage) {
+export function readThemePreferences(
+  storage = globalThis.localStorage,
+  accountScope = "",
+) {
   try {
-    const stored = storage?.getItem(DENGTA_THEME_STORAGE_KEY);
+    const stored = readAccountStorage(
+      storage,
+      DENGTA_THEME_STORAGE_KEY,
+      accountScope,
+      { migrateLegacy: true },
+    );
     if (stored) return normalizeThemePreferences(JSON.parse(stored));
-    const legacy = storage?.getItem(LEGACY_THEME_STORAGE_KEY);
+    const legacy = readAccountStorage(
+      storage,
+      LEGACY_THEME_STORAGE_KEY,
+      accountScope,
+      { migrateLegacy: true },
+    );
     if (!legacy) return DEFAULT_THEME_PREFERENCES;
     const parsed = JSON.parse(legacy);
     return normalizeThemePreferences({
@@ -128,10 +142,16 @@ export function readThemePreferences(storage = globalThis.localStorage) {
 export function writeThemePreferences(
   preferences,
   storage = globalThis.localStorage,
+  accountScope = "",
 ) {
   const normalized = normalizeThemePreferences(preferences);
   try {
-    storage?.setItem(DENGTA_THEME_STORAGE_KEY, JSON.stringify(normalized));
+    writeAccountStorage(
+      storage,
+      DENGTA_THEME_STORAGE_KEY,
+      accountScope,
+      JSON.stringify(normalized),
+    );
   } catch {
     // A private WebView can reject storage; the in-memory theme still works.
   }
@@ -486,8 +506,10 @@ export function applyThemePreferences(preferences, snapshot, root) {
   );
 }
 
-export function useDengTaTheme(coordinates = null) {
-  const [preferences, setPreferences] = useState(readThemePreferences);
+export function useDengTaTheme(coordinates = null, accountScope = "") {
+  const [preferences, setPreferences] = useState(() =>
+    readThemePreferences(globalThis.localStorage, accountScope),
+  );
   const [clock, setClock] = useState(() => new Date());
   const [previewMinute, setPreviewMinute] = useState(null);
   const displayedClock = useMemo(
@@ -517,9 +539,13 @@ export function useDengTaTheme(coordinates = null) {
   }, []);
 
   useEffect(() => {
-    const normalized = writeThemePreferences(preferences);
+    const normalized = writeThemePreferences(
+      preferences,
+      globalThis.localStorage,
+      accountScope,
+    );
     applyThemePreferences(normalized, snapshot, document.documentElement);
-  }, [preferences, snapshot]);
+  }, [accountScope, preferences, snapshot]);
 
   function updateTheme(patch) {
     setPreferences((current) =>

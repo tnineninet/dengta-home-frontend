@@ -17,6 +17,11 @@ import {
   ServerCog,
 } from "lucide-react";
 import { API_BASE_URL, apiRequest, streamChat } from "./api";
+import {
+  accountStorageKey,
+  readAccountStorage,
+  writeAccountStorage,
+} from "./account-storage";
 import CompanionStatus from "./CompanionStatus";
 import AmbientContextBadge from "./AmbientContextBadge";
 import ChatMessage from "./ChatMessage";
@@ -96,6 +101,8 @@ import {
   createDefaultCompanionInteractionStats,
   createResetCompanionStatus,
   mergeCompanionStatus,
+  normalizeCompanionInteractionStats,
+  normalizeCompanionStatus,
   readCompanionInteractionStats,
   readCompanionStatus,
   recordCompanionInteraction,
@@ -331,18 +338,28 @@ async function prepareLocalNotificationPermission() {
   }
 }
 
-function readPromptReceipt() {
+function readPromptReceipt(accountScope = "") {
   try {
-    const stored = localStorage.getItem(PROMPT_RECEIPT_STORAGE_KEY);
+    const stored = readAccountStorage(
+      localStorage,
+      PROMPT_RECEIPT_STORAGE_KEY,
+      accountScope,
+      { migrateLegacy: true },
+    );
     return stored ? normalizePromptReceipt(JSON.parse(stored)) : null;
   } catch {
     return null;
   }
 }
 
-function storePromptReceipt(receipt) {
+function storePromptReceipt(receipt, accountScope = "") {
   try {
-    localStorage.setItem(PROMPT_RECEIPT_STORAGE_KEY, JSON.stringify(receipt));
+    writeAccountStorage(
+      localStorage,
+      PROMPT_RECEIPT_STORAGE_KEY,
+      accountScope,
+      JSON.stringify(receipt),
+    );
   } catch {
     // 本地存储不可用时，只影响重启后的回执显示。
   }
@@ -367,27 +384,43 @@ function formatDateTime(value) {
   }).format(new Date(value));
 }
 
-function readSeenPushIds() {
+function readSeenPushIds(accountScope = "") {
   try {
-    const value = JSON.parse(localStorage.getItem(PUSH_SEEN_IDS_KEY) || "[]");
+    const stored = readAccountStorage(
+      localStorage,
+      PUSH_SEEN_IDS_KEY,
+      accountScope,
+      { migrateLegacy: true },
+    );
+    const value = JSON.parse(stored || "[]");
     return Array.isArray(value) ? value.filter(Boolean).slice(-200) : [];
   } catch {
     return [];
   }
 }
 
-function readEmotionUnderstandingSetting() {
+function readEmotionUnderstandingSetting(accountScope = "") {
   try {
-    const stored = localStorage.getItem(EMOTION_UNDERSTANDING_KEY);
+    const stored = readAccountStorage(
+      localStorage,
+      EMOTION_UNDERSTANDING_KEY,
+      accountScope,
+      { migrateLegacy: true },
+    );
     return stored === null ? true : stored === "true";
   } catch {
     return true;
   }
 }
 
-function readVoicePlaybackMode() {
+function readVoicePlaybackMode(accountScope = "") {
   try {
-    const stored = localStorage.getItem(VOICE_PLAYBACK_MODE_KEY);
+    const stored = readAccountStorage(
+      localStorage,
+      VOICE_PLAYBACK_MODE_KEY,
+      accountScope,
+      { migrateLegacy: true },
+    );
     return normalizeVoicePlaybackMode(stored);
   } catch {
     return VOICE_PLAYBACK_MODES.off;
@@ -559,8 +592,9 @@ function hydrateSessionChatHistory(messages, sessionId) {
   return applyStoredMessageReferences(hydrateChatHistory(messages), sessionId);
 }
 
-function App({ accountControl = null, userName = "" }) {
+function App({ accountControl = null, accountScope = "", userName = "" }) {
   const visualPreview = arguments[0]?.visualPreview === true;
+  const accountStorageScope = String(accountScope || "").trim();
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -574,11 +608,19 @@ function App({ accountControl = null, userName = "" }) {
   const [modelsLoadMessage, setModelsLoadMessage] = useState("");
   const [settings, setSettings] = useState(emptySettings);
   const [draftSettings, setDraftSettings] = useState(emptySettings);
+  const effectiveUserName =
+    String(settings.user_display_name || userName || "").trim() || "你";
+  const effectiveAiName =
+    String(settings.ai_name || "").trim() || "伴侣";
   const [activeView, setActiveView] = useState("chat");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsCategory, setSettingsCategory] = useState(null);
   const [chatSkinPreferences, setChatSkinPreferences] = useState(
-    readStoredChatSkinPreferences,
+    () =>
+      readStoredChatSkinPreferences(
+        globalThis.localStorage,
+        accountStorageScope,
+      ),
   );
   const [composerHint, setComposerHint] = useState("");
   const [celestialCoordinates, setCelestialCoordinates] = useState(
@@ -594,7 +636,7 @@ function App({ accountControl = null, userName = "" }) {
     updateTheme,
     previewMinute,
     setPreviewMinute,
-  } = useDengTaTheme(celestialCoordinates);
+  } = useDengTaTheme(celestialCoordinates, accountStorageScope);
   const [memories, setMemories] = useState([]);
   const [moments, setMoments] = useState([]);
   const [momentsAvailable, setMomentsAvailable] = useState(null);
@@ -608,7 +650,9 @@ function App({ accountControl = null, userName = "" }) {
   const [settingsAutosaveState, setSettingsAutosaveState] = useState("idle");
   const [settingsSaveError, setSettingsSaveError] = useState("");
   const [settingsSaveReceipt, setSettingsSaveReceipt] = useState(null);
-  const [lastPromptReceipt, setLastPromptReceipt] = useState(readPromptReceipt);
+  const [lastPromptReceipt, setLastPromptReceipt] = useState(() =>
+    readPromptReceipt(accountStorageScope),
+  );
   const [notificationPermissionState, setNotificationPermissionState] = useState(
     initialNotificationPermissionState,
   );
@@ -648,7 +692,7 @@ function App({ accountControl = null, userName = "" }) {
     lastError: null,
   });
   const [emotionUnderstandingEnabled, setEmotionUnderstandingEnabled] =
-    useState(readEmotionUnderstandingSetting);
+    useState(() => readEmotionUnderstandingSetting(accountStorageScope));
   const [voiceState, setVoiceState] = useState(VOICE_STATES.idle);
   const [voiceElapsedMs, setVoiceElapsedMs] = useState(0);
   const [voiceError, setVoiceError] = useState("");
@@ -658,7 +702,7 @@ function App({ accountControl = null, userName = "" }) {
   const [isStatusPanelExpanded, setIsStatusPanelExpanded] = useState(false);
   const [statusPanelCloseRequest, setStatusPanelCloseRequest] = useState(0);
   const [voicePlaybackMode, setVoicePlaybackMode] = useState(
-    readVoicePlaybackMode,
+    () => readVoicePlaybackMode(accountStorageScope),
   );
   const [voiceService, setVoiceService] = useState({
     checked: false,
@@ -675,12 +719,18 @@ function App({ accountControl = null, userName = "" }) {
     error: "",
     checkedAt: "",
   });
-  const [groqExpiryDate, setGroqExpiryDate] = useState(readGroqExpiryDate);
-  const [companionStatus, setCompanionStatus] = useState(readCompanionStatus);
-  const [companionInteractionStats, setCompanionInteractionStats] = useState(
-    readCompanionInteractionStats,
+  const [groqExpiryDate, setGroqExpiryDate] = useState(() =>
+    readGroqExpiryDate(globalThis.localStorage, accountStorageScope),
   );
-  const [innerMonologues, setInnerMonologues] = useState(readInnerMonologues);
+  const [companionStatus, setCompanionStatus] = useState(() =>
+    readCompanionStatus(accountStorageScope),
+  );
+  const [companionInteractionStats, setCompanionInteractionStats] = useState(
+    () => readCompanionInteractionStats(accountStorageScope),
+  );
+  const [innerMonologues, setInnerMonologues] = useState(() =>
+    readInnerMonologues(globalThis.localStorage, accountStorageScope),
+  );
   const [innerMonologuePending, setInnerMonologuePending] = useState({});
   const [innerMonologueErrors, setInnerMonologueErrors] = useState({});
   const messageListRef = useRef(null);
@@ -716,6 +766,7 @@ function App({ accountControl = null, userName = "" }) {
   const environmentContextRef = useRef({});
   const turnContextRef = useRef("");
   const companionInteractionStatsRef = useRef(companionInteractionStats);
+  const runtimeStateHydratedRef = useRef(false);
   const companionInteractionHandlerRef = useRef(null);
   const companionInteractionQueueRef = useRef([]);
   const companionInteractionTimerRef = useRef(null);
@@ -959,7 +1010,7 @@ function App({ accountControl = null, userName = "" }) {
     setIsSettingsOpen(false);
     setScreenGlanceFeedback({
       status: "checking",
-      message: "画面已在本机清除，正在让小灯按此刻心情回应。",
+      message: `画面已在本机清除，正在让${effectiveAiName}按此刻心情回应。`,
     });
     void sendMessageRef
       .current({
@@ -974,12 +1025,12 @@ function App({ accountControl = null, userName = "" }) {
         if (!componentMountedRef.current) return;
         setScreenGlanceFeedback({
           status: "success",
-          message: "这次画面已交给小灯；原始截图没有保存在作品库或长期记忆中。",
+          message: `这次画面已交给${effectiveAiName}；原始截图没有保存在作品库或长期记忆中。`,
         });
         void refreshScreenGlanceState();
       });
     return true;
-  }, [refreshScreenGlanceState]);
+  }, [effectiveAiName, refreshScreenGlanceState]);
 
   const consumeLatestScreenGlance = useCallback(async () => {
     if (!screenGlancePluginAvailable()) return null;
@@ -1106,7 +1157,11 @@ function App({ accountControl = null, userName = "" }) {
         ...(typeof patch === "function" ? patch(current) : patch),
       });
       chatSkinPreferencesRef.current = next;
-      writeStoredChatSkinPreferences(next);
+      writeStoredChatSkinPreferences(
+        next,
+        globalThis.localStorage,
+        accountStorageScope,
+      );
       queueChatSkinPreferences(next);
       return next;
     });
@@ -1120,12 +1175,16 @@ function App({ accountControl = null, userName = "" }) {
       );
       const next = normalizeChatSkinPreferences(data.preferences);
       chatSkinPreferencesRef.current = next;
-      writeStoredChatSkinPreferences(next);
+      writeStoredChatSkinPreferences(
+        next,
+        globalThis.localStorage,
+        accountStorageScope,
+      );
       if (componentMountedRef.current) setChatSkinPreferences(next);
     } catch {
       // Local skin preferences remain available during a backend reconnect.
     }
-  }, []);
+  }, [accountStorageScope]);
 
   const loadComposerHint = useCallback(async (sessionId) => {
     const token = ++composerHintLoadTokenRef.current;
@@ -1334,20 +1393,44 @@ function App({ accountControl = null, userName = "" }) {
     }
 
     async function loadInitialData() {
-      const [settingsData, sessionsData] = await Promise.all([
+      const [settingsData, sessionsData, runtimeData] = await Promise.all([
         apiRequest("/api/v2/settings", STARTUP_REQUEST_OPTIONS),
         apiRequest("/api/v2/sessions", STARTUP_REQUEST_OPTIONS),
+        apiRequest("/api/v2/companion-state", STARTUP_REQUEST_OPTIONS),
       ]);
 
       if (cancelled) return null;
       const localPersonaResetApplied = applyPersonaResetToLocalStorage(
         settingsData.settings?.context_reset_at,
+        globalThis.localStorage,
+        accountStorageScope,
       );
       const migrationNeeded = settingsNeedsUnifiedPromptMigration(
         settingsData.settings,
       );
       const nextSettings = normalizeSettingsDraft(settingsData.settings);
       const nextSessions = sessionsData.sessions || [];
+      const serverRuntimeState = runtimeData?.state || {};
+      const legacyOwnerStatus =
+        nextSettings.account_role === "owner" && !serverRuntimeState.status
+          ? readCompanionStatus()
+          : null;
+      const legacyOwnerInteractionStats =
+        nextSettings.account_role === "owner" &&
+        !serverRuntimeState.interaction_stats
+          ? readCompanionInteractionStats()
+          : null;
+      const nextCompanionStatus = normalizeCompanionStatus(
+        serverRuntimeState.status ||
+          legacyOwnerStatus ||
+          readCompanionStatus(accountStorageScope),
+      );
+      const nextCompanionInteractionStats =
+        normalizeCompanionInteractionStats(
+          serverRuntimeState.interaction_stats ||
+            legacyOwnerInteractionStats ||
+            readCompanionInteractionStats(accountStorageScope),
+        );
       const settingsFingerprint = settingsPayloadFingerprint(nextSettings);
       const hadLoadedSettings = hasLoadedSettingsRef.current;
       const hasUnsavedSettingsDraft =
@@ -1378,7 +1461,14 @@ function App({ accountControl = null, userName = "" }) {
         messagesSessionIdRef.current = null;
         chatScrollStatesRef.current.clear();
         pendingChatScrollRestoreRef.current = null;
+      } else {
+        setCompanionStatus(nextCompanionStatus);
+        setCompanionInteractionStats(nextCompanionInteractionStats);
+        companionStatusRef.current = nextCompanionStatus;
+        companionInteractionStatsRef.current =
+          nextCompanionInteractionStats;
       }
+      runtimeStateHydratedRef.current = true;
 
       confirmedSettingsRef.current = nextSettings;
       if (!hasUnsavedSettingsDraft) {
@@ -1402,7 +1492,11 @@ function App({ accountControl = null, userName = "" }) {
       if (serverSessionModel) {
         storeSessionChatModel(recovered.activeSessionId, serverSessionModel);
       } else {
-        migrateLegacyChatModelToSession(recovered.activeSessionId);
+        migrateLegacyChatModelToSession(
+          recovered.activeSessionId,
+          globalThis.localStorage,
+          accountStorageScope,
+        );
       }
       setActiveSessionId(recovered.activeSessionId);
       hasLoadedSettingsRef.current = true;
@@ -1430,7 +1524,12 @@ function App({ accountControl = null, userName = "" }) {
         startupReconnectRef.current = null;
       }
     };
-  }, [loadChatSkinPreferences, refreshServiceHealth, visualPreview]);
+  }, [
+    accountStorageScope,
+    loadChatSkinPreferences,
+    refreshServiceHealth,
+    visualPreview,
+  ]);
 
   useEffect(() => {
     if (
@@ -1556,13 +1655,44 @@ function App({ accountControl = null, userName = "" }) {
 
   useEffect(() => {
     companionStatusRef.current = companionStatus;
-    saveCompanionStatus(companionStatus);
-  }, [companionStatus]);
+    saveCompanionStatus(companionStatus, accountStorageScope);
+  }, [accountStorageScope, companionStatus]);
 
   useEffect(() => {
     companionInteractionStatsRef.current = companionInteractionStats;
-    saveCompanionInteractionStats(companionInteractionStats);
-  }, [companionInteractionStats]);
+    saveCompanionInteractionStats(
+      companionInteractionStats,
+      accountStorageScope,
+    );
+  }, [accountStorageScope, companionInteractionStats]);
+
+  useEffect(() => {
+    if (
+      visualPreview ||
+      !accountStorageScope ||
+      !runtimeStateHydratedRef.current
+    ) {
+      return undefined;
+    }
+    const timer = window.setTimeout(() => {
+      void apiRequest("/api/v2/companion-state", {
+        method: "PUT",
+        body: JSON.stringify({
+          status: companionStatus,
+          interaction_stats: companionInteractionStats,
+        }),
+        retry: false,
+      }).catch(() => {
+        // 本机的账号隔离副本仍保留，后端恢复后会由下一次状态变化重试。
+      });
+    }, 900);
+    return () => window.clearTimeout(timer);
+  }, [
+    accountStorageScope,
+    companionInteractionStats,
+    companionStatus,
+    visualPreview,
+  ]);
 
   useEffect(() => {
     isSendingRef.current = isSending;
@@ -1674,15 +1804,31 @@ function App({ accountControl = null, userName = "" }) {
     let cancelled = false;
     let pollInFlight = false;
     let timerId;
+    const pushCursorKey = accountStorageKey(
+      PUSH_CURSOR_KEY,
+      accountStorageScope,
+    );
+    const pushSeenIdsKey = accountStorageKey(
+      PUSH_SEEN_IDS_KEY,
+      accountStorageScope,
+    );
 
-    if (!localStorage.getItem(PUSH_CURSOR_KEY)) {
-      localStorage.setItem(PUSH_CURSOR_KEY, new Date().toISOString());
+    if (!localStorage.getItem(pushCursorKey)) {
+      const legacyCursor = readAccountStorage(
+        localStorage,
+        PUSH_CURSOR_KEY,
+        accountStorageScope,
+        { migrateLegacy: true },
+      );
+      if (!legacyCursor) {
+        localStorage.setItem(pushCursorKey, new Date().toISOString());
+      }
     }
 
     async function pollPushMessages() {
       if (cancelled || pollInFlight || !navigator.onLine) return;
 
-      const since = localStorage.getItem(PUSH_CURSOR_KEY);
+      const since = localStorage.getItem(pushCursorKey);
       if (!since) return;
 
       pollInFlight = true;
@@ -1692,7 +1838,7 @@ function App({ accountControl = null, userName = "" }) {
         );
         if (cancelled) return;
 
-        const seenIds = readSeenPushIds();
+        const seenIds = readSeenPushIds(accountStorageScope);
         const seenSet = new Set(seenIds);
         const incoming = (data.messages || []).filter(
           (item) => item.id && !seenSet.has(item.id),
@@ -1701,7 +1847,7 @@ function App({ accountControl = null, userName = "" }) {
         const latest = allMessages.at(-1);
 
         if (latest?.created_at) {
-          localStorage.setItem(PUSH_CURSOR_KEY, latest.created_at);
+          localStorage.setItem(pushCursorKey, latest.created_at);
         }
 
         if (incoming.length === 0) return;
@@ -1710,7 +1856,7 @@ function App({ accountControl = null, userName = "" }) {
           ...seenIds,
           ...incoming.map((item) => item.id),
         ].slice(-200);
-        localStorage.setItem(PUSH_SEEN_IDS_KEY, JSON.stringify(nextSeenIds));
+        localStorage.setItem(pushSeenIdsKey, JSON.stringify(nextSeenIds));
 
         const currentSessionId = activeSessionIdRef.current;
         const sessionsData = await apiRequest("/api/v2/sessions");
@@ -1766,7 +1912,7 @@ function App({ accountControl = null, userName = "" }) {
       document.removeEventListener("visibilitychange", pollWhenVisible);
       window.removeEventListener("online", pollWhenVisible);
     };
-  }, [settings.ai_name, settings.push_enabled]);
+  }, [accountStorageScope, settings.ai_name, settings.push_enabled]);
 
   useEffect(() => {
     let cancelled = false;
@@ -2538,7 +2684,12 @@ function App({ accountControl = null, userName = "" }) {
     const mode = normalizeVoicePlaybackMode(value);
     setVoicePlaybackMode(mode);
     try {
-      localStorage.setItem(VOICE_PLAYBACK_MODE_KEY, mode);
+      writeAccountStorage(
+        localStorage,
+        VOICE_PLAYBACK_MODE_KEY,
+        accountStorageScope,
+        mode,
+      );
       localStorage.removeItem("dengta_voice_auto_speak_enabled");
     } catch {
       // 本地存储不可用时，本次运行仍保持选择。
@@ -2788,11 +2939,15 @@ function App({ accountControl = null, userName = "" }) {
         }),
         timeoutMs: 120 * 1000,
       });
-      const next = storeInnerMonologue({
-        messageId,
-        text: data?.inner_monologue,
-        createdAt: new Date().toISOString(),
-      });
+      const next = storeInnerMonologue(
+        {
+          messageId,
+          text: data?.inner_monologue,
+          createdAt: new Date().toISOString(),
+        },
+        globalThis.localStorage,
+        accountStorageScope,
+      );
       setInnerMonologues(next);
     } catch (error) {
       setInnerMonologueErrors((current) => ({
@@ -2877,7 +3032,7 @@ function App({ accountControl = null, userName = "" }) {
         const created = await apiRequest("/api/v2/sessions", {
           method: "POST",
           body: JSON.stringify({
-            title: `和${settings.ai_name || "小灯"}的互动`,
+            title: `和${effectiveAiName}的互动`,
           }),
         });
         sessionId = created.session.id;
@@ -3134,7 +3289,11 @@ function App({ accountControl = null, userName = "" }) {
   }
 
   function initializeSessionChatModel(sessionId, serverModel = "") {
-    const migratedModel = migrateLegacyChatModelToSession(sessionId);
+    const migratedModel = migrateLegacyChatModelToSession(
+      sessionId,
+      globalThis.localStorage,
+      accountStorageScope,
+    );
     const model = serverModel || migratedModel || settings.model || "";
     if (model) storeSessionChatModel(sessionId, model);
     return model;
@@ -4143,7 +4302,7 @@ function App({ accountControl = null, userName = "" }) {
         status: state?.active ? "success" : "error",
         message: state?.active
           ? nextConfig.watchTogetherEnabled
-            ? `已经开始一起看。共享会一直持续到你主动结束；画面明显变化时，${settings.ai_name || "小灯"}会主动说出感受。`
+            ? `已经开始一起看。共享会一直持续到你主动结束；画面明显变化时，${effectiveAiName}会主动说出感受。`
             : "屏幕共看已开始。Android 常驻通知可随时看一眼、暂停或结束。"
           : state?.lastError || "系统没有建立共享，请重新确认一次。",
       });
@@ -4232,13 +4391,18 @@ function App({ accountControl = null, userName = "" }) {
     const receipt = normalizePromptReceipt(value, new Date().toISOString());
     if (!receipt) return;
     setLastPromptReceipt(receipt);
-    storePromptReceipt(receipt);
+    storePromptReceipt(receipt, accountStorageScope);
   }
 
   function updateEmotionUnderstanding(value) {
     setEmotionUnderstandingEnabled(value);
     try {
-      localStorage.setItem(EMOTION_UNDERSTANDING_KEY, String(value));
+      writeAccountStorage(
+        localStorage,
+        EMOTION_UNDERSTANDING_KEY,
+        accountStorageScope,
+        String(value),
+      );
     } catch {
       // WebView 禁止本地存储时，本次运行仍然保持开关状态。
     }
@@ -4498,12 +4662,12 @@ function App({ accountControl = null, userName = "" }) {
             <div className="empty-state">正在加载 DengTa home…</div>
           ) : messages.length === 0 ? (
             <div className="empty-state">
-              <h2>小灯和桃桃的小屋</h2>
-              <p>
-                {activeChatModel
-                  ? `小灯在这里，正在使用 ${activeChatModel}`
-                  : "小灯在这里等桃桃回家。"}
-              </p>
+              {settings.user_display_name || settings.ai_name !== "伴侣" ? (
+                <h2>{effectiveAiName}</h2>
+              ) : null}
+              {activeChatModel ? (
+                <p>当前模型：{activeChatModel}</p>
+              ) : null}
             </div>
           ) : (
             messages.map((item, index) => (
@@ -4516,8 +4680,8 @@ function App({ accountControl = null, userName = "" }) {
                   index,
                   chatSkinPreferences,
                 )}
-                aiName={settings.ai_name || "小灯"}
-                userName="桃桃"
+                aiName={effectiveAiName}
+                userName={effectiveUserName}
                 companionMood={companionStatus.mood}
                 apiBaseUrl={API_BASE_URL}
                 onPreview={handleImagePreview}
@@ -4572,8 +4736,8 @@ function App({ accountControl = null, userName = "" }) {
                 <strong>
                   引用{" "}
                   {messageReference.role === "user"
-                    ? "桃桃"
-                    : settings.ai_name || "小灯"}
+                    ? effectiveUserName
+                    : effectiveAiName}
                 </strong>
                 <span>
                   {messageReference.text ||
@@ -4902,7 +5066,7 @@ function App({ accountControl = null, userName = "" }) {
           )}
           <small>
             {isCompanionResponding
-              ? `${settings.ai_name || "小灯"}正在回应刚才的互动`
+              ? `${effectiveAiName}正在回应刚才的互动`
               : isOnline
                 ? "已连接"
                 : "网络已断开，暂时不能聊天"} · 聊天记录保存在 Supabase
@@ -5006,7 +5170,7 @@ function App({ accountControl = null, userName = "" }) {
                   <div>
                     <strong>
                       {item.author === "assistant"
-                        ? settings.ai_name || "小灯"
+                        ? effectiveAiName
                         : "我"}
                     </strong>
                     <time>{formatDateTime(item.created_at)}</time>
@@ -5050,13 +5214,13 @@ function App({ accountControl = null, userName = "" }) {
 
                 {item.liked && item.author === "user" && (
                   <div className="ai-like">
-                    ♥ {settings.ai_name || "小灯"} 喜欢了这条动态
+                    ♥ {effectiveAiName} 喜欢了这条动态
                   </div>
                 )}
 
                 {item.reply_content && (
                   <div className="comment assistant-comment">
-                    <strong>{settings.ai_name || "小灯"}：</strong>
+                    <strong>{effectiveAiName}：</strong>
                     {item.reply_content}
                   </div>
                 )}
@@ -5070,7 +5234,7 @@ function App({ accountControl = null, userName = "" }) {
                   >
                     <strong>
                       {comment.author === "assistant"
-                        ? settings.ai_name || "小灯"
+                        ? effectiveAiName
                         : "我"}
                       ：
                     </strong>
@@ -5113,7 +5277,7 @@ function App({ accountControl = null, userName = "" }) {
         <FeatureAtmosphere kind="memory" />
         <Suspense fallback={<DeferredFeature label="正在打开伴侣画像…" />}>
           <CompanionProfile
-            aiName={settings.ai_name || "小灯"}
+            aiName={effectiveAiName}
             onNotice={setNotice}
           />
         </Suspense>
@@ -5154,7 +5318,7 @@ function App({ accountControl = null, userName = "" }) {
     return (
       <Suspense fallback={<DeferredFeature label="正在打开记忆手记…" />}>
         <CompanionDiary
-          aiName={settings.ai_name || "小灯"}
+          aiName={effectiveAiName}
           onNotice={setNotice}
         />
       </Suspense>
@@ -5171,7 +5335,7 @@ function App({ accountControl = null, userName = "" }) {
         }
       >
         <Nursery
-          aiName={settings.ai_name || "小灯"}
+          aiName={effectiveAiName}
           onNotice={setNotice}
         />
       </Suspense>
@@ -5182,9 +5346,10 @@ function App({ accountControl = null, userName = "" }) {
     return (
       <Suspense fallback={<DeferredFeature label="正在打开双人对战…" />}>
         <IntimateDuel
-          aiName={settings.ai_name || "小灯"}
-          userName={userName}
+          aiName={effectiveAiName}
+          userName={effectiveUserName}
           conversationId={activeSessionId}
+          accountScope={accountStorageScope}
         />
       </Suspense>
     );
@@ -5316,7 +5481,11 @@ function App({ accountControl = null, userName = "" }) {
                   onChange={(event) => {
                     const nextValue = event.target.value;
                     setGroqExpiryDate(nextValue);
-                    storeGroqExpiryDate(nextValue);
+                    storeGroqExpiryDate(
+                      nextValue,
+                      globalThis.localStorage,
+                      accountStorageScope,
+                    );
                   }}
                 />
               </label>
@@ -5372,8 +5541,22 @@ function App({ accountControl = null, userName = "" }) {
             </div>
 
             <label className="prompt-name-field">
+              <span>你的称呼</span>
+              <small>每个账号单独保存，伴侣会用这个名字称呼当前账号。</small>
+              <input
+                data-setting-field="user_display_name"
+                maxLength={PROMPT_FIELD_LIMITS.user_display_name}
+                value={draftSettings.user_display_name || ""}
+                onChange={(event) =>
+                  updateDraft("user_display_name", event.target.value)
+                }
+                placeholder="你的名字或昵称"
+              />
+            </label>
+
+            <label className="prompt-name-field">
               <span>AI 昵称</span>
-              <small>这里只决定界面里显示的名字，例如“小灯”。</small>
+              <small>当前伴侣独立保存，可以随时更名。</small>
               <input
                 data-setting-field="ai_name"
                 maxLength={PROMPT_FIELD_LIMITS.ai_name}
@@ -5381,9 +5564,19 @@ function App({ accountControl = null, userName = "" }) {
                 onChange={(event) =>
                   updateDraft("ai_name", event.target.value)
                 }
-                placeholder="例如：小灯"
+                placeholder="例如：星河"
               />
             </label>
+
+            <div className="service-last-checked" role="status">
+              当前账号权限：
+              {settings.account_role === "owner"
+                ? "所有者"
+                : settings.account_role === "admin"
+                  ? "管理员"
+                  : "普通成员"}
+              。账号状态、提示词、模型配置、密钥配置与伴侣数据均按账号隔离保存。
+            </div>
 
             <div className="prompt-layer-list unified-prompt-layout">
               <label className="prompt-layer highest-priority unified-prompt-layer">
@@ -5407,7 +5600,7 @@ function App({ accountControl = null, userName = "" }) {
                   onChange={(event) =>
                     updateUnifiedPrompt(event.target.value)
                   }
-                  placeholder="例如：你是 DengTa home 的 AI 伙伴小灯。写清楚稳定身份、关系和表达习惯……"
+                  placeholder="写清楚稳定身份、关系和表达习惯……"
                   rows="12"
                 />
                 <small className="prompt-field-count">
@@ -5483,7 +5676,7 @@ function App({ accountControl = null, userName = "" }) {
                   maxLength={PROMPT_FIELD_LIMITS.turn_context}
                   value={turnContext}
                   onChange={(event) => updateTurnContext(event.target.value)}
-                  placeholder="例如：这一轮接着昨晚雨天回家的剧情；小灯刚喝了酒，但仍要尊重桃桃的选择……"
+                  placeholder="例如：这一轮接着昨晚雨天回家的剧情……"
                   rows="5"
                 />
                 <small className="prompt-field-count">
@@ -6387,7 +6580,7 @@ function App({ accountControl = null, userName = "" }) {
           >
             {activeView === "chat" ? (
               <div className="sun-glass-topbar-identity">
-                <strong>{settings.ai_name || "小灯"}</strong>
+                <strong>{effectiveAiName}</strong>
                 <span>
                   <i aria-hidden="true" />
                   {companionStatus.resetBlank === true
@@ -6441,8 +6634,8 @@ function App({ accountControl = null, userName = "" }) {
           <CompanionStatus
             active={activeView === "chat"}
             closeRequest={statusPanelCloseRequest}
-            aiName={settings.ai_name || "小灯"}
-            userName={userName}
+            aiName={effectiveAiName}
+            userName={effectiveUserName}
             status={companionStatus}
             interactionStats={companionInteractionStats}
             intimateExpressionEnabled={
@@ -6459,6 +6652,7 @@ function App({ accountControl = null, userName = "" }) {
             onOpenSettings={openSettingsPanel}
           />
           <AmbientContextBadge
+            accountScope={accountStorageScope}
             onLoadWeather={loadAmbientWeather}
             onContextChange={handleAmbientContextChange}
             onCoordinatesChange={setCelestialCoordinates}

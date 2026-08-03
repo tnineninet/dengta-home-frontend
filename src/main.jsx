@@ -18,7 +18,9 @@ createRoot(document.getElementById("root")).render(
     <AuthGate>
       {({ accountControl, snapshot }) => (
         <App
+          key={snapshot.user?.id}
           accountControl={accountControl}
+          accountScope={snapshot.user?.id || ""}
           userName={snapshot.user?.displayName}
         />
       )}

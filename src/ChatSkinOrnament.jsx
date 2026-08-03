@@ -1,6 +1,6 @@
 export default function ChatSkinOrnament({ role, mood = "" }) {
   const isUser = role === "user";
-  const label = isUser ? "桃桃的小猫挂件" : "小灯的大熊挂件";
+  const label = isUser ? "我的小猫挂件" : "伴侣的大熊挂件";
   const moodClass = String(mood || "")
     .toLowerCase()
     .replace(/[^a-z0-9\u4e00-\u9fff_-]+/g, "")

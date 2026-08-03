@@ -11,7 +11,11 @@ import {
   mergeCompanionStatus,
   normalizeCompanionInteractionStats,
   personalizeCompanionStatusText,
+  readCompanionInteractionStats,
+  readCompanionStatus,
   recordCompanionInteraction,
+  saveCompanionInteractionStats,
+  saveCompanionStatus,
 } from "../src/companion-status.js";
 import { enqueueCompanionInteraction } from "../src/companion-interaction.js";
 
@@ -19,6 +23,26 @@ const resetBlankStatus = createResetCompanionStatus();
 assert.equal(resetBlankStatus.resetBlank, true);
 assert.equal(resetBlankStatus.note, "");
 assert.equal(companionStatusForRequest(resetBlankStatus).note, "");
+
+const originalLocalStorage = globalThis.localStorage;
+const localValues = new Map();
+globalThis.localStorage = {
+  getItem(key) {
+    return localValues.has(key) ? localValues.get(key) : null;
+  },
+  setItem(key, value) {
+    localValues.set(key, String(value));
+  },
+};
+saveCompanionStatus({ mood: "账号甲" }, "account-a");
+saveCompanionStatus({ mood: "账号乙" }, "account-b");
+saveCompanionInteractionStats({ counts: { hand: 2 } }, "account-a");
+saveCompanionInteractionStats({ counts: { hand: 7 } }, "account-b");
+assert.equal(readCompanionStatus("account-a").mood, "账号甲");
+assert.equal(readCompanionStatus("account-b").mood, "账号乙");
+assert.equal(readCompanionInteractionStats("account-a").counts.hand, 2);
+assert.equal(readCompanionInteractionStats("account-b").counts.hand, 7);
+globalThis.localStorage = originalLocalStorage;
 
 const handZone = HOT_ZONES.find((zone) => zone.id === "hand");
 const shoulderZone = HOT_ZONES.find((zone) => zone.id === "shoulder");

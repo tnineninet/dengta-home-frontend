@@ -26,8 +26,8 @@ function browserIsOnline() {
   return globalThis.navigator?.onLine !== false;
 }
 
-function readInitialAmbientState() {
-  const preferenceResult = readAmbientPreferences();
+function readInitialAmbientState(accountScope = "") {
+  const preferenceResult = readAmbientPreferences(undefined, accountScope);
   const coordinateResult = readCachedCoordinates();
   const weatherResult = readCachedWeather();
   let preferences = preferenceResult.preferences;
@@ -38,7 +38,7 @@ function readInitialAmbientState() {
     ["fresh", "stale"].includes(coordinateResult.state)
   ) {
     preferences = { ...preferences, enabled: true };
-    storeAmbientPreferences(preferences);
+    storeAmbientPreferences(preferences, undefined, accountScope);
   }
 
   return {
@@ -53,9 +53,10 @@ function AmbientContextBadge({
   onContextChange,
   onCoordinatesChange,
   celestialSnapshot,
+  accountScope = "",
   className = "",
 }) {
-  const [initialState] = useState(readInitialAmbientState);
+  const [initialState] = useState(() => readInitialAmbientState(accountScope));
   const [now, setNow] = useState(() => new Date());
   const [online, setOnline] = useState(browserIsOnline);
   const [locationEnabled, setLocationEnabled] = useState(
@@ -95,9 +96,9 @@ function AmbientContextBadge({
   const persistPreferences = useCallback((patch) => {
     const next = { ...preferencesRef.current, ...patch };
     preferencesRef.current = next;
-    storeAmbientPreferences(next);
+    storeAmbientPreferences(next, undefined, accountScope);
     return next;
-  }, []);
+  }, [accountScope]);
 
   useEffect(() => {
     const updateClock = () => setNow(new Date());
@@ -164,8 +165,8 @@ function AmbientContextBadge({
     setStatus({
       state: "loading",
       message: weatherRef.current
-        ? "正在后台刷新桃桃身边的天气"
-        : "正在读取桃桃身边的天气",
+        ? "正在后台刷新你身边的天气"
+        : "正在读取你身边的天气",
     });
     try {
       if (typeof onLoadWeather !== "function") {
@@ -484,7 +485,7 @@ function AmbientContextBadge({
 
       <div className="ambient-context-weather">
         <div className="ambient-context-weather-copy">
-          <span className="ambient-context-kicker">桃桃身边</span>
+          <span className="ambient-context-kicker">你身边</span>
           {weather ? (
             <strong>
               {weather.description} {weather.temperatureC}°C

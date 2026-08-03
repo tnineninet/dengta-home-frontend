@@ -168,7 +168,7 @@ export function MessageAttachments({ value, apiBaseUrl, onPreview }) {
 
 export function ThinkingPanel({
   message,
-  aiName = "小灯",
+  aiName = "伴侣",
   companionMood = "",
   innerMonologue = null,
   innerMonologuePending = false,
@@ -202,7 +202,7 @@ export function ThinkingPanel({
   const statuses = Array.isArray(message.thinkingStatuses)
     ? message.thinkingStatuses
     : [];
-  const displayName = String(aiName || "").trim() || "小灯";
+  const displayName = String(aiName || "").trim() || "伴侣";
   const mood = String(companionMood || "").trim();
   const monologueText = String(innerMonologue?.text || "").trim();
 
