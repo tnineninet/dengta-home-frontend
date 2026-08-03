@@ -34,8 +34,8 @@ const mainActivity = fs.readFileSync(
 );
 
 assert.match(buildGradle, /applicationId "home\.dengta\.app"/);
-assert.match(buildGradle, /versionCode 19\b/);
-assert.match(buildGradle, /versionName "2\.6\.1"/);
+assert.match(buildGradle, /versionCode 20\b/);
+assert.match(buildGradle, /versionName "2\.7\.0"/);
 assert.match(variablesGradle, /minSdkVersion = 31\b/);
 assert.match(variablesGradle, /targetSdkVersion = 36\b/);
 assert.match(androidWorkflow, /npm test\s+npm run lint/);
@@ -59,4 +59,4 @@ assert.doesNotMatch(
   /LAYER_TYPE_SOFTWARE/,
   "the embedded WebView must not force CPU-only rendering",
 );
-console.log("Android 2.6.1 recovery layout release tests passed");
+console.log("Android 2.7.0 recovery layout release tests passed");
