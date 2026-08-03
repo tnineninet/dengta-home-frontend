@@ -79,3 +79,52 @@ test("time preview changes the shared sky snapshot without changing system time"
   assert.match(backdrop, /weatherModeOverride/);
   assert.match(backdrop, /\["clear", "cloudy", "rain", "storm"\]\.includes/);
 });
+
+test("the accepted sky keeps the real preview minute and exposes weather controls", () => {
+  const deck = read("src/SunGlassTimeDeck.jsx");
+  const backdrop = read("src/CelestialBackdrop.jsx");
+  const styles = read("src/sun-glass-ui.css");
+
+  assert.match(deck, /const \[isOpen, setIsOpen\] = useState\(true\)/);
+  assert.match(deck, /WEATHER_PRESETS\.find/);
+  assert.match(deck, /<span>\{displayedWeatherLabel\} · 光线<\/span>/);
+  assert.doesNotMatch(backdrop, /snapshot\.resolvedAppearance === "night"/);
+  assert.match(backdrop, /getSunGlassSky\(minute\)/);
+  const sunRule = styles.match(
+    /\.celestial-prototype-sky > \.celestial-sun\s*\{[\s\S]*?\n\}/,
+  )?.[0];
+  assert.ok(sunRule, "the visible sun rule must exist");
+  assert.doesNotMatch(sunRule, /inset:\s*auto/);
+});
+
+test("expanded status is centered independently from its draggable shell", () => {
+  const app = read("src/App.jsx");
+  const status = read("src/CompanionStatus.jsx");
+  const styles = read("src/sun-glass-chat.css");
+
+  assert.match(
+    status,
+    /const openPanel = useCallback\(\(\) => \{[\s\S]*?setDragPosition\(null\)/,
+  );
+  assert.match(
+    styles,
+    /\.sun-glass-floating-status-shell\.expanded\s*\{[\s\S]*?left:\s*0;[\s\S]*?width:\s*100vw;[\s\S]*?transform:\s*none;/,
+  );
+  assert.match(
+    styles,
+    /\.sun-glass-floating-status-panel[\s\S]*?position:\s*fixed;/,
+  );
+  assert.match(app, /isStatusPanelExpanded \? " status-panel-open"/);
+  assert.match(
+    styles,
+    /\.main-panel\.view-chat\.status-panel-open \.message-list,[\s\S]*?opacity:\s*0;/,
+  );
+  assert.match(
+    styles,
+    /\.sun-glass-floating-status-shell\.expanded[\s\S]*?> \.sun-glass-liquid-action-stage[\s\S]*?display:\s*none;/,
+  );
+  assert.match(
+    styles,
+    /\.sun-glass-floating-status-shell\.expanded[\s\S]*?\.sun-glass-floating-status-panel[\s\S]*?left:\s*max\(10px, calc\(50vw - 215px\)\);[\s\S]*?transform:\s*none;/,
+  );
+});

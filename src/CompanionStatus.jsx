@@ -155,6 +155,7 @@ function CompanionStatus({
 
   const openPanel = useCallback(() => {
     panelRef.current?.scrollTo({ top: 0 });
+    setDragPosition(null);
     setExpanded(true);
     onExpandedChange?.(true);
   }, [onExpandedChange]);

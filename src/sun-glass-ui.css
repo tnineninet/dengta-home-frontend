@@ -1089,7 +1089,6 @@ body,
   z-index: 2;
   left: var(--sun-x);
   top: var(--sun-y);
-  inset: auto;
   width: 64px;
   height: 64px;
   border-radius: 50%;

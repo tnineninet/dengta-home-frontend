@@ -333,13 +333,7 @@ export default function CelestialBackdrop({
   const minute = Number.isFinite(snapshot.minute)
     ? snapshot.minute
     : snapshot.hour * 60;
-  const displayedMinute =
-    snapshot.resolvedAppearance === "night" && minute > 420 && minute < 1230
-      ? 1320
-      : snapshot.resolvedAppearance === "day" && (minute <= 420 || minute >= 1230)
-        ? 720
-        : minute;
-  const sky = useMemo(() => getSunGlassSky(displayedMinute), [displayedMinute]);
+  const sky = useMemo(() => getSunGlassSky(minute), [minute]);
   const weatherMode = ["clear", "cloudy", "rain", "storm"].includes(
     weatherModeOverride,
   )

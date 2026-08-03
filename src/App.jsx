@@ -6191,7 +6191,11 @@ function App({ accountControl = null, userName = "" }) {
         </div>
       </aside>
 
-      <main className={`main-panel view-${activeView}`}>
+      <main
+        className={`main-panel view-${activeView}${
+          isStatusPanelExpanded ? " status-panel-open" : ""
+        }`}
+      >
         <header className="topbar">
           <button
             className="menu-button"

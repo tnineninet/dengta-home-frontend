@@ -1228,6 +1228,36 @@
   touch-action: none;
 }
 
+.main-panel.view-chat
+  .companion-status.sun-glass-floating-status-shell.expanded {
+  left: 0;
+  width: 100vw;
+  max-width: none;
+  transform: none;
+  pointer-events: none;
+}
+
+.main-panel.view-chat
+  .companion-status.sun-glass-floating-status-shell.expanded
+  > * {
+  pointer-events: auto;
+}
+
+.main-panel.view-chat
+  .companion-status.sun-glass-floating-status-shell.expanded
+  > .sun-glass-liquid-action-stage {
+  display: none;
+}
+
+.main-panel.view-chat.status-panel-open .message-list,
+.main-panel.view-chat.status-panel-open .composer-wrap {
+  visibility: hidden;
+  opacity: 0;
+  animation: none;
+  pointer-events: none;
+  transition: opacity 180ms ease;
+}
+
 .main-panel.view-chat .sun-glass-floating-status-shell::before,
 .main-panel.view-chat .sun-glass-floating-status-shell::after,
 .main-panel.view-chat .sun-glass-floating-status-shell .status-pulse-bg,
@@ -1498,14 +1528,14 @@
 :root[data-dengta-appearance="night"]
   .main-panel.view-chat
   .sun-glass-floating-status-panel {
-  position: absolute;
+  position: fixed;
   z-index: 20;
-  top: 25px;
-  left: 50%;
+  top: calc(max(8px, env(safe-area-inset-top)) + 162px);
+  left: 50vw;
   display: block;
   width: min(430px, calc(100vw - 20px));
   max-width: none;
-  max-height: min(720px, calc(100dvh - 106px));
+  max-height: min(720px, calc(100dvh - 176px));
   margin: 0;
   padding: 0;
   overflow: hidden;
@@ -1524,6 +1554,19 @@
   animation: sun-glass-jelly-open 680ms
     cubic-bezier(0.16, 0.86, 0.26, 1.08) both;
   overscroll-behavior: contain;
+}
+
+.main-panel.view-chat
+  .companion-status.sun-glass-floating-status-shell.expanded
+  .sun-glass-floating-status-panel {
+  position: fixed;
+  top: calc(max(8px, env(safe-area-inset-top)) + 162px);
+  right: auto;
+  left: max(10px, calc(50vw - 215px));
+  width: min(430px, calc(100vw - 20px));
+  max-height: calc(100dvh - 176px - env(safe-area-inset-bottom));
+  margin: 0;
+  transform: none;
 }
 
 .sun-glass-floating-status-header {

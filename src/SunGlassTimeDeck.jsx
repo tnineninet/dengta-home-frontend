@@ -45,13 +45,16 @@ export default function SunGlassTimeDeck({
   glassLevel,
   onGlassLevel,
 }) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [isOpen, setIsOpen] = useState(true);
   const rootRef = useRef(null);
   const displayedMinute = Number.isFinite(previewMinute)
     ? previewMinute
     : snapshot.minute;
   const displayedWeather =
     weatherMode || weatherModeFromAmbient(weather) || "clear";
+  const displayedWeatherLabel =
+    WEATHER_PRESETS.find((preset) => preset.id === displayedWeather)?.label ||
+    "晴空";
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -94,11 +97,12 @@ export default function SunGlassTimeDeck({
         <button
           type="button"
           className="sun-glass-button compact"
+          aria-label="天气与光线设置"
           aria-expanded={isOpen}
           onClick={() => setIsOpen((current) => !current)}
         >
           <SlidersHorizontal aria-hidden="true" />
-          <span>光线</span>
+          <span>{displayedWeatherLabel} · 光线</span>
         </button>
       </div>
 
