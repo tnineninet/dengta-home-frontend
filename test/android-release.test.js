@@ -32,6 +32,21 @@ const mainActivity = fs.readFileSync(
   ),
   "utf8",
 );
+const screenGlanceService = fs.readFileSync(
+  path.join(
+    projectRoot,
+    "android",
+    "app",
+    "src",
+    "main",
+    "java",
+    "home",
+    "dengta",
+    "app",
+    "ScreenGlanceService.java",
+  ),
+  "utf8",
+);
 
 assert.match(buildGradle, /applicationId "home\.dengta\.app"/);
 assert.match(buildGradle, /versionCode 29\b/);
@@ -58,5 +73,10 @@ assert.doesNotMatch(
   mainActivity,
   /LAYER_TYPE_SOFTWARE/,
   "the embedded WebView must not force CPU-only rendering",
+);
+assert.doesNotMatch(
+  screenGlanceService,
+  /小灯|桃桃/,
+  "native background notifications must not ship a private companion identity",
 );
 console.log("Android 2.8.7 account persistence release tests passed");

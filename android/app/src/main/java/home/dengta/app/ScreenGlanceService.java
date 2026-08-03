@@ -483,8 +483,8 @@ public final class ScreenGlanceService extends Service {
                 wasWatch
                     ? notificationText()
                     : wasRandom
-                    ? "小灯刚刚看了一眼，回到 DengTa 看祂想说什么"
-                    : "画面已准备好，回到 DengTa 让小灯回应"
+                    ? "伴侣刚刚看了一眼，回到 DengTa 看祂想说什么"
+                    : "画面已准备好，回到 DengTa 让伴侣回应"
             ));
         } catch (Exception error) {
             recordError("这次没有取得清晰画面，稍后可以再试。");
@@ -657,7 +657,7 @@ public final class ScreenGlanceService extends Service {
             response.optString("conversation_id", ""),
             100
         );
-        String aiName = cleanText(response.optString("ai_name", "小灯"), 50);
+        String aiName = cleanText(response.optString("ai_name", "伴侣"), 50);
         long now = System.currentTimeMillis();
         preferences(this)
             .edit()
@@ -996,7 +996,7 @@ public final class ScreenGlanceService extends Service {
         if (watchTogetherEnabled()) {
             String reaction = preferences(this).getString(LAST_REACTION_KEY, "");
             return reaction == null || reaction.isEmpty()
-                ? "正在一起看；画面变化时小灯会主动回应"
+                ? "正在一起看；画面变化时伴侣会主动回应"
                 : cleanText(reaction, 72);
         }
         if (randomEnabled()) return "随机查看已获准；可随时暂停或结束";
