@@ -4056,8 +4056,15 @@ function App({ accountControl = null, userName = "" }) {
     }
   }
 
-  async function startScreenGlanceSession() {
+  async function startScreenGlanceSession(options = {}) {
     if (!screenGlancePluginAvailable() || isScreenGlanceBusy) return;
+    const watchTogether = options.watchTogether === true;
+    const nextConfig = normalizeScreenGlanceConfig({
+      ...screenGlanceConfig,
+      watchTogetherEnabled:
+        watchTogether || screenGlanceConfig.watchTogetherEnabled,
+    });
+    setScreenGlanceConfig(nextConfig);
     setIsScreenGlanceBusy(true);
     setScreenGlanceFeedback({
       status: "checking",
@@ -4068,7 +4075,7 @@ function App({ accountControl = null, userName = "" }) {
       if (notificationState.status === "error") {
         throw new Error(notificationState.message);
       }
-      await ScreenGlance.configure(normalizeScreenGlanceConfig(screenGlanceConfig));
+      await ScreenGlance.configure(nextConfig);
       const result = await ScreenGlance.startSession();
       if (result?.consentDenied === true) {
         applyScreenGlanceState(result);
@@ -4083,7 +4090,9 @@ function App({ accountControl = null, userName = "" }) {
       setScreenGlanceFeedback({
         status: state?.active ? "success" : "error",
         message: state?.active
-          ? "屏幕共看已开始。Android 常驻通知可随时看一眼、暂停或结束。"
+          ? nextConfig.watchTogetherEnabled
+            ? `已经开始一起看。画面明显变化时，${settings.ai_name || "小灯"}会大约每 ${nextConfig.watchIntervalSeconds} 秒看一次并主动说出感受。`
+            : "屏幕共看已开始。Android 常驻通知可随时看一眼、暂停或结束。"
           : state?.lastError || "系统没有建立共享，请重新确认一次。",
       });
     } catch (error) {
@@ -5789,11 +5798,7 @@ function App({ accountControl = null, userName = "" }) {
                 </button>
               </div>
               <p>
-                每次会话都由 Android 系统确认，并持续显示共享通知。单帧会缩小、去除图片元数据，只作当轮不可信视觉背景。
-              </p>
-              <p>
-                锁屏、支付、银行、密码、验证器、系统权限页或无法确认前台 App
-                时，随机查看会直接跳过；画面不会进入作品库或长期记忆。
+                每次会话都由 Android 系统确认，并持续显示共享通知。邀请一起看后，手机会在后台稀疏采样，只有画面明显变化才调用当前伴侣模型。
               </p>
               <div className="screen-glance-options">
                 <label>
@@ -5862,6 +5867,39 @@ function App({ accountControl = null, userName = "" }) {
                   />
                   仅充电时
                 </label>
+                <label className="screen-glance-check">
+                  <input
+                    type="checkbox"
+                    checked={screenGlanceConfig.watchTogetherEnabled}
+                    disabled={isScreenGlanceBusy}
+                    onChange={(event) =>
+                      void saveScreenGlanceConfig({
+                        ...screenGlanceConfig,
+                        watchTogetherEnabled: event.target.checked,
+                      })
+                    }
+                  />
+                  一起看时主动回应
+                </label>
+                <label>
+                  共看采样（秒）
+                  <input
+                    type="number"
+                    min="30"
+                    max="600"
+                    value={screenGlanceConfig.watchIntervalSeconds}
+                    disabled={isScreenGlanceBusy}
+                    onChange={(event) =>
+                      setScreenGlanceConfig((current) =>
+                        normalizeScreenGlanceConfig({
+                          ...current,
+                          watchIntervalSeconds: event.target.value,
+                        }),
+                      )
+                    }
+                    onBlur={() => void saveScreenGlanceConfig()}
+                  />
+                </label>
               </div>
               {(screenGlanceState.capturedAt ||
                 screenGlanceState.nextCaptureAt) && (
@@ -5877,6 +5915,12 @@ function App({ accountControl = null, userName = "" }) {
                       {formatDateTime(screenGlanceState.nextCaptureAt)}
                     </span>
                   )}
+                  {screenGlanceState.lastReactionAt && (
+                    <span>
+                      最近共看回应：
+                      {formatDateTime(screenGlanceState.lastReactionAt)}
+                    </span>
+                  )}
                 </div>
               )}
               <p
@@ -5888,15 +5932,28 @@ function App({ accountControl = null, userName = "" }) {
               </p>
               <div className="device-activity-actions">
                 {!screenGlanceState.active ? (
-                  <button
-                    type="button"
-                    disabled={
-                      isScreenGlanceBusy || !screenGlanceState.supported
-                    }
-                    onClick={() => void startScreenGlanceSession()}
-                  >
-                    开始系统屏幕共享
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      disabled={
+                        isScreenGlanceBusy || !screenGlanceState.supported
+                      }
+                      onClick={() =>
+                        void startScreenGlanceSession({ watchTogether: true })
+                      }
+                    >
+                      邀请一起看
+                    </button>
+                    <button
+                      type="button"
+                      disabled={
+                        isScreenGlanceBusy || !screenGlanceState.supported
+                      }
+                      onClick={() => void startScreenGlanceSession()}
+                    >
+                      只共享屏幕
+                    </button>
+                  </>
                 ) : (
                   <>
                     <button
@@ -5919,7 +5976,7 @@ function App({ accountControl = null, userName = "" }) {
                 )}
               </div>
               <small>
-                常驻通知里的“看一眼”和随机查看都需要“使用情况访问”来避开敏感 App；没有该权限时只会跳过，不会冒险截图。
+                锁屏会暂停采样；结束系统共享后，本机临时画面会立即清除。
               </small>
             </div>
           </div>
@@ -6276,6 +6333,9 @@ function App({ accountControl = null, userName = "" }) {
             onChange={setCompanionStatus}
             onExpandedChange={handleStatusPanelExpandedChange}
             onInteract={handleCompanionInteraction}
+            onWatchTogether={() =>
+              void startScreenGlanceSession({ watchTogether: true })
+            }
           />
           <AmbientContextBadge
             onLoadWeather={loadAmbientWeather}

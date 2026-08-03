@@ -84,13 +84,21 @@ public final class ScreenGlancePlugin extends Plugin {
         boolean chargingOnly = Boolean.TRUE.equals(
             call.getBoolean("chargingOnly", false)
         );
+        boolean watchTogetherEnabled = Boolean.TRUE.equals(
+            call.getBoolean("watchTogetherEnabled", false)
+        );
+        int watchIntervalSeconds = boundedSeconds(
+            call.getInt("watchIntervalSeconds", 90)
+        );
         ScreenGlanceService.storeConfig(
             getContext(),
             randomEnabled,
             minimumMinutes,
             maximumMinutes,
             wifiOnly,
-            chargingOnly
+            chargingOnly,
+            watchTogetherEnabled,
+            watchIntervalSeconds
         );
         ScreenGlanceService.sendAction(
             getContext(),
@@ -158,5 +166,10 @@ public final class ScreenGlancePlugin extends Plugin {
     private static int boundedMinutes(Integer value) {
         int requested = value == null ? 60 : value;
         return Math.min(600, Math.max(1, requested));
+    }
+
+    private static int boundedSeconds(Integer value) {
+        int requested = value == null ? 90 : value;
+        return Math.min(600, Math.max(30, requested));
     }
 }

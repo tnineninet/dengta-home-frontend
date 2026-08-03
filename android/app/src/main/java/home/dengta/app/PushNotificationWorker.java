@@ -272,6 +272,30 @@ public final class PushNotificationWorker extends Worker {
         NotificationManagerCompat.from(context).notify(notificationId(id), notification.build());
     }
 
+    public static void showImmediateCompanionMessage(
+        Context context,
+        String aiName,
+        String messageId,
+        String conversationId,
+        String content
+    ) {
+        if (!notificationsAllowed(context)) return;
+        ensureNotificationChannel(context);
+        JSONObject message = new JSONObject();
+        try {
+            message.put("id", messageId);
+            message.put("conversation_id", conversationId);
+            message.put("content", content);
+        } catch (Exception ignored) {
+            return;
+        }
+        postNotification(
+            context,
+            cleanText(aiName, 50).isEmpty() ? "DengTa home" : cleanText(aiName, 50),
+            message
+        );
+    }
+
     private static JSONObject getJson(
         Context context,
         BackgroundNotificationCredentials.Identity identity,

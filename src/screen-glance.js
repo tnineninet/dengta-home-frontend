@@ -7,6 +7,8 @@ export const SCREEN_GLANCE_DEFAULT_CONFIG = Object.freeze({
   maximumMinutes: 180,
   wifiOnly: true,
   chargingOnly: false,
+  watchTogetherEnabled: false,
+  watchIntervalSeconds: 90,
 });
 
 const MAX_CAPTURE_BYTES = 1_500_000;
@@ -45,6 +47,13 @@ export function normalizeScreenGlanceConfig(value = {}) {
         ? SCREEN_GLANCE_DEFAULT_CONFIG.wifiOnly
         : value.wifiOnly === true,
     chargingOnly: value.chargingOnly === true,
+    watchTogetherEnabled: value.watchTogetherEnabled === true,
+    watchIntervalSeconds: boundedInteger(
+      value.watchIntervalSeconds,
+      30,
+      600,
+      SCREEN_GLANCE_DEFAULT_CONFIG.watchIntervalSeconds,
+    ),
   };
 }
 
@@ -59,9 +68,16 @@ export function normalizeScreenGlanceState(value = {}) {
     maximumMinutes: config.maximumMinutes,
     wifiOnly: config.wifiOnly,
     chargingOnly: config.chargingOnly,
+    watchTogetherEnabled: config.watchTogetherEnabled,
+    watchIntervalSeconds: config.watchIntervalSeconds,
     pendingCapture: value.pendingCapture === true,
     capturedAt: isoTimestamp(value.capturedAt),
     nextCaptureAt: isoTimestamp(value.nextCaptureAt),
+    lastReactionAt: isoTimestamp(value.lastReactionAt),
+    lastReaction:
+      typeof value.lastReaction === "string"
+        ? value.lastReaction.replace(/\s+/g, " ").trim().slice(0, 160)
+        : "",
     lastError:
       typeof value.lastError === "string"
         ? value.lastError.replace(/\s+/g, " ").trim().slice(0, 160)

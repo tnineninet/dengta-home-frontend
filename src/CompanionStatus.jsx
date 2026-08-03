@@ -99,6 +99,7 @@ function CompanionStatus({
   onChange,
   onExpandedChange,
   onInteract,
+  onWatchTogether,
 }) {
   const displayName = String(aiName || "").trim() || "小灯";
   const personalized = useCallback(
@@ -362,6 +363,7 @@ function CompanionStatus({
   function runDesireAction(action) {
     const baseAction = RECOVERY_ACTIONS.find((item) => item.id === "wish");
     if (!baseAction) return;
+    if (action.id === "watching") onWatchTogether?.();
     touchZone({
       ...baseAction,
       mood: action.mood,

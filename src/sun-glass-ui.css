@@ -982,7 +982,7 @@ body,
 
 .celestial-prototype-sky .celestial-stars-canvas {
   z-index: 1;
-  opacity: var(--prototype-star-opacity, 0);
+  opacity: clamp(0, calc(var(--prototype-star-opacity, 0) * var(--moon-light-intensity, .86)), 1);
   transition: opacity 900ms ease;
 }
 
@@ -994,7 +994,7 @@ body,
   width: 132%;
   height: 42%;
   inset: auto;
-  opacity: var(--milky-opacity, 0);
+  opacity: clamp(0, calc(var(--milky-opacity, 0) * var(--moon-light-intensity, .86)), 1);
   transform: rotate(-23deg);
   transform-origin: center;
   background:
@@ -1065,17 +1065,17 @@ body,
 }
 
 .celestial-prototype-sky .celestial-aura-day {
-  opacity: var(--day-aura-opacity, 0);
+  opacity: clamp(0, calc(var(--day-aura-opacity, 0) * var(--sun-light-intensity, 1)), 1);
   background: radial-gradient(circle, rgb(255 252 223 / .92) 0 4%, rgb(255 232 150 / .52) 12%, rgb(255 207 96 / .22) 29%, rgb(118 188 255 / .08) 50%, transparent 72%);
 }
 
 .celestial-prototype-sky .celestial-aura-sunrise {
-  opacity: var(--sunrise-aura-opacity, 0);
+  opacity: clamp(0, calc(var(--sunrise-aura-opacity, 0) * var(--sun-light-intensity, 1)), 1);
   background: radial-gradient(circle, rgb(255 253 216 / .98) 0 3%, rgb(255 225 111 / .84) 10%, rgb(255 187 65 / .44) 23%, rgb(63 219 216 / .28) 39%, rgb(73 150 244 / .14) 56%, transparent 74%);
 }
 
 .celestial-prototype-sky .celestial-aura-sunset {
-  opacity: var(--sunset-aura-opacity, 0);
+  opacity: clamp(0, calc(var(--sunset-aura-opacity, 0) * var(--sun-light-intensity, 1)), 1);
   background: radial-gradient(circle, rgb(255 247 202 / .98) 0 3%, rgb(255 188 71 / .82) 11%, rgb(255 75 49 / .6) 25%, rgb(240 50 99 / .34) 39%, rgb(74 101 219 / .2) 57%, transparent 76%);
 }
 
@@ -1093,10 +1093,25 @@ body,
   height: 64px;
   border-radius: 50%;
   transform: translate(-50%, -50%);
-  opacity: var(--sun-opacity, 1);
+  opacity: clamp(0, calc(var(--sun-opacity, 1) * var(--sun-light-intensity, 1)), 1);
   background: rgb(255 246 207 / .92);
   box-shadow: 0 0 28px rgb(255 239 184 / .78), 0 0 92px 34px rgb(255 207 121 / .44), 0 0 180px 70px rgb(255 157 106 / .17);
-  filter: blur(.2px);
+  filter: blur(.2px) brightness(var(--sun-light-intensity, 1));
+}
+
+.celestial-prototype-sky > .celestial-moon {
+  position: absolute;
+  z-index: 2;
+  left: var(--moon-x);
+  top: var(--moon-y);
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  opacity: clamp(0, calc(var(--moon-opacity, 0) * var(--moon-light-intensity, .86)), 1);
+  background: radial-gradient(circle at 34% 31%, rgb(255 255 250 / .98), rgb(220 234 255 / .95) 58%, rgb(154 183 225 / .82));
+  box-shadow: 0 0 30px rgb(219 235 255 / .72), 0 0 90px 30px rgb(137 176 235 / .34), 0 0 170px 68px rgb(94 109 205 / .14);
+  filter: brightness(var(--moon-light-intensity, .86));
 }
 
 .celestial-prototype-sky .celestial-weather-clouds {

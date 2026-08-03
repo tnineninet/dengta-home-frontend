@@ -152,6 +152,23 @@ test("theme colours reach the sky and shared optical-glass material", () => {
   );
 });
 
+test("sun glass point lights consume the live sunlight and moonlight controls", () => {
+  const backdrop = fs.readFileSync(
+    new URL("../src/CelestialBackdrop.jsx", import.meta.url),
+    "utf8",
+  );
+  const styles = fs.readFileSync(
+    new URL("../src/sun-glass-ui.css", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(backdrop, /className="celestial-moon"/);
+  assert.match(backdrop, /\["--moon-x", `\$\{sky\.moonX\}%`\]/);
+  assert.match(styles, /\.celestial-prototype-sky > \.celestial-sun[\s\S]*?--sun-light-intensity/);
+  assert.match(styles, /\.celestial-prototype-sky > \.celestial-moon[\s\S]*?--moon-light-intensity/);
+  assert.match(styles, /\.celestial-prototype-sky \.celestial-milky-way[\s\S]*?--moon-light-intensity/);
+});
+
 test("daylight snapshots expose continuous sunrise, sunset and blue-hour aura", () => {
   const dawn = getCelestialSnapshot(
     new Date("2026-07-27T22:30:00.000Z"),

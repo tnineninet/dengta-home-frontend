@@ -352,6 +352,9 @@ export default function CelestialBackdrop({
     ["--sun-x", `${sky.sunX}%`],
     ["--sun-y", `${sky.sunY}%`],
     ["--sun-opacity", sky.sunOpacity],
+    ["--moon-x", `${sky.moonX}%`],
+    ["--moon-y", `${sky.moonY}%`],
+    ["--moon-opacity", sky.moonOpacity],
     ["--prototype-star-opacity", sky.night],
     ["--milky-opacity", sky.milkyOpacity],
     ["--horizon-opacity", sky.horizonOpacity],
@@ -382,6 +385,7 @@ export default function CelestialBackdrop({
       <div className="celestial-aura celestial-aura-sunset" />
       <div className="celestial-aura celestial-aura-blue" />
       <div className="celestial-sun" />
+      <div className="celestial-moon" />
       <canvas className="celestial-weather-clouds" ref={cloudsRef} />
       <div className="celestial-horizon-glow" />
       <div className="celestial-glass-dome">

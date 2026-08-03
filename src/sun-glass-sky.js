@@ -61,6 +61,8 @@ export function getSunGlassSky(minute) {
   );
   const night = clamp(1 - daylight * 1.5 + blueHour * 0.22);
   const progress = clamp((normalized - 450) / 720);
+  const nightMinute = normalized < 420 ? normalized + 1440 : normalized;
+  const moonProgress = clamp((nightMinute - 1230) / 630);
   const transitionLight = Math.max(sunrise, sunset, blueHour);
 
   return {
@@ -75,6 +77,9 @@ export function getSunGlassSky(minute) {
     sunX: 7 + progress * 86,
     sunY: 76 - Math.sin(progress * Math.PI) * 58,
     sunOpacity: daylight,
+    moonX: 7 + moonProgress * 86,
+    moonY: 76 - Math.sin(moonProgress * Math.PI) * 56,
+    moonOpacity: clamp((night - 0.18) * 1.18),
     milkyOpacity: clamp((night - 0.28) * 1.35),
     horizonOpacity: 0.04 + daylight * 0.78 + sunset * 0.18,
     dayAura: daylight * (1 - transitionLight * 0.82) * 0.58,

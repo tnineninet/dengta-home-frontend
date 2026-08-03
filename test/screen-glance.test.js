@@ -29,6 +29,8 @@ assert.deepEqual(
     maximumMinutes: 9999,
     wifiOnly: false,
     chargingOnly: true,
+    watchTogetherEnabled: true,
+    watchIntervalSeconds: 12,
   }),
   {
     randomEnabled: true,
@@ -36,6 +38,8 @@ assert.deepEqual(
     maximumMinutes: 600,
     wifiOnly: false,
     chargingOnly: true,
+    watchTogetherEnabled: true,
+    watchIntervalSeconds: 30,
   },
 );
 assert.deepEqual(normalizeScreenGlanceConfig({}), {
@@ -44,6 +48,8 @@ assert.deepEqual(normalizeScreenGlanceConfig({}), {
   maximumMinutes: 180,
   wifiOnly: true,
   chargingOnly: false,
+  watchTogetherEnabled: false,
+  watchIntervalSeconds: 90,
 });
 
 const captureBytes = new TextEncoder().encode("private-screen-frame");
@@ -111,6 +117,10 @@ assert.match(service, /ImageReader\.newInstance/);
 assert.match(service, /deleteLatestCapture/);
 assert.match(service, /ACTION_PAUSE/);
 assert.match(service, /ACTION_STOP/);
+assert.match(service, /WATCH_TOGETHER_ENABLED_KEY/);
+assert.match(service, /uploadCoWatchFrame/);
+assert.match(service, /perceptualHash/);
+assert.match(service, /WATCH_INTERVAL_SECONDS_KEY/);
 assert.match(service, /FOREGROUND_EVENT_LOOKBACK_MS/);
 assert.match(
   service,
@@ -129,10 +139,12 @@ assert.match(activity, /registerPlugin\(ScreenGlancePlugin\.class\)/);
 
 const app = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
 assert.match(app, /屏幕共看/);
-assert.match(app, /开始系统屏幕共享/);
+assert.match(app, /只共享屏幕/);
 assert.match(app, /暂停捕获/);
 assert.match(app, /结束并清除/);
 assert.match(app, /consumeLatestCapture/);
+assert.match(app, /邀请一起看/);
+assert.match(app, /watchTogetherEnabled/);
 assert.match(app, /attachmentInstructionMode:\s*"untrusted"/);
 assert.match(app, /attachmentStorageMode:\s*"ephemeral"/);
 
