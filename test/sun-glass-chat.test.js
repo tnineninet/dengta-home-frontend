@@ -33,7 +33,7 @@ test("the approved Variant A controls are wired into the real chat screen", () =
   assert.match(status, /看电视/);
   assert.match(status, /sun-glass-floating-status-shell/);
   assert.match(status, /sun-glass-status-scroll/);
-  assert.match(status, /data-status-drag-handle/);
+  assert.doesNotMatch(status, /data-status-drag-handle|dragPosition/);
   assert.doesNotMatch(
     status,
     /status-advanced-content/,
@@ -103,18 +103,15 @@ test("the accepted sky keeps the real preview minute and exposes weather control
   assert.doesNotMatch(sunRule, /inset:\s*auto/);
 });
 
-test("expanded status stays below the single mobile capsule", () => {
+test("expanded status stays anchored below the single fixed capsule", () => {
   const app = read("src/App.jsx");
   const status = read("src/CompanionStatus.jsx");
   const styles = read("src/sun-glass-chat.css");
 
-  assert.match(
-    status,
-    /const openPanel = useCallback\(\(\) => \{[\s\S]*?setDragPosition\(null\)/,
-  );
+  assert.doesNotMatch(status, /setDragPosition|data-status-drag-handle/);
   assert.match(
     styles,
-    /\.sun-glass-floating-status-shell\.expanded\s*\{[\s\S]*?left:\s*0;[\s\S]*?width:\s*100vw;[\s\S]*?transform:\s*none;/,
+    /@media \(min-width: 821px\)[\s\S]*?left:\s*max\(10px, calc\(50vw - 220px\)\);[\s\S]*?transform:\s*none(?:\s*!important)?;/,
   );
   assert.match(
     styles,
@@ -131,6 +128,10 @@ test("expanded status stays below the single mobile capsule", () => {
   );
   assert.match(
     styles,
-    /\.sun-glass-floating-status-shell\.expanded[\s\S]*?\.sun-glass-floating-status-panel[\s\S]*?left:\s*8px;[\s\S]*?transform:\s*none;/,
+    /status-panel-motion-v3[\s\S]*?\.sun-glass-floating-status-panel\.is-open[\s\S]*?visibility 0s linear 280ms/,
+  );
+  assert.match(
+    styles,
+    /sun-glass-floating-status-shell\.high-energy,[\s\S]*?sun-glass-floating-status-shell\.low-energy,[\s\S]*?left:\s*max\(10px, calc\(50vw - 220px\)\);/,
   );
 });

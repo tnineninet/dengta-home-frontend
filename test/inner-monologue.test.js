@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   INNER_MONOLOGUE_STORAGE_KEY,
   innerMonologueForMessage,
@@ -40,5 +41,20 @@ const malformedStorage = createStorage({
   [INNER_MONOLOGUE_STORAGE_KEY]: "not-json",
 });
 assert.deepEqual(readInnerMonologues(malformedStorage), {});
+
+const messageExtrasSource = readFileSync(
+  new URL("../src/ChatMessageExtras.jsx", import.meta.url),
+  "utf8",
+);
+const appStylesSource = readFileSync(
+  new URL("../src/index.css", import.meta.url),
+  "utf8",
+);
+assert.match(messageExtrasSource, /setMonologueDialogOpen\(true\)/);
+assert.match(messageExtrasSource, /className="inner-monologue-dialog-backdrop"/);
+assert.match(messageExtrasSource, /role="dialog"/);
+assert.match(messageExtrasSource, /aria-modal="true"/);
+assert.match(appStylesSource, /\.inner-monologue-dialog-backdrop\s*\{/);
+assert.match(appStylesSource, /\.inner-monologue-dialog\s*\{/);
 
 console.log("inner monologue local-cache checks passed");

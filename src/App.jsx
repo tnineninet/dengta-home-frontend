@@ -2745,9 +2745,14 @@ function App({ accountControl = null, userName = "" }) {
   async function requestVisibleInnerMonologue(item) {
     const messageId = String(item?.id || "");
     const sessionId = activeSessionIdRef.current;
+    if (!sessionId || !/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(messageId)) {
+      setInnerMonologueErrors((current) => ({
+        ...current,
+        [messageId]: "这条消息尚未完成会话同步，请稍后再试。",
+      }));
+      return;
+    }
     if (
-      !sessionId ||
-      !/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(messageId) ||
       innerMonologuePending[messageId] ||
       innerMonologueForMessage(innerMonologues, messageId)
     ) {

@@ -104,12 +104,9 @@ function CompanionStatus({
   );
   const resetBlank = normalized.resetBlank === true;
   const [expanded, setExpanded] = useState(false);
-  const [dragPosition, setDragPosition] = useState(null);
   const [clockNow, setClockNow] = useState(() => Date.now());
   const rootRef = useRef(null);
   const panelRef = useRef(null);
-  const dragStateRef = useRef(null);
-  const draggedRef = useRef(false);
   const lastCloseRequestRef = useRef(closeRequest);
   const remainingSeconds = remainingAt(normalized.countdown, clockNow);
   const rawCountdownEnd = Date.parse(status?.countdown?.endsAt);
@@ -134,7 +131,6 @@ function CompanionStatus({
 
   const openPanel = useCallback(() => {
     panelRef.current?.scrollTo({ top: 0 });
-    setDragPosition(null);
     setExpanded(true);
     onExpandedChange?.(true);
   }, [onExpandedChange]);
@@ -200,56 +196,6 @@ function CompanionStatus({
       document.removeEventListener("keydown", closeFromEscape);
     };
   }, [closePanel, expanded]);
-
-  function beginStatusDrag(event) {
-    if (globalThis.matchMedia?.("(max-width: 820px)")?.matches) return;
-    if (event.button !== 0 || !rootRef.current) return;
-    const rect = rootRef.current.getBoundingClientRect();
-    draggedRef.current = false;
-    dragStateRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      left: rect.left,
-      top: rect.top,
-    };
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  }
-
-  function moveStatusDrag(event) {
-    const drag = dragStateRef.current;
-    if (!drag || drag.pointerId !== event.pointerId || !rootRef.current) return;
-    const deltaX = event.clientX - drag.startX;
-    const deltaY = event.clientY - drag.startY;
-    if (Math.hypot(deltaX, deltaY) > 4) draggedRef.current = true;
-    const rect = rootRef.current.getBoundingClientRect();
-    setDragPosition({
-      left: clamp(
-        drag.left + deltaX,
-        8,
-        Math.max(8, window.innerWidth - rect.width - 8),
-      ),
-      top: clamp(drag.top + deltaY, 8, Math.max(8, window.innerHeight - 96)),
-    });
-  }
-
-  function endStatusDrag(event) {
-    const drag = dragStateRef.current;
-    if (!drag || drag.pointerId !== event.pointerId) return;
-    dragStateRef.current = null;
-    if (draggedRef.current) {
-      event.currentTarget.addEventListener(
-        "click",
-        (clickEvent) => {
-          clickEvent.preventDefault();
-          clickEvent.stopPropagation();
-          draggedRef.current = false;
-        },
-        { capture: true, once: true },
-      );
-    }
-    event.currentTarget.releasePointerCapture?.(event.pointerId);
-  }
 
   function updateStatus(transform) {
     onChange((currentValue) => {
@@ -413,13 +359,6 @@ function CompanionStatus({
 
   const floatingStyle = {
     "--status-pulse-duration": pulseDuration,
-    ...(dragPosition
-      ? {
-          left: `${dragPosition.left}px`,
-          top: `${dragPosition.top}px`,
-          transform: "none",
-        }
-      : {}),
   };
 
   return (
@@ -439,11 +378,6 @@ function CompanionStatus({
           aria-label={expanded ? "收起动态状态" : `展开${displayName}的动态状态`}
           aria-expanded={expanded}
           onClick={togglePanel}
-          data-status-drag-handle
-          onPointerDown={beginStatusDrag}
-          onPointerMove={moveStatusDrag}
-          onPointerUp={endStatusDrag}
-          onPointerCancel={endStatusDrag}
         >
           <span className="sun-glass-capsule-decoration" aria-hidden="true">
             <Heart />
@@ -453,14 +387,7 @@ function CompanionStatus({
         </button>
       </section>
 
-      <div
-        className="sun-glass-status-ribbon"
-        data-status-drag-handle
-        onPointerDown={beginStatusDrag}
-        onPointerMove={moveStatusDrag}
-        onPointerUp={endStatusDrag}
-        onPointerCancel={endStatusDrag}
-      >
+      <div className="sun-glass-status-ribbon">
         <span className="sun-glass-status-ribbon-icon" aria-hidden="true">
           <Sparkles />
         </span>
@@ -485,14 +412,7 @@ function CompanionStatus({
       >
         <StatusFlowField active={expanded} />
         <header className="sun-glass-floating-status-header">
-            <div
-              className="sun-glass-status-drag-title"
-              data-status-drag-handle
-              onPointerDown={beginStatusDrag}
-              onPointerMove={moveStatusDrag}
-              onPointerUp={endStatusDrag}
-              onPointerCancel={endStatusDrag}
-            >
+            <div className="sun-glass-status-drag-title">
               <small>{displayName}此刻</small>
               <h2>{resetBlank ? "在这里" : normalized.mood}</h2>
             </div>

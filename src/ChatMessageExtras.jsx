@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { X } from "lucide-react";
 import {
   formatAttachmentSize,
   normalizeMessageAttachments,
@@ -185,6 +186,16 @@ export function ThinkingPanel({
     Boolean(innerMonologue?.text) ||
     canRequestInnerMonologue;
   const [open, setOpen] = useState(!completed);
+  const [monologueDialogOpen, setMonologueDialogOpen] = useState(false);
+
+  useEffect(() => {
+    if (!monologueDialogOpen) return undefined;
+    const closeFromEscape = (event) => {
+      if (event.key === "Escape") setMonologueDialogOpen(false);
+    };
+    document.addEventListener("keydown", closeFromEscape);
+    return () => document.removeEventListener("keydown", closeFromEscape);
+  }, [monologueDialogOpen]);
 
   if (!visible) return null;
 
@@ -195,12 +206,19 @@ export function ThinkingPanel({
   const mood = String(companionMood || "").trim();
   const monologueText = String(innerMonologue?.text || "").trim();
 
+  const requestMonologue = () => {
+    setOpen(true);
+    setMonologueDialogOpen(true);
+    onRequestInnerMonologue?.(message);
+  };
+
   return (
-    <details
-      className="thinking-panel"
-      open={open}
-      onToggle={(event) => setOpen(event.currentTarget.open)}
-    >
+    <>
+      <details
+        className="thinking-panel"
+        open={open}
+        onToggle={(event) => setOpen(event.currentTarget.open)}
+      >
       <summary>
         <span>{completed ? `${displayName}的心声` : `${displayName}正在回应你`}</span>
         <small>
@@ -241,18 +259,20 @@ export function ThinkingPanel({
           </ol>
         )}
         {completed && monologueText ? (
-          <p className="thinking-summary-text inner-monologue-text">
-            {monologueText}
-          </p>
+          <div className="inner-monologue-result">
+            <p className="thinking-summary-text inner-monologue-text">
+              {monologueText}
+            </p>
+            <button type="button" onClick={() => setMonologueDialogOpen(true)}>
+              打开这次心声
+            </button>
+          </div>
         ) : completed ? (
           <div className="inner-monologue-request">
             <button
               type="button"
               disabled={innerMonologuePending}
-              onClick={() => {
-                setOpen(true);
-                onRequestInnerMonologue?.(message);
-              }}
+              onClick={requestMonologue}
             >
               {innerMonologuePending ? "正在写下此刻的心声…" : "听听她此刻的心声"}
             </button>
@@ -265,7 +285,57 @@ export function ThinkingPanel({
             回复完成后可以按需生成这一次的可见心声。
           </p>
         )}
-      </div>
-    </details>
+        </div>
+      </details>
+
+      {monologueDialogOpen && (
+        <div
+          className="inner-monologue-dialog-backdrop"
+          role="presentation"
+          onClick={() => setMonologueDialogOpen(false)}
+        >
+          <section
+            className="inner-monologue-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${displayName}此刻的心声`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header>
+              <span>
+                <small>{displayName}此刻的心声</small>
+                <strong>{mood || "静静想着你"}</strong>
+              </span>
+              <button
+                type="button"
+                aria-label="关闭心声"
+                onClick={() => setMonologueDialogOpen(false)}
+              >
+                <X aria-hidden="true" />
+              </button>
+            </header>
+            <div className="inner-monologue-dialog-body">
+              {innerMonologuePending ? (
+                <div className="inner-monologue-dialog-pending" role="status">
+                  <span aria-hidden="true" />
+                  <p>她正在把没有说出口的念头慢慢写下来…</p>
+                </div>
+              ) : monologueText ? (
+                <p>{monologueText}</p>
+              ) : innerMonologueError ? (
+                <div className="inner-monologue-dialog-error" role="alert">
+                  <p>{innerMonologueError}</p>
+                  <button type="button" onClick={requestMonologue}>
+                    再试一次
+                  </button>
+                </div>
+              ) : (
+                <p>这一次暂时没有收到可显示的心声。</p>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
+    </>
   );
 }

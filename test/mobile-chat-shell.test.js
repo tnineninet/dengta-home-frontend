@@ -26,11 +26,7 @@ test("mobile chat uses one decorative rainbow capsule as the status toggle", () 
   );
   assert.match(status, /onOpenNavigation/);
   assert.match(status, /onOpenSettings/);
-  assert.match(
-    status,
-    /matchMedia\?\.\("\(max-width: 820px\)"\)\?\.matches\) return/,
-    "touch dragging must not move the fixed mobile capsule",
-  );
+  assert.doesNotMatch(status, /dragPosition|data-status-drag-handle/);
   assert.match(
     styles,
     /@media \(max-width: 820px\)[\s\S]*?\.main-panel\.view-chat > \.topbar\s*\{[^}]*display:\s*none/s,
@@ -52,6 +48,12 @@ test("mobile chat uses one decorative rainbow capsule as the status toggle", () 
     styles,
     /\.sun-glass-floating-status-shell\.expanded[\s\S]*?\.sun-glass-floating-status-panel\s*\{[^}]*position:\s*fixed !important;[^}]*top:\s*calc\(var\(--dengta-mobile-capsule-top\) \+ 70px\) !important/s,
     "the expanded panel must remain connected beneath the safe capsule",
+  );
+  assert.match(styles, /status-panel-motion-v3/);
+  assert.match(
+    styles,
+    /\.sun-glass-floating-status-panel\[aria-hidden="true"\][^{]*\{[^}]*transition:[^}]*visibility 0s linear 280ms/s,
+    "closing must keep the panel visible until its opacity and transform finish",
   );
 });
 
@@ -90,20 +92,27 @@ test("mobile message bubbles expand toward the screen edges", () => {
 
 test("expanded status uses an opaque black interactive flow surface", () => {
   const status = read("src/CompanionStatus.jsx");
-  const flow = read("src/StatusFlowField.jsx");
+  const flow = [
+    read("src/StatusFlowField.jsx"),
+    read("src/status-fluid-engine.js"),
+  ].join("\n");
   const styles = read("src/sun-glass-chat.css");
 
   assert.match(status, /<StatusFlowField active=\{expanded\} \/>/);
-  assert.match(flow, /const MAX_PARTICLES = 820/);
-  assert.match(flow, /const MAX_VORTICES = 18/);
-  assert.match(flow, /MAX_CANVAS_PIXELS/);
-  assert.match(flow, /pointerState\.vx/);
-  assert.match(flow, /addVortex/);
-  assert.match(flow, /distancePixels/);
+  assert.match(flow, /ADVECTION_SHADER/);
+  assert.match(flow, /CURL_SHADER/);
+  assert.match(flow, /VORTICITY_SHADER/);
+  assert.match(flow, /DIVERGENCE_SHADER/);
+  assert.match(flow, /PRESSURE_SHADER/);
+  assert.match(flow, /GRADIENT_SUBTRACT_SHADER/);
+  assert.match(flow, /SPLAT_SHADER/);
+  assert.match(flow, /createDoubleFBO/);
+  assert.match(flow, /splatPointerPath/);
   assert.match(flow, /panel\.addEventListener\("pointerdown", startPointerFlow/);
   assert.match(flow, /panel\.addEventListener\("pointermove", movePointerFlow/);
   assert.match(flow, /panel\.addEventListener\("touchmove", moveTouchFlow/);
-  assert.match(flow, /gl\.drawArrays\(gl\.POINTS/);
+  assert.doesNotMatch(flow, /gl\.drawArrays\(gl\.POINTS/);
+  assert.doesNotMatch(flow, /gl_PointCoord/);
   assert.match(
     styles,
     /\.sun-glass-floating-status-shell\.expanded[\s\S]*?\.sun-glass-floating-status-panel[\s\S]*?background:\s*#050507/,

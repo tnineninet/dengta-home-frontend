@@ -2554,7 +2554,7 @@
   }
 }
 
-/* Mobile 2.8.3: fixed capsule, directional touch flow and stable inline tools. */
+/* Mobile 2.8.4: fixed capsule, directional touch flow and stable status motion. */
 .main-panel.view-chat
   .sun-glass-floating-status-panel[aria-hidden="true"] {
   visibility: hidden;
@@ -2756,22 +2756,6 @@
   opacity: 1;
 }
 
-.status-flow-glint {
-  position: absolute;
-  inset: 0;
-  display: block;
-  background:
-    linear-gradient(118deg, rgb(255 255 255 / 0.08), transparent 22% 74%, rgb(255 255 255 / 0.05)),
-    radial-gradient(circle at 50% -8%, rgb(255 255 255 / 0.16), transparent 38%);
-  mix-blend-mode: screen;
-  opacity: 0;
-  transition: opacity 180ms ease-out;
-}
-
-.status-flow-field--ready .status-flow-glint {
-  opacity: 0.82;
-}
-
 .status-flow-field--fallback {
   background: #050507;
 }
@@ -2784,4 +2768,67 @@
 
 .sun-glass-floating-status-header {
   background: rgb(5 5 7 / 0.74);
+}
+
+/* status-panel-motion-v3: keep one viewport anchor for the full open/close cycle. */
+.main-panel.view-chat .sun-glass-floating-status-panel {
+  visibility: hidden;
+  opacity: 0;
+  animation: none !important;
+  transform: translate3d(0, -8px, 0) scale3d(0.985, 0.94, 1) !important;
+  transform-origin: 50% 0;
+  will-change: opacity, transform;
+  transition:
+    opacity 180ms ease-out,
+    transform 420ms cubic-bezier(0.16, 0.84, 0.24, 1.08),
+    visibility 0s linear 420ms;
+}
+
+.main-panel.view-chat .sun-glass-floating-status-panel.is-open {
+  visibility: visible;
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale3d(1, 1, 1) !important;
+  pointer-events: auto;
+  transition:
+    opacity 180ms ease-out,
+    transform 420ms cubic-bezier(0.16, 0.84, 0.24, 1.08),
+    visibility 0s linear 0s;
+}
+
+.main-panel.view-chat
+  .sun-glass-floating-status-panel[aria-hidden="true"] {
+  visibility: hidden;
+  opacity: 0;
+  transform: translate3d(0, -8px, 0) scale3d(0.985, 0.94, 1) !important;
+  pointer-events: none;
+  transition:
+    opacity 180ms ease-in,
+    transform 280ms cubic-bezier(0.4, 0, 0.25, 1),
+    visibility 0s linear 280ms;
+}
+
+@media (min-width: 821px) {
+  .main-panel.view-chat
+    .companion-status.sun-glass-floating-status-shell,
+  .main-panel.view-chat
+    .companion-status.sun-glass-floating-status-shell.high-energy,
+  .main-panel.view-chat
+    .companion-status.sun-glass-floating-status-shell.low-energy,
+  .main-panel.view-chat
+    .companion-status.sun-glass-floating-status-shell.expanded {
+    left: max(10px, calc(50vw - 220px));
+    width: min(440px, calc(100vw - 20px));
+    transform: none !important;
+    pointer-events: auto;
+  }
+
+  .main-panel.view-chat .sun-glass-floating-status-panel,
+  .main-panel.view-chat
+    .sun-glass-floating-status-shell.expanded
+    .sun-glass-floating-status-panel {
+    top: calc(max(8px, env(safe-area-inset-top)) + 162px) !important;
+    right: auto !important;
+    left: max(10px, calc(50vw - 215px)) !important;
+    transform-origin: 50% 0;
+  }
 }
