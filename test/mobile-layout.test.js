@@ -110,6 +110,7 @@ assert.deepEqual(
     "apple-ui.css",
     "sun-glass-ui.css",
     "jelly-motion.css",
+    "sun-glass-chat.css",
   ],
   "layout tests must use the same stylesheet order as the application entrypoint",
 );
@@ -128,6 +129,7 @@ assert.deepEqual(
     "apple-ui.css",
     "sun-glass-ui.css",
     "jelly-motion.css",
+    "sun-glass-chat.css",
   ],
   "the 280px regression must use the complete application stylesheet cascade",
 );
@@ -981,8 +983,8 @@ assert.match(
 );
 assert.match(
   app,
-  /className=\{`topbar-context[\s\S]*?activeView !== "chat" && <h1>\{viewTitle\}<\/h1>/,
-  "the mobile chat top bar must not render the conversation title",
+  /className=\{`topbar-context[\s\S]*?activeView === "chat" \? \([\s\S]*?sun-glass-topbar-identity[\s\S]*?: \([\s\S]*?<h1>\{viewTitle\}<\/h1>/,
+  "the mobile chat top bar must render the companion identity instead of the conversation title",
 );
 assert.match(
   css,

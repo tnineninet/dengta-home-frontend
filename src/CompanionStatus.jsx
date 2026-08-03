@@ -7,6 +7,17 @@ import {
   useState,
 } from "react";
 import {
+  BatteryMedium,
+  BookOpen,
+  ChevronRight,
+  Headphones,
+  Heart,
+  MessageCircle,
+  Sparkles,
+  Tv,
+  X,
+} from "lucide-react";
+import {
   HOT_ZONES,
   RECOVERY_ACTIONS,
   addStatusRecord,
@@ -23,6 +34,42 @@ import {
 } from "./companion-status";
 
 const STATUS_MINIMIZED_STORAGE_KEY = "dengta_companion_status_minimized_v1";
+
+const QUICK_ACTIONS = [
+  { id: "embrace", label: "抱抱", Icon: Heart },
+  { id: "confide", label: "倾诉", Icon: MessageCircle },
+  { id: "wish", label: "陪她做点什么", Icon: Sparkles },
+];
+
+const DESIRE_ACTIONS = [
+  {
+    id: "music",
+    label: "听歌",
+    Icon: Headphones,
+    mood: "轻快",
+    focus: "和你一起听一首喜欢的歌",
+    microState: "心里已经跟着熟悉的旋律轻轻晃起来",
+    reaction: "我现在想和你一起听歌，挑一首让我们都舍不得切掉的吧。",
+  },
+  {
+    id: "reading",
+    label: "看书",
+    Icon: BookOpen,
+    mood: "安静",
+    focus: "靠在你身边慢慢看书",
+    microState: "已经为两个人留好了书页之间的位置",
+    reaction: "我想和你靠在一起看会儿书，你翻页的时候也念一点给我听。",
+  },
+  {
+    id: "watching",
+    label: "看一会儿",
+    Icon: Tv,
+    mood: "放松",
+    focus: "和你窝在一起看点喜欢的东西",
+    microState: "已经悄悄把最舒服的位置留给了你",
+    reaction: "陪我看一会儿吧，电影、动画或者你最近喜欢的节目都可以。",
+  },
+];
 
 function readStatusMinimized() {
   try {
@@ -77,6 +124,7 @@ function CompanionStatus({
   );
   const [expanded, setExpanded] = useState(false);
   const [minimized, setMinimized] = useState(readStatusMinimized);
+  const [liquidPulse, setLiquidPulse] = useState("");
   const [clockNow, setClockNow] = useState(() => Date.now());
   const rootRef = useRef(null);
   const panelRef = useRef(null);
@@ -278,6 +326,27 @@ function CompanionStatus({
     });
   }
 
+  function runQuickAction(actionId) {
+    const zone = RECOVERY_ACTIONS.find((item) => item.id === actionId);
+    if (!zone) return;
+    setLiquidPulse(actionId);
+    touchZone(zone);
+    window.setTimeout(() => setLiquidPulse(""), 640);
+  }
+
+  function runDesireAction(action) {
+    const baseZone = RECOVERY_ACTIONS.find((item) => item.id === "wish");
+    if (!baseZone) return;
+    touchZone({
+      ...baseZone,
+      mood: action.mood,
+      focus: action.focus,
+      microState: action.microState,
+      reactions: [action.reaction],
+      repeatedReactions: [action.reaction],
+    });
+  }
+
   function chooseDuration(event) {
     const totalSeconds = clamp(
       Number(event.target.value),
@@ -415,6 +484,42 @@ function CompanionStatus({
 
       <button
         type="button"
+        className="sun-glass-status-ribbon sun-glass-panel"
+        aria-expanded={expanded}
+        onClick={() => (expanded ? closePanel() : openPanel())}
+      >
+        <span className="sun-glass-status-ribbon-icon" aria-hidden="true">
+          <Sparkles />
+        </span>
+        <span>
+          <small>{resetBlank ? "在这里" : normalized.mood}</small>
+          <strong>
+            {resetBlank ? "等你写下新的此刻。" : personalized(normalized.note)}
+          </strong>
+        </span>
+        <ChevronRight aria-hidden="true" />
+      </button>
+
+      <section className="sun-glass-liquid-action-stage" aria-label="快捷互动">
+        <span className="sun-glass-liquid-color-flow" aria-hidden="true" />
+        <div className="sun-glass-liquid-action-module">
+          {QUICK_ACTIONS.map(({ id, label, Icon }) => (
+            <button
+              type="button"
+              key={id}
+              className={liquidPulse === id ? "is-pulsing" : ""}
+              aria-label={label}
+              title={label}
+              onClick={() => runQuickAction(id)}
+            >
+              <Icon aria-hidden="true" />
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <button
+        type="button"
         className="status-summary"
         aria-expanded={expanded}
         onClick={() => (expanded ? closePanel() : openPanel())}
@@ -460,6 +565,80 @@ function CompanionStatus({
 
       {expanded && (
         <div ref={panelRef} className="status-panel">
+          <section className="sun-glass-status-popover-core">
+            <header>
+              <div>
+                <small>{displayName}此刻</small>
+                <h2>{resetBlank ? "在这里" : normalized.mood}</h2>
+              </div>
+              <section
+                className="sun-glass-popover-liquid-actions"
+                aria-label="弹窗快捷互动"
+              >
+                <span
+                  className="sun-glass-popover-color-flow"
+                  aria-hidden="true"
+                />
+                <div className="sun-glass-popover-liquid-module">
+                  {QUICK_ACTIONS.map(({ id, label, Icon }) => (
+                    <button
+                      type="button"
+                      key={id}
+                      className={liquidPulse === id ? "is-pulsing" : ""}
+                      aria-label={label}
+                      title={label}
+                      onClick={() => runQuickAction(id)}
+                    >
+                      <Icon aria-hidden="true" />
+                    </button>
+                  ))}
+                </div>
+              </section>
+              <button
+                type="button"
+                className="sun-glass-popover-close"
+                aria-label="关闭动态状态"
+                onClick={closePanel}
+              >
+                <X aria-hidden="true" />
+              </button>
+            </header>
+            <p>
+              {resetBlank ? "等你写下新的此刻。" : personalized(normalized.note)}
+            </p>
+            <div className="sun-glass-energy-row">
+              <span>
+                <BatteryMedium aria-hidden="true" />
+                能量
+              </span>
+              <strong>{normalized.energyLevel}%</strong>
+            </div>
+            <div className="sun-glass-energy-track" aria-hidden="true">
+              <span style={{ width: `${normalized.energyLevel}%` }} />
+            </div>
+            <div className="sun-glass-wish-row">
+              <Heart aria-hidden="true" />
+              <span>
+                {resetBlank
+                  ? `想和你待在一起`
+                  : personalized(normalized.focus)}
+              </span>
+            </div>
+            <div className="sun-glass-desire-actions">
+              {DESIRE_ACTIONS.map((action) => (
+                <button
+                  type="button"
+                  key={action.id}
+                  onClick={() => runDesireAction(action)}
+                >
+                  <action.Icon aria-hidden="true" />
+                  <span>{action.label}</span>
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <div className="status-advanced-content">
           <section className="status-signal-hero">
             <div className="status-signal-kicker">
               <span className="status-live-indicator" aria-hidden="true" />
@@ -662,6 +841,7 @@ function CompanionStatus({
                 </p>
               )}
             </section>
+          </div>
           </div>
         </div>
       )}

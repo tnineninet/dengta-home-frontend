@@ -7,6 +7,7 @@ import "./native-feel.css";
 import "./apple-ui.css";
 import "./sun-glass-ui.css";
 import "./jelly-motion.css";
+import "./sun-glass-chat.css";
 import App from "./App.jsx";
 import AuthGate from "./AuthGate.jsx";
 import DengTaPrelude from "./DengTaPrelude.jsx";

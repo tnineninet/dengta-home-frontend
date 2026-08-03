@@ -13,6 +13,7 @@ import CompanionStatus from "./CompanionStatus";
 import AmbientContextBadge from "./AmbientContextBadge";
 import ChatMessage from "./ChatMessage";
 import CelestialBackdrop from "./CelestialBackdrop";
+import SunGlassTimeDeck from "./SunGlassTimeDeck";
 import FeatureAtmosphere from "./FeatureAtmosphere";
 import RainbowAgentMark from "./RainbowAgentMark";
 import SettingsFlowField from "./SettingsFlowField";
@@ -540,10 +541,13 @@ function App({ accountControl = null, userName = "" }) {
     () => readCachedCoordinates().coordinates,
   );
   const [ambientWeather, setAmbientWeather] = useState(null);
+  const [weatherPreviewMode, setWeatherPreviewMode] = useState(null);
   const {
     preferences: themePreferences,
     snapshot: celestialSnapshot,
     updateTheme,
+    previewMinute,
+    setPreviewMinute,
   } = useDengTaTheme(celestialCoordinates);
   const [memories, setMemories] = useState([]);
   const [moments, setMoments] = useState([]);
@@ -4447,6 +4451,19 @@ function App({ accountControl = null, userName = "" }) {
         </section>
 
         <div className="composer-wrap">
+          <SunGlassTimeDeck
+            snapshot={celestialSnapshot}
+            previewMinute={previewMinute}
+            onPreviewMinute={setPreviewMinute}
+            onNow={() => setPreviewMinute(null)}
+            weather={ambientWeather}
+            weatherMode={weatherPreviewMode}
+            onWeatherMode={setWeatherPreviewMode}
+            glassLevel={themePreferences.cardOpacity * 100}
+            onGlassLevel={(value) =>
+              updateTheme({ cardOpacity: Number(value) / 100 })
+            }
+          />
           {isComposerMenuOpen && (
             <button
               type="button"
@@ -6049,6 +6066,7 @@ function App({ accountControl = null, userName = "" }) {
       <CelestialBackdrop
         snapshot={celestialSnapshot}
         weather={ambientWeather}
+        weatherModeOverride={weatherPreviewMode}
       />
 
       {isSidebarOpen && (
@@ -6160,14 +6178,22 @@ function App({ accountControl = null, userName = "" }) {
               activeView === "chat" ? " is-chat" : ""
             }`}
           >
-            {activeView !== "chat" && <h1>{viewTitle}</h1>}
-            <p>
-              {activeView === "chat"
-                ? `${settings.ai_name || "小灯"} · ${
-                    activeChatModel || "演示模式"
-                  }`
-                : "DengTa home"}
-            </p>
+            {activeView === "chat" ? (
+              <div className="sun-glass-topbar-identity">
+                <strong>{settings.ai_name || "小灯"}</strong>
+                <span>
+                  <i aria-hidden="true" />
+                  {companionStatus.resetBlank === true
+                    ? "在这里"
+                    : companionStatus.mood || "平静"}
+                </span>
+              </div>
+            ) : (
+              <>
+                <h1>{viewTitle}</h1>
+                <p>DengTa home</p>
+              </>
+            )}
           </div>
           <div className="topbar-actions">
             <button

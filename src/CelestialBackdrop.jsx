@@ -322,7 +322,11 @@ function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode }) 
   }, [cloudsRef, mode, starsRef, starsVisible, weatherRef]);
 }
 
-export default function CelestialBackdrop({ snapshot, weather = null }) {
+export default function CelestialBackdrop({
+  snapshot,
+  weather = null,
+  weatherModeOverride = null,
+}) {
   const starsRef = useRef(null);
   const cloudsRef = useRef(null);
   const weatherRef = useRef(null);
@@ -336,7 +340,11 @@ export default function CelestialBackdrop({ snapshot, weather = null }) {
         ? 720
         : minute;
   const sky = useMemo(() => getSunGlassSky(displayedMinute), [displayedMinute]);
-  const weatherMode = weatherModeFromAmbient(weather);
+  const weatherMode = ["clear", "cloudy", "rain", "storm"].includes(
+    weatherModeOverride,
+  )
+    ? weatherModeOverride
+    : weatherModeFromAmbient(weather);
   usePrototypeAtmosphere({
     starsRef,
     cloudsRef,

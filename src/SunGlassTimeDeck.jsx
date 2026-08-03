@@ -1,0 +1,176 @@
+import { useEffect, useRef, useState } from "react";
+import {
+  Clock3,
+  CloudLightning,
+  CloudRain,
+  CloudSun,
+  Droplets,
+  MoonStar,
+  SlidersHorizontal,
+  Sparkles,
+  Sun,
+  SunMedium,
+} from "lucide-react";
+import { weatherModeFromAmbient } from "./sun-glass-sky";
+
+const TIME_PRESETS = [
+  { minute: 480, label: "清晨 08:00", Icon: SunMedium },
+  { minute: 1080, label: "红霞 18:00", Icon: Sparkles },
+  { minute: 1120, label: "蓝调 18:40", Icon: MoonStar },
+  { minute: 1320, label: "银河 22:00", Icon: MoonStar },
+];
+
+const WEATHER_PRESETS = [
+  { id: "cloudy", label: "微云", Icon: CloudSun },
+  { id: "rain", label: "雨幕", Icon: CloudRain },
+  { id: "storm", label: "晴雷", Icon: CloudLightning },
+  { id: "clear", label: "晴空", Icon: Sun },
+];
+
+function formatMinute(value) {
+  const minute = Math.max(0, Math.min(1439, Math.round(Number(value) || 0)));
+  return `${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(
+    minute % 60,
+  ).padStart(2, "0")}`;
+}
+
+export default function SunGlassTimeDeck({
+  snapshot,
+  previewMinute,
+  onPreviewMinute,
+  onNow,
+  weather,
+  weatherMode,
+  onWeatherMode,
+  glassLevel,
+  onGlassLevel,
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const rootRef = useRef(null);
+  const displayedMinute = Number.isFinite(previewMinute)
+    ? previewMinute
+    : snapshot.minute;
+  const displayedWeather =
+    weatherMode || weatherModeFromAmbient(weather) || "clear";
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    function closeFromOutside(event) {
+      if (!rootRef.current?.contains(event.target)) setIsOpen(false);
+    }
+
+    function closeFromEscape(event) {
+      if (event.key === "Escape") setIsOpen(false);
+    }
+
+    document.addEventListener("pointerdown", closeFromOutside);
+    document.addEventListener("keydown", closeFromEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeFromOutside);
+      document.removeEventListener("keydown", closeFromEscape);
+    };
+  }, [isOpen]);
+
+  return (
+    <section
+      ref={rootRef}
+      className="sun-glass-time-deck sun-glass-panel"
+      aria-label="时间光线控制器"
+    >
+      <div className="sun-glass-time-deck-top">
+        <button
+          type="button"
+          className="sun-glass-button compact"
+          onClick={() => {
+            onNow?.();
+            setIsOpen(false);
+          }}
+        >
+          <Clock3 aria-hidden="true" />
+          <span>现在</span>
+        </button>
+        <strong>{formatMinute(displayedMinute)}</strong>
+        <button
+          type="button"
+          className="sun-glass-button compact"
+          aria-expanded={isOpen}
+          onClick={() => setIsOpen((current) => !current)}
+        >
+          <SlidersHorizontal aria-hidden="true" />
+          <span>光线</span>
+        </button>
+      </div>
+
+      <div className="sun-glass-time-scale" aria-hidden="true">
+        <span>00</span>
+        <span>06</span>
+        <span>12</span>
+        <span>18</span>
+        <span>24</span>
+      </div>
+      <input
+        className="sun-glass-time-slider"
+        type="range"
+        min="0"
+        max="1439"
+        step="1"
+        value={Math.round(displayedMinute)}
+        aria-label="一天中的时间"
+        onChange={(event) => onPreviewMinute?.(Number(event.target.value))}
+      />
+
+      <div
+        className={`sun-glass-jelly-popover sun-glass-time-menu${
+          isOpen ? " is-open" : ""
+        }`}
+      >
+        <div className="sun-glass-time-presets">
+          {TIME_PRESETS.map(({ minute, label, Icon }) => (
+            <button
+              type="button"
+              key={minute}
+              onClick={() => onPreviewMinute?.(minute)}
+            >
+              <Icon aria-hidden="true" />
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="sun-glass-weather-options" aria-label="天气预览">
+          {WEATHER_PRESETS.map(({ id, label, Icon }) => (
+            <button
+              type="button"
+              key={id}
+              className={displayedWeather === id ? "is-active" : ""}
+              aria-pressed={displayedWeather === id}
+              aria-label={label}
+              onClick={() => onWeatherMode?.(id)}
+            >
+              <Icon aria-hidden="true" />
+              <span>{label}</span>
+            </button>
+          ))}
+        </div>
+
+        <label className="sun-glass-tuner">
+          <span>
+            <Droplets aria-hidden="true" />
+            <span>玻璃度</span>
+            <output>{Math.round(glassLevel)}</output>
+          </span>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            step="1"
+            value={Math.round(glassLevel)}
+            aria-label="全局玻璃度"
+            onChange={(event) => onGlassLevel?.(Number(event.target.value))}
+          />
+        </label>
+      </div>
+    </section>
+  );
+}

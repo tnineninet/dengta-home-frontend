@@ -196,6 +196,16 @@ function chinaTimeParts(date) {
   );
 }
 
+function dateAtChinaMinute(date, minute) {
+  const parts = chinaTimeParts(date);
+  const normalizedMinute = Math.max(0, Math.min(1439, Math.round(minute)));
+  const hour = String(Math.floor(normalizedMinute / 60)).padStart(2, "0");
+  const minutePart = String(normalizedMinute % 60).padStart(2, "0");
+  return new Date(
+    `${parts.year}-${parts.month}-${parts.day}T${hour}:${minutePart}:00+08:00`,
+  );
+}
+
 function stablePatternIndex(value, count) {
   let hash = 2166136261;
   for (const character of value) {
@@ -450,16 +460,24 @@ export function applyThemePreferences(preferences, snapshot, root) {
 export function useDengTaTheme(coordinates = null) {
   const [preferences, setPreferences] = useState(readThemePreferences);
   const [clock, setClock] = useState(() => new Date());
+  const [previewMinute, setPreviewMinute] = useState(null);
+  const displayedClock = useMemo(
+    () =>
+      Number.isFinite(previewMinute)
+        ? dateAtChinaMinute(clock, previewMinute)
+        : clock,
+    [clock, previewMinute],
+  );
   const snapshot = useMemo(
     () =>
       getCelestialSnapshot(
-        clock,
+        displayedClock,
         preferences.appearance,
         coordinates,
         preferences,
       ),
     [
-      clock,
+      displayedClock,
       coordinates,
       preferences,
     ],
@@ -484,5 +502,11 @@ export function useDengTaTheme(coordinates = null) {
     );
   }
 
-  return { preferences, snapshot, updateTheme };
+  return {
+    preferences,
+    snapshot,
+    updateTheme,
+    previewMinute,
+    setPreviewMinute,
+  };
 }
