@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 
-const FRAME_INTERVAL_MS = 1000 / 24;
+const FRAME_INTERVAL_MS = 1000 / 40;
+const MAX_CANVAS_PIXELS = 1_800_000;
 
 const VERTEX_SHADER = `
 attribute vec2 a_position;
@@ -72,36 +73,26 @@ void main() {
   float pointerRing = exp(-42.0 * abs(length(delta) - 0.19 - u_energy * 0.08));
   point = pointer + rotate2d(pointerGlow * u_energy * 1.8) * delta;
 
-  float phase = u_time * 0.17;
+  float phase = u_time * 0.42;
   vec2 firstWarp = vec2(
-    fbm(point * 1.7 + vec2(phase, -phase * 0.7)),
-    fbm(point * 1.8 + vec2(7.3 - phase * 0.5, 2.4 + phase))
+    fbm(point * 1.38 + vec2(phase, -phase * 0.62)),
+    fbm(point * 1.46 + vec2(7.3 - phase * 0.54, 2.4 + phase))
   );
-  vec2 flowPoint = point + (firstWarp - 0.5) * (0.48 + pointerGlow * u_energy * 0.55);
-  float detail = fbm(flowPoint * 3.4 + vec2(-phase * 0.8, phase * 0.55));
-  float filament = pow(1.0 - abs(detail * 2.0 - 1.0), 3.0);
-
-  vec2 orbitA = vec2(cos(phase), sin(phase * 1.17));
-  vec2 orbitB = vec2(cos(phase * 0.73 + 2.1), sin(phase * 0.91 - 1.4));
-  float cyan = glow(flowPoint, vec2(-0.34, 0.38) + orbitA * 0.24, vec2(0.72, 0.55));
-  float magenta = glow(flowPoint, vec2(0.42, 0.16) + orbitB * 0.26, vec2(0.62, 0.82));
-  float lime = glow(flowPoint, vec2(-0.4, -0.34) - orbitB * 0.2, vec2(0.58, 0.72));
-  float gold = glow(flowPoint, vec2(0.28, -0.48) - orbitA * 0.22, vec2(0.72, 0.48));
-
-  vec3 color = vec3(0.0);
-  color += cyan * vec3(0.02, 0.55, 0.98);
-  color += magenta * vec3(1.0, 0.04, 0.58);
-  color += lime * vec3(0.42, 1.0, 0.06);
-  color += gold * vec3(1.0, 0.45, 0.025);
-  color *= 0.35 + detail * 0.72 + filament * 0.58;
-  color += pointerGlow * u_energy * vec3(0.12, 0.7, 1.0) * 1.25;
-  color += pointerRing * u_energy * vec3(1.0, 0.25, 0.78) * 0.72;
-  color = mix(color, vec3(0.95, 0.92, 1.0), filament * 0.16);
+  vec2 flowPoint = point + (firstWarp - 0.5) * (0.18 + pointerGlow * 0.48);
+  vec2 flowDelta = flowPoint - pointer;
+  float plume = exp(-1.72 * dot(flowDelta, flowDelta));
+  float detail = fbm(flowPoint * 2.62 + vec2(-phase * 0.72, phase * 0.48));
+  float filament = pow(1.0 - abs(detail * 2.0 - 1.0), 4.2);
+  float spectralPhase = detail * 2.1 + atan(flowDelta.y, flowDelta.x) / 6.2831853 + phase * 0.08;
+  vec3 color = 0.56 + 0.5 * cos(6.2831853 * (spectralPhase + vec3(0.0, 0.33, 0.67)));
+  color *= plume * (0.44 + detail * 0.78 + filament * 0.38);
+  color += pointerGlow * vec3(0.08, 0.64, 1.0) * 0.84;
+  color += pointerRing * vec3(1.0, 0.18, 0.7) * 0.5;
+  color = mix(color, vec3(0.98), filament * plume * 0.1);
   color = pow(max(color, 0.0), vec3(0.84));
 
-  float body = max(max(cyan, magenta), max(lime, gold));
-  float alpha = clamp(body * 0.5 + filament * body * 0.28 + pointerGlow * u_energy * 0.42, 0.0, 0.86);
-  gl_FragColor = vec4(color, alpha);
+  float alpha = clamp((plume * (0.28 + filament * 0.32) + pointerGlow * 0.34) * u_energy, 0.0, 0.9);
+  gl_FragColor = vec4(color * alpha, alpha);
 }
 `;
 
@@ -182,15 +173,22 @@ export default function StatusFlowField({ active }) {
     gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    gl.clearColor(0, 0, 0, 0);
 
-    const pointerState = { x: 0.5, y: 0.55, energy: 0.16 };
+    const pointerState = { x: 0.5, y: 0.55, energy: 0 };
     let animationFrame = 0;
     let lastFrameAt = -Infinity;
+    let activePointer = null;
     const startedAt = performance.now();
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
-      const scale = window.matchMedia("(max-width: 820px)").matches ? 0.62 : 0.78;
+      const dpr = Math.min(2.25, Math.max(1, window.devicePixelRatio || 1));
+      const requestedPixels = rect.width * rect.height * dpr * dpr;
+      const scale = dpr * Math.min(
+        1,
+        Math.sqrt(MAX_CANVAS_PIXELS / Math.max(1, requestedPixels)),
+      );
       const width = Math.max(2, Math.round(rect.width * scale));
       const height = Math.max(2, Math.round(rect.height * scale));
       if (canvas.width === width && canvas.height === height) return;
@@ -199,19 +197,38 @@ export default function StatusFlowField({ active }) {
       gl.viewport(0, 0, width, height);
     };
 
+    const startFlow = (event) => {
+      activePointer = event.pointerId;
+      moveFlow(event);
+    };
+
     const moveFlow = (event) => {
+      if (event.type === "pointermove" && event.pointerId !== activePointer) return;
       const rect = panel.getBoundingClientRect();
       pointerState.x = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
       pointerState.y = 1 - Math.max(0, Math.min(1, (event.clientY - rect.top) / rect.height));
       pointerState.energy = event.type === "pointerdown" ? 1 : 0.78;
       field.style.setProperty("--status-flow-x", `${pointerState.x * 100}%`);
       field.style.setProperty("--status-flow-y", `${(1 - pointerState.y) * 100}%`);
+      if (!animationFrame) animationFrame = requestAnimationFrame(draw);
+    };
+
+    const endFlow = (event) => {
+      if (event.pointerId === activePointer) activePointer = null;
     };
 
     const draw = (now) => {
+      animationFrame = 0;
       if (now - lastFrameAt >= FRAME_INTERVAL_MS || lastFrameAt < 0) {
         resize();
-        pointerState.energy = Math.max(0.12, pointerState.energy * 0.935);
+        pointerState.energy *= 0.954;
+        if (pointerState.energy < 0.008) {
+          pointerState.energy = 0;
+          gl.clear(gl.COLOR_BUFFER_BIT);
+          field.classList.remove("status-flow-field--ready");
+          return;
+        }
+        gl.clear(gl.COLOR_BUFFER_BIT);
         gl.useProgram(program);
         gl.uniform2f(resolution, canvas.width, canvas.height);
         gl.uniform2f(pointer, pointerState.x, pointerState.y);
@@ -224,19 +241,23 @@ export default function StatusFlowField({ active }) {
       animationFrame = requestAnimationFrame(draw);
     };
 
-    panel.addEventListener("pointerdown", moveFlow, { passive: true });
+    panel.addEventListener("pointerdown", startFlow, { passive: true });
     panel.addEventListener("pointermove", moveFlow, { passive: true });
+    window.addEventListener("pointerup", endFlow, { passive: true });
+    window.addEventListener("pointercancel", endFlow, { passive: true });
     const resizeObserver = new ResizeObserver(() => {
       lastFrameAt = -Infinity;
     });
     resizeObserver.observe(panel);
-    animationFrame = requestAnimationFrame(draw);
+    resize();
 
     return () => {
       cancelAnimationFrame(animationFrame);
       resizeObserver.disconnect();
-      panel.removeEventListener("pointerdown", moveFlow);
+      panel.removeEventListener("pointerdown", startFlow);
       panel.removeEventListener("pointermove", moveFlow);
+      window.removeEventListener("pointerup", endFlow);
+      window.removeEventListener("pointercancel", endFlow);
       gl.deleteBuffer(buffer);
       gl.deleteProgram(program);
     };

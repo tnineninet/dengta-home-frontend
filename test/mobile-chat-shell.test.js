@@ -50,7 +50,7 @@ test("mobile chat uses one decorative rainbow capsule as the status toggle", () 
   );
   assert.match(
     styles,
-    /\.sun-glass-floating-status-shell\.expanded[\s\S]*?\.sun-glass-floating-status-panel\s*\{[^}]*position:\s*absolute !important;[^}]*top:\s*70px !important/s,
+    /\.sun-glass-floating-status-shell\.expanded[\s\S]*?\.sun-glass-floating-status-panel\s*\{[^}]*position:\s*fixed !important;[^}]*top:\s*calc\(var\(--dengta-mobile-capsule-top\) \+ 70px\) !important/s,
     "the expanded panel must remain connected beneath the safe capsule",
   );
 });
@@ -95,11 +95,26 @@ test("expanded status uses an opaque black interactive flow surface", () => {
 
   assert.match(status, /<StatusFlowField active=\{expanded\} \/>/);
   assert.match(flow, /uniform vec2 u_pointer/);
-  assert.match(flow, /panel\.addEventListener\("pointerdown", moveFlow/);
+  assert.match(flow, /MAX_CANVAS_PIXELS/);
+  assert.match(flow, /panel\.addEventListener\("pointerdown", startFlow/);
   assert.match(flow, /panel\.addEventListener\("pointermove", moveFlow/);
+  assert.doesNotMatch(flow, /float cyan = glow|float magenta = glow/);
   assert.match(
     styles,
     /\.sun-glass-floating-status-shell\.expanded[\s\S]*?\.sun-glass-floating-status-panel[\s\S]*?background:\s*#050507/,
   );
   assert.match(styles, /\.status-flow-canvas/);
+});
+
+test("mobile capsule creates a chat paint boundary", () => {
+  const styles = read("src/sun-glass-chat.css");
+
+  assert.match(
+    styles,
+    /--dengta-mobile-capsule-top:\s*max\(\s*34px,\s*calc\(env\(safe-area-inset-top\) \+ 4px\)/,
+  );
+  assert.match(
+    styles,
+    /\.main-panel\.view-chat \.message-list\s*\{[^}]*clip-path:\s*inset\(calc\(var\(--dengta-mobile-capsule-top\) \+ 66px\) 0 0 0\)/s,
+  );
 });

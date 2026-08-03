@@ -296,6 +296,59 @@ export function getCelestialSnapshot(
   };
 }
 
+export function applyGlassLevel(value, root, { includeBlur = false } = {}) {
+  if (!root) return;
+  const glassAmount = boundedOpacity(value);
+  root.style.setProperty("--theme-card-opacity", String(glassAmount));
+  root.style.setProperty("--dengta-glass-level", glassAmount.toFixed(3));
+  root.style.setProperty(
+    "--dengta-glass-panel-alpha",
+    (0.025 + glassAmount * 0.46).toFixed(3),
+  );
+  root.style.setProperty(
+    "--dengta-glass-bubble-alpha",
+    (0.035 + glassAmount * 0.5).toFixed(3),
+  );
+  root.style.setProperty(
+    "--dengta-glass-popover-alpha",
+    (0.045 + glassAmount * 0.56).toFixed(3),
+  );
+  root.style.setProperty(
+    "--dengta-glass-control-alpha",
+    (0.045 + glassAmount * 0.34).toFixed(3),
+  );
+  root.style.setProperty(
+    "--dengta-glass-dome-alpha",
+    (glassAmount * 0.13).toFixed(3),
+  );
+  if (includeBlur) {
+    root.style.setProperty(
+      "--dengta-glass-panel-blur",
+      `${(glassAmount * 30).toFixed(1)}px`,
+    );
+    root.style.setProperty(
+      "--dengta-glass-dome-blur",
+      `${(glassAmount * 10).toFixed(1)}px`,
+    );
+    root.style.setProperty(
+      "--dengta-glass-saturation",
+      (1.03 + glassAmount * 0.36).toFixed(3),
+    );
+  }
+  root.style.setProperty(
+    "--dengta-glass-border-alpha",
+    (0.32 + glassAmount * 0.38).toFixed(3),
+  );
+  root.style.setProperty(
+    "--dengta-glass-haze-opacity",
+    (0.015 + glassAmount * 0.9).toFixed(3),
+  );
+  root.style.setProperty(
+    "--dengta-glass-sheen-opacity",
+    (0.12 + glassAmount * 0.7).toFixed(3),
+  );
+}
+
 export function applyThemePreferences(preferences, snapshot, root) {
   if (!root) return;
   const normalized = normalizeThemePreferences(preferences);

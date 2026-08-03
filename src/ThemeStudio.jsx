@@ -1,4 +1,5 @@
 import { THEME_PRESETS } from "./dengta-theme.js";
+import { useGlassScrubber } from "./use-glass-scrubber";
 
 const APPEARANCE_OPTIONS = [
   { id: "auto", label: "Auto" },
@@ -12,6 +13,11 @@ export default function ThemeStudio({
   chatSkinPreferences,
   updateChatSkin,
 }) {
+  const glassScrubber = useGlassScrubber(
+    preferences.cardOpacity * 100,
+    (value) => updateTheme({ cardOpacity: value / 100 }),
+  );
+
   return (
     <section className="theme-studio" aria-labelledby="theme-studio-title">
       <div className="settings-card-heading">
@@ -78,16 +84,14 @@ export default function ThemeStudio({
         <label className="theme-opacity-control">
           <span>
             <strong>Global glass</strong>
-            <output>{Math.round(preferences.cardOpacity * 100)}%</output>
+            <output>{Math.round(glassScrubber.value)}%</output>
           </span>
           <input
             type="range"
             min="0"
             max="100"
-            value={Math.round(preferences.cardOpacity * 100)}
-            onChange={(event) =>
-              updateTheme({ cardOpacity: Number(event.target.value) / 100 })
-            }
+            value={Math.round(glassScrubber.value)}
+            {...glassScrubber.inputProps}
           />
         </label>
       </div>

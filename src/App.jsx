@@ -8,6 +8,14 @@ import {
 } from "react";
 import { Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
+import {
+  ArrowLeft,
+  BrainCircuit,
+  Mic2,
+  MonitorSmartphone,
+  Palette,
+  ServerCog,
+} from "lucide-react";
 import { API_BASE_URL, apiRequest, streamChat } from "./api";
 import CompanionStatus from "./CompanionStatus";
 import AmbientContextBadge from "./AmbientContextBadge";
@@ -216,6 +224,39 @@ const LOCAL_NOTIFICATION_CHANNEL_ID = "dengta-home-reminders-v1";
 const PROMPT_RECEIPT_STORAGE_KEY = "dengta_prompt_receipt_v1";
 const VOICE_PLAYBACK_MODE_KEY = "dengta_voice_playback_mode";
 const SETTINGS_SAVE_RETRY_DELAYS_MS = [1200, 3500, 8000];
+
+const SETTINGS_CATEGORIES = [
+  {
+    id: "appearance",
+    label: "外观与聊天",
+    description: "天空、玻璃、气泡与动效",
+    Icon: Palette,
+  },
+  {
+    id: "persona",
+    label: "个性化与记忆",
+    description: "提示词、长期详情与主动消息",
+    Icon: BrainCircuit,
+  },
+  {
+    id: "services",
+    label: "模型与服务",
+    description: "接口、模型、服务状态与创作",
+    Icon: ServerCog,
+  },
+  {
+    id: "voice",
+    label: "语音与情绪",
+    description: "语音理解、播放与麦克风",
+    Icon: Mic2,
+  },
+  {
+    id: "devices",
+    label: "设备与共看",
+    description: "通知、活动感知、屏幕共看与设备",
+    Icon: MonitorSmartphone,
+  },
+];
 
 function shanghaiClientTime(value = new Date()) {
   return value.toLocaleString("zh-CN", {
@@ -535,6 +576,7 @@ function App({ accountControl = null, userName = "" }) {
   const [draftSettings, setDraftSettings] = useState(emptySettings);
   const [activeView, setActiveView] = useState("chat");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsCategory, setSettingsCategory] = useState(null);
   const [chatSkinPreferences, setChatSkinPreferences] = useState(
     readStoredChatSkinPreferences,
   );
@@ -876,6 +918,8 @@ function App({ accountControl = null, userName = "" }) {
         maximumMinutes: next.maximumMinutes,
         wifiOnly: next.wifiOnly,
         chargingOnly: next.chargingOnly,
+        watchTogetherEnabled: next.watchTogetherEnabled,
+        watchIntervalSeconds: next.watchIntervalSeconds,
       }),
     );
     return next;
@@ -4094,7 +4138,7 @@ function App({ accountControl = null, userName = "" }) {
         status: state?.active ? "success" : "error",
         message: state?.active
           ? nextConfig.watchTogetherEnabled
-            ? `已经开始一起看。画面明显变化时，${settings.ai_name || "小灯"}会大约每 ${nextConfig.watchIntervalSeconds} 秒看一次并主动说出感受。`
+            ? `已经开始一起看。共享会一直持续到你主动结束；画面明显变化时，${settings.ai_name || "小灯"}会主动说出感受。`
             : "屏幕共看已开始。Android 常驻通知可随时看一眼、暂停或结束。"
           : state?.lastError || "系统没有建立共享，请重新确认一次。",
       });
@@ -4390,6 +4434,7 @@ function App({ accountControl = null, userName = "" }) {
     requestStatusPanelClose();
     setIsSidebarOpen(false);
     setIsMobileNavOpen(false);
+    setSettingsCategory(null);
     setIsSettingsOpen(true);
   }
 
@@ -5165,17 +5210,60 @@ function App({ accountControl = null, userName = "" }) {
           </button>
         </div>
 
-        <Suspense fallback={<DeferredFeature label="正在打开外观设置…" />}>
-          <ThemeStudio
-            preferences={themePreferences}
-            updateTheme={updateTheme}
-            chatSkinPreferences={chatSkinPreferences}
-            updateChatSkin={updateChatSkinPreferences}
-          />
-        </Suspense>
+        {!settingsCategory ? (
+          <div className="settings-folder-grid" aria-label="设置分类">
+            {SETTINGS_CATEGORIES.map(({ id, label, description, Icon }) => (
+              <button
+                type="button"
+                className="settings-folder"
+                key={id}
+                onClick={() => setSettingsCategory(id)}
+              >
+                <span className="settings-folder-icon" aria-hidden="true">
+                  <Icon />
+                </span>
+                <span>
+                  <strong>{label}</strong>
+                  <small>{description}</small>
+                </span>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <>
+            <div className="settings-category-heading">
+              <button
+                type="button"
+                className="settings-category-back"
+                aria-label="返回设置分类"
+                onClick={() => setSettingsCategory(null)}
+              >
+                <ArrowLeft aria-hidden="true" />
+              </button>
+              <div>
+                <span className="eyebrow">设置文件夹</span>
+                <h3>
+                  {SETTINGS_CATEGORIES.find(
+                    (category) => category.id === settingsCategory,
+                  )?.label || "设置"}
+                </h3>
+              </div>
+            </div>
 
-        <form className="settings-form" onSubmit={saveSettings}>
-          <div className="settings-card service-manager-card">
+            {settingsCategory === "appearance" && (
+              <Suspense fallback={<DeferredFeature label="正在打开外观设置…" />}>
+                <ThemeStudio
+                  preferences={themePreferences}
+                  updateTheme={updateTheme}
+                  chatSkinPreferences={chatSkinPreferences}
+                  updateChatSkin={updateChatSkinPreferences}
+                />
+              </Suspense>
+            )}
+
+            <form className="settings-form" onSubmit={saveSettings}>
+          {settingsCategory === "services" && (
+            <div className="settings-card service-manager-card">
             <div className="service-manager-heading">
               <div>
                 <h3>服务管理与故障检查</h3>
@@ -5262,9 +5350,11 @@ function App({ accountControl = null, userName = "" }) {
                 ? `最后检查：${formatDateTime(serviceHealth.checkedAt)}`
                 : "尚未完成第一次检查"}
             </div>
-          </div>
+            </div>
+          )}
 
-          <div className="settings-card prompt-settings-card">
+          {settingsCategory === "persona" && (
+            <div className="settings-card prompt-settings-card">
             <div className="prompt-settings-heading">
               <div>
                 <h3>个性化与长期详情</h3>
@@ -5434,9 +5524,11 @@ function App({ accountControl = null, userName = "" }) {
                 </p>
               </div>
             )}
-          </div>
+            </div>
+          )}
 
-          <div className="settings-card voice-settings-card">
+          {settingsCategory === "voice" && (
+            <div className="settings-card voice-settings-card">
             <h3>语音与情绪理解</h3>
             <p className="card-hint">
               文字聊天会参考本轮文字；按住说话时才会申请麦克风并分析转写、语气和声音线索。
@@ -5496,9 +5588,11 @@ function App({ accountControl = null, userName = "" }) {
                 情绪理解流程基于 HerVoice 开源项目，由 DengTa home 接入并做了服务端安全加固。
               </p>
             </div>
-          </div>
+            </div>
+          )}
 
-          <div className="settings-card legacy-provider-card">
+          {settingsCategory === "services" && (
+            <div className="settings-card legacy-provider-card">
             <h3>旧版单接口（兼容保留）</h3>
             <p className="card-hint">
               这里继续保留，避免已有配置突然失效。新增或切换多个服务商时，请使用下方“多供应商 API 控制台”；启用默认接口后会真实覆盖这里的地址、模型与密钥。
@@ -5604,13 +5698,23 @@ function App({ accountControl = null, userName = "" }) {
                 />
               </label>
             </div>
-          </div>
+            </div>
+          )}
 
-          <div className="settings-card">
-            <h3>记忆与主动消息</h3>
+          {(["persona", "devices"].includes(settingsCategory)) && (
+            <div className={`settings-card settings-shared-card settings-shared-card--${settingsCategory}`}>
+            <h3>
+              {settingsCategory === "persona"
+                ? "记忆与主动消息"
+                : "设备、活动感知与屏幕共看"}
+            </h3>
             <p className="card-hint">
-              记忆压缩和影子主动消息均已启用；系统会定时判断是否应该主动联系你。
+              {settingsCategory === "persona"
+                ? "记忆压缩和影子主动消息均已启用；系统会定时判断是否应该主动联系你。"
+                : "管理本机活动摘要、屏幕共享和一起看会话。"}
             </p>
+            {settingsCategory === "persona" && (
+              <>
             <div className="settings-grid">
               <label>
                 所在时区
@@ -5688,6 +5792,10 @@ function App({ accountControl = null, userName = "" }) {
                 Android 为省电可能把后台检查延后；它不是整点闹钟，但 App 关闭后仍会继续检查。
               </small>
             </div>
+              </>
+            )}
+            {settingsCategory === "devices" && (
+              <>
             <div className="notification-feature-panel device-activity-panel">
               <div className="device-activity-heading">
                 <div>
@@ -5870,39 +5978,31 @@ function App({ accountControl = null, userName = "" }) {
                   />
                   仅充电时
                 </label>
-                <label className="screen-glance-check">
-                  <input
-                    type="checkbox"
-                    checked={screenGlanceConfig.watchTogetherEnabled}
-                    disabled={isScreenGlanceBusy}
-                    onChange={(event) =>
-                      void saveScreenGlanceConfig({
-                        ...screenGlanceConfig,
-                        watchTogetherEnabled: event.target.checked,
-                      })
-                    }
-                  />
-                  一起看时主动回应
-                </label>
-                <label>
-                  共看采样（秒）
-                  <input
-                    type="number"
-                    min="30"
-                    max="600"
-                    value={screenGlanceConfig.watchIntervalSeconds}
-                    disabled={isScreenGlanceBusy}
-                    onChange={(event) =>
-                      setScreenGlanceConfig((current) =>
-                        normalizeScreenGlanceConfig({
-                          ...current,
-                          watchIntervalSeconds: event.target.value,
-                        }),
-                      )
-                    }
-                    onBlur={() => void saveScreenGlanceConfig()}
-                  />
-                </label>
+              </div>
+              <div className="screen-glance-toggle-row">
+                <span>
+                  <strong>一起看时主动回应</strong>
+                  <small>开启后持续共看，直到你主动暂停或结束。</small>
+                </span>
+                <button
+                  type="button"
+                  className={`privacy-switch${
+                    screenGlanceConfig.watchTogetherEnabled ? " is-on" : ""
+                  }`}
+                  role="switch"
+                  aria-checked={screenGlanceConfig.watchTogetherEnabled}
+                  aria-label="一起看时主动回应"
+                  disabled={isScreenGlanceBusy || !screenGlanceState.supported}
+                  onClick={() =>
+                    void saveScreenGlanceConfig({
+                      ...screenGlanceConfig,
+                      watchTogetherEnabled:
+                        !screenGlanceConfig.watchTogetherEnabled,
+                    })
+                  }
+                >
+                  <span aria-hidden="true" />
+                </button>
               </div>
               {(screenGlanceState.capturedAt ||
                 screenGlanceState.nextCaptureAt) && (
@@ -5979,12 +6079,15 @@ function App({ accountControl = null, userName = "" }) {
                 )}
               </div>
               <small>
-                锁屏会暂停采样；结束系统共享后，本机临时画面会立即清除。
+                共看没有倒计时，会持续到你手动暂停或结束；锁屏会暂停采样，结束系统共享后，本机临时画面会立即清除。
               </small>
             </div>
+              </>
+            )}
           </div>
+          )}
 
-          {settingsSaveReceipt && (
+          {settingsCategory === "persona" && settingsSaveReceipt && (
             <div className="settings-save-receipt" role="status">
               <strong>✓ 服务器已保存并回读</strong>
               <span>
@@ -6002,7 +6105,7 @@ function App({ accountControl = null, userName = "" }) {
             </div>
           )}
 
-          {lastPromptReceipt && (
+          {settingsCategory === "persona" && lastPromptReceipt && (
             <div className="prompt-application-receipt" role="status">
               <strong>
                 {lastPromptReceipt.backendRequestSent
@@ -6111,16 +6214,24 @@ function App({ accountControl = null, userName = "" }) {
               修改后会自动保存，不需要滑到这里操作
             </span>
           </div>
-        </form>
-        <Suspense fallback={<DeferredFeature label="正在打开 AI 接口管理…" />}>
-          <AiProviderCenter />
-        </Suspense>
-        <Suspense fallback={<DeferredFeature label="正在打开创作中心…" />}>
-          <CompanionCreativeSettings />
-        </Suspense>
-        <Suspense fallback={<DeferredFeature label="正在打开设备连接…" />}>
-          <McpDeviceCenter />
-        </Suspense>
+            </form>
+            {settingsCategory === "services" && (
+              <>
+                <Suspense fallback={<DeferredFeature label="正在打开 AI 接口管理…" />}>
+                  <AiProviderCenter />
+                </Suspense>
+                <Suspense fallback={<DeferredFeature label="正在打开创作中心…" />}>
+                  <CompanionCreativeSettings />
+                </Suspense>
+              </>
+            )}
+            {settingsCategory === "devices" && (
+              <Suspense fallback={<DeferredFeature label="正在打开设备连接…" />}>
+                <McpDeviceCenter />
+              </Suspense>
+            )}
+          </>
+        )}
       </section>
     );
   }

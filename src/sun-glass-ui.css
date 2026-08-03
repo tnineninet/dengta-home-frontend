@@ -341,7 +341,127 @@ body,
   background: rgb(var(--theme-card-rgb) / .24);
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
+  scrollbar-gutter: stable;
+  contain: layout paint style;
 }
+
+.settings-folder-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding-bottom: 20px;
+}
+
+.settings-folder {
+  display: grid;
+  min-height: 112px;
+  padding: 16px;
+  grid-template-columns: 46px minmax(0, 1fr);
+  align-items: center;
+  gap: 13px;
+  border: 1px solid rgb(var(--theme-ink-rgb) / .1);
+  border-radius: 8px;
+  color: var(--theme-ink);
+  text-align: left;
+  background: rgb(var(--theme-card-rgb) / .84);
+  box-shadow: inset 0 1px rgb(255 255 255 / .66), 0 12px 30px rgb(22 29 42 / .08);
+  transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+}
+
+.settings-folder:active { transform: scale(.985); }
+
+.settings-folder-icon {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border: 1px solid rgb(var(--theme-ink-rgb) / .1);
+  border-radius: 8px;
+  color: rgb(var(--theme-accent-rgb));
+  background: rgb(var(--theme-accent-rgb) / .1);
+}
+
+.settings-folder-icon svg { width: 23px; height: 23px; }
+
+.settings-folder > span:last-child {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.settings-folder strong { font-size: 15px; }
+
+.settings-folder small {
+  color: rgb(var(--theme-ink-rgb) / .58);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.settings-category-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding: 10px 0 12px;
+  border-bottom: 1px solid rgb(var(--theme-ink-rgb) / .09);
+}
+
+.settings-category-heading h3 {
+  margin: 2px 0 0;
+  color: var(--theme-ink);
+  font-size: 19px;
+}
+
+.settings-category-back {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid rgb(var(--theme-ink-rgb) / .1);
+  border-radius: 50%;
+  color: var(--theme-ink);
+  background: rgb(var(--theme-card-rgb) / .88);
+}
+
+.settings-category-back svg { width: 20px; height: 20px; }
+
+.screen-glance-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 12px;
+  border: 1px solid rgb(var(--theme-ink-rgb) / .1);
+  border-radius: 8px;
+  background: rgb(var(--theme-card-rgb) / .7);
+}
+
+.screen-glance-toggle-row > span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.screen-glance-toggle-row small { margin: 0; }
+
+:root[data-glass-scrubbing="true"] :is(
+  .sun-glass-panel,
+  .message-bubble,
+  .composer,
+  .composer-tool-menu,
+  .theme-studio,
+  .settings-card
+) { transition: none !important; }
+
+:root[data-glass-scrubbing="true"] :is(
+  .celestial-cloud,
+  .celestial-star,
+  .celestial-rain,
+  .settings-flow-field
+) { animation-play-state: paused !important; }
+
+.settings-sheet.is-scrolling .settings-flow-field { visibility: hidden; }
 
 .settings-flow-field {
   position: absolute;
@@ -920,6 +1040,10 @@ body,
     border: 0;
     border-radius: 0;
   }
+
+  .settings-folder-grid { grid-template-columns: 1fr; }
+
+  .settings-folder { min-height: 88px; }
 
   .feature-atmosphere {
     min-height: 158px;

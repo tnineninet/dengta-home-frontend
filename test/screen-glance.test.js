@@ -145,6 +145,10 @@ assert.match(app, /结束并清除/);
 assert.match(app, /consumeLatestCapture/);
 assert.match(app, /邀请一起看/);
 assert.match(app, /watchTogetherEnabled/);
+assert.match(app, /持续共看，直到你主动暂停或结束/);
+assert.match(app, /watchTogetherEnabled:\s*next\.watchTogetherEnabled/);
+assert.match(app, /watchIntervalSeconds:\s*next\.watchIntervalSeconds/);
+assert.doesNotMatch(app, /共看采样（秒）/);
 assert.match(app, /attachmentInstructionMode:\s*"untrusted"/);
 assert.match(app, /attachmentStorageMode:\s*"ephemeral"/);
 

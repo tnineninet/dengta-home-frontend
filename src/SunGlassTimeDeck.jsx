@@ -13,6 +13,7 @@ import {
   SunMedium,
 } from "lucide-react";
 import { weatherModeFromAmbient } from "./sun-glass-sky";
+import { useGlassScrubber } from "./use-glass-scrubber";
 
 const TIME_PRESETS = [
   { minute: 480, label: "清晨 08:00", Icon: SunMedium },
@@ -68,6 +69,7 @@ export default function SunGlassTimeDeck({
   const displayedWeatherLabel =
     WEATHER_PRESETS.find((preset) => preset.id === displayedWeather)?.label ||
     "晴空";
+  const glassScrubber = useGlassScrubber(glassLevel, onGlassLevel);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -260,16 +262,16 @@ export default function SunGlassTimeDeck({
           <span>
             <Droplets aria-hidden="true" />
             <span>玻璃度</span>
-            <output>{Math.round(glassLevel)}</output>
+            <output>{Math.round(glassScrubber.value)}</output>
           </span>
           <input
             type="range"
             min="0"
             max="100"
             step="1"
-            value={Math.round(glassLevel)}
+            value={Math.round(glassScrubber.value)}
             aria-label="全局玻璃度"
-            onChange={(event) => onGlassLevel?.(Number(event.target.value))}
+            {...glassScrubber.inputProps}
           />
         </label>
       </div>
