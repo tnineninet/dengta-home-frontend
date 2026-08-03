@@ -29,6 +29,20 @@ assert.equal(
 );
 assert.equal(
   privateMediaRequestPath(
+    "/api/v2/creative/artworks/ca6cda36-8337-4982-969c-5139c20ffe3c/image",
+    apiBaseUrl,
+  ),
+  "/api/v2/creative/artworks/ca6cda36-8337-4982-969c-5139c20ffe3c/image",
+);
+assert.equal(
+  privateMediaRequestPath(
+    "https://backend.example.test/api/v2/creative/artworks/ca6cda36-8337-4982-969c-5139c20ffe3c/image",
+    apiBaseUrl,
+  ),
+  "/api/v2/creative/artworks/ca6cda36-8337-4982-969c-5139c20ffe3c/image",
+);
+assert.equal(
+  privateMediaRequestPath(
     "https://attacker.example/api/v2/moments/id/images/0",
     apiBaseUrl,
   ),

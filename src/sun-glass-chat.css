@@ -2554,7 +2554,7 @@
   }
 }
 
-/* Mobile 2.8.4: fixed capsule, directional touch flow and stable status motion. */
+/* Mobile 2.8.5: fixed capsule, authenticated artwork media and stable status motion. */
 .main-panel.view-chat
   .sun-glass-floating-status-panel[aria-hidden="true"] {
   visibility: hidden;

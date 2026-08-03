@@ -1,5 +1,5 @@
 const PRIVATE_MEDIA_PATH =
-  /^\/(?:api\/v2\/(?:attachments|moments)|attachments)(?:\/|$)/;
+  /^\/(?:(?:api\/v2\/(?:attachments|moments)|attachments)(?:\/|$)|api\/v2\/creative\/artworks\/[^/?]+\/image(?:\?|$))/;
 
 export function privateMediaRequestPath(value, apiBaseUrl) {
   const source = String(value || "").trim();
