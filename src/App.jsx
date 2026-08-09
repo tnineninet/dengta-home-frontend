@@ -2898,12 +2898,23 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   companionInteractionHandlerRef.current = registerCompanionInteraction;
 
   async function requestVisibleInnerMonologue(item) {
-    const messageId = String(item?.id || "");
     const sessionId = activeSessionIdRef.current;
-    if (!sessionId || !/^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(messageId)) {
+    const { recoverSynchronizedAssistantMessage } = await import(
+      "./inner-monologue-sync.js"
+    );
+    const synchronized = await recoverSynchronizedAssistantMessage({
+      message: item,
+      sessionId,
+    });
+    const targetMessage = synchronized.message;
+    if (targetMessage && synchronized.messages) {
+      setMessages(synchronized.messages);
+    }
+    const messageId = targetMessage?.id || "";
+    if (!targetMessage) {
       setInnerMonologueErrors((current) => ({
         ...current,
-        [messageId]: "这条消息尚未完成会话同步，请稍后再试。",
+        [item.id]: synchronized.error,
       }));
       return;
     }
