@@ -1395,11 +1395,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
 
     async function loadInitialData() {
-      const [settingsData, sessionsData, runtimeData] = await Promise.all([
-        apiRequest("/api/v2/settings", STARTUP_REQUEST_OPTIONS),
-        apiRequest("/api/v2/sessions", STARTUP_REQUEST_OPTIONS),
-        apiRequest("/api/v2/companion-state", STARTUP_REQUEST_OPTIONS),
-      ]);
+      const bootstrapData = await apiRequest(
+        "/api/v2/bootstrap",
+        STARTUP_REQUEST_OPTIONS,
+      );
+      const settingsData = { settings: bootstrapData.settings };
+      const sessionsData = { sessions: bootstrapData.sessions };
+      const runtimeData = { state: bootstrapData.state };
 
       if (cancelled) return null;
       const localPersonaResetApplied = applyPersonaResetToLocalStorage(
@@ -3350,6 +3352,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
     isSendingRef.current = true;
     setIsSending(true);
+    const deviceActivityRefresh = refreshDeviceActivityContext({ silent: true });
     if (!(await flushLatestSettingsDraft())) {
       isSendingRef.current = false;
       if (componentMountedRef.current) setIsSending(false);
@@ -3358,7 +3361,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       );
       return;
     }
-    await refreshDeviceActivityContext({ silent: true });
 
     if (voiceStateRef.current === VOICE_STATES.speaking) {
       void stopVoicePlayback();
@@ -3393,7 +3395,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     };
     chatRequestRef.current = request;
     streamThinkingRef.current = {
-      statuses: [],
+      statuses: appendThinkingStatus([], "preparing_request"),
       summary: "",
       lastReasoningSource: "",
     };
@@ -3493,7 +3495,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           isStreaming: true,
           generationInProgress: false,
           retryAvailable: false,
-          thinkingStatuses: [],
+          thinkingStatuses: appendThinkingStatus([], "preparing_request"),
         };
         const assistantIndex = next.findIndex(
           (item) => item.id === localAssistantId,
@@ -3508,6 +3510,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         }
         return next;
       });
+
+      await deviceActivityRefresh;
 
       await streamChat(
         {

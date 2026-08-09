@@ -1,4 +1,5 @@
 const STATUS_LABELS = {
+  preparing_request: "正在准备并发送这条消息",
   accepted: "服务器已接收本轮消息",
   already_received: "服务器已识别并复用先前保存的消息",
   generation_in_progress: "消息已保存，AI 仍在处理中",
