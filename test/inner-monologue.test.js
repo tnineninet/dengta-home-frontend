@@ -73,11 +73,17 @@ const appStylesSource = readFileSync(
   new URL("../src/index.css", import.meta.url),
   "utf8",
 );
+const appSource = readFileSync(
+  new URL("../src/App.jsx", import.meta.url),
+  "utf8",
+);
 assert.match(messageExtrasSource, /setMonologueDialogOpen\(true\)/);
 assert.match(messageExtrasSource, /className="inner-monologue-dialog-backdrop"/);
 assert.match(messageExtrasSource, /role="dialog"/);
 assert.match(messageExtrasSource, /aria-modal="true"/);
 assert.match(appStylesSource, /\.inner-monologue-dialog-backdrop\s*\{/);
 assert.match(appStylesSource, /\.inner-monologue-dialog\s*\{/);
+assert.match(appSource, /\/companion\/inner-monologue/);
+assert.match(appSource, /timeoutMs:\s*300\s*\*\s*1000/);
 
 console.log("inner monologue local-cache checks passed");

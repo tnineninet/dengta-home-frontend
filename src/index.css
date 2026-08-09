@@ -2483,6 +2483,54 @@ button:disabled {
   line-height: 1.72;
 }
 
+.memory-editor {
+  width: 100%;
+  min-height: 116px;
+  margin-top: 12px;
+  padding: 12px 14px;
+  resize: vertical;
+  border: 1px solid color-mix(in srgb, var(--rose-deep) 24%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.65;
+  outline: none;
+}
+
+.memory-editor:focus {
+  border-color: color-mix(in srgb, var(--rose-deep) 58%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--rose-deep) 12%, transparent);
+}
+
+.memory-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.memory-card-actions button {
+  min-height: 34px;
+  padding: 7px 13px;
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.memory-card-actions button.danger {
+  color: #a33b4d;
+}
+
+.memory-card-actions button:disabled {
+  cursor: wait;
+  opacity: 0.5;
+}
+
 .empty-card {
   grid-column: 1 / -1;
   color: var(--muted);

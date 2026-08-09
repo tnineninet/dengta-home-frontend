@@ -638,6 +638,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     setPreviewMinute,
   } = useDengTaTheme(celestialCoordinates, accountStorageScope);
   const [memories, setMemories] = useState([]);
+  const [memoryDrafts, setMemoryDrafts] = useState({});
+  const [memoryBusyId, setMemoryBusyId] = useState("");
   const [moments, setMoments] = useState([]);
   const [momentsAvailable, setMomentsAvailable] = useState(null);
   const [momentDraft, setMomentDraft] = useState("");
@@ -2937,7 +2939,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             companionStatusRef.current,
           ),
         }),
-        timeoutMs: 120 * 1000,
+        timeoutMs: 300 * 1000,
       });
       const next = storeInnerMonologue(
         {
@@ -5272,6 +5274,63 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   function renderMemories() {
+    async function saveMemory(item) {
+      const summary = String(memoryDrafts[item.id] || "").trim();
+      if (!summary) {
+        setNotice("记忆内容不能为空。");
+        return;
+      }
+      setMemoryBusyId(item.id);
+      try {
+        const result = await apiRequest(`/api/v2/memories/${item.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({ summary }),
+        });
+        if (result?.deleted === true) {
+          setMemories((current) =>
+            current.filter((memory) => memory.id !== item.id),
+          );
+          setNotice("这条残留内容已经删除。");
+        } else {
+          setMemories((current) =>
+            current.map((memory) =>
+              memory.id === item.id ? result.memory : memory,
+            ),
+          );
+          setNotice("记忆已经保存。");
+        }
+        setMemoryDrafts((current) => {
+          const next = { ...current };
+          delete next[item.id];
+          return next;
+        });
+      } catch (error) {
+        setNotice(error.message);
+      } finally {
+        setMemoryBusyId("");
+      }
+    }
+
+    async function deleteMemory(item) {
+      if (!window.confirm("确定删除这条长期记忆吗？删除后不会再注入对话。")) {
+        return;
+      }
+      setMemoryBusyId(item.id);
+      try {
+        await apiRequest(`/api/v2/memories/${item.id}`, {
+          method: "DELETE",
+        });
+        setMemories((current) =>
+          current.filter((memory) => memory.id !== item.id),
+        );
+        setNotice("记忆已经删除。");
+      } catch (error) {
+        setNotice(error.message);
+      } finally {
+        setMemoryBusyId("");
+      }
+    }
+
     return (
       <section className="feature-page memory-page">
         <FeatureAtmosphere kind="memory" />
@@ -5305,7 +5364,72 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             memories.map((item) => (
               <article className="memory-card" key={item.id}>
                 <span>{formatDateTime(item.updated_at || item.created_at)}</span>
-                <p>{item.summary}</p>
+                {Object.hasOwn(memoryDrafts, item.id) ? (
+                  <textarea
+                    className="memory-editor"
+                    value={memoryDrafts[item.id]}
+                    onChange={(event) =>
+                      setMemoryDrafts((current) => ({
+                        ...current,
+                        [item.id]: event.target.value,
+                      }))
+                    }
+                    maxLength={4000}
+                    rows={5}
+                    disabled={memoryBusyId === item.id}
+                    aria-label="修改长期记忆"
+                  />
+                ) : (
+                  <p>{item.summary}</p>
+                )}
+                <div className="memory-card-actions">
+                  {Object.hasOwn(memoryDrafts, item.id) ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => saveMemory(item)}
+                        disabled={memoryBusyId === item.id}
+                      >
+                        保存
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setMemoryDrafts((current) => {
+                            const next = { ...current };
+                            delete next[item.id];
+                            return next;
+                          })
+                        }
+                        disabled={memoryBusyId === item.id}
+                      >
+                        取消
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setMemoryDrafts((current) => ({
+                            ...current,
+                            [item.id]: item.summary,
+                          }))
+                        }
+                      >
+                        修改
+                      </button>
+                      <button
+                        type="button"
+                        className="danger"
+                        onClick={() => deleteMemory(item)}
+                        disabled={memoryBusyId === item.id}
+                      >
+                        删除
+                      </button>
+                    </>
+                  )}
+                </div>
               </article>
             ))
           )}
