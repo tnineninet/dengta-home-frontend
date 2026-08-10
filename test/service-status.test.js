@@ -34,9 +34,9 @@ assert.equal(cards.find((item) => item.id === "backend").status, "online");
 assert.equal(cards.find((item) => item.id === "database").status, "online");
 assert.equal(cards.find((item) => item.id === "provider").status, "online");
 assert.equal(cards.find((item) => item.id === "groq").status, "online");
-assert.equal(cards.find((item) => item.id === "minimax").status, "pending");
+assert.equal(cards.find((item) => item.id === "voice-output").status, "pending");
 assert.equal(
-  cards.find((item) => item.id === "minimax").summary,
+  cards.find((item) => item.id === "voice-output").summary,
   "尚未配置自然语音",
 );
 assert.equal(cards.find((item) => item.id === "ombre-mcp").status, "pending");
@@ -60,7 +60,51 @@ const readyVoice = describeExpressiveTts({
 });
 assert.equal(readyVoice.stage, "ready");
 assert.equal(readyVoice.status, "online");
-assert.equal(readyVoice.summary, "已连接 minimax");
+assert.equal(readyVoice.summary, "已连接 MiniMax");
+
+const readyDeepgram = describeExpressiveTts({
+  expressive_tts_configured: true,
+  expressive_tts_api_key_configured: true,
+  expressive_tts_voice_configured: true,
+  expressive_tts_provider: "deepgram",
+});
+assert.equal(readyDeepgram.providerName, "Deepgram");
+assert.match(readyDeepgram.settingsText, /中文回退尚未配置/);
+assert.equal(readyDeepgram.summary, "Deepgram 已连接 · 中文暂不可用");
+
+const readyDeepgramWithFallback = describeExpressiveTts({
+  expressive_tts_configured: true,
+  expressive_tts_api_key_configured: true,
+  expressive_tts_voice_configured: true,
+  expressive_tts_provider: "deepgram",
+  expressive_tts_chinese_fallback_available: true,
+});
+assert.match(readyDeepgramWithFallback.settingsText, /自动使用服务器 MiniMax/);
+
+const deepgramCards = buildServiceStatusCards({
+  health: {
+    ok: true,
+    configuration: { provider_pins_valid: true },
+    features: {},
+  },
+  settings: { api_url: "https://example.test/v1", model: "test-model" },
+  hasLoadedSettings: true,
+  isOnline: true,
+  error: "",
+  voiceOutput: {
+    provider: "deepgram",
+    enabled: true,
+    model: "aura-2-helena-en",
+    credential_configured: true,
+    configured: true,
+    chinese_fallback_available: false,
+  },
+});
+const deepgramCard = deepgramCards.find((item) => item.id === "voice-output");
+assert.equal(deepgramCard.name, "Deepgram 自然语音");
+assert.equal(deepgramCard.status, "online");
+assert.equal(deepgramCard.summary, "Deepgram 已连接 · 中文暂不可用");
+assert.equal(deepgramCard.link, "https://console.deepgram.com/");
 
 const missingKey = describeExpressiveTts({
   expressive_tts_configured: false,

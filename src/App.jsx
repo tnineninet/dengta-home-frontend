@@ -178,6 +178,11 @@ import {
   voiceRecordingSupported,
 } from "./voice";
 import {
+  getVoiceOutput,
+  shouldRequestVoiceOutputForText,
+  voiceOutputServiceState,
+} from "./voice-output";
+import {
   SERVICE_LINKS,
   buildServiceStatusCards,
   describeExpressiveTts,
@@ -209,6 +214,9 @@ const Nursery = lazy(() => import("./Nursery"));
 const IntimateDuel = lazy(() => import("./IntimateDuel"));
 const OmbreMemories = lazy(() => import("./OmbreMemories"));
 const ThemeStudio = lazy(() => import("./ThemeStudio"));
+const VoiceProviderSettings = lazy(
+  () => import("./VoiceProviderSettings"),
+);
 
 function DeferredFeature({ label }) {
   return (
@@ -710,11 +718,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     checked: false,
     available: false,
     message: "正在检查服务器语音能力…",
+    expressiveEnabled: true,
     expressiveAvailable: false,
+    expressiveChineseFallbackAvailable: false,
     expressiveApiKeyConfigured: null,
     expressiveVoiceConfigured: null,
     expressiveProvider: "none",
   });
+  const [voiceOutputStatus, setVoiceOutputStatus] = useState(null);
   const [serviceHealth, setServiceHealth] = useState({
     checking: true,
     data: null,
@@ -817,6 +828,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const sessionModelSaveQueueRef = useRef(Promise.resolve());
   const speechRunRef = useRef(0);
   const voiceLifecycleRef = useRef({ cancel() {}, stopPlayback() {} });
+  const voiceOutputStatusRef = useRef(null);
 
   const activeSession = sessions.find(
     (session) => session.id === activeSessionId,
@@ -1260,6 +1272,26 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       document.removeEventListener("keydown", closeComposerMenuFromEscape);
   }, [closeComposerMenu, isComposerMenuOpen]);
 
+  const applyVoiceOutputStatus = useCallback((config) => {
+    voiceOutputStatusRef.current = config;
+    setVoiceOutputStatus(config);
+    setVoiceService((current) => ({
+      ...current,
+      ...voiceOutputServiceState(config, current),
+    }));
+  }, []);
+
+  const refreshVoiceOutputStatus = useCallback(async () => {
+    try {
+      const config = await getVoiceOutput();
+      if (!componentMountedRef.current) return;
+      applyVoiceOutputStatus(config);
+    } catch {
+      // The regular health request remains the fallback. This account-scoped
+      // request must never delay or block the main startup path.
+    }
+  }, [applyVoiceOutputStatus]);
+
   const refreshServiceHealth = useCallback(async () => {
     setServiceHealth((current) => ({
       ...current,
@@ -1281,17 +1313,28 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         typeof data?.features?.expressive_tts_voice_configured === "boolean"
           ? data.features.expressive_tts_voice_configured
           : null;
-      setVoiceService({
+      const baseVoiceService = {
         checked: true,
         available,
         message: available
           ? "语音理解服务已连接。"
           : "服务器尚未配置语音理解服务。麦克风和音频附件暂不可用；图片与文档仍可正常发送。",
+        expressiveEnabled: true,
         expressiveAvailable,
+        expressiveChineseFallbackAvailable: expressiveAvailable,
         expressiveApiKeyConfigured,
         expressiveVoiceConfigured,
         expressiveProvider:
           data?.features?.expressive_tts_provider || "none",
+      };
+      setVoiceService({
+        ...baseVoiceService,
+        ...(voiceOutputStatusRef.current
+          ? voiceOutputServiceState(
+              voiceOutputStatusRef.current,
+              baseVoiceService,
+            )
+          : {}),
       });
       if (available) {
         void apiRequest("/voice/warmup", {
@@ -1315,7 +1358,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         available: false,
         message:
           "暂时无法确认服务器语音能力。为避免录音后发送失败，麦克风和音频附件已停用；图片与文档不受影响。",
+        expressiveEnabled: true,
         expressiveAvailable: false,
+        expressiveChineseFallbackAvailable: false,
         expressiveApiKeyConfigured: null,
         expressiveVoiceConfigured: null,
         expressiveProvider: "none",
@@ -1331,6 +1376,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   useEffect(() => {
     let cancelled = false;
+
+    voiceOutputStatusRef.current = null;
+    setVoiceOutputStatus(null);
 
     if (visualPreview) {
       const previewSettings = {
@@ -1507,6 +1555,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       setIsLoading(false);
       void loadInitialModels(nextSettings.model);
       void refreshServiceHealth();
+      void refreshVoiceOutputStatus();
       void loadChatSkinPreferences();
       return { settings: nextSettings, sessions: nextSessions };
     }
@@ -1532,6 +1581,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     accountStorageScope,
     loadChatSkinPreferences,
     refreshServiceHealth,
+    refreshVoiceOutputStatus,
     visualPreview,
   ]);
 
@@ -2280,6 +2330,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     sessionId = activeSessionIdRef.current,
   ) {
     if (!voiceAutoSpeakEnabled || !String(value || "").trim()) return;
+    if (
+      !shouldRequestVoiceOutputForText(
+        value,
+        voiceOutputStatusRef.current,
+      )
+    ) {
+      return;
+    }
 
     const runId = speechRunRef.current + 1;
     speechRunRef.current = runId;
@@ -5514,6 +5572,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       hasLoadedSettings,
       isOnline,
       error: serviceHealth.error,
+      voiceOutput: voiceOutputStatus,
     });
     const groqExpiry = describeGroqExpiry(groqExpiryDate);
 
@@ -5917,6 +5976,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   describeExpressiveTts({
                     expressive_tts_configured:
                       voiceService.expressiveAvailable,
+                    expressive_tts_enabled:
+                      voiceService.expressiveEnabled,
+                    expressive_tts_chinese_fallback_available:
+                      voiceService.expressiveChineseFallbackAvailable,
                     expressive_tts_api_key_configured:
                       voiceService.expressiveApiKeyConfigured,
                     expressive_tts_voice_configured:
@@ -6578,6 +6641,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             {settingsCategory === "devices" && (
               <Suspense fallback={<DeferredFeature label="正在打开设备连接…" />}>
                 <McpDeviceCenter />
+              </Suspense>
+            )}
+            {settingsCategory === "voice" && (
+              <Suspense fallback={<DeferredFeature label="正在打开发声接口…" />}>
+                <VoiceProviderSettings
+                  accountScope={accountStorageScope}
+                  onStatusChange={applyVoiceOutputStatus}
+                />
               </Suspense>
             )}
           </>
