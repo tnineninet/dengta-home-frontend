@@ -17,6 +17,14 @@ const androidWorkflow = fs.readFileSync(
   path.join(projectRoot, ".github", "workflows", "android-apk.yml"),
   "utf8",
 );
+const packageJson = JSON.parse(
+  fs.readFileSync(path.join(projectRoot, "package.json"), "utf8"),
+);
+const publicAuthVerifierPath = path.join(
+  projectRoot,
+  "scripts",
+  "verify-public-auth-build.mjs",
+);
 const mainActivity = fs.readFileSync(
   path.join(
     projectRoot,
@@ -64,6 +72,16 @@ assert.match(
 );
 assert.match(androidWorkflow, /test -n "\$VITE_SUPABASE_URL"/);
 assert.match(androidWorkflow, /test -n "\$VITE_SUPABASE_ANON_KEY"/);
+assert.equal(
+  packageJson.scripts["verify:public-auth-build"],
+  "node scripts/verify-public-auth-build.mjs",
+);
+assert.equal(
+  fs.existsSync(publicAuthVerifierPath),
+  true,
+  "Android releases must verify that the built bundle contains public auth config",
+);
+assert.match(androidWorkflow, /npm run verify:public-auth-build/);
 assert.match(
   mainActivity,
   /onRenderProcessGone/,

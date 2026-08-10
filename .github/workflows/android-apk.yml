@@ -56,7 +56,9 @@ jobs:
           test -n "$VITE_SUPABASE_ANON_KEY"
 
       - name: Build DengTa web app
-        run: npm run build
+        run: |
+          npm run build
+          npm run verify:public-auth-build
         env:
           VITE_API_URL: https://dengta-home-backend.onrender.com
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
