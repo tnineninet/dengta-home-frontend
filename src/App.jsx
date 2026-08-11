@@ -51,6 +51,7 @@ import {
   storeSessionChatModel,
 } from "./chat-models";
 import {
+  resolveComposerSendActivation,
   shouldHandleComposerPointerDown,
   shouldSubmitComposerKeyDown,
   transitionComposerOverlays,
@@ -829,6 +830,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const speechRunRef = useRef(0);
   const voiceLifecycleRef = useRef({ cancel() {}, stopPlayback() {} });
   const voiceOutputStatusRef = useRef(null);
+  const sendPointerDownHandledRef = useRef(false);
 
   const activeSession = sessions.find(
     (session) => session.id === activeSessionId,
@@ -4714,6 +4716,18 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     void sendMessage();
   }
 
+  function handleSendActivation(action, event) {
+    const activation = resolveComposerSendActivation(
+      action,
+      event,
+      sendPointerDownHandledRef.current,
+    );
+    sendPointerDownHandledRef.current = activation.pointerDownHandled;
+    if (!activation.dispatch) return;
+    if (action === "pointerdown") event.preventDefault();
+    handleSendButton();
+  }
+
   function renderChat() {
     const latestMessage = messages.at(-1);
     const replySuggestions =
@@ -4960,12 +4974,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 type="button"
                 aria-label={sendButtonLabel}
                 title={sendButtonLabel}
-                onPointerDown={(event) => {
-                  if (!shouldHandleComposerPointerDown(event)) return;
-                  event.preventDefault();
-                  handleSendButton();
-                }}
-                onClick={handleSendButton}
+                onPointerDown={(event) =>
+                  handleSendActivation("pointerdown", event)
+                }
+                onPointerCancel={(event) =>
+                  handleSendActivation("pointercancel", event)
+                }
+                onClick={(event) => handleSendActivation("click", event)}
                 disabled={
                   isCompanionResponding ||
                   isVoiceInputBusy ||

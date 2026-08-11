@@ -605,8 +605,13 @@ const composerSendButton = app.match(
 )?.[0];
 assert.match(
   composerSendButton || "",
-  /onPointerDown=\{[\s\S]*?shouldHandleComposerPointerDown[\s\S]*?preventDefault\(\)[\s\S]*?handleSendButton\(\)/,
-  "a touch on send must dispatch before Android keyboard resize can swallow click",
+  /onPointerDown=\{[\s\S]*?handleSendActivation\("pointerdown", event\)[\s\S]*?onClick=\{[\s\S]*?handleSendActivation\("click", event\)/,
+  "a touch on send must dispatch before Android keyboard resize without dispatching its synthetic click twice",
+);
+assert.match(
+  app,
+  /function handleSendActivation\(action, event\)[\s\S]*?resolveComposerSendActivation[\s\S]*?sendPointerDownHandledRef\.current[\s\S]*?handleSendButton\(\)/,
+  "send activation must share one pointer/click deduplication gate",
 );
 assert.match(
   app,
