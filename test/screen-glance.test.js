@@ -35,11 +35,12 @@ assert.deepEqual(
   {
     randomEnabled: true,
     minimumMinutes: 1,
-    maximumMinutes: 600,
+    maximumMinutes: 180,
     wifiOnly: false,
     chargingOnly: true,
     watchTogetherEnabled: true,
-    watchIntervalSeconds: 30,
+    watchIntervalSeconds: 60,
+    coWatchSessionId: "",
   },
 );
 assert.deepEqual(normalizeScreenGlanceConfig({}), {
@@ -50,6 +51,7 @@ assert.deepEqual(normalizeScreenGlanceConfig({}), {
   chargingOnly: false,
   watchTogetherEnabled: false,
   watchIntervalSeconds: 90,
+  coWatchSessionId: "",
 });
 
 const captureBytes = new TextEncoder().encode("private-screen-frame");
@@ -101,6 +103,11 @@ assert.match(plugin, /createScreenCaptureIntent\(\)/);
 assert.match(plugin, /@ActivityCallback/);
 assert.match(plugin, /ContextCompat\.startForegroundService/);
 assert.match(plugin, /consumeLatestCapture/);
+assert.match(
+  plugin,
+  /JSObject currentState = ScreenGlanceService\.buildState\(getContext\(\)\);[\s\S]*?if \(currentState\.optBoolean\("active", false\)\) \{[\s\S]*?call\.resolve\(currentState\)/,
+  "an already authorized projection must upgrade to Together without another system prompt",
+);
 
 const service = fs.readFileSync(
   new URL(
@@ -121,6 +128,19 @@ assert.match(service, /WATCH_TOGETHER_ENABLED_KEY/);
 assert.match(service, /uploadCoWatchFrame/);
 assert.match(service, /perceptualHash/);
 assert.match(service, /WATCH_INTERVAL_SECONDS_KEY/);
+assert.match(service, /private HttpURLConnection activeUploadConnection;/);
+assert.match(
+  service,
+  /pendingCaptureRequest != null \|\|\s*activeUploadConnection != null/,
+  "random glance and Together must not upload frames concurrently",
+);
+assert.match(service, /registerActiveUploadConnection/);
+assert.match(service, /clearActiveUploadConnection/);
+assert.match(
+  service,
+  /invalidateCaptureRequests\([\s\S]*?activeUploadConnection = null;[\s\S]*?connection\.disconnect\(\)/,
+  "pause, stop and scope changes must disconnect an in-flight frame upload",
+);
 assert.match(service, /FOREGROUND_EVENT_LOOKBACK_MS/);
 assert.match(
   service,

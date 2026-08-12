@@ -439,8 +439,44 @@ assert.match(workerSource, /X-DengTa-Companion-Id/);
 assert.match(workerSource, /cancelUniqueWork/);
 assert.match(workerSource, /X-DengTa-Installation-Token/);
 assert.match(workerSource, /private static final int MAX_SEEN_IDS = 200/);
-assert.match(workerSource, /!seenIds\.contains\(id\)/);
+assert.match(
+  workerSource,
+  /seenIds\.add\(id\)/,
+  "polling must claim an id exactly once before scheduling its notification",
+);
 assert.match(workerSource, /serializeSeenIds\(seenIds\)/);
+assert.match(
+  workerSource,
+  /private static final Object SEEN_IDS_LOCK = new Object\(\)/,
+  "immediate delivery and background polling must share one seen-id lock",
+);
+const fetchAndNotifySource =
+  workerSource.match(
+    /private Result fetchAndNotify\([\s\S]*?\n {4}}\n\n {4}private static void postNotification/,
+  )?.[0] || "";
+assert.match(
+  fetchAndNotifySource,
+  /String capturedScopeKey = identity\.userId \+ ":" \+ identity\.companionId/,
+  "a polling run must capture the identity scope used for its requests",
+);
+assert.ok(
+  (fetchAndNotifySource.match(/isDeliveryScopeCurrent\(/g) || []).length >= 3,
+  "a polling run must re-check stop and identity state after network I/O and before delivery state changes",
+);
+assert.match(
+  fetchAndNotifySource,
+  /synchronized \(SEEN_IDS_LOCK\) \{[\s\S]*?readSeenIds\(preferences\)[\s\S]*?putString\(SEEN_IDS_KEY, serializeSeenIds\(seenIds\)\)[\s\S]*?commit\(\)/,
+  "polling must atomically merge and persist seen ids under the shared lock",
+);
+const immediateSeenSource =
+  workerSource.match(
+    /static boolean markImmediateMessageSeen\([\s\S]*?\n {4}}/,
+  )?.[0] || "";
+assert.match(
+  immediateSeenSource,
+  /synchronized \(SEEN_IDS_LOCK\) \{[\s\S]*?readSeenIds\(prefs\)[\s\S]*?putString\(SEEN_IDS_KEY, serializeSeenIds\(seenIds\)\)[\s\S]*?commit\(\)/,
+  "immediate delivery must atomically merge seen ids under the polling lock",
+);
 assert.match(workerSource, /if \(scopeChanged\)/);
 assert.match(workerSource, /\.putString\(SEEN_IDS_KEY, "\[\]"\)/);
 assert.match(
@@ -479,6 +515,11 @@ assert.match(
   "a background delivery must create the migrated channel even before the app is reopened",
 );
 assert.match(
+  workerSource,
+  /if \(Build\.VERSION\.SDK_INT < Build\.VERSION_CODES\.O\) \{\s*notification\.setDefaults\(\s*NotificationCompat\.DEFAULT_SOUND \|\s*NotificationCompat\.DEFAULT_VIBRATE\s*\);\s*}/,
+  "Android 25 and older must receive explicit sound and vibration defaults without notification channels",
+);
+assert.match(
   appSource,
   /vibration:\s*true/,
   "the Capacitor channel request must preserve the active alert vibration default",
@@ -490,6 +531,21 @@ assert.match(
 );
 assert.match(pluginSource, /BackgroundNotificationCredentials\.clear/);
 assert.match(pluginSource, /PushNotificationWorker\.clear/);
+assert.match(
+  pluginSource,
+  /if \(scopeChanged\) \{\s*stopScreenGlanceAndClearCache\(\);\s*\}[\s\S]*?BackgroundNotificationCredentials\.store/,
+  "switching account scope must stop screen sharing and clear its cache before storing the new identity",
+);
+assert.match(
+  pluginSource,
+  /public void clear\(PluginCall call\) \{\s*stopScreenGlanceAndClearCache\(\);/,
+  "clearing native notification identity must also stop local screen sharing",
+);
+assert.match(
+  pluginSource,
+  /private void stopScreenGlanceAndClearCache\(\) \{[\s\S]*?ScreenGlanceService\.sendAction\([\s\S]*?ScreenGlanceService\.ACTION_STOP[\s\S]*?ScreenGlanceService\.deleteLatestCapture\(getContext\(\)\)[\s\S]*?ScreenGlanceService\.deleteCoWatchPreview\(getContext\(\)\)/,
+  "identity cleanup must stop MediaProjection and delete both random-glance and co-watch caches",
+);
 assert.match(
   pluginSource,
   /Settings\.ACTION_CHANNEL_NOTIFICATION_SETTINGS/,

@@ -25,6 +25,11 @@ public final class ScreenGlancePlugin extends Plugin {
 
     @PluginMethod
     public void startSession(PluginCall call) {
+        JSObject currentState = ScreenGlanceService.buildState(getContext());
+        if (currentState.optBoolean("active", false)) {
+            call.resolve(currentState);
+            return;
+        }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
             call.reject("当前 Android 版本不支持系统屏幕共享。");
             return;
@@ -90,6 +95,9 @@ public final class ScreenGlancePlugin extends Plugin {
         int watchIntervalSeconds = boundedSeconds(
             call.getInt("watchIntervalSeconds", 90)
         );
+        String coWatchSessionId = String.valueOf(
+            call.getString("coWatchSessionId", "")
+        ).trim();
         ScreenGlanceService.storeConfig(
             getContext(),
             randomEnabled,
@@ -98,7 +106,8 @@ public final class ScreenGlancePlugin extends Plugin {
             wifiOnly,
             chargingOnly,
             watchTogetherEnabled,
-            watchIntervalSeconds
+            watchIntervalSeconds,
+            coWatchSessionId
         );
         ScreenGlanceService.sendAction(
             getContext(),
@@ -154,22 +163,42 @@ public final class ScreenGlancePlugin extends Plugin {
     }
 
     @PluginMethod
+    public void readCoWatchPreview(PluginCall call) {
+        try {
+            JSObject preview = ScreenGlanceService.readCoWatchPreview(
+                getContext()
+            );
+            if (preview == null) {
+                JSObject empty = new JSObject();
+                empty.put("available", false);
+                call.resolve(empty);
+                return;
+            }
+            preview.put("available", true);
+            call.resolve(preview);
+        } catch (Exception error) {
+            call.reject("The latest co-watch preview is unavailable.");
+        }
+    }
+
+    @PluginMethod
     public void stopSession(PluginCall call) {
         ScreenGlanceService.sendAction(
             getContext(),
             ScreenGlanceService.ACTION_STOP
         );
         ScreenGlanceService.deleteLatestCapture(getContext());
+        ScreenGlanceService.deleteCoWatchPreview(getContext());
         call.resolve(ScreenGlanceService.buildState(getContext()));
     }
 
     private static int boundedMinutes(Integer value) {
         int requested = value == null ? 60 : value;
-        return Math.min(600, Math.max(1, requested));
+        return Math.min(180, Math.max(1, requested));
     }
 
     private static int boundedSeconds(Integer value) {
         int requested = value == null ? 90 : value;
-        return Math.min(600, Math.max(30, requested));
+        return Math.min(10_800, Math.max(60, requested));
     }
 }

@@ -88,6 +88,13 @@ public final class ScreenGlanceService extends Service {
     private static final String CHARGING_ONLY_KEY = "charging_only";
     private static final String WATCH_TOGETHER_ENABLED_KEY = "watch_together_enabled";
     private static final String WATCH_INTERVAL_SECONDS_KEY = "watch_interval_seconds";
+    private static final String CO_WATCH_SESSION_ID_KEY = "co_watch_session_id";
+    private static final String CO_WATCH_PREVIEW_CAPTURED_AT_KEY =
+        "co_watch_preview_captured_at";
+    private static final String CO_WATCH_PREVIEW_WIDTH_KEY =
+        "co_watch_preview_width";
+    private static final String CO_WATCH_PREVIEW_HEIGHT_KEY =
+        "co_watch_preview_height";
     private static final String LAST_REACTION_AT_KEY = "last_reaction_at";
     private static final String LAST_REACTION_KEY = "last_reaction";
     private static final String LAST_WATCH_HASH_KEY = "last_watch_hash";
@@ -117,20 +124,23 @@ public final class ScreenGlanceService extends Service {
 
     private final Handler mainHandler = new Handler(android.os.Looper.getMainLooper());
     private final Random random = new Random();
-    private MediaProjection mediaProjection;
-    private VirtualDisplay virtualDisplay;
-    private ImageReader imageReader;
+    private final Object captureLock = new Object();
+    private volatile MediaProjection mediaProjection;
+    private volatile VirtualDisplay virtualDisplay;
+    private volatile ImageReader imageReader;
     private HandlerThread captureThread;
     private Handler captureHandler;
-    private boolean paused = false;
-    private boolean captureRequested = false;
-    private boolean randomCaptureRequested = false;
-    private boolean watchCaptureRequested = false;
-    private boolean stopping = false;
-    private long nextCaptureAt = 0L;
-    private long nextWatchCaptureAt = 0L;
-    private String coWatchSessionId = UUID.randomUUID().toString();
-    private long coWatchEpoch = System.currentTimeMillis();
+    private volatile boolean paused = false;
+    private volatile boolean stopping = false;
+    private CaptureRequest pendingCaptureRequest;
+    private HttpURLConnection activeUploadConnection;
+    private long captureGeneration = 1L;
+    private volatile long nextCaptureAt = 0L;
+    private volatile long nextWatchCaptureAt = 0L;
+    private volatile long nextWatchOverrideDelayMs = 0L;
+    private volatile long nextRandomOverrideDelayMs = 0L;
+    private volatile String coWatchSessionId = "";
+    private volatile long coWatchEpoch = System.currentTimeMillis();
     private long coWatchSequence = 0L;
 
     private final Runnable randomCaptureRunnable = new Runnable() {
@@ -144,8 +154,9 @@ public final class ScreenGlanceService extends Service {
             if (!isSessionActive() || !randomEnabled()) return;
             String blockedReason = captureBlockedReason(true, false);
             if (blockedReason.isEmpty()) {
-                requestFrame(true, false);
-                scheduleNextRandomCapture();
+                if (!requestFrame(true, false)) {
+                    scheduleRandomCapture(60_000L);
+                }
             } else {
                 recordError(blockedReason);
                 scheduleRandomCapture(RETRY_DELAY_MS);
@@ -180,6 +191,7 @@ public final class ScreenGlanceService extends Service {
     public void onCreate() {
         super.onCreate();
         activeInstance = this;
+        refreshCoWatchSessionIdentity();
         ensureNotificationChannel(this);
     }
 
@@ -192,10 +204,14 @@ public final class ScreenGlanceService extends Service {
         }
         if (ACTION_PAUSE.equals(action)) {
             paused = true;
-            captureRequested = false;
-            randomCaptureRequested = false;
-            watchCaptureRequested = false;
+            invalidateCaptureRequests();
+            mainHandler.removeCallbacks(randomCaptureRunnable);
             mainHandler.removeCallbacks(watchCaptureRunnable);
+            nextCaptureAt = 0L;
+            nextWatchCaptureAt = 0L;
+            nextRandomOverrideDelayMs = 0L;
+            nextWatchOverrideDelayMs = 0L;
+            preferences(this).edit().remove(NEXT_CAPTURE_AT_KEY).apply();
             updateNotification("已暂停，不会读取新的画面");
             return START_NOT_STICKY;
         }
@@ -217,6 +233,7 @@ public final class ScreenGlanceService extends Service {
             return START_NOT_STICKY;
         }
         if (ACTION_CONFIGURE.equals(action)) {
+            refreshCoWatchSessionIdentity();
             scheduleNextRandomCapture();
             scheduleNextWatchCapture();
             updateNotification(notificationText());
@@ -252,13 +269,19 @@ public final class ScreenGlanceService extends Service {
     static void sendAction(Context context, String action) {
         Intent intent = new Intent(context, ScreenGlanceService.class).setAction(action);
         if (activeInstance == null) {
-            if (ACTION_STOP.equals(action)) deleteLatestCapture(context);
+            if (ACTION_STOP.equals(action)) {
+                deleteLatestCapture(context);
+                deleteCoWatchPreview(context);
+            }
             return;
         }
         try {
             context.startService(intent);
         } catch (Exception ignored) {
-            if (ACTION_STOP.equals(action)) deleteLatestCapture(context);
+            if (ACTION_STOP.equals(action)) {
+                deleteLatestCapture(context);
+                deleteCoWatchPreview(context);
+            }
         }
     }
 
@@ -276,9 +299,10 @@ public final class ScreenGlanceService extends Service {
         boolean wifiOnly,
         boolean chargingOnly,
         boolean watchTogetherEnabled,
-        int watchIntervalSeconds
+        int watchIntervalSeconds,
+        String coWatchSessionId
     ) {
-        preferences(context)
+        SharedPreferences.Editor editor = preferences(context)
             .edit()
             .putBoolean(RANDOM_ENABLED_KEY, randomEnabled)
             .putInt(MINIMUM_MINUTES_KEY, boundedMinutes(minimumMinutes))
@@ -292,12 +316,20 @@ public final class ScreenGlanceService extends Service {
             .putInt(
                 WATCH_INTERVAL_SECONDS_KEY,
                 boundedSeconds(watchIntervalSeconds)
-            )
-            .apply();
+            );
+        String normalizedSessionId = cleanText(coWatchSessionId, 100);
+        if (!normalizedSessionId.isEmpty()) {
+            editor.putString(CO_WATCH_SESSION_ID_KEY, normalizedSessionId);
+        } else if (!watchTogetherEnabled) {
+            editor.remove(CO_WATCH_SESSION_ID_KEY);
+        }
+        editor.apply();
+        if (!watchTogetherEnabled) deleteCoWatchPreview(context);
     }
 
     static JSObject buildState(Context context) {
         cleanupExpiredCapture(context);
+        cleanupExpiredCoWatchPreview(context);
         SharedPreferences prefs = preferences(context);
         ScreenGlanceService service = activeInstance;
         boolean active = service != null && service.isSessionActive();
@@ -317,6 +349,17 @@ public final class ScreenGlanceService extends Service {
         state.put(
             "watchIntervalSeconds",
             prefs.getInt(WATCH_INTERVAL_SECONDS_KEY, 90)
+        );
+        state.put(
+            "coWatchSessionId",
+            active && service.coWatchSessionId != null
+                ? service.coWatchSessionId
+                : prefs.getString(CO_WATCH_SESSION_ID_KEY, "")
+        );
+        state.put("coWatchPreviewAvailable", coWatchPreviewFile(context).isFile());
+        state.put(
+            "coWatchPreviewCapturedAt",
+            prefs.getString(CO_WATCH_PREVIEW_CAPTURED_AT_KEY, "")
         );
         state.put("pendingCapture", latestCaptureFile(context).isFile());
         state.put("capturedAt", prefs.getString(CAPTURED_AT_KEY, ""));
@@ -365,6 +408,41 @@ public final class ScreenGlanceService extends Service {
             .remove(CAPTURED_AT_KEY)
             .remove(CAPTURE_WIDTH_KEY)
             .remove(CAPTURE_HEIGHT_KEY)
+            .apply();
+    }
+
+    static JSObject readCoWatchPreview(Context context) throws Exception {
+        cleanupExpiredCoWatchPreview(context);
+        File file = coWatchPreviewFile(context);
+        if (!file.isFile()) return null;
+        byte[] bytes = java.nio.file.Files.readAllBytes(file.toPath());
+        if (bytes.length == 0 || bytes.length > MAX_CAPTURE_BYTES) {
+            deleteCoWatchPreview(context);
+            throw new IllegalStateException("co_watch_preview_size_invalid");
+        }
+        SharedPreferences prefs = preferences(context);
+        JSObject result = new JSObject();
+        result.put("mimeType", "image/jpeg");
+        result.put("base64", Base64.encodeToString(bytes, Base64.NO_WRAP));
+        result.put(
+            "capturedAt",
+            prefs.getString(CO_WATCH_PREVIEW_CAPTURED_AT_KEY, "")
+        );
+        result.put("width", prefs.getInt(CO_WATCH_PREVIEW_WIDTH_KEY, 0));
+        result.put("height", prefs.getInt(CO_WATCH_PREVIEW_HEIGHT_KEY, 0));
+        return result;
+    }
+
+    static void deleteCoWatchPreview(Context context) {
+        File preview = coWatchPreviewFile(context);
+        File temporary = temporaryCoWatchPreviewFile(context);
+        if (preview.exists()) preview.delete();
+        if (temporary.exists()) temporary.delete();
+        preferences(context)
+            .edit()
+            .remove(CO_WATCH_PREVIEW_CAPTURED_AT_KEY)
+            .remove(CO_WATCH_PREVIEW_WIDTH_KEY)
+            .remove(CO_WATCH_PREVIEW_HEIGHT_KEY)
             .apply();
     }
 
@@ -434,17 +512,57 @@ public final class ScreenGlanceService extends Service {
     }
 
     private boolean requestFrame(boolean randomRequest, boolean watchRequest) {
-        if (!isSessionActive() || paused) return false;
-        if (captureRequested) return false;
+        CaptureMode mode = watchRequest
+            ? CaptureMode.WATCH
+            : randomRequest
+            ? CaptureMode.GLANCE
+            : CaptureMode.MANUAL;
         String blockedReason = captureBlockedReason(randomRequest, watchRequest);
         if (!blockedReason.isEmpty()) {
             recordError(blockedReason);
             updateNotification(blockedReason);
             return false;
         }
-        captureRequested = true;
-        randomCaptureRequested = randomRequest;
-        watchCaptureRequested = watchRequest;
+        BackgroundNotificationCredentials.Identity identity = mode == CaptureMode.MANUAL
+            ? null
+            : BackgroundNotificationCredentials.read(this);
+        if (
+            mode != CaptureMode.MANUAL &&
+            (identity == null || identity.isExpired(System.currentTimeMillis()))
+        ) {
+            recordError("请先打开 DengTa 完成后台通知身份同步，再开启屏幕查看。");
+            return false;
+        }
+        synchronized (captureLock) {
+            if (
+                !isSessionActive() ||
+                paused ||
+                stopping ||
+                pendingCaptureRequest != null ||
+                activeUploadConnection != null
+            ) return false;
+            long sequence = mode == CaptureMode.MANUAL
+                ? 0L
+                : ++coWatchSequence;
+            SharedPreferences prefs = preferences(this);
+            int minimumMinutes = boundedMinutes(
+                prefs.getInt(MINIMUM_MINUTES_KEY, 60)
+            );
+            int maximumMinutes = Math.max(
+                minimumMinutes,
+                boundedMinutes(prefs.getInt(MAXIMUM_MINUTES_KEY, 180))
+            );
+            pendingCaptureRequest = new CaptureRequest(
+                mode,
+                captureGeneration,
+                coWatchSessionId,
+                coWatchEpoch,
+                sequence,
+                identity,
+                minimumMinutes,
+                maximumMinutes
+            );
+        }
         updateNotification(
             watchRequest
                 ? "正在一起看这一幕…"
@@ -455,14 +573,12 @@ public final class ScreenGlanceService extends Service {
 
     private void onImageAvailable(ImageReader reader) {
         Image image = null;
+        CaptureRequest request = null;
         try {
             image = reader.acquireLatestImage();
-            if (image == null || !captureRequested || paused || stopping) return;
-            captureRequested = false;
-            boolean wasRandom = randomCaptureRequested;
-            randomCaptureRequested = false;
-            boolean wasWatch = watchCaptureRequested;
-            watchCaptureRequested = false;
+            if (image == null) return;
+            request = takeCaptureRequest();
+            if (request == null || !isRequestCurrent(request)) return;
             Bitmap bitmap = bitmapFromImage(image);
             if (bitmap == null) throw new IllegalStateException("bitmap_missing");
             long frameHash = perceptualHash(bitmap);
@@ -470,31 +586,117 @@ public final class ScreenGlanceService extends Service {
             int width = bitmap.getWidth();
             int height = bitmap.getHeight();
             bitmap.recycle();
-            if (wasWatch) {
+            if (!isRequestCurrent(request)) return;
+            if (request.mode == CaptureMode.WATCH) {
                 if (shouldUploadWatchFrame(frameHash)) {
-                    uploadCoWatchFrame(encoded, frameHash);
+                    uploadCoWatchFrame(request, encoded, width, height, frameHash);
                 }
-                mainHandler.post(this::scheduleNextWatchCapture);
+            } else if (request.mode == CaptureMode.GLANCE) {
+                uploadGlanceFrame(request, encoded);
             } else {
                 saveCapture(encoded, width, height);
             }
+            if (!isRequestCurrent(request)) return;
             recordError("");
-            mainHandler.post(() -> updateNotification(
-                wasWatch
-                    ? notificationText()
-                    : wasRandom
-                    ? "伴侣刚刚看了一眼，回到 DengTa 看祂想说什么"
-                    : "画面已准备好，回到 DengTa 让伴侣回应"
-            ));
-        } catch (Exception error) {
-            recordError("这次没有取得清晰画面，稍后可以再试。");
+            CaptureRequest completed = request;
             mainHandler.post(() -> {
-                if (watchTogetherEnabled()) scheduleWatchCapture(60_000L);
-                updateNotification(notificationText());
+                if (!isRequestCurrent(completed)) return;
+                updateNotification(
+                    completed.mode == CaptureMode.WATCH
+                        ? notificationText()
+                        : completed.mode == CaptureMode.GLANCE
+                        ? "伴侣刚刚看了一眼，并给你发来了一条消息"
+                        : "画面已准备好，回到 DengTa 让伴侣回应"
+                );
             });
+            scheduleAfterCapture(request, true);
+        } catch (Exception error) {
+            if (request != null && isRequestCurrent(request)) {
+                recordError("这次没有取得清晰画面，稍后可以再试。");
+                scheduleAfterCapture(request, false);
+            }
         } finally {
             if (image != null) image.close();
         }
+    }
+
+    private CaptureRequest takeCaptureRequest() {
+        synchronized (captureLock) {
+            CaptureRequest request = pendingCaptureRequest;
+            pendingCaptureRequest = null;
+            return request;
+        }
+    }
+
+    private void invalidateCaptureRequests() {
+        HttpURLConnection connection;
+        synchronized (captureLock) {
+            captureGeneration += 1L;
+            pendingCaptureRequest = null;
+            connection = activeUploadConnection;
+            activeUploadConnection = null;
+        }
+        if (connection != null) connection.disconnect();
+    }
+
+    private boolean registerActiveUploadConnection(
+        CaptureRequest request,
+        HttpURLConnection connection
+    ) {
+        synchronized (captureLock) {
+            if (
+                request == null ||
+                request.generation != captureGeneration ||
+                paused ||
+                stopping ||
+                activeUploadConnection != null
+            ) return false;
+            activeUploadConnection = connection;
+            return true;
+        }
+    }
+
+    private void clearActiveUploadConnection(HttpURLConnection connection) {
+        synchronized (captureLock) {
+            if (activeUploadConnection == connection) {
+                activeUploadConnection = null;
+            }
+        }
+    }
+
+    private boolean isRequestCurrent(CaptureRequest request) {
+        if (
+            request == null ||
+            paused ||
+            stopping ||
+            !isSessionActive()
+        ) return false;
+        synchronized (captureLock) {
+            if (request.generation != captureGeneration) return false;
+        }
+        if (request.mode == CaptureMode.MANUAL) return true;
+        BackgroundNotificationCredentials.Identity identity = request.identity;
+        if (identity == null) return false;
+        String currentScope = BackgroundNotificationCredentials.currentScopeKey(this);
+        if (!(identity.userId + ":" + identity.companionId).equals(currentScope)) {
+            return false;
+        }
+        return request.mode != CaptureMode.WATCH ||
+            request.sessionId.equals(coWatchSessionId);
+    }
+
+    private void scheduleAfterCapture(CaptureRequest request, boolean succeeded) {
+        mainHandler.post(() -> {
+            if (!isRequestCurrent(request)) return;
+            if (request.mode == CaptureMode.WATCH) {
+                if (succeeded) scheduleNextWatchCapture();
+                else scheduleWatchCapture(60_000L);
+            } else if (request.mode == CaptureMode.GLANCE) {
+                if (succeeded) scheduleNextRandomCapture();
+                else scheduleRandomCapture(RETRY_DELAY_MS);
+            }
+            if (!succeeded) updateNotification(notificationText());
+        });
     }
 
     private static Bitmap bitmapFromImage(Image image) {
@@ -564,6 +766,36 @@ public final class ScreenGlanceService extends Service {
             .apply();
     }
 
+    private void saveCoWatchPreview(
+        byte[] value,
+        int width,
+        int height,
+        String capturedAt
+    ) throws Exception {
+        File directory = captureDirectory(this);
+        if (!directory.exists() && !directory.mkdirs()) {
+            throw new IllegalStateException("capture_directory_failed");
+        }
+        File temporary = temporaryCoWatchPreviewFile(this);
+        try (FileOutputStream output = new FileOutputStream(temporary, false)) {
+            output.write(value);
+            output.flush();
+        }
+        File destination = coWatchPreviewFile(this);
+        if (destination.exists() && !destination.delete()) {
+            throw new IllegalStateException("old_co_watch_preview_delete_failed");
+        }
+        if (!temporary.renameTo(destination)) {
+            throw new IllegalStateException("co_watch_preview_commit_failed");
+        }
+        preferences(this)
+            .edit()
+            .putString(CO_WATCH_PREVIEW_CAPTURED_AT_KEY, capturedAt)
+            .putInt(CO_WATCH_PREVIEW_WIDTH_KEY, width)
+            .putInt(CO_WATCH_PREVIEW_HEIGHT_KEY, height)
+            .apply();
+    }
+
     private static long perceptualHash(Bitmap source) {
         Bitmap sample = Bitmap.createScaledBitmap(source, 8, 8, true);
         int[] pixels = new int[64];
@@ -599,27 +831,72 @@ public final class ScreenGlanceService extends Service {
             Long.bitCount(previousHash ^ frameHash) >= WATCH_HASH_DIFFERENCE;
     }
 
-    private void uploadCoWatchFrame(byte[] image, long frameHash) throws Exception {
-        BackgroundNotificationCredentials.Identity identity =
-            BackgroundNotificationCredentials.read(this);
+    private void uploadCoWatchFrame(
+        CaptureRequest request,
+        byte[] image,
+        int width,
+        int height,
+        long frameHash
+    ) throws Exception {
+        JSONObject response = uploadFrame(request, image);
+        if (!isRequestCurrent(request)) return;
+        String capturedAt = cleanText(
+            response.optString("captured_at", isoTimestamp(System.currentTimeMillis())),
+            40
+        );
+        applyFrameResponse(request, response, image, width, height, capturedAt);
+        if (!isRequestCurrent(request)) return;
+        long now = System.currentTimeMillis();
+        preferences(this)
+            .edit()
+            .putLong(LAST_WATCH_HASH_KEY, frameHash)
+            .putLong(LAST_WATCH_UPLOAD_AT_KEY, now)
+            .apply();
+    }
+
+    private void uploadGlanceFrame(
+        CaptureRequest request,
+        byte[] image
+    ) throws Exception {
+        JSONObject response = uploadFrame(request, image);
+        if (!isRequestCurrent(request)) return;
+        applyFrameResponse(request, response, null, 0, 0, "");
+    }
+
+    private JSONObject uploadFrame(
+        CaptureRequest request,
+        byte[] image
+    ) throws Exception {
+        BackgroundNotificationCredentials.Identity identity = request.identity;
         if (identity == null || identity.isExpired(System.currentTimeMillis())) {
-            throw new IllegalStateException(
-                "请先打开 DengTa 完成后台通知身份同步，再开始一起看。"
-            );
+            throw new IllegalStateException("后台通知身份已经失效，请重新打开 DengTa 同步。");
         }
-        long sequence = ++coWatchSequence;
         String capturedAt = isoTimestamp(System.currentTimeMillis());
         String baseUrl = getString(R.string.backend_api_url).replaceAll("/+$", "");
+        String modeQuery = request.mode == CaptureMode.GLANCE
+            ? "&mode=glance"
+            : "&mode=together";
+        String intervalQuery = request.mode == CaptureMode.GLANCE
+            ? "&minimum_minutes=" + request.minimumMinutes +
+                "&maximum_minutes=" + request.maximumMinutes
+            : "";
         String query =
-            "?session_id=" + urlEncode(coWatchSessionId) +
-            "&epoch=" + coWatchEpoch +
-            "&sequence=" + sequence +
+            "?session_id=" + urlEncode(request.sessionId) +
+            modeQuery +
+            intervalQuery +
+            "&epoch=" + request.epoch +
+            "&sequence=" + request.sequence +
             "&captured_at=" + urlEncode(capturedAt);
         URI uri = URI.create(baseUrl + "/api/v2/co-watch/frame" + query);
         if (!"https".equalsIgnoreCase(uri.getScheme())) {
             throw new IllegalStateException("共看服务必须使用 HTTPS。");
         }
         HttpURLConnection connection = (HttpURLConnection) uri.toURL().openConnection();
+        if (!registerActiveUploadConnection(request, connection)) {
+            connection.disconnect();
+            return new JSONObject();
+        }
+        try {
         connection.setRequestMethod("POST");
         connection.setConnectTimeout(WATCH_HTTP_TIMEOUT_MS);
         connection.setReadTimeout(WATCH_HTTP_TIMEOUT_MS);
@@ -643,14 +920,39 @@ public final class ScreenGlanceService extends Service {
             ? connection.getInputStream()
             : connection.getErrorStream();
         String body = readStream(stream);
-        connection.disconnect();
         if (status < 200 || status >= 300) {
             throw new IllegalStateException("共看后端暂时没有回应（" + status + "）。");
         }
+        if (!isRequestCurrent(request)) return new JSONObject();
         JSONObject response = new JSONObject(body);
+        response.put("captured_at", capturedAt);
+        return response;
+        } finally {
+            clearActiveUploadConnection(connection);
+            connection.disconnect();
+        }
+    }
+
+    private void applyFrameResponse(
+        CaptureRequest request,
+        JSONObject response,
+        byte[] previewImage,
+        int previewWidth,
+        int previewHeight,
+        String capturedAt
+    ) throws Exception {
+        if (!isRequestCurrent(request)) return;
         String reaction = cleanText(response.optString("reaction", ""), 420);
         if (reaction.isEmpty()) {
             throw new IllegalStateException("这次没有收到可显示的共看回应。");
+        }
+        if (request.mode == CaptureMode.WATCH && previewImage != null) {
+            saveCoWatchPreview(
+                previewImage,
+                previewWidth,
+                previewHeight,
+                capturedAt
+            );
         }
         String messageId = cleanText(response.optString("message_id", ""), 100);
         String conversationId = cleanText(
@@ -658,21 +960,54 @@ public final class ScreenGlanceService extends Service {
             100
         );
         String aiName = cleanText(response.optString("ai_name", "伴侣"), 50);
+        JSONObject notification = response.optJSONObject("notification");
+        String notificationTitle = notification == null
+            ? aiName
+            : cleanText(notification.optString("title", aiName), 50);
+        String notificationBody = notification == null
+            ? reaction
+            : cleanText(notification.optString("body", reaction), 420);
+        String notificationMessageId = notification == null
+            ? messageId
+            : cleanText(notification.optString("message_id", messageId), 100);
+        double nextCheckMinutes = response.optDouble("next_check_minutes", 0D);
+        if (nextCheckMinutes >= 1D && nextCheckMinutes <= 180D) {
+            if (request.mode == CaptureMode.GLANCE) {
+                double bounded = Math.min(
+                    request.maximumMinutes,
+                    Math.max(request.minimumMinutes, nextCheckMinutes)
+                );
+                nextRandomOverrideDelayMs = Math.round(bounded * 60_000D);
+            } else {
+                nextWatchOverrideDelayMs = Math.round(nextCheckMinutes * 60_000D);
+            }
+        }
         long now = System.currentTimeMillis();
         preferences(this)
             .edit()
-            .putLong(LAST_WATCH_HASH_KEY, frameHash)
-            .putLong(LAST_WATCH_UPLOAD_AT_KEY, now)
             .putString(LAST_REACTION_AT_KEY, isoTimestamp(now))
             .putString(LAST_REACTION_KEY, cleanText(reaction, 160))
             .apply();
-        PushNotificationWorker.showImmediateCompanionMessage(
-            this,
-            aiName,
-            messageId,
-            conversationId,
-            reaction
-        );
+        if (!isRequestCurrent(request)) return;
+        if (request.mode == CaptureMode.GLANCE) {
+            PushNotificationWorker.showImmediateCompanionMessage(
+                this,
+                notificationTitle,
+                notificationMessageId,
+                conversationId,
+                notificationBody
+            );
+        } else {
+            PushNotificationWorker.showImmediateCoWatchMessage(
+                this,
+                notificationTitle,
+                notificationMessageId,
+                conversationId,
+                request.sessionId,
+                notificationBody,
+                0
+            );
+        }
     }
 
     private static String urlEncode(String value) throws Exception {
@@ -697,11 +1032,13 @@ public final class ScreenGlanceService extends Service {
         mainHandler.removeCallbacks(watchCaptureRunnable);
         nextWatchCaptureAt = 0L;
         if (!isSessionActive() || paused || !watchTogetherEnabled()) return;
-        scheduleWatchCapture(
-            boundedSeconds(
+        long overrideDelayMs = nextWatchOverrideDelayMs;
+        nextWatchOverrideDelayMs = 0L;
+        scheduleWatchCapture(overrideDelayMs > 0L
+            ? overrideDelayMs
+            : boundedSeconds(
                 preferences(this).getInt(WATCH_INTERVAL_SECONDS_KEY, 90)
-            ) * 1000L
-        );
+            ) * 1000L);
     }
 
     private void scheduleWatchCapture(long delayMs) {
@@ -716,6 +1053,12 @@ public final class ScreenGlanceService extends Service {
         nextCaptureAt = 0L;
         preferences(this).edit().remove(NEXT_CAPTURE_AT_KEY).apply();
         if (!isSessionActive() || paused || !randomEnabled()) return;
+        long overrideDelayMs = nextRandomOverrideDelayMs;
+        nextRandomOverrideDelayMs = 0L;
+        if (overrideDelayMs > 0L) {
+            scheduleRandomCapture(overrideDelayMs);
+            return;
+        }
         SharedPreferences prefs = preferences(this);
         int minimum = boundedMinutes(prefs.getInt(MINIMUM_MINUTES_KEY, 60));
         int maximum = Math.max(
@@ -756,6 +1099,7 @@ public final class ScreenGlanceService extends Service {
         if (keyguard != null && keyguard.isKeyguardLocked()) {
             return "锁屏时不会随机查看。";
         }
+        if (watchRequest) return "";
         String packageName = foregroundPackage();
         if (packageName.isEmpty()) {
             return "无法确认当前前台 App 是否安全，已跳过这次查看。";
@@ -768,10 +1112,7 @@ public final class ScreenGlanceService extends Service {
         ) {
             return "当前画面不需要查看，已跳过这次捕获。";
         }
-        if (
-            !watchRequest &&
-            isPrivateApp(packageName, applicationName(packageName))
-        ) {
+        if (isPrivateApp(packageName, applicationName(packageName))) {
             return "当前可能是账号、支付或密码类 App，已跳过这次查看。";
         }
         if (randomRequest) {
@@ -878,6 +1219,33 @@ public final class ScreenGlanceService extends Service {
         return preferences(this).getBoolean(WATCH_TOGETHER_ENABLED_KEY, false);
     }
 
+    private void refreshCoWatchSessionIdentity() {
+        SharedPreferences prefs = preferences(this);
+        String configured = cleanText(
+            prefs.getString(CO_WATCH_SESSION_ID_KEY, ""),
+            100
+        );
+        if (configured.isEmpty()) configured = UUID.randomUUID().toString();
+        if (!configured.equals(coWatchSessionId)) {
+            synchronized (captureLock) {
+                captureGeneration += 1L;
+                pendingCaptureRequest = null;
+                coWatchSessionId = configured;
+                coWatchEpoch = System.currentTimeMillis();
+                coWatchSequence = 0L;
+            }
+            nextWatchOverrideDelayMs = 0L;
+            nextRandomOverrideDelayMs = 0L;
+            prefs.edit()
+                .remove(LAST_WATCH_HASH_KEY)
+                .remove(LAST_WATCH_UPLOAD_AT_KEY)
+                .remove(LAST_REACTION_AT_KEY)
+                .remove(LAST_REACTION_KEY)
+                .apply();
+        }
+        prefs.edit().putString(CO_WATCH_SESSION_ID_KEY, configured).apply();
+    }
+
     private boolean isSessionActive() {
         return mediaProjection != null && virtualDisplay != null && imageReader != null;
     }
@@ -889,6 +1257,9 @@ public final class ScreenGlanceService extends Service {
         mainHandler.removeCallbacks(watchCaptureRunnable);
         nextCaptureAt = 0L;
         nextWatchCaptureAt = 0L;
+        nextWatchOverrideDelayMs = 0L;
+        nextRandomOverrideDelayMs = 0L;
+        invalidateCaptureRequests();
         preferences(this).edit().remove(NEXT_CAPTURE_AT_KEY).apply();
         VirtualDisplay display = virtualDisplay;
         virtualDisplay = null;
@@ -911,11 +1282,9 @@ public final class ScreenGlanceService extends Service {
             captureThread = null;
             captureHandler = null;
         }
-        captureRequested = false;
-        randomCaptureRequested = false;
-        watchCaptureRequested = false;
         paused = false;
         if (clearCapture) deleteLatestCapture(this);
+        deleteCoWatchPreview(this);
         if (activeInstance == this) activeInstance = null;
         stopForeground(STOP_FOREGROUND_REMOVE);
         stopSelf();
@@ -1047,6 +1416,20 @@ public final class ScreenGlanceService extends Service {
         }
     }
 
+    private static void cleanupExpiredCoWatchPreview(Context context) {
+        String value = preferences(context).getString(
+            CO_WATCH_PREVIEW_CAPTURED_AT_KEY,
+            ""
+        );
+        long capturedAt = parseIsoTimestamp(value);
+        if (
+            capturedAt <= 0L ||
+            System.currentTimeMillis() - capturedAt > CAPTURE_TTL_MS
+        ) {
+            deleteCoWatchPreview(context);
+        }
+    }
+
     private static File captureDirectory(Context context) {
         return new File(context.getCacheDir(), "screen-glance");
     }
@@ -1059,6 +1442,14 @@ public final class ScreenGlanceService extends Service {
         return new File(captureDirectory(context), "latest.tmp");
     }
 
+    private static File coWatchPreviewFile(Context context) {
+        return new File(captureDirectory(context), "co-watch-preview.jpg");
+    }
+
+    private static File temporaryCoWatchPreviewFile(Context context) {
+        return new File(captureDirectory(context), "co-watch-preview.tmp");
+    }
+
     private static SharedPreferences preferences(Context context) {
         return context.getApplicationContext().getSharedPreferences(
             PREFS_NAME,
@@ -1067,11 +1458,11 @@ public final class ScreenGlanceService extends Service {
     }
 
     private static int boundedMinutes(int value) {
-        return Math.min(600, Math.max(1, value));
+        return Math.min(180, Math.max(1, value));
     }
 
     private static int boundedSeconds(int value) {
-        return Math.min(600, Math.max(30, value));
+        return Math.min(10_800, Math.max(60, value));
     }
 
     private static String cleanText(String value, int limit) {
@@ -1108,6 +1499,43 @@ public final class ScreenGlanceService extends Service {
             return parsed == null ? 0L : parsed.getTime();
         } catch (ParseException ignored) {
             return 0L;
+        }
+    }
+
+    private enum CaptureMode {
+        MANUAL,
+        GLANCE,
+        WATCH
+    }
+
+    private static final class CaptureRequest {
+        final CaptureMode mode;
+        final long generation;
+        final String sessionId;
+        final long epoch;
+        final long sequence;
+        final BackgroundNotificationCredentials.Identity identity;
+        final int minimumMinutes;
+        final int maximumMinutes;
+
+        CaptureRequest(
+            CaptureMode mode,
+            long generation,
+            String sessionId,
+            long epoch,
+            long sequence,
+            BackgroundNotificationCredentials.Identity identity,
+            int minimumMinutes,
+            int maximumMinutes
+        ) {
+            this.mode = mode;
+            this.generation = generation;
+            this.sessionId = sessionId;
+            this.epoch = epoch;
+            this.sequence = sequence;
+            this.identity = identity;
+            this.minimumMinutes = minimumMinutes;
+            this.maximumMinutes = maximumMinutes;
         }
     }
 
