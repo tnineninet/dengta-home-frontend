@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { AUTH_STATUS, authSession } from "./auth-session.js";
 import { startBackgroundNotificationIdentitySync } from "./background-notification-identity.js";
+import WebInstallButton from "./WebInstallButton.jsx";
 
 function browserEmailRedirectUrl() {
   if (Capacitor.isNativePlatform()) return undefined;
@@ -339,6 +340,7 @@ export function AuthScreen({
         <p className="auth-footnote">
           登录状态只保存在当前设备；退出账号后，其他用户无法通过本设备读取你的私人空间。
         </p>
+        {!Capacitor.isNativePlatform() && <WebInstallButton />}
       </section>
     </main>
   );

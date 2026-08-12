@@ -2,6 +2,16 @@
 
 DengTa home 的 React + Vite 前端，包含聊天、会话、朋友圈、Supabase 对话摘要、Ombre 记忆浏览和 PWA 安装支持。
 
+## 手机网页版
+
+公开入口：[https://dengta-home.vercel.app/](https://dengta-home.vercel.app/)
+
+- iPhone / iPad：用 Safari 打开入口，点“分享”→“添加到主屏幕”，然后从新图标打开并登录。
+- Android：用 Chrome 打开入口，点浏览器菜单里的“安装应用”或“添加到主屏幕”。
+- 电脑：直接在浏览器使用，支持时也可从地址栏或设置页安装。
+
+网页版与 Android App 使用同一套账号、聊天和服务器数据，但需要联网。锁屏主动通知、后台活动感知和屏幕共看等依赖 Android 原生能力的功能，暂时只在 Android 安装版中提供；网页会显示明确的不可用提示，不会阻塞聊天、记忆和设置等通用功能。
+
 ## 本地运行
 
 只使用 CMD：
@@ -26,7 +36,7 @@ npm run build
 
 ## Android
 
-Android 原生壳使用 Capacitor，应用编号为 `home.dengta.app`，最低支持 Android 7。
+Android 原生壳使用 Capacitor，应用编号为 `home.dengta.app`，最低支持 Android 12（API 31）。
 
 同步网页资源：
 

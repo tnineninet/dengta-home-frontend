@@ -12,8 +12,10 @@ import App from "./LazyApp.jsx";
 import AuthGate from "./AuthGate.jsx";
 import DengTaPrelude from "./DengTaPrelude.jsx";
 import { prewarmBackend } from "./backend-prewarm.js";
+import { pwaInstallController } from "./pwa-install.js";
 
 void prewarmBackend();
+pwaInstallController.start();
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>

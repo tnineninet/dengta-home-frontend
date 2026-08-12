@@ -17,6 +17,7 @@ import {
   ServerCog,
 } from "lucide-react";
 import { API_BASE_URL, apiRequest, streamChat } from "./api";
+import WebInstallButton from "./WebInstallButton.jsx";
 import {
   accountStorageKey,
   readAccountStorage,
@@ -694,7 +695,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [imageViewer, setImageViewer] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
-  const [installPrompt, setInstallPrompt] = useState(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [startupConnection, setStartupConnection] = useState({
     status: visualPreview ? "connected" : "connecting",
@@ -2120,11 +2120,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   useEffect(() => {
-    function handleInstallPrompt(event) {
-      event.preventDefault();
-      setInstallPrompt(event);
-    }
-
     function handleOnline() {
       setIsOnline(true);
       if (shouldFlushSettingsForLifecycle("online")) {
@@ -2139,12 +2134,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       setIsOnline(false);
     }
 
-    window.addEventListener("beforeinstallprompt", handleInstallPrompt);
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
 
     return () => {
-      window.removeEventListener("beforeinstallprompt", handleInstallPrompt);
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
@@ -4627,16 +4620,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
   }
 
-  async function installApp() {
-    if (!installPrompt) {
-      setNotice("如未出现安装按钮，请使用浏览器菜单里的“安装应用”或“添加到主屏幕”。");
-      return;
-    }
-    await installPrompt.prompt();
-    await installPrompt.userChoice;
-    setInstallPrompt(null);
-  }
-
   function changeView(view) {
     if (
       shouldScheduleSettingsOnViewChange({
@@ -5601,9 +5584,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               当前接口和模型可以随时更换；API Key 永远只放在后端环境变量中。
             </p>
           </div>
-          <button className="install-button" onClick={installApp}>
-            ⤓ 安装到手机/电脑
-          </button>
+          <WebInstallButton
+            className="install-button"
+            promptLabel="⤓ 安装到手机/电脑"
+            guidanceLabel="⤓ 安装到手机/电脑"
+            onFeedback={setNotice}
+            showFeedback={false}
+          />
         </div>
 
         {!settingsCategory ? (
