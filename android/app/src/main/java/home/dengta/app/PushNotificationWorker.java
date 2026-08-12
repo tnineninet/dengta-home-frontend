@@ -9,6 +9,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.media.AudioAttributes;
+import android.media.RingtoneManager;
+import android.net.Uri;
 import android.os.Build;
 
 import androidx.annotation.NonNull;
@@ -51,7 +54,7 @@ import java.util.concurrent.TimeUnit;
  * 拉取尚未见过的主动消息，并交给 Android 通知栏。它不持有模型或数据库密钥。
  */
 public final class PushNotificationWorker extends Worker {
-    public static final String CHANNEL_ID = "dengta-home-reminders-v1";
+    public static final String CHANNEL_ID = "dengta-home-reminders-v2";
     private static final String UNIQUE_WORK_NAME = "dengta-home-background-push";
     private static final String PREFS_NAME = "dengta_home_background_push";
     private static final String CURSOR_KEY = "push_cursor";
@@ -133,6 +136,15 @@ public final class PushNotificationWorker extends Worker {
             NotificationManager.IMPORTANCE_HIGH
         );
         channel.setDescription("AI 伙伴在合适时间主动想说的话");
+        Uri defaultSoundUri = RingtoneManager.getDefaultUri(
+            RingtoneManager.TYPE_NOTIFICATION
+        );
+        AudioAttributes audioAttributes = new AudioAttributes.Builder()
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+            .build();
+        channel.setSound(defaultSoundUri, audioAttributes);
+        channel.enableVibration(true);
         manager.createNotificationChannel(channel);
     }
 
@@ -243,6 +255,7 @@ public final class PushNotificationWorker extends Worker {
         String id = message.optString("id", "");
         String content = cleanText(message.optString("content", ""), 240);
         if (content.isEmpty()) return;
+        ensureNotificationChannel(context);
 
         Intent openApp = new Intent(context, MainActivity.class)
             .setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP)

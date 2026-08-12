@@ -1,5 +1,8 @@
 package home.dengta.app;
 
+import android.content.Intent;
+import android.provider.Settings;
+
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -66,6 +69,31 @@ public final class BackgroundNotificationsPlugin extends Plugin {
         JSObject result = new JSObject();
         result.put("configured", false);
         call.resolve(result);
+    }
+
+    @PluginMethod
+    public void openReminderChannelSettings(PluginCall call) {
+        PushNotificationWorker.ensureNotificationChannel(getContext());
+        Intent intent = new Intent(
+            Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS
+        )
+            .putExtra(
+                Settings.EXTRA_APP_PACKAGE,
+                getContext().getPackageName()
+            )
+            .putExtra(
+                Settings.EXTRA_CHANNEL_ID,
+                PushNotificationWorker.CHANNEL_ID
+            )
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            getContext().startActivity(intent);
+            JSObject result = new JSObject();
+            result.put("opened", true);
+            call.resolve(result);
+        } catch (Exception error) {
+            call.reject("无法打开手机通知设置。");
+        }
     }
 
     private static String clean(String value, int maxLength) {

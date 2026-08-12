@@ -19,6 +19,10 @@ import {
 import { API_BASE_URL, apiRequest, streamChat } from "./api";
 import WebInstallButton from "./WebInstallButton.jsx";
 import {
+  openReminderNotificationSettings,
+  reminderChannelSettingsAvailable,
+} from "./background-notification-identity";
+import {
   accountStorageKey,
   readAccountStorage,
   writeAccountStorage,
@@ -237,7 +241,7 @@ const EMOTION_UNDERSTANDING_KEY = "dengta_emotion_understanding_enabled";
 const COMPANION_INTERACTION_DEBOUNCE_MS = 220;
 const COMPANION_INTERACTION_RATE_LIMIT = 6;
 const COMPANION_INTERACTION_RATE_WINDOW_MS = 60 * 1000;
-const LOCAL_NOTIFICATION_CHANNEL_ID = "dengta-home-reminders-v1";
+const LOCAL_NOTIFICATION_CHANNEL_ID = "dengta-home-reminders-v2";
 const PROMPT_RECEIPT_STORAGE_KEY = "dengta_prompt_receipt_v1";
 const VOICE_PLAYBACK_MODE_KEY = "dengta_voice_playback_mode";
 const SETTINGS_SAVE_RETRY_DELAYS_MS = [1200, 3500, 8000];
@@ -292,7 +296,7 @@ async function prepareLocalNotificationPermission() {
     return {
       status: "web",
       message:
-        "网页会同步主动消息；锁屏通知由安装在手机上的 Android App 接收。",
+        "网页会同步主动消息，但网页暂无后台声音和震动提醒；锁屏提醒由安装在手机上的 Android App 接收。",
     };
   }
 
@@ -332,6 +336,7 @@ async function prepareLocalNotificationPermission() {
         description: "AI 伙伴在合适时间主动想说的话",
         importance: 4,
         visibility: 1,
+        vibration: true,
       });
     }
 
@@ -6203,9 +6208,35 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               >
                 {notificationPermissionState.message}
               </p>
-              <small>
-                Android 为省电可能把后台检查延后；它不是整点闹钟，但 App 关闭后仍会继续检查。
-              </small>
+              {reminderChannelSettingsAvailable() && (
+                <div className="device-activity-actions">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void openReminderNotificationSettings().catch(
+                        (error) => {
+                          setNotificationPermissionState({
+                            status: "error",
+                            message:
+                              error?.message || "无法打开手机通知设置。",
+                          });
+                        },
+                      )
+                    }
+                  >
+                    打开手机通知设置
+                  </button>
+                </div>
+              )}
+              {Capacitor.isNativePlatform() ? (
+                <small>
+                  Android 为省电可能把后台检查延后；声音、震动和静音模式均由手机系统控制。
+                </small>
+              ) : (
+                <small>
+                  网页暂无后台声音和震动提醒；安装 Android App 后可在手机通知设置中控制。
+                </small>
+              )}
             </div>
               </>
             )}

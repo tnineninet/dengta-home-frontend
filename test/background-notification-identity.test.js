@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import {
+  openReminderNotificationSettings,
   readOrCreateNotificationDeviceId,
+  reminderChannelSettingsAvailable,
   resolveBackgroundNotificationIdentity,
   startBackgroundNotificationIdentitySync,
 } from "../src/background-notification-identity.js";
@@ -54,6 +56,56 @@ const anonymousAction = await resolveBackgroundNotificationIdentity(
   },
 );
 assert.deepEqual(anonymousAction, { method: "clear", payload: {} });
+
+{
+  let pluginCalls = 0;
+  const webCapacitor = {
+    isNativePlatform: () => false,
+    getPlatform: () => "web",
+    isPluginAvailable: () => false,
+  };
+  assert.equal(reminderChannelSettingsAvailable(webCapacitor), false);
+  assert.deepEqual(
+    await openReminderNotificationSettings({
+      capacitor: webCapacitor,
+      plugin: {
+        async openReminderChannelSettings() {
+          pluginCalls += 1;
+          throw new Error("web must never call the native settings plugin");
+        },
+      },
+    }),
+    { opened: false, reason: "unsupported" },
+  );
+  assert.equal(
+    pluginCalls,
+    0,
+    "the web notification panel must not invoke Android settings",
+  );
+}
+
+{
+  let pluginCalls = 0;
+  const androidCapacitor = {
+    isNativePlatform: () => true,
+    getPlatform: () => "android",
+    isPluginAvailable: (name) => name === "BackgroundNotifications",
+  };
+  assert.equal(reminderChannelSettingsAvailable(androidCapacitor), true);
+  assert.deepEqual(
+    await openReminderNotificationSettings({
+      capacitor: androidCapacitor,
+      plugin: {
+        async openReminderChannelSettings() {
+          pluginCalls += 1;
+          return { opened: true };
+        },
+      },
+    }),
+    { opened: true },
+  );
+  assert.equal(pluginCalls, 1);
+}
 
 const authenticatedAction = await resolveBackgroundNotificationIdentity(
   {
@@ -363,6 +415,14 @@ const activitySource = fs.readFileSync(
   ),
   "utf8",
 );
+const appSource = fs.readFileSync(
+  new URL("../src/App.jsx", import.meta.url),
+  "utf8",
+);
+const androidManifestSource = fs.readFileSync(
+  new URL("../android/app/src/main/AndroidManifest.xml", import.meta.url),
+  "utf8",
+);
 assert.match(workerSource, /\/api\/v2\/settings/);
 assert.match(workerSource, /\/api\/v2\/push\/messages/);
 assert.doesNotMatch(
@@ -383,8 +443,78 @@ assert.match(workerSource, /!seenIds\.contains\(id\)/);
 assert.match(workerSource, /serializeSeenIds\(seenIds\)/);
 assert.match(workerSource, /if \(scopeChanged\)/);
 assert.match(workerSource, /\.putString\(SEEN_IDS_KEY, "\[\]"\)/);
+assert.match(
+  workerSource,
+  /CHANNEL_ID\s*=\s*"dengta-home-reminders-v2"/,
+  "active companion alerts must migrate away from the immutable silent v1 channel",
+);
+assert.match(
+  appSource,
+  /LOCAL_NOTIFICATION_CHANNEL_ID\s*=\s*"dengta-home-reminders-v2"/,
+  "Capacitor and the native worker must target the same migrated alert channel",
+);
+assert.match(
+  workerSource,
+  /RingtoneManager\.getDefaultUri\(\s*RingtoneManager\.TYPE_NOTIFICATION\s*\)/,
+  "the active alert channel must use Android's default notification sound",
+);
+assert.match(
+  workerSource,
+  /\.setUsage\(AudioAttributes\.USAGE_NOTIFICATION\)/,
+  "the channel sound must be classified as a notification so Android sound policy applies",
+);
+assert.match(
+  workerSource,
+  /channel\.setSound\(defaultSoundUri, audioAttributes\)/,
+  "the active alert channel must request sound explicitly",
+);
+assert.match(
+  workerSource,
+  /channel\.enableVibration\(true\)/,
+  "the active alert channel must request vibration explicitly",
+);
+assert.match(
+  workerSource,
+  /private static void postNotification\([\s\S]{0,500}ensureNotificationChannel\(context\)/,
+  "a background delivery must create the migrated channel even before the app is reopened",
+);
+assert.match(
+  appSource,
+  /vibration:\s*true/,
+  "the Capacitor channel request must preserve the active alert vibration default",
+);
+assert.match(
+  androidManifestSource,
+  /android\.permission\.VIBRATE/,
+  "Android must be allowed to run the active alert channel's vibration",
+);
 assert.match(pluginSource, /BackgroundNotificationCredentials\.clear/);
 assert.match(pluginSource, /PushNotificationWorker\.clear/);
+assert.match(
+  pluginSource,
+  /Settings\.ACTION_CHANNEL_NOTIFICATION_SETTINGS/,
+  "the settings entry must open Android's notification-channel page",
+);
+assert.match(
+  pluginSource,
+  /Settings\.EXTRA_APP_PACKAGE[\s\S]{0,120}getContext\(\)\.getPackageName\(\)/,
+  "the channel settings intent must identify the DengTa package",
+);
+assert.match(
+  pluginSource,
+  /Settings\.EXTRA_CHANNEL_ID[\s\S]{0,120}PushNotificationWorker\.CHANNEL_ID/,
+  "the channel settings intent must target the active v2 reminder channel",
+);
+assert.match(
+  appSource,
+  /reminderChannelSettingsAvailable\(\)[\s\S]{0,600}打开手机通知设置/,
+  "only a supported Android client should render the system settings entry",
+);
+assert.match(
+  appSource,
+  /网页暂无后台声音和震动提醒/,
+  "the web panel must state that background sound and vibration are unavailable",
+);
 assert.match(activitySource, /public void onPause\(\)/);
 assert.match(activitySource, /PushNotificationWorker\.markAppVisible/);
 assert.match(credentialsSource, /AndroidKeyStore/);
