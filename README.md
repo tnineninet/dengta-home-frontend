@@ -4,7 +4,9 @@ DengTa home 的 React + Vite 前端，包含聊天、会话、朋友圈、Supaba
 
 ## 手机网页版
 
-公开入口：[https://dengta-home.vercel.app/](https://dengta-home.vercel.app/)
+手机直连入口（推荐）：[https://dengta-home-backend.onrender.com/web/](https://dengta-home-backend.onrender.com/web/)
+
+国际入口：[https://dengta-home.vercel.app/](https://dengta-home.vercel.app/)。部分网络会污染或阻断 `vercel.app`，遇到持续加载时请改用上面的手机直连入口。
 
 - iPhone / iPad：用 Safari 打开入口，点“分享”→“添加到主屏幕”，然后从新图标打开并登录。
 - Android：用 Chrome 打开入口，点浏览器菜单里的“安装应用”或“添加到主屏幕”。
