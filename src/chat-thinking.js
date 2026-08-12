@@ -1,3 +1,8 @@
+import {
+  mergeAuthoritativeVisibleMonologue,
+  visibleMonologueForMessage,
+} from "./inner-monologue.js";
+
 const STATUS_LABELS = {
   preparing_request: "正在准备并发送这条消息",
   accepted: "服务器已接收本轮消息",
@@ -122,9 +127,12 @@ export function hydrateStoredThinkingTrace(message = {}) {
       )
     : [];
 
+  const safeMessage = publicMessageFields(message);
+  const visibleMonologue = visibleMonologueForMessage(safeMessage);
   return {
-    ...publicMessageFields(message),
+    ...safeMessage,
     thinkingStatuses,
+    ...(visibleMonologue ? { visibleMonologue } : {}),
   };
 }
 
@@ -141,6 +149,10 @@ export function mergeStreamedAssistantMessage(
   serverMessage = {},
   trace = {},
 ) {
+  const visibleMonologue = mergeAuthoritativeVisibleMonologue(
+    localMessage.visibleMonologue,
+    serverMessage,
+  );
   return attachThinkingTrace(
     {
       ...localMessage,
@@ -149,6 +161,7 @@ export function mergeStreamedAssistantMessage(
       isStreaming: false,
       generationInProgress: false,
       retryAvailable: false,
+      visibleMonologue,
     },
     trace,
   );

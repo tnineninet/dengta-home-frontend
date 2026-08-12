@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { AUTH_STATUS, authSession } from "./auth-session.js";
 import { startBackgroundNotificationIdentitySync } from "./background-notification-identity.js";
+import { resolveEmailRedirectUrl } from "./auth-redirect.js";
 import WebInstallButton from "./WebInstallButton.jsx";
 
 function browserEmailRedirectUrl() {
-  if (Capacitor.isNativePlatform()) return undefined;
-  const origin = globalThis.location?.origin || "";
-  return /^https?:\/\//i.test(origin) ? origin : undefined;
+  return resolveEmailRedirectUrl({
+    nativePlatform: Capacitor.isNativePlatform(),
+    location: globalThis.location,
+  });
 }
 
 function ConfigurationScreen() {

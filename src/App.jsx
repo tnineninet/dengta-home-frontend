@@ -88,9 +88,13 @@ import {
   mergeStreamedAssistantMessage,
 } from "./chat-thinking";
 import {
+  VISIBLE_MONOLOGUE_SOURCE,
+  beginVisibleMonologueStream,
   innerMonologueForMessage,
   readInnerMonologues,
+  reduceVisibleMonologueEvent,
   storeInnerMonologue,
+  visibleMonologueForMessage,
 } from "./inner-monologue";
 import { hydrateChatHistory } from "./chat-history";
 import {
@@ -2956,6 +2960,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   companionInteractionHandlerRef.current = registerCompanionInteraction;
 
   async function requestVisibleInnerMonologue(item) {
+    if (!item || visibleMonologueForMessage(item)) return;
+
     const sessionId =
       item?.conversation_id || item?.session_id || activeSessionIdRef.current;
     const { recoverSynchronizedAssistantMessage } = await import(
@@ -2977,6 +2983,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       }));
       return;
     }
+    if (visibleMonologueForMessage(targetMessage)) return;
     if (
       innerMonologuePending[messageId] ||
       innerMonologueForMessage(innerMonologues, messageId)
@@ -3567,6 +3574,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           generationInProgress: false,
           retryAvailable: false,
           thinkingStatuses: appendThinkingStatus([], "preparing_request"),
+          visibleMonologue: beginVisibleMonologueStream(),
         };
         const assistantIndex = next.findIndex(
           (item) => item.id === localAssistantId,
@@ -3665,6 +3673,22 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             );
           }
 
+          if (event.type === "monologue") {
+            setMessages((current) =>
+              current.map((item) =>
+                item.id === localAssistantId
+                  ? {
+                      ...item,
+                      visibleMonologue: reduceVisibleMonologueEvent(
+                        item.visibleMonologue,
+                        event,
+                      ),
+                    }
+                  : item,
+              ),
+            );
+          }
+
           if (event.type === "text") {
             setMessages((current) =>
               current.map((item) =>
@@ -3705,6 +3729,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                       chatError: true,
                       generationInProgress: eventGenerationInProgress,
                       retryAvailable: true,
+                      visibleMonologue: reduceVisibleMonologueEvent(
+                        item.visibleMonologue,
+                        {
+                          type: "monologue",
+                          phase: "end",
+                          source: VISIBLE_MONOLOGUE_SOURCE,
+                          state: "failed",
+                        },
+                      ),
                       thinkingStatuses: eventGenerationInProgress
                         ? appendThinkingStatus(
                             streamThinkingRef.current.statuses,
@@ -3947,6 +3980,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   chatError: true,
                   generationInProgress: generationStillInProgress,
                   retryAvailable: restoreDraft,
+                  visibleMonologue: reduceVisibleMonologueEvent(
+                    item.visibleMonologue,
+                    {
+                      type: "monologue",
+                      phase: "end",
+                      source: VISIBLE_MONOLOGUE_SOURCE,
+                      state: "failed",
+                    },
+                  ),
                   thinkingStatuses: generationStillInProgress
                     ? appendThinkingStatus(
                         item.thinkingStatuses ||
@@ -4774,10 +4816,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 onPreview={handleImagePreview}
                 onReference={selectMessageForReference}
                 onDismissError={dismissChatError}
-                innerMonologue={innerMonologueForMessage(
-                  innerMonologues,
-                  item.id,
-                )}
+                innerMonologue={
+                  visibleMonologueForMessage(item) ||
+                  innerMonologueForMessage(innerMonologues, item.id)
+                }
                 innerMonologuePending={
                   innerMonologuePending[item.id] === true
                 }

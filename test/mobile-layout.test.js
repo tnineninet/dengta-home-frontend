@@ -861,7 +861,17 @@ assert.doesNotMatch(
 assert.doesNotMatch(
   app,
   /event\.source === "provider_summary"/,
-  "the message UI must use the separate on-demand inner-monologue flow",
+  "provider reasoning summaries must not be treated as public monologue",
+);
+assert.match(
+  sendMessageSource,
+  /event\.type === "monologue"[\s\S]*reduceVisibleMonologueEvent/,
+  "the explicit public monologue event must update the current assistant draft",
+);
+assert.match(
+  app,
+  /VISIBLE_MONOLOGUE_SOURCE/,
+  "public monologue handling must use its explicit model-authored source",
 );
 assert.doesNotMatch(
   app,

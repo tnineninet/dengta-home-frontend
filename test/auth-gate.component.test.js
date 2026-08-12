@@ -10,7 +10,20 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(testDirectory, "..");
 
-function createSessionManager({ signIn, signUp }) {
+function createSessionManager({
+  signIn = async () => {
+    throw new Error("not used");
+  },
+  signUp = async () => {
+    throw new Error("not used");
+  },
+  resendVerification = async () => {
+    throw new Error("not used");
+  },
+  requestPasswordReset = async () => {
+    throw new Error("not used");
+  },
+}) {
   let snapshot = {
     status: "anonymous",
     session: null,
@@ -36,6 +49,10 @@ function createSessionManager({ signIn, signUp }) {
     getRequestContext: async () => ({}),
     signUp: (payload) => signUp({ payload, publish }),
     signIn: (payload) => signIn({ payload, publish }),
+    resendVerification: (payload) =>
+      resendVerification({ payload, publish }),
+    requestPasswordReset: (payload) =>
+      requestPasswordReset({ payload, publish }),
   };
 }
 
@@ -77,19 +94,23 @@ const vite = await createServer({
 });
 
 try {
-  const { default: AuthGate } = await vite.ssrLoadModule("/src/AuthGate.jsx");
+  const { AuthScreen, default: AuthGate } =
+    await vite.ssrLoadModule("/src/AuthGate.jsx");
 
   {
     const signUpResponse = deferred();
+    let signUpPayload;
+    let resendPayload;
     const manager = createSessionManager({
-      async signUp({ publish }) {
+      async signUp({ payload, publish }) {
+        signUpPayload = payload;
         publish({ status: "authenticating", error: null });
         await signUpResponse.promise;
         publish({ status: "anonymous", error: null });
         return { emailVerificationRequired: true };
       },
-      async signIn() {
-        throw new Error("not used");
+      async resendVerification({ payload }) {
+        resendPayload = payload;
       },
     });
     const renderer = await renderGate(AuthGate, manager);
@@ -140,6 +161,58 @@ try {
       "registration must remain on the verification result when auth status changes",
     );
     assert.match(textContent(renderer.toJSON()), /taotao@example\.test/);
+    assert.equal(
+      signUpPayload.emailRedirectTo,
+      "https://dengta-home-backend.onrender.com/web/",
+      "signup must pass the resolved public callback",
+    );
+
+    const resendButton = renderer.root.find(
+      (node) =>
+        node.type === "button" &&
+        node.props.className === "auth-primary-button",
+    );
+    await act(async () => resendButton.props.onClick());
+    assert.equal(
+      resendPayload.emailRedirectTo,
+      "https://dengta-home-backend.onrender.com/web/",
+      "verification resend must use the same resolved callback",
+    );
+    await act(async () => renderer.unmount());
+  }
+
+  {
+    let resetPayload;
+    const manager = createSessionManager({
+      async requestPasswordReset({ payload }) {
+        resetPayload = payload;
+      },
+    });
+    let renderer;
+    await act(async () => {
+      renderer = TestRenderer.create(
+        React.createElement(AuthScreen, {
+          sessionManager: manager,
+          initialMode: "forgot",
+        }),
+      );
+    });
+    const emailInput = renderer.root.find(
+      (node) => node.type === "input" && node.props.type === "email",
+    );
+    await act(async () => {
+      emailInput.props.onChange({ target: { value: "reset@example.test" } });
+    });
+    await act(async () => {
+      await renderer.root
+        .findByType("form")
+        .props.onSubmit({ preventDefault() {} });
+    });
+    assert.equal(
+      resetPayload.redirectTo,
+      "https://dengta-home-backend.onrender.com/web/",
+      "password reset must use the resolved callback",
+    );
     await act(async () => renderer.unmount());
   }
 

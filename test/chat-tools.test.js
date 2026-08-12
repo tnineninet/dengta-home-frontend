@@ -776,7 +776,7 @@ assert.equal(
                 return {
                   done: false,
                   value: new TextEncoder().encode(
-                    'data: {"type":"text","content":"你好"}\n\ndata: {"type":"done","ok":true}\n\n',
+                    'data: {"type":"monologue","phase":"delta","source":"model_authored_visible_monologue","content":"我先认真回应你","offset":0}\n\ndata: {"type":"monologue","phase":"end","source":"model_authored_visible_monologue","state":"complete"}\n\ndata: {"type":"text","content":"你好"}\n\ndata: {"type":"done","ok":true}\n\n',
                   ),
                 };
               }
@@ -799,6 +799,19 @@ assert.equal(
     });
     assert.equal(receivedSignal, controller.signal);
     assert.deepEqual(events, [
+      {
+        type: "monologue",
+        phase: "delta",
+        source: "model_authored_visible_monologue",
+        content: "我先认真回应你",
+        offset: 0,
+      },
+      {
+        type: "monologue",
+        phase: "end",
+        source: "model_authored_visible_monologue",
+        state: "complete",
+      },
       { type: "text", content: "你好" },
       { type: "done", ok: true },
     ]);
