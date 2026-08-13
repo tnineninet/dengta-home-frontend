@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import {
-  PROMPT_FIELD_LIMITS,
   createSettingsPayload,
   formatPromptReceiptProvider,
   mergeLegacyPromptFields,
@@ -101,29 +100,24 @@ assert.equal("account_status" in accountSafePayload, false);
 assert.equal("storage_used_bytes" in accountSafePayload, false);
 assert.equal("storage_quota_bytes" in accountSafePayload, false);
 
+const unlimitedPrompts = {
+  system_prompt: "系".repeat(12050),
+  additional_prompt: "补".repeat(8050),
+  personality: "人".repeat(1050),
+  unified_system_prompt: "主".repeat(30050),
+  user_details: "详".repeat(30050),
+};
 const payload = createSettingsPayload({
   ...legacy,
-  system_prompt: "系".repeat(PROMPT_FIELD_LIMITS.system_prompt + 10),
-  additional_prompt: "补".repeat(PROMPT_FIELD_LIMITS.additional_prompt + 10),
-  personality: "人".repeat(PROMPT_FIELD_LIMITS.personality + 10),
-  unified_system_prompt: "主".repeat(
-    PROMPT_FIELD_LIMITS.unified_system_prompt + 10,
-  ),
-  user_details: "详".repeat(PROMPT_FIELD_LIMITS.user_details + 10),
+  ...unlimitedPrompts,
   intimate_expression_enabled: true,
 });
 
-assert.equal(payload.system_prompt.length, PROMPT_FIELD_LIMITS.system_prompt);
-assert.equal(
-  payload.additional_prompt.length,
-  PROMPT_FIELD_LIMITS.additional_prompt,
-);
-assert.equal(payload.personality.length, PROMPT_FIELD_LIMITS.personality);
-assert.equal(
-  payload.unified_system_prompt.length,
-  PROMPT_FIELD_LIMITS.unified_system_prompt,
-);
-assert.equal(payload.user_details.length, PROMPT_FIELD_LIMITS.user_details);
+assert.equal(payload.system_prompt, unlimitedPrompts.system_prompt);
+assert.equal(payload.additional_prompt, unlimitedPrompts.additional_prompt);
+assert.equal(payload.personality, unlimitedPrompts.personality);
+assert.equal(payload.unified_system_prompt, unlimitedPrompts.unified_system_prompt);
+assert.equal(payload.user_details, unlimitedPrompts.user_details);
 assert.equal(payload.prompt_mode, "unified");
 assert.equal(payload.intimate_expression_enabled, true);
 

@@ -2565,7 +2565,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     const turnContextDraftAtRequest = turnContextRef.current;
     const turnContextSnapshot = turnContextDraftAtRequest
       .trim()
-      .slice(0, PROMPT_FIELD_LIMITS.turn_context);
+      ;
     let sessionId = activeSessionIdRef.current;
     let voiceSessionId = sessionId;
     let requestHandle;
@@ -3594,7 +3594,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     );
     const turnContextSnapshot = turnContextDraftAtRequest
       .trim()
-      .slice(0, PROMPT_FIELD_LIMITS.turn_context);
+      ;
     const messageReferenceAtRequest = normalizeMessageReference(
       options?.messageReference ?? messageReference,
     );
@@ -4846,10 +4846,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   function updateTurnContext(value) {
-    const nextValue = String(value || "").slice(
-      0,
-      PROMPT_FIELD_LIMITS.turn_context,
-    );
+    const nextValue = String(value || "");
     turnContextRef.current = nextValue;
     setTurnContext(nextValue);
   }
@@ -6300,7 +6297,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 </p>
                 <textarea
                   data-setting-field="unified_system_prompt"
-                  maxLength={PROMPT_FIELD_LIMITS.unified_system_prompt}
                   value={draftSettings.unified_system_prompt || ""}
                   onChange={(event) =>
                     updateUnifiedPrompt(event.target.value)
@@ -6308,9 +6304,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   placeholder="写清楚稳定身份、关系和表达习惯……"
                   rows="12"
                 />
-                <small className="prompt-field-count">
-                  {(draftSettings.unified_system_prompt || "").length} / {PROMPT_FIELD_LIMITS.unified_system_prompt}
-                </small>
               </label>
 
               <label className="prompt-layer highest-priority unified-prompt-layer">
@@ -6330,7 +6323,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 </p>
                 <textarea
                   data-setting-field="user_details"
-                  maxLength={PROMPT_FIELD_LIMITS.user_details}
                   value={draftSettings.user_details || ""}
                   onChange={(event) =>
                     updateDraft("user_details", event.target.value)
@@ -6338,9 +6330,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   placeholder="例如：称呼、长期偏好、重要背景，以及希望伴侣始终记得的个人详情……"
                   rows="10"
                 />
-                <small className="prompt-field-count">
-                  {(draftSettings.user_details || "").length} / {PROMPT_FIELD_LIMITS.user_details}
-                </small>
               </label>
 
               <section className="prompt-memory-summary" aria-label="稳定长期记忆摘要">
@@ -6378,15 +6367,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 </p>
                 <textarea
                   data-setting-field="turn_context"
-                  maxLength={PROMPT_FIELD_LIMITS.turn_context}
                   value={turnContext}
                   onChange={(event) => updateTurnContext(event.target.value)}
                   placeholder="例如：这一轮接着昨晚雨天回家的剧情……"
                   rows="5"
                 />
-                <small className="prompt-field-count">
-                  {turnContext.length} / {PROMPT_FIELD_LIMITS.turn_context}
-                </small>
               </label>
 
               <label className="prompt-intimacy-toggle">

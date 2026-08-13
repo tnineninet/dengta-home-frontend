@@ -32,12 +32,12 @@ export const emptySettings = {
 export const PROMPT_FIELD_LIMITS = {
   ai_name: 50,
   user_display_name: 80,
-  system_prompt: 12000,
-  additional_prompt: 8000,
-  personality: 1000,
-  unified_system_prompt: 30000,
-  user_details: 30000,
-  turn_context: 4000,
+     system_prompt: Number.POSITIVE_INFINITY,
+     additional_prompt: Number.POSITIVE_INFINITY,
+     personality: Number.POSITIVE_INFINITY,
+     unified_system_prompt: Number.POSITIVE_INFINITY,
+     user_details: Number.POSITIVE_INFINITY,
+     turn_context: Number.POSITIVE_INFINITY,
 };
 
 function objectOrEmpty(value) {
@@ -119,27 +119,12 @@ export function createSettingsPayload(value) {
       0,
       PROMPT_FIELD_LIMITS.user_display_name,
     ),
-    system_prompt: normalized.system_prompt.slice(
-      0,
-      PROMPT_FIELD_LIMITS.system_prompt,
-    ),
-    additional_prompt: normalized.additional_prompt.slice(
-      0,
-      PROMPT_FIELD_LIMITS.additional_prompt,
-    ),
-    personality: normalized.personality.slice(
-      0,
-      PROMPT_FIELD_LIMITS.personality,
-    ),
+    system_prompt: normalized.system_prompt,
+    additional_prompt: normalized.additional_prompt,
+    personality: normalized.personality,
     prompt_mode: "unified",
-    unified_system_prompt: normalized.unified_system_prompt.slice(
-      0,
-      PROMPT_FIELD_LIMITS.unified_system_prompt,
-    ),
-    user_details: normalized.user_details.slice(
-      0,
-      PROMPT_FIELD_LIMITS.user_details,
-    ),
+    unified_system_prompt: normalized.unified_system_prompt,
+    user_details: normalized.user_details,
     intimate_expression_enabled:
       normalized.intimate_expression_enabled === true,
   };
