@@ -14,26 +14,26 @@ import AuthGate from "./AuthGate.jsx";
 import DengTaPrelude from "./DengTaPrelude.jsx";
 import { prewarmBackend } from "./backend-prewarm.js";
 import { pwaInstallController } from "./pwa-install.js";
+import ReceiverApp from "./ReceiverApp.jsx";
 
-void prewarmBackend();
-pwaInstallController.start();
+const isReceiverRoute = window.location.pathname === "/receive";
+if (!isReceiverRoute) {
+  void prewarmBackend();
+  pwaInstallController.start();
+}
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
-    <DengTaPrelude />
-    <AuthGate>
-      {({ accountControl, snapshot }) => (
-        <Suspense fallback={null}>
-          <App
-            key={snapshot.user?.id}
-            accountControl={accountControl}
-            accountScope={snapshot.user?.id || ""}
-            userName={snapshot.user?.displayName}
-            companionScope={snapshot.activeCompanionId || ""}
-          />
-        </Suspense>
-      )}
-    </AuthGate>
+    {isReceiverRoute ? <ReceiverApp /> : <>
+      <DengTaPrelude />
+      <AuthGate>
+        {({ accountControl, snapshot }) => (
+          <Suspense fallback={null}>
+            <App key={snapshot.user?.id} accountControl={accountControl} accountScope={snapshot.user?.id || ""} userName={snapshot.user?.displayName} companionScope={snapshot.activeCompanionId || ""} />
+          </Suspense>
+        )}
+      </AuthGate>
+    </>}
   </StrictMode>,
 );
 

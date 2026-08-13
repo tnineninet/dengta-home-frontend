@@ -166,7 +166,8 @@ const directStart = app.slice(
   app.indexOf("function updateDirectMediaCoWatchPlayback"),
 );
 assert.match(directStart, /sourceApp:\s*DIRECT_MEDIA_SOURCE_APP/);
-assert.doesNotMatch(directStart, /url|mediaUrl|media_url/i);
+assert.match(directStart, /sessionMode:\s*"direct_media"/);
+assert.match(directStart, /mediaUrl:\s*options\.mediaUrl/);
 assert.match(app, /clearDirectMediaSession\(globalThis\.sessionStorage, accountStorageScope\)/);
 assert.match(
   app,
@@ -179,6 +180,7 @@ const createRequest = coWatch.slice(
   coWatch.indexOf("export async function createCoWatchSession"),
   coWatch.indexOf("export async function endCoWatchSession"),
 );
-assert.doesNotMatch(createRequest, /url|media_url|mediaUrl/i);
+assert.match(createRequest, /session_mode:[\s\S]*?"direct_media"/);
+assert.match(createRequest, /media_url:\s*input\.sessionMode === "direct_media"/);
 
 console.log("Together direct HTTPS media URL safety and playback tests passed");

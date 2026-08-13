@@ -16,7 +16,8 @@ export function normalizeCoWatchSession(value) {
     id: cleanText(value.id, 80),
     conversationId: cleanText(value.conversation_id, 80),
     status: value.status === "ended" ? "ended" : "active",
-    sessionMode: cleanText(value.session_mode, 40) || "screen",
+    sessionMode: value.session_mode === "direct" ? "direct_media" : cleanText(value.session_mode, 40) || "screen",
+    mediaUrl: cleanText(value.media_url, 4096),
     title: cleanText(value.title),
     sourceApp: cleanText(value.source_app, 100),
     cadenceSeconds: Math.min(
@@ -25,10 +26,15 @@ export function normalizeCoWatchSession(value) {
     ),
     mediaPositionSeconds: cleanNumber(value.media_position_seconds),
     mediaDurationSeconds: cleanNumber(value.media_duration_seconds),
-    revision: cleanNumber(value.revision, 1_000_000_000),
+    revision: cleanNumber(value.playback_revision ?? value.revision, 1_000_000_000),
     playbackState: value.playback_state === "playing" ? "playing" : "paused",
-    musicPlaylistId: cleanText(value.music_playlist_id, 100),
-    musicPlaylistItemId: cleanText(value.music_playlist_item_id, 100),
+    musicPlaylistId: cleanText(value.playlist_id ?? value.music_playlist_id, 100),
+    musicPlaylistItemId: cleanText(value.item_id ?? value.music_playlist_item_id, 100),
+    castReceiver: Object.freeze({
+      status: cleanText(value.cast_receiver?.status ?? value.receiver_status, 40),
+      name: cleanText(value.cast_receiver?.name ?? value.receiver_name, 100),
+      lastAckAt: value.cast_receiver?.last_ack_at ?? value.receiver_last_ack_at ?? "",
+    }),
     frameCount: cleanNumber(value.frame_count, 1_000_000),
     reactionCount: cleanNumber(value.reaction_count, 1_000_000),
     lastFrameAt: value.last_frame_at || "",
@@ -51,12 +57,13 @@ export async function createCoWatchSession(input = {}) {
     timeoutMs: 15_000,
     body: JSON.stringify({
       title: cleanText(input.title),
-      session_mode: ["screen", "direct", "listening"].includes(input.sessionMode) ? input.sessionMode : "screen",
+      session_mode: ["screen", "direct_media", "listening"].includes(input.sessionMode) ? input.sessionMode : "screen",
+      media_url: input.sessionMode === "direct_media" ? cleanText(input.mediaUrl, 4096) : "",
       source_app: cleanText(input.sourceApp, 100),
       media_duration_seconds: cleanNumber(input.mediaDurationSeconds),
       media_position_seconds: cleanNumber(input.mediaPositionSeconds),
-      music_playlist_id: cleanText(input.musicPlaylistId, 100),
-      music_playlist_item_id: cleanText(input.musicPlaylistItemId, 100),
+      playlist_id: cleanText(input.musicPlaylistId, 100),
+      item_id: cleanText(input.musicPlaylistItemId, 100),
       cadence_seconds: Math.min(
         10_800,
         Math.max(60, cleanNumber(input.cadenceSeconds, 10_800) || 90),
@@ -86,15 +93,26 @@ export async function patchCoWatchPlayback(sessionId, input = {}) {
   const data = await apiRequest(`/api/v2/co-watch/sessions/${encodeURIComponent(sessionId)}/playback`, {
     method: "PATCH", timeoutMs: 15_000,
     body: JSON.stringify({
-      revision: cleanNumber(input.revision, 1_000_000_000),
+      playback_revision: cleanNumber(input.revision, 1_000_000_000),
       playback_state: input.playbackState === "playing" ? "playing" : "paused",
-      music_playlist_id: cleanText(input.musicPlaylistId, 100),
-      music_playlist_item_id: cleanText(input.musicPlaylistItemId, 100),
+      playlist_id: cleanText(input.musicPlaylistId, 100),
+      item_id: cleanText(input.musicPlaylistItemId, 100),
       media_position_seconds: cleanNumber(input.mediaPositionSeconds),
       media_duration_seconds: cleanNumber(input.mediaDurationSeconds),
     }),
   });
   return normalizeCoWatchSession(data?.session || data);
+}
+
+export async function createCoWatchPairingCode(sessionId) {
+  const data = await apiRequest(
+    `/api/v2/co-watch/sessions/${encodeURIComponent(sessionId)}/pairing-code`,
+    { method: "POST", timeoutMs: 15_000, body: "{}" },
+  );
+  return Object.freeze({
+    pairingCode: cleanText(data?.pairing_code, 20),
+    expiresAt: data?.expires_at || "",
+  });
 }
 
 export async function readCoWatchDialog(session) {

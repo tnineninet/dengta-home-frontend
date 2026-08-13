@@ -11,6 +11,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { formatMediaTime } from "./co-watch";
+import { detectPlannedCastProviders } from "./receiver-playback.js";
 import {
   clearDirectMediaSession,
   DIRECT_MEDIA_SOURCE_APP,
@@ -54,6 +55,9 @@ export default function Together({
   onMusicPlaybackChange,
   onPlaybackChange,
   onRefresh,
+  castPairing,
+  castReceiver,
+  onGenerateCastPairing,
   dialog = [],
   onReply,
 }) {
@@ -98,7 +102,7 @@ export default function Together({
   const [directPlaying, setDirectPlaying] = useState(false);
   const [directFeedback, setDirectFeedback] = useState({
     status: "idle",
-    message: "视频链接只保存在当前账号的这个页面会话中，不会发送到后端或写入数据库。",
+    message: "视频链接只用于本场直链播放与已配对的浏览器接收端，不会在投屏界面公开显示。",
   });
   const videoRef = useRef(null);
   const resumedUrlRef = useRef("");
@@ -111,6 +115,8 @@ export default function Together({
       : null,
   );
   const lastPlaybackSecondRef = useRef(-1);
+  const lastPlaybackPatchRef = useRef(0);
+  const castProviders = useMemo(() => detectPlannedCastProviders(globalThis), []);
 
   const active =
     screenState.active &&
@@ -148,7 +154,7 @@ export default function Together({
     });
   };
 
-  const reportDirectPlayback = (video) => {
+  const reportDirectPlayback = (video, immediate = false) => {
     if (!video || !directMediaUrl) return;
     const positionSeconds = finiteMediaSeconds(video.currentTime);
     const durationSeconds = finiteMediaSeconds(video.duration);
@@ -158,8 +164,12 @@ export default function Together({
     if (roundedSecond !== lastPlaybackSecondRef.current) {
       lastPlaybackSecondRef.current = roundedSecond;
       persistDirectPlayback(positionSeconds, durationSeconds);
+    }
+    if (session?.id && (immediate || Date.now() - lastPlaybackPatchRef.current >= 5_000)) {
+      lastPlaybackPatchRef.current = Date.now();
       onPlaybackChange?.({
         sessionId: session?.id || "",
+        playbackState: video.paused ? "paused" : "playing",
         mediaPositionSeconds: positionSeconds,
         mediaDurationSeconds: durationSeconds,
       });
@@ -226,6 +236,8 @@ export default function Together({
     try {
       const result = await onStartDirect?.({
         title,
+        sessionMode: "direct_media",
+        mediaUrl: validation.url,
         mediaDurationSeconds: durationSeconds,
         mediaPositionSeconds: positionSeconds,
       });
@@ -395,8 +407,9 @@ export default function Together({
                 }}
                 onDurationChange={(event) => reportDirectPlayback(event.currentTarget)}
                 onTimeUpdate={(event) => reportDirectPlayback(event.currentTarget)}
-                onPlay={() => setDirectPlaying(true)}
-                onPause={() => setDirectPlaying(false)}
+                onPlay={(event) => { setDirectPlaying(true); reportDirectPlayback(event.currentTarget, true); }}
+                onPause={(event) => { setDirectPlaying(false); reportDirectPlayback(event.currentTarget, true); }}
+                onSeeked={(event) => reportDirectPlayback(event.currentTarget, true)}
                 onEnded={() => setDirectPlaying(false)}
                 onError={() => {
                   setDirectPlaying(false);
@@ -523,6 +536,13 @@ export default function Together({
               <p className="together-device-note">
                 直链模式只负责本机播放，不上传视频画面。AI 只能根据你填写的标题、播放进度和你主动发送的文字陪聊；如需让 AI 观察画面，请使用 Android 的“外部 App 屏幕共看”。
               </p>
+              {directActive && <section className="together-cast" aria-label="电视接收">
+                <header><strong>在电视上接收</strong><span>{castReceiver?.status === "online" ? "接收端在线" : castReceiver?.status || "等待接收端"}</span></header>
+                <p>在电视浏览器打开 <strong>{globalThis.location?.origin || ""}/receive</strong>，再输入短期配对码。这里不会显示媒体 URL 或接收端凭据。</p>
+                {castPairing?.pairingCode ? <div className="together-pairing-code"><b>{castPairing.pairingCode}</b><small>有效期至 {castPairing.expiresAt ? new Date(castPairing.expiresAt).toLocaleTimeString("zh-CN") : "短期有效"}</small></div> : <button type="button" disabled={busy} onClick={onGenerateCastPairing}>生成配对码</button>}
+                {castReceiver?.lastAckAt && <small>最近确认：{formatMoment(castReceiver.lastAckAt)}</small>}
+                <div className="cast-provider-list">{castProviders.map((provider) => <span key={provider.id}><b>{provider.label}</b><small>{provider.status === "ready" ? "可用" : `计划中${provider.detected ? " · 检测到浏览器能力" : ""}`}</small></span>)}</div>
+              </section>}
             </div>
           ) : !active ? (
             <div className="together-setup">

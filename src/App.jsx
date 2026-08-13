@@ -171,6 +171,7 @@ import {
 } from "./screen-glance";
 import {
   createCoWatchSession,
+  createCoWatchPairingCode,
   endCoWatchSession,
   patchCoWatchPlayback,
   readActiveCoWatchSession,
@@ -747,6 +748,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [coWatchReceipt, setCoWatchReceipt] = useState(null);
   const [coWatchPreview, setCoWatchPreview] = useState(null);
   const [coWatchDialog, setCoWatchDialog] = useState([]);
+  const [castPairing, setCastPairing] = useState(null);
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [isPostingMoment, setIsPostingMoment] = useState(false);
   const [pendingMomentLikes, setPendingMomentLikes] = useState({});
@@ -4740,6 +4742,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       if (!nextSession) {
         nextSession = await createCoWatchSession({
           title: options.title,
+          sessionMode: "direct_media",
+          mediaUrl: options.mediaUrl,
           sourceApp: DIRECT_MEDIA_SOURCE_APP,
           mediaDurationSeconds: options.mediaDurationSeconds,
           mediaPositionSeconds: options.mediaPositionSeconds,
@@ -4752,7 +4756,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       return {
         ok: true,
         message:
-          "直链共看已经开始。视频地址只保存在当前页面会话，后端只记录片名、播放进度和时长。",
+          "直链共看已经开始。媒体地址用于本场接收端播放，不会显示在投屏控制界面。",
       };
     } catch (error) {
       return {
@@ -4807,7 +4811,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     } finally { setIsScreenGlanceBusy(false); }
   }
 
-  function updateDirectMediaCoWatchPlayback(snapshot = {}) {
+  async function updateDirectMediaCoWatchPlayback(snapshot = {}) {
     const position = Math.max(
       0,
       Math.min(604800, Number(snapshot.mediaPositionSeconds) || 0),
@@ -4816,6 +4820,18 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       0,
       Math.min(604800, Number(snapshot.mediaDurationSeconds) || 0),
     );
+    const current = coWatchSession;
+    if (
+      !current?.id ||
+      current.sourceApp !== DIRECT_MEDIA_SOURCE_APP ||
+      (snapshot.sessionId && snapshot.sessionId !== current.id)
+    ) return;
+    const target = Object.freeze({
+      ...current,
+      mediaPositionSeconds: position,
+      mediaDurationSeconds: duration || current.mediaDurationSeconds,
+      playbackState: snapshot.playbackState === "playing" ? "playing" : "paused",
+    });
     setCoWatchSession((current) => {
       if (
         !current?.id ||
@@ -4826,16 +4842,40 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       }
       if (
         Math.floor(current.mediaPositionSeconds) === Math.floor(position) &&
-        Math.floor(current.mediaDurationSeconds) === Math.floor(duration)
+        Math.floor(current.mediaDurationSeconds) === Math.floor(duration) &&
+        current.playbackState === (snapshot.playbackState === "playing" ? "playing" : "paused")
       ) {
         return current;
       }
-      return Object.freeze({
-        ...current,
-        mediaPositionSeconds: position,
-        mediaDurationSeconds: duration || current.mediaDurationSeconds,
-      });
+      return target;
     });
+    try {
+      const next = await patchCoWatchPlayback(target.id, {
+        ...snapshot,
+        revision: target.revision,
+        mediaPositionSeconds: position,
+        mediaDurationSeconds: duration || target.mediaDurationSeconds,
+      });
+      if (next) setCoWatchSession(next);
+    } catch (error) {
+      if (error?.status === 409 || error?.code === "revision_conflict") {
+        await refreshCoWatchExperience({ silent: true });
+        return;
+      }
+      setScreenGlanceFeedback({ status: "error", message: error?.message || "电视播放状态同步失败，本机播放器仍可继续使用。" });
+    }
+  }
+
+  async function generateCastPairingCode() {
+    if (!coWatchSession?.id || isScreenGlanceBusy) return;
+    setIsScreenGlanceBusy(true);
+    try {
+      setCastPairing(await createCoWatchPairingCode(coWatchSession.id));
+    } catch (error) {
+      setScreenGlanceFeedback({ status: "error", message: error?.message || "暂时无法生成电视配对码。" });
+    } finally {
+      setIsScreenGlanceBusy(false);
+    }
   }
 
   async function stopDirectMediaCoWatchSession(options = {}) {
@@ -6126,6 +6166,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           onStopMusic={stopMusicCoWatchSession}
           onMusicPlaybackChange={(snapshot) => void updateMusicCoWatchPlayback(snapshot)}
           onPlaybackChange={updateDirectMediaCoWatchPlayback}
+          castPairing={castPairing}
+          castReceiver={coWatchSession?.castReceiver}
+          onGenerateCastPairing={generateCastPairingCode}
           onRefresh={() => void refreshCoWatchExperience()}
           onReply={async (text, playbackPositionSeconds) => {
             if (!coWatchSession?.id || isScreenGlanceBusy) return false;

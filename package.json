@@ -1,7 +1,7 @@
 {
   "name": "dengta-home-react",
   "private": true,
-  "version": "2.8.22",
+  "version": "2.8.23",
   "type": "module",
   "scripts": {
     "pretest": "node --test test/mobile-chat-shell.test.js && node test/settings-folders.test.js && npm run test:music-listening",
@@ -38,7 +38,7 @@
     "test:ambient-context": "node test/ambient-context.test.js",
     "test:device-activity": "node test/device-activity.test.js",
     "test:screen-glance": "node test/screen-glance.test.js",
-    "test:co-watch-experience": "node test/co-watch-experience.test.js && node test/co-watch-reply-worker.test.js && node test/direct-media.test.js",
+    "test:co-watch-experience": "node test/co-watch-experience.test.js && node test/co-watch-reply-worker.test.js && node test/direct-media.test.js && node --test --experimental-test-coverage --test-coverage-include=src/cast-receiver-api.js --test-coverage-include=src/receiver-playback.js test/cast-receiver.test.js",
     "test:chat-stickers": "node test/chat-stickers.test.js",
     "test:chat-skin": "node test/chat-skin.test.js",
     "test:companion-creative": "node test/companion-creative.test.js",

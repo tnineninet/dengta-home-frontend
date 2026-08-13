@@ -108,6 +108,14 @@
 .together-cadence { margin: 0; font-size: 13px; line-height: 1.6; color: var(--together-muted); }
 .together-feedback { margin-top: 14px; }
 .together-feedback.is-error { color: #a34444; }
+.together-cast { display: grid; gap: 10px; margin-top: 8px; padding: 14px; border: 1px solid rgba(42, 67, 56, .14); border-radius: 8px; background: rgba(232, 240, 235, .5); }
+.together-cast header { display: flex; justify-content: space-between; gap: 10px; }
+.together-cast p { margin: 0; font-size: 13px; color: var(--together-muted); line-height: 1.5; }
+.together-pairing-code { display: grid; justify-items: center; gap: 3px; padding: 12px; border-radius: 8px; background: rgba(255,255,255,.7); }
+.together-pairing-code b { font-size: 28px; letter-spacing: .14em; }
+.cast-provider-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.cast-provider-list > span { display: grid; padding: 8px; border: 1px solid rgba(42, 67, 56, .12); border-radius: 7px; }
+.cast-provider-list small { color: var(--together-muted); }
 .together-cadence { padding-top: 12px; border-top: 1px solid rgba(42, 67, 56, .12); }
 .together-now { gap: 10px; flex-direction: column; align-items: stretch; }
 .together-now > div { display: grid; grid-template-columns: 24px 1fr; gap: 2px 8px; padding: 12px; border-radius: 7px; background: rgba(232, 240, 235, .72); }
