@@ -11,6 +11,7 @@ import { LocalNotifications } from "@capacitor/local-notifications";
 import {
   ArrowLeft,
   BrainCircuit,
+  DatabaseZap,
   Mic2,
   MonitorSmartphone,
   Palette,
@@ -232,6 +233,7 @@ const CompanionCreativeSettings = lazy(
 );
 const CompanionDiary = lazy(() => import("./CompanionDiary"));
 const CompanionProfile = lazy(() => import("./CompanionProfile"));
+const ContentImport = lazy(() => import("./ContentImport"));
 const ExternalMemoryConnections = lazy(
   () => import("./ExternalMemoryConnections"),
 );
@@ -297,6 +299,12 @@ const SETTINGS_CATEGORIES = [
     label: "设备与共看",
     description: "通知、活动感知、屏幕共看与设备",
     Icon: MonitorSmartphone,
+  },
+  {
+    id: "data-import",
+    label: "数据导入",
+    description: "世界书与聊天记录",
+    Icon: DatabaseZap,
   },
 ];
 
@@ -6133,6 +6141,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               </Suspense>
             )}
 
+            {settingsCategory === "data-import" && (
+              <Suspense fallback={<DeferredFeature label="正在打开导入手记…" />}>
+                <ContentImport />
+              </Suspense>
+            )}
+
+            {settingsCategory !== "data-import" && (
             <form className="settings-form" onSubmit={saveSettings}>
           {settingsCategory === "services" && (
             <div className="settings-card service-manager-card">
@@ -7023,6 +7038,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             </span>
           </div>
             </form>
+            )}
             {settingsCategory === "services" && (
               <>
                 <Suspense fallback={<DeferredFeature label="正在打开 AI 接口管理…" />}>
