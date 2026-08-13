@@ -74,8 +74,13 @@ assert.match(androidWorkflow, /test -n "\$VITE_SUPABASE_URL"/);
 assert.match(androidWorkflow, /test -n "\$VITE_SUPABASE_ANON_KEY"/);
 assert.match(
   androidWorkflow,
-  /secrets\.ANDROID_STABLE_DEBUG_KEYSTORE_BASE64/,
+  /secrets\.ANDROID_STABLE_DEBUG_KEYSTORE_BASE64_V2/,
   "CI builds must restore the stable Android signing key",
+);
+assert.match(
+  androidWorkflow,
+  /keytool -exportcert[\s\S]*sha256sum/,
+  "CI must verify the restored keystore before starting the Android build",
 );
 assert.match(
   androidWorkflow,

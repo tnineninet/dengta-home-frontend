@@ -41,12 +41,18 @@ jobs:
 
       - name: Restore stable Android debug signing key
         env:
-          ANDROID_STABLE_DEBUG_KEYSTORE_BASE64: ${{ secrets.ANDROID_STABLE_DEBUG_KEYSTORE_BASE64 }}
+          ANDROID_STABLE_DEBUG_KEYSTORE_BASE64: ${{ secrets.ANDROID_STABLE_DEBUG_KEYSTORE_BASE64_V2 }}
         run: |
           test -n "$ANDROID_STABLE_DEBUG_KEYSTORE_BASE64"
           install -d -m 700 "$HOME/.android"
           printf '%s' "$ANDROID_STABLE_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
           chmod 600 "$HOME/.android/debug.keystore"
+          KEYSTORE_CERT_SHA256="$(keytool -exportcert \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android | sha256sum | awk '{print $1}')"
+          test "$KEYSTORE_CERT_SHA256" = "38a03ab2815c285bef17521d7fc7d4cd6ea4c85d6f14e337ef7391af9b2bb4c6"
 
       - name: Install web dependencies
         run: npm ci
