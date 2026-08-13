@@ -1,10 +1,12 @@
 export const PUBLIC_AUTH_REDIRECT_URL =
-  "https://dengta-home-backend-rkmq.onrender.com/web/";
+  "https://www.dengtahome.com/";
 
 const BUILD_PUBLIC_AUTH_REDIRECT_URL =
   import.meta.env?.VITE_PUBLIC_AUTH_REDIRECT_URL;
 const BUILD_APP_BASE_URL = import.meta.env?.BASE_URL;
 const OFFICIAL_WEB_HOSTS = new Set([
+  "dengtahome.com",
+  "www.dengtahome.com",
   "dengta-home.vercel.app",
   "dengta-home-backend-rkmq.onrender.com",
   "dengta-home-backend.onrender.com",

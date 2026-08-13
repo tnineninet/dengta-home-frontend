@@ -163,7 +163,7 @@ try {
     assert.match(textContent(renderer.toJSON()), /taotao@example\.test/);
     assert.equal(
       signUpPayload.emailRedirectTo,
-      "https://dengta-home-backend-rkmq.onrender.com/web/",
+      "https://www.dengtahome.com/",
       "signup must pass the resolved public callback",
     );
 
@@ -175,7 +175,7 @@ try {
     await act(async () => resendButton.props.onClick());
     assert.equal(
       resendPayload.emailRedirectTo,
-      "https://dengta-home-backend-rkmq.onrender.com/web/",
+      "https://www.dengtahome.com/",
       "verification resend must use the same resolved callback",
     );
     await act(async () => renderer.unmount());
@@ -210,7 +210,7 @@ try {
     });
     assert.equal(
       resetPayload.redirectTo,
-      "https://dengta-home-backend-rkmq.onrender.com/web/",
+      "https://www.dengtahome.com/",
       "password reset must use the resolved callback",
     );
     await act(async () => renderer.unmount());

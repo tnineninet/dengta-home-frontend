@@ -9,8 +9,8 @@ assert.equal(
       pathname: "/web/",
     },
   }),
-  "https://dengta-home-backend-rkmq.onrender.com/web/",
-  "email links opened from the mobile mirror must return to the mirrored app",
+  "https://www.dengtahome.com/",
+  "email links opened from the compatibility mirror must return to the official app",
 );
 
 assert.equal(
@@ -21,9 +21,23 @@ assert.equal(
       pathname: "/",
     },
   }),
-  "https://dengta-home-backend-rkmq.onrender.com/web/",
+  "https://www.dengtahome.com/",
   "all production email links must use the mobile-reachable canonical app URL",
 );
+
+for (const origin of [
+  "https://dengtahome.com",
+  "https://www.dengtahome.com",
+]) {
+  assert.equal(
+    resolveEmailRedirectUrl({
+      nativePlatform: false,
+      location: { origin, pathname: "/" },
+    }),
+    "https://www.dengtahome.com/",
+    `official domain ${origin} must use the canonical authentication callback`,
+  );
+}
 
 assert.equal(
   resolveEmailRedirectUrl({
@@ -33,7 +47,7 @@ assert.equal(
       pathname: "/web",
     },
   }),
-  "https://dengta-home-backend-rkmq.onrender.com/web/",
+  "https://www.dengtahome.com/",
 );
 
 assert.equal(
@@ -44,7 +58,7 @@ assert.equal(
       pathname: "/",
     },
   }),
-  "https://dengta-home-backend-rkmq.onrender.com/web/",
+  "https://www.dengtahome.com/",
   "Android registration must return email links to the public app, never WebView localhost",
 );
 
@@ -88,7 +102,7 @@ assert.equal(
     nativePlatform: false,
     location: { origin: "file://", pathname: "/web/" },
   }),
-  "https://dengta-home-backend-rkmq.onrender.com/web/",
+  "https://www.dengtahome.com/",
 );
 
 console.log("authentication email redirect tests passed");

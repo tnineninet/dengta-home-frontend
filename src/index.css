@@ -2650,6 +2650,22 @@ button:disabled {
   min-width: 0;
 }
 
+.ombre-mcp-strip > div {
+  flex: 1 1 auto;
+}
+
+.ombre-mcp-strip > button,
+.ombre-empty-state > button {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding: 7px 11px;
+  border: 1px solid #d8c6cc;
+  border-radius: 9px;
+  color: #6d4f59;
+  background: rgba(255, 255, 255, 0.86);
+  font-weight: 700;
+}
+
 .ombre-mcp-strip strong {
   font-size: 12px;
 }
@@ -2702,6 +2718,45 @@ button:disabled {
   background: #f0e6e9;
 }
 .ombre-empty-state.error-state { border-color: #dfb7b2; background: #fff8f7; }
+
+.ombre-optional-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 16px;
+  border: 1px solid #d8dfd3;
+  border-radius: 14px;
+  background: rgba(248, 251, 246, 0.86);
+}
+
+.ombre-optional-entry > div {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.ombre-optional-entry strong,
+.ombre-optional-entry p {
+  margin: 0;
+}
+
+.ombre-optional-entry p {
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.ombre-optional-entry > button {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 8px 13px;
+  border: 1px solid #d8c6cc;
+  border-radius: 10px;
+  color: #6d4f59;
+  background: #fff;
+  font-weight: 700;
+}
 
 .ombre-toolbar {
   display: grid;
@@ -3677,6 +3732,262 @@ button:disabled {
   border: 1px solid #d69bab;
   color: #9b5269;
   background: #fff;
+}
+
+.external-memory-connections {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+  scroll-margin-top: 18px;
+}
+
+.external-memory-heading,
+.external-memory-card-heading,
+.external-memory-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.external-memory-heading h3,
+.external-memory-heading p,
+.external-memory-card-heading h4,
+.external-memory-card-heading p,
+.external-memory-security p,
+.external-memory-recovery p,
+.external-memory-preview p {
+  margin: 0;
+}
+
+.external-memory-heading p,
+.external-memory-card-heading p {
+  margin-top: 5px;
+}
+
+.external-memory-expand {
+  width: 100%;
+  min-height: 42px;
+}
+
+.external-memory-form-panel {
+  display: grid;
+  gap: 13px;
+  padding-top: 2px;
+}
+
+.external-memory-security,
+.external-memory-recovery,
+.external-memory-feedback,
+.external-memory-preview {
+  padding: 13px 14px;
+  border-radius: 12px;
+  line-height: 1.6;
+}
+
+.external-memory-security {
+  border: 1px solid #d7dfcf;
+  color: #53624c;
+  background: #f7faf4;
+}
+
+.external-memory-security p,
+.external-memory-recovery p {
+  margin-top: 5px;
+}
+
+.external-memory-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.external-memory-card {
+  display: grid;
+  min-width: 0;
+  gap: 13px;
+  padding: 15px;
+  border: 1px solid #e0d4d7;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.78);
+}
+
+.external-memory-card-heading > div {
+  min-width: 0;
+}
+
+.external-memory-card-heading p {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.external-memory-recovery {
+  border: 1px solid #ead0aa;
+  color: #74593a;
+  background: #fff8ee;
+}
+
+.external-memory-fields {
+  display: grid;
+  gap: 11px;
+}
+
+.external-memory-fields > label {
+  display: grid;
+  gap: 6px;
+  color: #644e57;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.external-memory-fields input:not([type="checkbox"]) {
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid #dfd1d5;
+  border-radius: 10px;
+  outline: 0;
+  color: var(--ink);
+  background: #fff;
+}
+
+.external-memory-fields input[readonly] {
+  color: #725d65;
+  background: #f5eff1;
+}
+
+.external-memory-fields input:focus {
+  border-color: #bd7890;
+  box-shadow: 0 0 0 3px rgba(189, 120, 144, 0.12);
+}
+
+.external-memory-fields small,
+.external-memory-preview small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+.external-memory-enable {
+  display: flex !important;
+  align-items: flex-start;
+  gap: 9px !important;
+  padding: 11px;
+  border-radius: 10px;
+  background: #f8f2f4;
+}
+
+.external-memory-enable input {
+  width: 18px;
+  height: 18px;
+  margin: 1px 0 0;
+}
+
+.external-memory-enable span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.external-memory-feedback {
+  color: #4d6452;
+  background: #f5faf6;
+}
+
+.external-memory-feedback.error {
+  color: #8b514a;
+  background: #fff4f2;
+}
+
+.external-memory-actions {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.external-memory-actions button {
+  min-height: 40px;
+  padding: 7px 12px;
+  border-radius: 10px;
+}
+
+.external-memory-preview {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #d8dfd3;
+  background: #f8fbf6;
+}
+
+.external-memory-preview > div {
+  display: grid;
+  gap: 3px;
+}
+
+.external-memory-preview ul {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.external-memory-preview li {
+  display: grid;
+  gap: 3px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(83, 98, 76, 0.12);
+}
+
+.external-memory-preview li span {
+  overflow-wrap: anywhere;
+}
+
+.external-memory-preview time {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+@media (max-width: 760px) {
+  .external-memory-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .external-memory-heading,
+  .external-memory-card-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .external-memory-heading > .status-chip,
+  .external-memory-card-heading > .status-chip {
+    align-self: flex-start;
+  }
+
+  .external-memory-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .external-memory-actions button {
+    width: 100%;
+  }
+
+  .ombre-mcp-strip {
+    flex-wrap: wrap;
+  }
+
+  .ombre-mcp-strip > button {
+    width: 100%;
+  }
+
+  .ombre-optional-entry {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .ombre-optional-entry > button {
+    width: 100%;
+  }
 }
 
 .mcp-tutorial {

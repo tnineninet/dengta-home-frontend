@@ -76,6 +76,7 @@ jobs:
           npm run verify:public-auth-build
         env:
           VITE_API_URL: https://dengta-home-backend-rkmq.onrender.com
+          VITE_PUBLIC_AUTH_REDIRECT_URL: https://www.dengtahome.com/
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 

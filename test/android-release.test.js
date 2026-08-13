@@ -57,8 +57,8 @@ const screenGlanceService = fs.readFileSync(
 );
 
 assert.match(buildGradle, /applicationId "home\.dengta\.app"/);
-assert.match(buildGradle, /versionCode 40\b/);
-assert.match(buildGradle, /versionName "2\.8\.18"/);
+assert.match(buildGradle, /versionCode 41\b/);
+assert.match(buildGradle, /versionName "2\.8\.19"/);
 assert.match(
   buildGradle,
   /storeFile file\(System\.getProperty\("user\.home"\) \+ "\/\.android\/debug\.keystore"\)/,
@@ -118,4 +118,4 @@ assert.doesNotMatch(
   /小灯|桃桃/,
   "native background notifications must not ship a private companion identity",
 );
-console.log("Android 2.8.18 provider settings release tests passed");
+console.log("Android 2.8.19 Together and external memory release tests passed");

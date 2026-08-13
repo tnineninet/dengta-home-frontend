@@ -169,6 +169,10 @@ import {
   readCoWatchDialog,
   sendCoWatchReply,
 } from "./co-watch";
+import {
+  clearDirectMediaSession,
+  DIRECT_MEDIA_SOURCE_APP,
+} from "./direct-media.js";
 import { installInnerHeightViewportFallback } from "./mobile-viewport";
 import { toggleMomentLikeOptimistically } from "./moment-like";
 import {
@@ -228,6 +232,9 @@ const CompanionCreativeSettings = lazy(
 );
 const CompanionDiary = lazy(() => import("./CompanionDiary"));
 const CompanionProfile = lazy(() => import("./CompanionProfile"));
+const ExternalMemoryConnections = lazy(
+  () => import("./ExternalMemoryConnections"),
+);
 const McpDeviceCenter = lazy(() => import("./McpDeviceCenter"));
 const Nursery = lazy(() => import("./Nursery"));
 const IntimateDuel = lazy(() => import("./IntimateDuel"));
@@ -728,6 +735,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  useEffect(
+    () => () => {
+      clearDirectMediaSession(globalThis.sessionStorage, accountStorageScope);
+    },
+    [accountStorageScope],
+  );
   const [startupConnection, setStartupConnection] = useState({
     status: visualPreview ? "connected" : "connecting",
     failureCount: 0,
@@ -1049,7 +1063,22 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         refreshScreenGlanceState(),
       ]);
       if (sessionResult.status === "fulfilled") {
-        setCoWatchSession(sessionResult.value);
+        setCoWatchSession((current) => {
+          const remote = sessionResult.value;
+          if (!remote) return null;
+          if (
+            current?.id === remote.id &&
+            current.sourceApp === DIRECT_MEDIA_SOURCE_APP
+          ) {
+            return Object.freeze({
+              ...remote,
+              mediaPositionSeconds: current.mediaPositionSeconds,
+              mediaDurationSeconds:
+                current.mediaDurationSeconds || remote.mediaDurationSeconds,
+            });
+          }
+          return remote;
+        });
         if (sessionResult.value) {
           const currentDialog = await readCoWatchDialog(
             sessionResult.value,
@@ -2162,6 +2191,24 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }, [activeView]);
 
   useEffect(() => {
+    const refreshImportedMemories = () => {
+      apiRequest("/api/v2/memories")
+        .then((data) => setMemories(data.memories || []))
+        .catch((error) => setNotice(error.message));
+    };
+    window.addEventListener(
+      "dengta:memories-imported",
+      refreshImportedMemories,
+    );
+    return () => {
+      window.removeEventListener(
+        "dengta:memories-imported",
+        refreshImportedMemories,
+      );
+    };
+  }, []);
+
+  useEffect(() => {
     if (activeView !== "chat") return undefined;
     const pending = claimPendingChatScrollRestore(
       pendingChatScrollRestoreRef,
@@ -2210,7 +2257,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   useEffect(() => {
     if (
       !isSettingsOpen ||
-      settingsCategory !== "services" ||
       !settingsFocusTarget
     ) {
       return undefined;
@@ -4625,6 +4671,102 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
   }
 
+  async function startDirectMediaCoWatchSession(options = {}) {
+    if (isScreenGlanceBusy) {
+      return { ok: false, message: "另一项共看操作正在进行，请稍候。" };
+    }
+    setIsScreenGlanceBusy(true);
+    try {
+      let nextSession =
+        coWatchSession?.status === "active" ? coWatchSession : null;
+      if (nextSession && nextSession.sourceApp !== DIRECT_MEDIA_SOURCE_APP) {
+        return {
+          ok: false,
+          message: "已有一场外部 App 屏幕共看，请先结束后再载入视频直链。",
+        };
+      }
+      if (!nextSession) {
+        nextSession = await createCoWatchSession({
+          title: options.title,
+          sourceApp: DIRECT_MEDIA_SOURCE_APP,
+          mediaDurationSeconds: options.mediaDurationSeconds,
+          mediaPositionSeconds: options.mediaPositionSeconds,
+          cadenceSeconds: 90,
+        });
+      }
+      setCoWatchSession(nextSession);
+      setCoWatchReceipt(null);
+      setCoWatchDialog([]);
+      return {
+        ok: true,
+        message:
+          "直链共看已经开始。视频地址只保存在当前页面会话，后端只记录片名、播放进度和时长。",
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        message: error?.message || "暂时无法开始视频直链共看。",
+      };
+    } finally {
+      setIsScreenGlanceBusy(false);
+    }
+  }
+
+  function updateDirectMediaCoWatchPlayback(snapshot = {}) {
+    const position = Math.max(
+      0,
+      Math.min(604800, Number(snapshot.mediaPositionSeconds) || 0),
+    );
+    const duration = Math.max(
+      0,
+      Math.min(604800, Number(snapshot.mediaDurationSeconds) || 0),
+    );
+    setCoWatchSession((current) => {
+      if (
+        !current?.id ||
+        current.sourceApp !== DIRECT_MEDIA_SOURCE_APP ||
+        (snapshot.sessionId && snapshot.sessionId !== current.id)
+      ) {
+        return current;
+      }
+      if (
+        Math.floor(current.mediaPositionSeconds) === Math.floor(position) &&
+        Math.floor(current.mediaDurationSeconds) === Math.floor(duration)
+      ) {
+        return current;
+      }
+      return Object.freeze({
+        ...current,
+        mediaPositionSeconds: position,
+        mediaDurationSeconds: duration || current.mediaDurationSeconds,
+      });
+    });
+  }
+
+  async function stopDirectMediaCoWatchSession(options = {}) {
+    if (isScreenGlanceBusy) {
+      return { ok: false, message: "另一项共看操作正在进行，请稍候。" };
+    }
+    setIsScreenGlanceBusy(true);
+    try {
+      if (coWatchSession?.id) {
+        const ended = await endCoWatchSession(coWatchSession.id, options);
+        setCoWatchReceipt(ended);
+      }
+      setCoWatchSession(null);
+      setCoWatchDialog([]);
+      clearDirectMediaSession(globalThis.sessionStorage, accountStorageScope);
+      return { ok: true, message: "这场视频直链共看已经结束。" };
+    } catch (error) {
+      return {
+        ok: false,
+        message: error?.message || "暂时无法结束视频直链共看。",
+      };
+    } finally {
+      setIsScreenGlanceBusy(false);
+    }
+  }
+
   async function setScreenGlancePaused(paused) {
     if (!screenGlancePluginAvailable() || isScreenGlanceBusy) return;
     setIsScreenGlanceBusy(true);
@@ -4940,6 +5082,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     setIsMobileNavOpen(false);
     setSettingsCategory("services");
     setSettingsFocusTarget("creative-provider-settings");
+    setIsSettingsOpen(true);
+  }
+
+  function openExternalMemorySettings() {
+    closeComposerMenu();
+    requestStatusPanelClose();
+    setIsSidebarOpen(false);
+    setIsMobileNavOpen(false);
+    setSettingsCategory("persona");
+    setSettingsFocusTarget("external-memory-connections");
     setIsSettingsOpen(true);
   }
 
@@ -5706,7 +5858,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           <p>这些摘要会作为真实模型回复时的长期背景。</p>
         </div>
         <Suspense fallback={<DeferredFeature label="正在打开记忆档案…" />}>
-          <OmbreMemories />
+          <OmbreMemories onManageConnections={openExternalMemorySettings} />
         </Suspense>
         <div className="memory-source-heading local-memory-heading">
           <div>
@@ -5843,8 +5995,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     return (
       <Suspense fallback={<DeferredFeature label="正在打开一起看…" />}>
         <Together
-          key={coWatchSession?.id || "new-co-watch"}
           aiName={effectiveAiName}
+          accountScope={accountStorageScope}
           session={coWatchSession}
           receipt={coWatchReceipt}
           screenState={screenGlanceState}
@@ -5855,10 +6007,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           onStart={(options) =>
             void startScreenGlanceSession({ ...options, watchTogether: true })
           }
+          onStartDirect={startDirectMediaCoWatchSession}
           onPause={(paused) => void setScreenGlancePaused(paused)}
           onStop={(options) => void stopScreenGlanceSession(options)}
+          onStopDirect={stopDirectMediaCoWatchSession}
+          onPlaybackChange={updateDirectMediaCoWatchPlayback}
           onRefresh={() => void refreshCoWatchExperience()}
-          onReply={async (text) => {
+          onReply={async (text, playbackPositionSeconds) => {
             if (!coWatchSession?.id || isScreenGlanceBusy) return false;
             const pendingId = `pending-${Date.now()}`;
             setCoWatchDialog((current) => [
@@ -5876,7 +6031,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               const result = await sendCoWatchReply(
                 coWatchSession.id,
                 text,
-                coWatchSession.mediaPositionSeconds,
+                playbackPositionSeconds ?? coWatchSession.mediaPositionSeconds,
               );
               if (result.session) setCoWatchSession(result.session);
               await refreshCoWatchExperience({ silent: true });
@@ -6892,6 +7047,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   <CompanionCreativeSettings />
                 </Suspense>
               </>
+            )}
+            {settingsCategory === "persona" && (
+              <Suspense fallback={<DeferredFeature label="正在打开外部记忆连接…" />}>
+                <ExternalMemoryConnections />
+              </Suspense>
             )}
             {settingsCategory === "devices" && (
               <Suspense fallback={<DeferredFeature label="正在打开设备连接…" />}>
