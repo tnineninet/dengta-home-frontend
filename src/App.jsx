@@ -652,6 +652,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [activeView, setActiveView] = useState("chat");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsCategory, setSettingsCategory] = useState(null);
+  const [settingsFocusTarget, setSettingsFocusTarget] = useState("");
   const [chatSkinPreferences, setChatSkinPreferences] = useState(
     () =>
       readStoredChatSkinPreferences(
@@ -2205,6 +2206,42 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       window.cancelAnimationFrame(animationFrame);
     };
   }, [activeView, activeSessionId, messages, isSending]);
+
+  useEffect(() => {
+    if (
+      !isSettingsOpen ||
+      settingsCategory !== "services" ||
+      !settingsFocusTarget
+    ) {
+      return undefined;
+    }
+
+    let cancelled = false;
+    let retryTimer;
+    let attempt = 0;
+    const revealTarget = () => {
+      if (cancelled) return;
+      const target = document.getElementById(settingsFocusTarget);
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+        setSettingsFocusTarget("");
+        return;
+      }
+      attempt += 1;
+      if (attempt < 20) {
+        retryTimer = window.setTimeout(revealTarget, 100);
+      } else {
+        setSettingsFocusTarget("");
+      }
+    };
+    const animationFrame = window.requestAnimationFrame(revealTarget);
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(animationFrame);
+      window.clearTimeout(retryTimer);
+    };
+  }, [isSettingsOpen, settingsCategory, settingsFocusTarget]);
 
   function trackMessageScroll(event) {
     const messageList = event.currentTarget;
@@ -4882,6 +4919,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     setIsSidebarOpen(false);
     setIsMobileNavOpen(false);
     setSettingsCategory(null);
+    setSettingsFocusTarget("");
     setIsSettingsOpen(true);
   }
 
@@ -4891,6 +4929,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     setIsSidebarOpen(false);
     setIsMobileNavOpen(false);
     setSettingsCategory("services");
+    setSettingsFocusTarget("");
+    setIsSettingsOpen(true);
+  }
+
+  function openCreativeProviderSettings() {
+    closeComposerMenu();
+    requestStatusPanelClose();
+    setIsSidebarOpen(false);
+    setIsMobileNavOpen(false);
+    setSettingsCategory("services");
+    setSettingsFocusTarget("creative-provider-settings");
     setIsSettingsOpen(true);
   }
 
@@ -4904,6 +4953,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     settingsScrollRef.current
       ?.closest(".settings-sheet")
       ?.classList.remove("is-scrolling");
+    setSettingsFocusTarget("");
     setIsSettingsOpen(false);
   }
 
@@ -5647,6 +5697,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           <CompanionProfile
             aiName={effectiveAiName}
             onNotice={setNotice}
+            onOpenImageProviderSettings={openCreativeProviderSettings}
           />
         </Suspense>
         <div className="section-intro">

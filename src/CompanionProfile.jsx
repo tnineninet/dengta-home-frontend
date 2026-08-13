@@ -30,7 +30,11 @@ function identityLabel(field) {
   );
 }
 
-export default function CompanionProfile({ aiName = "伴侣", onNotice }) {
+export default function CompanionProfile({
+  aiName = "伴侣",
+  onNotice,
+  onOpenImageProviderSettings,
+}) {
   const [payload, setPayload] = useState(() => normalizeProfilePayload());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -250,6 +254,7 @@ export default function CompanionProfile({ aiName = "伴侣", onNotice }) {
             <CompanionArtworkLibrary
               aiName={aiName}
               onNotice={onNotice}
+              onOpenImageProviderSettings={onOpenImageProviderSettings}
             />
 
             <div className="profile-section-heading profile-history-heading">
