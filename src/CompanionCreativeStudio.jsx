@@ -31,6 +31,7 @@ const CREATIVE_CREDENTIAL_RECOVERY_CODES = new Set([
   "creative_secret_invalid",
   "creative_secret_scope_invalid",
   "creative_provider_credential_unreadable",
+  "creative_provider_credential_reentry_required",
 ]);
 
 const IMAGE_PROVIDER_CREDENTIAL_RECOVERY_MESSAGE =
@@ -689,7 +690,9 @@ export default function CompanionCreativeSettings() {
       await load();
       setFeedback(data.message);
     } catch (error) {
-      setFeedback(creativeErrorFeedback(error));
+      setFeedback(
+        creativeErrorFeedback(error, IMAGE_PROVIDER_CREDENTIAL_RECOVERY_MESSAGE),
+      );
     } finally {
       setBusy("");
     }

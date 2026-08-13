@@ -48,6 +48,11 @@ assert.match(studio, /artworkResult\.value\.metadata_reentry_required/);
 assert.match(studio, /returnedArtworks\.some\(artworkNeedsMetadataRecovery\)/);
 assert.match(studio, /artworkNeedsMetadataRecovery\(artwork\)/);
 assert.match(studio, /creative_artwork_metadata_reentry_required/);
+assert.match(studio, /creative_provider_credential_reentry_required/);
+assert.match(
+  studio,
+  /saveProvider[\s\S]*creativeErrorFeedback\(error, IMAGE_PROVIDER_CREDENTIAL_RECOVERY_MESSAGE\)/,
+);
 assert.match(studio, /creative_secret_invalid/);
 assert.match(studio, /Image API setup required/);
 assert.match(studio, /Open image settings/);
