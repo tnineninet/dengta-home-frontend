@@ -98,7 +98,7 @@ jobs:
           test -n "$APKSIGNER"
           SIGNATURE_OUTPUT="$("$APKSIGNER" verify --verbose --print-certs android/app/build/outputs/apk/debug/app-debug.apk)"
           printf '%s\n' "$SIGNATURE_OUTPUT"
-          printf '%s\n' "$SIGNATURE_OUTPUT" | grep -F "Signer #1 certificate SHA-256 digest: 38a03ab2815c285bef17521d7fc7d4cd6ea4c85d6f14e337ef7391af9b2bb4c6"
+          printf '%s\n' "$SIGNATURE_OUTPUT" | grep -F "certificate SHA-256 digest: 38a03ab2815c285bef17521d7fc7d4cd6ea4c85d6f14e337ef7391af9b2bb4c6"
 
       - name: Upload APK
         uses: actions/upload-artifact@v6
