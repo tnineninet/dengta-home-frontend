@@ -55,6 +55,22 @@ function providerNeedsCredentialReentry(provider) {
   );
 }
 
+function artworkNeedsMetadataRecovery(artwork) {
+  return (
+    artwork?.metadata_reentry_required === true ||
+    artwork?.metadata_state === "needs_reentry"
+  );
+}
+
+function isArtworkMetadataRecoveryError(error) {
+  return (
+    String(error?.code || "") ===
+      "creative_artwork_metadata_reentry_required" ||
+    error?.metadata_reentry_required === true ||
+    error?.metadata_state === "needs_reentry"
+  );
+}
+
 function creativeErrorFeedback(
   error,
   recoveryMessage = ARTWORK_METADATA_RECOVERY_MESSAGE,
@@ -244,11 +260,13 @@ export function CompanionArtworkLibrary({
     }
 
     if (artworkResult.status === "fulfilled") {
-      setArtworks(
-        Array.isArray(artworkResult.value.artworks)
-          ? artworkResult.value.artworks
-          : [],
-      );
+      const returnedArtworks = Array.isArray(artworkResult.value.artworks)
+        ? artworkResult.value.artworks
+        : [];
+      setArtworks(returnedArtworks);
+      metadataUnavailable =
+        artworkResult.value.metadata_reentry_required === true ||
+        returnedArtworks.some(artworkNeedsMetadataRecovery);
     } else if (isCreativeCredentialRecoveryError(artworkResult.reason)) {
       metadataUnavailable = true;
     } else {
@@ -304,7 +322,7 @@ export function CompanionArtworkLibrary({
   }
 
   async function generateArtwork(artwork) {
-    if (artworkMetadataUnavailable) {
+    if (artworkNeedsMetadataRecovery(artwork)) {
       setFeedback(ARTWORK_METADATA_RECOVERY_MESSAGE);
       return;
     }
@@ -340,13 +358,17 @@ export function CompanionArtworkLibrary({
       onNotice?.(message);
     } catch (error) {
       await refresh().catch(() => {});
-      if (isCreativeCredentialRecoveryError(error)) {
+      if (isArtworkMetadataRecoveryError(error)) {
+        setArtworkMetadataUnavailable(true);
+      } else if (isCreativeCredentialRecoveryError(error)) {
         setProviderCredentialRecoveryRequired(true);
       }
       setFeedback(
         creativeErrorFeedback(
           error,
-          IMAGE_PROVIDER_CREDENTIAL_RECOVERY_MESSAGE,
+          isArtworkMetadataRecoveryError(error)
+            ? ARTWORK_METADATA_RECOVERY_MESSAGE
+            : IMAGE_PROVIDER_CREDENTIAL_RECOVERY_MESSAGE,
         ),
       );
     } finally {
@@ -506,7 +528,12 @@ export function CompanionArtworkLibrary({
               <div className="artwork-card-copy">
                 <span>{stateLabel(artwork.state)}</span>
                 <strong>{artwork.title}</strong>
-                <p>{artwork.description}</p>
+                <p>
+                  {artwork.description ||
+                    (artworkNeedsMetadataRecovery(artwork)
+                      ? "旧作品文案暂不可读；已保存图片不受影响，未完成作品需重新构思。 / Old artwork text is unavailable. Saved images are unaffected; unfinished artwork must be recreated."
+                      : "")}
+                </p>
                 {artwork.reason && <small>为什么想画：{artwork.reason}</small>}
                 {artwork.model && (
                   <small>
@@ -535,7 +562,7 @@ export function CompanionArtworkLibrary({
                   >
                     {busy === `generate:${artwork.id}`
                       ? "正在画…"
-                      : artworkMetadataUnavailable
+                      : artworkNeedsMetadataRecovery(artwork)
                         ? "重新构思后生成 / Recreate idea"
                         : providerCredentialRecoveryRequired
                           ? "重新配置后生成 / Reconfigure"
