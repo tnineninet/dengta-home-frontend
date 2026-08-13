@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { commitContentImport, listContentImports, previewContentImport } from "./content-import-api.js";
+import WorldBookManager from "./WorldBookManager.jsx";
 
 const TYPE_META = Object.freeze({
   memory: {
@@ -45,6 +46,14 @@ function normalizeImportPreview(data = {}) {
       title: String(item.title || "未命名候选"),
       content: String(item.content ?? item.text ?? ""),
       target: String(item.target || TYPE_META[type].defaultTarget),
+      keywords: Array.isArray(item.keywords ?? item.metadata?.keywords) ? [...(item.keywords ?? item.metadata.keywords)] : [],
+      enabled: (item.enabled ?? item.metadata?.enabled) !== false,
+      priority: Number(item.priority ?? item.metadata?.priority ?? 100),
+      constant: (item.constant ?? item.metadata?.constant) === true,
+      match_mode: String(item.match_mode ?? item.metadata?.match_mode ?? "any"),
+      case_sensitive: (item.case_sensitive ?? item.metadata?.case_sensitive) === true,
+      position: String(item.position ?? item.metadata?.position ?? "dynamic_context"),
+      sort_order: Number(item.sort_order ?? item.metadata?.sort_order ?? index),
       decision: "pending",
     };
   });
@@ -80,6 +89,7 @@ function committedResult(data) {
 
 export default function ContentImport({ api }) {
   const client = api || undefined;
+  const [activeTab, setActiveTab] = useState("import");
   const [kind, setKind] = useState("world_book");
   const [format, setFormat] = useState("auto");
   const [inputMode, setInputMode] = useState("file");
@@ -170,6 +180,16 @@ export default function ContentImport({ api }) {
         title: item.title,
         content: item.content,
         target: item.target,
+        ...(item.type === "world_book" ? {
+          keywords: item.keywords,
+          enabled: item.enabled,
+          priority: Number(item.priority),
+          constant: item.constant,
+          match_mode: item.match_mode,
+          case_sensitive: item.case_sensitive,
+          position: item.position,
+          sort_order: Number(item.sort_order),
+        } : {}),
       }));
       const committed = await commitContentImport(preview.id, decisions, client);
       setResult(committedResult(committed));
@@ -196,7 +216,13 @@ export default function ContentImport({ api }) {
         <p>先生成预览，再逐项决定去留。未经你的明确确认，任何候选都不会写入。</p>
       </header>
 
-      <div className="content-import-source settings-card">
+      <div className="content-import-tabs" role="tablist" aria-label="世界书与导入功能">
+        <button type="button" role="tab" aria-selected={activeTab === "import"} onClick={() => setActiveTab("import")}>导入新内容</button>
+        <button type="button" role="tab" aria-selected={activeTab === "manage"} onClick={() => setActiveTab("manage")}>世界书管理</button>
+      </div>
+
+      {activeTab === "manage" ? <WorldBookManager api={api} /> : <>
+        <div className="content-import-source settings-card">
         <fieldset className="content-import-segments">
           <legend>导入内容类型</legend>
           <button type="button" aria-pressed={kind === "world_book"} onClick={() => setKind("world_book")}>世界书</button>
@@ -212,7 +238,7 @@ export default function ContentImport({ api }) {
           <label className="content-import-paste"><span>粘贴原始内容</span><textarea aria-label="粘贴导入内容" value={content} onChange={(event) => setContent(event.target.value)} rows={8} placeholder="内容会按原文发送，不进行关键词过滤。" /></label>
         )}
         <button className="content-import-primary" type="button" disabled={Boolean(busy) || (inputMode === "file" ? !file : !content)} onClick={() => void handlePreview()}>{busy === "preview" ? "正在读入故事…" : "生成导入预览"}</button>
-      </div>
+        </div>
 
       {error && <div className="content-import-error" role="alert">{error}</div>}
       {result && <div className="content-import-success" role="status"><strong>导入完成</strong><span>{countText(result)}</span></div>}
@@ -230,6 +256,14 @@ export default function ContentImport({ api }) {
                   <label><span>标题</span><input aria-label={`${item.title}的标题`} value={item.title} onChange={(event) => updateCandidate(item.clientKey, { title: event.target.value })} /></label>
                   <label><span>内容</span><textarea aria-label={`${item.title}的内容`} value={item.content} onChange={(event) => updateCandidate(item.clientKey, { content: event.target.value })} rows={5} /></label>
                    <label><span>写入位置</span><select aria-label={`${item.title}的写入位置`} value={item.target} onChange={(event) => updateCandidate(item.clientKey, { target: event.target.value })}>{TYPE_META[item.type].targets.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+                   {item.type === "world_book" && <div className="content-import-world-book-fields">
+                     <label><span>关键词</span><input aria-label={`${item.title}的关键词`} value={item.keywords.join(", ")} onChange={(event) => updateCandidate(item.clientKey, { keywords: event.target.value.split(/[,，\n]/).map((value) => value.trim()).filter(Boolean) })} /></label>
+                     <label><span>优先级</span><input aria-label={`${item.title}的优先级`} type="number" min="-100000" max="100000" value={item.priority} onChange={(event) => updateCandidate(item.clientKey, { priority: event.target.value })} /></label>
+                     <label><span>排序值</span><input aria-label={`${item.title}的排序值`} type="number" value={item.sort_order} onChange={(event) => updateCandidate(item.clientKey, { sort_order: event.target.value })} /></label>
+                     <label><span>匹配方式</span><select aria-label={`${item.title}的匹配方式`} value={item.match_mode} onChange={(event) => updateCandidate(item.clientKey, { match_mode: event.target.value })}><option value="any">命中任一关键词</option><option value="all">命中全部关键词</option></select></label>
+                     <label><span>上下文位置</span><select aria-label={`${item.title}的上下文位置`} value={item.position} onChange={(event) => updateCandidate(item.clientKey, { position: event.target.value })}><option value="dynamic_context">动态本轮背景</option><option value="before_memory">稳定记忆之前</option></select></label>
+                     <div className="world-book-switches"><label><input type="checkbox" checked={item.enabled} onChange={(event) => updateCandidate(item.clientKey, { enabled: event.target.checked })} /><span>启用</span></label><label><input type="checkbox" checked={item.constant} onChange={(event) => updateCandidate(item.clientKey, { constant: event.target.checked })} /><span>常驻</span></label><label><input type="checkbox" checked={item.case_sensitive} onChange={(event) => updateCandidate(item.clientKey, { case_sensitive: event.target.checked })} /><span>区分大小写</span></label></div>
+                   </div>}
                   <div className="content-import-decision" role="group" aria-label={`${item.title}的导入决策`}><button type="button" aria-pressed={item.decision === "accepted"} onClick={() => updateCandidate(item.clientKey, { decision: "accepted" })}>接受</button><button type="button" aria-pressed={item.decision === "rejected"} onClick={() => updateCandidate(item.clientKey, { decision: "rejected" })}>拒绝</button></div>
                 </article>
               ))}</div>
@@ -243,6 +277,7 @@ export default function ContentImport({ api }) {
         <div><span className="eyebrow">导入手记</span><h4 id="recent-import-title">最近导入记录</h4></div>
         {recentImports.length === 0 ? <p className="content-import-empty">还没有导入记录。</p> : <ul>{recentImports.map((item, index) => <li key={item.id || index}><strong>{item.title || item.filename || item.source_name || "未命名导入"}</strong><span>{item.status || item.kind || item.source_type || "已记录"}</span><time dateTime={item.created_at || item.createdAt}>{item.created_at || item.createdAt ? new Date(item.created_at || item.createdAt).toLocaleString("zh-CN") : ""}</time></li>)}</ul>}
       </section>
+      </>}
     </section>
   );
 }

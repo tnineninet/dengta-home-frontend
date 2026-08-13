@@ -294,7 +294,6 @@ button:disabled {
   font-size: 12px;
 }
 
-/* 世界书与聊天记录导入：延续天空、玻璃与温馨档案风。 */
 .content-import {
   display: grid;
   gap: 18px;
@@ -318,6 +317,9 @@ button:disabled {
 .content-import-hero { padding: 24px 26px; }
 .content-import-hero h3 { margin: 5px 0 7px; font-family: Georgia, "Songti SC", serif; font-size: clamp(1.45rem, 3vw, 2rem); }
 .content-import-hero p { max-width: 680px; margin: 0; color: var(--muted); line-height: 1.7; }
+.content-import-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; padding: 6px; border: 1px solid rgba(126, 139, 179, .18); border-radius: 18px; background: rgba(255,255,255,.5); }
+.content-import-tabs button { min-height: 44px; border: 0; border-radius: 13px; color: #71697a; background: transparent; }
+.content-import-tabs button[aria-selected="true"] { color: #fff; background: linear-gradient(135deg, #708bc0, #ad7fa8); box-shadow: 0 8px 22px rgba(103, 113, 164, .22); }
 .content-import-source { display: grid; gap: 16px; overflow: hidden; }
 .content-import-segments { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; border: 0; }
 .content-import-segments legend { width: 100%; margin-bottom: 7px; color: var(--muted); font-size: .82rem; }
@@ -365,6 +367,9 @@ button:disabled {
 .content-import-candidate-meta { display: flex; justify-content: space-between; gap: 10px; color: var(--muted); font-size: .78rem; }
 .content-import-candidate-meta em { padding: 3px 8px; border-radius: 99px; color: #67627b; background: rgba(255,255,255,.68); font-style: normal; }
 .content-import-decision { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.content-import-world-book-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding-top: 12px; border-top: 1px solid rgba(127,137,170,.16); }
+.content-import-world-book-fields > label:first-child,
+.content-import-world-book-fields .world-book-switches { grid-column: 1 / -1; }
 .content-import-commit-summary { position: sticky; z-index: 4; bottom: 12px; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 16px 18px; }
 .content-import-commit-summary div { display: grid; gap: 4px; }
 .content-import-commit-summary .content-import-primary { justify-self: auto; flex: 0 0 auto; }
@@ -376,13 +381,62 @@ button:disabled {
 .content-import-recent time,
 .content-import-empty { color: var(--muted); font-size: .82rem; }
 
+.world-book-manager { display: grid; gap: 14px; }
+.world-book-toolbar,
+.world-book-editor { display: grid; gap: 17px; }
+.world-book-section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.world-book-section-heading h4 { margin: 4px 0; font: 700 1.35rem Georgia, "Songti SC", serif; }
+.world-book-section-heading p { max-width: 630px; margin: 0; color: var(--muted); line-height: 1.65; }
+.world-book-section-heading > button:not(.content-import-primary),
+.world-book-filters > button,
+.world-book-entry-actions button,
+.world-book-pagination button { min-height: 40px; padding: 0 14px; border: 1px solid rgba(126,139,179,.2); border-radius: 12px; color: #625c70; background: rgba(255,255,255,.68); }
+.world-book-filters { display: grid; grid-template-columns: minmax(180px, 1.5fr) repeat(3, minmax(130px, 1fr)) auto; gap: 10px; align-items: end; }
+.world-book-summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-top: 12px; border-top: 1px solid rgba(127,137,170,.15); }
+.world-book-summary span { padding: 6px 10px; border-radius: 999px; color: #736b7e; background: rgba(255,255,255,.58); font-size: .76rem; }
+.world-book-summary strong { color: #5b5270; font-variant-numeric: tabular-nums; }
+.world-book-summary button { margin-left: auto; min-height: 34px; padding: 0 12px; border: 1px solid rgba(126,139,179,.2); border-radius: 11px; color: #765f73; background: rgba(255,255,255,.62); }
+.world-book-list { display: grid; gap: 11px; }
+.world-book-entry { display: grid; gap: 12px; padding: 18px 19px; border: 1px solid rgba(255,255,255,.72); border-radius: 20px; background: linear-gradient(145deg, rgba(255,255,255,.76), rgba(232,238,250,.53)); box-shadow: 0 12px 30px rgba(83,91,126,.08); }
+.world-book-entry.is-disabled { opacity: .62; }
+.world-book-entry-head,
+.world-book-entry-head > div,
+.world-book-badges,
+.world-book-keywords,
+.world-book-entry-actions,
+.world-book-pagination,
+.world-book-switches { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.world-book-entry-head { justify-content: space-between; }
+.world-book-entry h5 { margin: 0; font: 700 1.04rem Georgia, "Songti SC", serif; }
+.world-book-order { display: grid; width: 27px; height: 27px; place-items: center; border-radius: 9px; color: #fff; background: linear-gradient(135deg, #788fc0, #a979a2); font-size: .72rem; }
+.world-book-entry > p { display: -webkit-box; overflow: hidden; margin: 0; color: #5f5968; line-height: 1.65; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.world-book-badges span,
+.world-book-keywords span { padding: 4px 9px; border-radius: 999px; color: #69647b; background: rgba(255,255,255,.7); font-size: .73rem; }
+.world-book-keywords em { color: var(--muted); font-size: .78rem; font-style: normal; }
+.world-book-entry-actions { padding-top: 3px; }
+.world-book-entry-actions .is-danger { color: #984d5f; }
+.world-book-pagination { justify-content: flex-end; }
+.world-book-pagination span { margin-right: auto; color: var(--muted); font-size: .82rem; }
+.world-book-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.world-book-switches label { display: flex; align-items: center; grid-template-columns: auto 1fr; gap: 7px; min-height: 38px; padding: 0 11px; border-radius: 11px; background: rgba(255,255,255,.55); }
+.world-book-switches input { width: 18px; min-height: 18px; margin: 0; }
+.world-book-empty { padding: 34px; border: 1px dashed rgba(126,139,179,.3); border-radius: 18px; text-align: center; }
+
 @media (max-width: 760px) {
   .content-import { gap: 14px; }
   .content-import-hero,
   .content-import-source,
   .content-import-recent { border-radius: 19px; padding: 17px; }
   .content-import-fields,
-  .content-import-grid { grid-template-columns: 1fr; }
+  .content-import-grid,
+  .content-import-world-book-fields,
+  .world-book-form-grid,
+  .world-book-filters { grid-template-columns: 1fr; }
+  .content-import-world-book-fields > label:first-child,
+  .content-import-world-book-fields .world-book-switches { grid-column: auto; }
+  .world-book-section-heading { align-items: stretch; flex-direction: column; }
+  .world-book-section-heading .content-import-primary { width: 100%; }
+  .world-book-summary button { width: 100%; margin-left: 0; }
   .content-import-commit-summary { align-items: stretch; flex-direction: column; bottom: calc(8px + env(safe-area-inset-bottom)); }
   .content-import-commit-summary .content-import-primary { width: 100%; }
   .content-import-recent li { grid-template-columns: 1fr auto; }
