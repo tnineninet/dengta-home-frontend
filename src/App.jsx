@@ -6542,7 +6542,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   min="1000"
                   max="200000"
                   step="1000"
-                  value={draftSettings.compression_threshold ?? 12000}
+                  value={draftSettings.compression_threshold ?? 32000}
                   onChange={(event) =>
                     updateDraft("compression_threshold", event.target.value)
                   }
@@ -6554,7 +6554,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   type="number"
                   min="1"
                   max="200"
-                  value={draftSettings.compression_keep ?? 20}
+                  value={draftSettings.compression_keep ?? 40}
                   onChange={(event) =>
                     updateDraft("compression_keep", event.target.value)
                   }
