@@ -172,6 +172,7 @@ import {
 import {
   createCoWatchSession,
   endCoWatchSession,
+  patchCoWatchPlayback,
   readActiveCoWatchSession,
   readCoWatchDialog,
   sendCoWatchReply,
@@ -250,6 +251,7 @@ const OmbreMemories = lazy(() => import("./OmbreMemories"));
 const Together = lazy(() => import("./Together.jsx"));
 const ThemeStudio = lazy(() => import("./ThemeStudio"));
 const MediaSettings = lazy(() => import("./MediaSettings"));
+const MusicSettings = lazy(() => import("./MusicSettings.jsx"));
 const VoiceProviderSettings = lazy(
   () => import("./VoiceProviderSettings"),
 );
@@ -787,8 +789,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   useEffect(
     () => () => {
       clearDirectMediaSession(globalThis.sessionStorage, accountStorageScope);
+      setCoWatchSession(null);
+      setCoWatchDialog([]);
     },
-    [accountStorageScope],
+    [accountStorageScope, companionScope],
   );
   const [startupConnection, setStartupConnection] = useState({
     status: visualPreview ? "connected" : "connecting",
@@ -4760,6 +4764,49 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
   }
 
+  async function startMusicCoWatchSession(options = {}) {
+    if (isScreenGlanceBusy) return false;
+    if (coWatchSession?.status === "active" && coWatchSession.sessionMode !== "listening") {
+      setScreenGlanceFeedback({ status: "error", message: "已有一场屏幕或视频共看，请先结束后再一起听歌。" });
+      return false;
+    }
+    setIsScreenGlanceBusy(true);
+    try {
+      const next = coWatchSession?.sessionMode === "listening" ? coWatchSession : await createCoWatchSession({ ...options, sessionMode: "listening", sourceApp: "local_playlist", cadenceSeconds: 90 });
+      setCoWatchSession(next); setCoWatchReceipt(null); setCoWatchDialog([]);
+      return true;
+    } catch (error) {
+      setScreenGlanceFeedback({ status: "error", message: error?.message || "暂时无法开始一起听歌。" });
+      return false;
+    } finally { setIsScreenGlanceBusy(false); }
+  }
+
+  async function updateMusicCoWatchPlayback(snapshot = {}) {
+    if (!snapshot.sessionId) return;
+    try {
+      const next = await patchCoWatchPlayback(snapshot.sessionId, snapshot);
+      if (next) setCoWatchSession(next);
+    } catch (error) {
+      if (error?.status === 409 || error?.code === "revision_conflict") {
+        await refreshCoWatchExperience({ silent: true });
+        return;
+      }
+      setScreenGlanceFeedback({ status: "error", message: error?.message || "播放状态同步失败，播放器仍可在本机使用。" });
+    }
+  }
+
+  async function stopMusicCoWatchSession(options = {}) {
+    if (isScreenGlanceBusy) return false;
+    setIsScreenGlanceBusy(true);
+    try {
+      if (coWatchSession?.id) setCoWatchReceipt(await endCoWatchSession(coWatchSession.id, options));
+      setCoWatchSession(null); setCoWatchDialog([]); return true;
+    } catch (error) {
+      setScreenGlanceFeedback({ status: "error", message: error?.message || "暂时无法结束一起听歌。" });
+      return false;
+    } finally { setIsScreenGlanceBusy(false); }
+  }
+
   function updateDirectMediaCoWatchPlayback(snapshot = {}) {
     const position = Math.max(
       0,
@@ -6075,6 +6122,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           onPause={(paused) => void setScreenGlancePaused(paused)}
           onStop={(options) => void stopScreenGlanceSession(options)}
           onStopDirect={stopDirectMediaCoWatchSession}
+          onStartMusic={startMusicCoWatchSession}
+          onStopMusic={stopMusicCoWatchSession}
+          onMusicPlaybackChange={(snapshot) => void updateMusicCoWatchPlayback(snapshot)}
           onPlaybackChange={updateDirectMediaCoWatchPlayback}
           onRefresh={() => void refreshCoWatchExperience()}
           onReply={async (text, playbackPositionSeconds) => {
@@ -6690,6 +6740,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             )}
             {settingsCategory === "devices" && (
               <>
+            <Suspense fallback={<DeferredFeature label="正在打开一起听歌设置…" />}>
+              <MusicSettings providerStatus={providerStatus} />
+            </Suspense>
             <div className="notification-feature-panel device-activity-panel">
               <div className="device-activity-heading">
                 <div>

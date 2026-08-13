@@ -1,10 +1,10 @@
 {
   "name": "dengta-home-react",
   "private": true,
-  "version": "0.0.0",
+  "version": "2.8.22",
   "type": "module",
   "scripts": {
-    "pretest": "node --test test/mobile-chat-shell.test.js && node test/settings-folders.test.js",
+    "pretest": "node --test test/mobile-chat-shell.test.js && node test/settings-folders.test.js && npm run test:music-listening",
     "test": "npm run test:content-import && npm run test:settings && npm run test:account-storage && npm run test:persona-reset && npm run test:memory-management && npm run test:startup-reconnect && npm run test:backend-prewarm && npm run test:auth-session && npm run test:auth-gate && npm run test:auth-redirect && npm run test:background-notification-identity && npm run test:private-media && npm run test:composer-interactions && npm run test:message-reference && npm run test:companion-interaction && npm run test:intimate-duel && npm run test:reply-suggestions && npm run test:voice && npm run test:voice-output && npm run test:chat-tools && npm run test:chat-latency && npm run test:inner-monologue && npm run test:inner-monologue-sync && npm run test:chat-errors && npm run test:ambient-context && npm run test:device-activity && npm run test:screen-glance && npm run test:co-watch-experience && npm run test:chat-stickers && npm run test:chat-skin && npm run test:companion-creative && npm run test:service-status && npm run test:diary && npm run test:nursery && npm run test:companion-profile && npm run test:instant-feedback && npm run test:mobile-layout && npm run test:sun-glass-chat && npm run test:chat-scroll-state && npm run test:native-motion && npm run test:dengta-theme && npm run test:typography && npm run test:initial-bundle-budget && npm run test:android-release && npm run test:public-auth-build && npm run test:pwa-install && npm run test:ombre-mcp-ui && npm run test:mcp-device-center && npm run test:ai-provider-center && npm run test:cc-switch-bridge",
     "dev": "vite",
     "build": "vite build",
@@ -62,6 +62,7 @@
     "test:cc-switch-bridge": "node test/cc-switch-bridge.test.js",
     "test:pwa-install": "node test/pwa-install.test.js",
     "test:content-import": "node --test --experimental-test-coverage --test-coverage-include=src/content-import-api.js test/content-import-api.test.js test/content-import.test.js",
+    "test:music-listening": "node test/music-listening.test.js",
     "preview": "vite preview"
   },
   "engines": {

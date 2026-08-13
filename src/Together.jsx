@@ -4,6 +4,7 @@ import {
   Clock3,
   Link2,
   MessageCircleMore,
+  Music2,
   MonitorPlay,
   Pause,
   Play,
@@ -18,6 +19,7 @@ import {
   validateDirectMediaUrl,
 } from "./direct-media.js";
 import "./together.css";
+import TogetherMusic from "./TogetherMusic.jsx";
 
 function formatMoment(value, fallback = "等待画面") {
   if (!value) return fallback;
@@ -47,6 +49,9 @@ export default function Together({
   onPause,
   onStop,
   onStopDirect,
+  onStartMusic,
+  onStopMusic,
+  onMusicPlaybackChange,
   onPlaybackChange,
   onRefresh,
   dialog = [],
@@ -56,7 +61,9 @@ export default function Together({
     readDirectMediaSession(globalThis.sessionStorage, accountScope),
   );
   const [mode, setMode] = useState(() =>
-    session?.sourceApp === DIRECT_MEDIA_SOURCE_APP || restoredDirectMedia?.url
+    session?.sessionMode === "listening"
+      ? "music"
+      : session?.sourceApp === DIRECT_MEDIA_SOURCE_APP || restoredDirectMedia?.url
       ? "direct"
       : "external",
   );
@@ -75,6 +82,7 @@ export default function Together({
   );
   const [cadenceMinutes, setCadenceMinutes] = useState("1.5");
   const [reply, setReply] = useState("");
+  const [musicPositionSeconds, setMusicPositionSeconds] = useState(0);
   const [directUrlInput, setDirectUrlInput] = useState(
     restoredDirectMedia?.url || "",
   );
@@ -111,9 +119,10 @@ export default function Together({
   const directActive =
     session?.status === "active" &&
     session?.sourceApp === DIRECT_MEDIA_SOURCE_APP;
-  const selectedMode = directActive ? "direct" : active ? "external" : mode;
-  const selectedActive = selectedMode === "direct" ? directActive : active;
-  const modeLocked = active || directActive;
+  const musicActive = session?.status === "active" && session?.sessionMode === "listening";
+  const selectedMode = musicActive ? "music" : directActive ? "direct" : active ? "external" : mode;
+  const selectedActive = selectedMode === "music" ? musicActive : selectedMode === "direct" ? directActive : active;
+  const modeLocked = active || directActive || musicActive;
 
   const fallbackDialog = useMemo(() => {
     const text = String(screenState.lastReaction || "").trim();
@@ -276,7 +285,7 @@ export default function Together({
     Promise.resolve(
       onReply?.(
         text,
-        selectedMode === "direct" ? directPositionSeconds : undefined,
+        selectedMode === "music" ? musicPositionSeconds : selectedMode === "direct" ? directPositionSeconds : undefined,
       ),
     ).then((sent) => {
       if (sent !== false) setReply("");
@@ -294,7 +303,9 @@ export default function Together({
           <small>TOGETHER</small>
           <h2>和 {aiName} 一起看</h2>
           <p>
-            {selectedMode === "direct"
+            {selectedMode === "music"
+              ? "在前台用浏览器音频播放器，和伴侣同步听同一份歌单。"
+              : selectedMode === "direct"
               ? "在 DengTa 内播放 HTTPS 视频直链；AI 不会抓取或自动观看视频。"
               : "切到任意视频 App，DengTa 会在画面有变化时陪你聊。"}
           </p>
@@ -336,11 +347,24 @@ export default function Together({
           <Link2 aria-hidden="true" />
           DengTa 视频直链
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={selectedMode === "music"}
+          className={selectedMode === "music" ? "is-selected" : ""}
+          disabled={modeLocked && selectedMode !== "music"}
+          onClick={() => setMode("music")}
+        >
+          <Music2 aria-hidden="true" />
+          一起听歌
+        </button>
       </div>
 
       <div className="together-layout">
         <div className="together-stage">
-          {selectedMode === "direct" ? (
+          {selectedMode === "music" ? (
+            <div className="together-stage-empty together-music-stage"><Music2 aria-hidden="true" /><strong>一起听歌</strong><span>播放器保持在前台运行，歌单与进度会同步到本场会话。</span></div>
+          ) : selectedMode === "direct" ? (
             directMediaUrl ? (
               <video
                 ref={videoRef}
@@ -404,7 +428,9 @@ export default function Together({
           <div className="together-stage-caption">
             <span>{stageTitle}</span>
             <time>
-              {selectedMode === "direct"
+              {selectedMode === "music"
+                ? `${formatMediaTime(musicPositionSeconds)} · 前台播放器`
+                : selectedMode === "direct"
                 ? `${formatMediaTime(directPositionSeconds)} / ${
                     directDurationSeconds
                       ? formatMediaTime(directDurationSeconds)
@@ -416,7 +442,16 @@ export default function Together({
         </div>
 
         <div className="together-controls">
-          {selectedMode === "direct" ? (
+          {selectedMode === "music" ? (
+            <TogetherMusic
+              session={musicActive ? session : null}
+              busy={busy}
+              onStart={onStartMusic}
+              onEnd={onStopMusic}
+              onPlaybackChange={onMusicPlaybackChange}
+              onPositionChange={setMusicPositionSeconds}
+            />
+          ) : selectedMode === "direct" ? (
             <div className="together-setup together-direct-setup">
               {!directActive && (
                 <>
@@ -631,7 +666,9 @@ export default function Together({
           </article>
         )) : (
           <p className="together-dialog-empty">
-            {selectedMode === "direct"
+            {selectedMode === "music"
+              ? "开始后可在这里复用本场回复区聊歌曲；曲名和歌词不会在前端过滤。"
+              : selectedMode === "direct"
               ? "开始后，可以按标题和当前进度手动聊天；AI 不会自动读取视频画面，视频地址也不会随消息发送。"
               : "开始后，主动回应会出现在这里，也会以声音和振动提醒你。"}
           </p>
