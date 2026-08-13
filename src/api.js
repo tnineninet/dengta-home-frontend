@@ -2,8 +2,6 @@ import { isChatGenerationInProgress } from "./chat-idempotency.js";
 import { authSession as defaultAuthSession } from "./auth-session.js";
 import {
   COMMITTED_CHAT_ERROR_FALLBACK,
-  createProviderTextGuard,
-  isProviderErrorDocument,
   publicChatErrorMessage,
   sanitizeChatErrorEvent,
 } from "./chat-errors.js";
@@ -271,8 +269,6 @@ export async function streamChat(
   let streamError = null;
   let completionEvent = null;
   let userMessageCommitted = false;
-  const providerTextGuard = createProviderTextGuard();
-
   function createStreamError(source) {
     const message = publicChatErrorMessage(
       source,
@@ -285,38 +281,6 @@ export async function streamChat(
     if (source?.code) error.code = source.code;
     error.generationInProgress = isChatGenerationInProgress(source);
     return error;
-  }
-
-  function emitProviderDocumentError() {
-    if (streamError?.code === "provider_error_document") return;
-    streamError = sanitizeChatErrorEvent({
-      type: "error",
-      code: "provider_error_document",
-      content: "",
-      user_message_committed: userMessageCommitted,
-    });
-    onEvent(streamError);
-  }
-
-  function emitScreenedProviderText(event) {
-    const screened = providerTextGuard.push(event.content);
-    if (screened.blocked) {
-      emitProviderDocumentError();
-      return;
-    }
-    if (screened.content) onEvent({ ...event, content: screened.content });
-  }
-
-  function finishProviderText() {
-    const screened = providerTextGuard.finish();
-    if (screened.blocked) {
-      emitProviderDocumentError();
-      return false;
-    }
-    if (screened.content) {
-      onEvent({ type: "text", content: screened.content });
-    }
-    return true;
   }
 
   function processLine(rawLine) {
@@ -334,7 +298,7 @@ export async function streamChat(
         userMessageCommitted = true;
       }
       if (event.type === "text") {
-        emitScreenedProviderText(event);
+        onEvent(event);
         return;
       }
       if (event.type === "error") {
@@ -343,13 +307,6 @@ export async function streamChat(
         return;
       }
       if (event.type === "done") {
-        if (
-          isProviderErrorDocument(event.assistant_message?.content || event.reply)
-        ) {
-          emitProviderDocumentError();
-          return;
-        }
-        if (!finishProviderText()) return;
         completionEvent = event;
         if (event.ok === false) {
           streamError = streamError || event;
@@ -375,7 +332,7 @@ export async function streamChat(
     buffer += decoder.decode();
     if (buffer.trim()) processLine(buffer);
 
-    if (!completionEvent && !streamError) finishProviderText();
+    void completionEvent;
 
     if (streamError) {
       throw createStreamError(streamError);

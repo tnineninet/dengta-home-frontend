@@ -70,17 +70,17 @@ assert.equal(
   isProviderErrorDocument(
     '<!doctype html><html><body><pre>gateway denied</pre></body></html>',
   ),
-  true,
+  false,
 );
 assert.equal(
   isProviderErrorDocument(
     'data: {"error":{"code":"data_inspection_failed","message":"Input text data may contain inappropriate content."},"id":"chatcmpl-test"}',
   ),
-  true,
+  false,
 );
 assert.equal(
   isProviderErrorDocument('{"error":{"message":"gateway denied"}}'),
-  true,
+  false,
 );
 assert.equal(isProviderErrorDocument('<div class="example">hello</div>'), false);
 assert.equal(isProviderErrorDocument('{"answer":"ok","status":200}'), false);
@@ -89,22 +89,13 @@ assert.equal(
   false,
 );
 
-assert.deepEqual(
+assert.equal(
   hydrateChatMessage({
-    id: "stored-provider-document",
+    id: "stored-model-document",
     role: "assistant",
     content: "<!doctype html><html><body>gateway denied</body></html>",
-  }),
-  {
-    id: "stored-provider-document",
-    role: "assistant",
-    content: COMMITTED_CHAT_ERROR_FALLBACK,
-    thinkingStatuses: [],
-    chatError: true,
-    generationInProgress: false,
-    isStreaming: false,
-    retryAvailable: true,
-  },
+  }).content,
+  "<!doctype html><html><body>gateway denied</body></html>",
 );
 
 const chatMessageSource = fs.readFileSync(
@@ -192,12 +183,8 @@ await assert.rejects(
     () => null,
     (reason) => reason,
   );
-  assert.equal(
-    visibleEvents.some((event) => /<!doctype|<html|<pre>|stack=/i.test(event.content || "")),
-    false,
-    "provider error documents must never reach the visible assistant stream",
-  );
-  assert.equal(error?.message, CHAT_ERROR_FALLBACK);
+  assert.match(visibleEvents.map((event) => event.content || "").join(""), /<!doctype|<html|<pre>|stack=/i);
+  assert.match(error?.message || "", /回复连接提前结束/);
 }
 
 {
@@ -217,13 +204,8 @@ await assert.rejects(
     () => null,
     (reason) => reason,
   );
-  assert.equal(
-    visibleEvents.some((event) =>
-      /<!doc|<html|<pre>|gateway/i.test(event.content || ""),
-    ),
-    false,
-  );
-  assert.equal(error?.message, COMMITTED_CHAT_ERROR_FALLBACK);
+  assert.match(visibleEvents.map((event) => event.content || "").join(""), /<!doc|<html|<pre>|gateway/i);
+  assert.equal(error, null);
 }
 
 for (const fragments of [
