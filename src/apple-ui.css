@@ -22,6 +22,7 @@
   --apple-font-text:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "HarmonyOS Sans SC",
     "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+  --apple-font-ui: var(--dengta-font);
   color: var(--apple-ink);
   background: var(--apple-parchment);
   color-scheme: light;

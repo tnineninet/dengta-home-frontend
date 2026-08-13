@@ -111,6 +111,7 @@ assert.deepEqual(
     "sun-glass-ui.css",
     "jelly-motion.css",
     "sun-glass-chat.css",
+    "typography.css",
   ],
   "layout tests must use the same stylesheet order as the application entrypoint",
 );
@@ -130,6 +131,7 @@ assert.deepEqual(
     "sun-glass-ui.css",
     "jelly-motion.css",
     "sun-glass-chat.css",
+    "typography.css",
   ],
   "the 280px regression must use the complete application stylesheet cascade",
 );
@@ -649,8 +651,13 @@ const createSessionSource = sourceBetween(
 );
 assert.match(
   createSessionSource,
-  /model_id:\s*settings\.model \|\| undefined[\s\S]*?initializeSessionChatModel\(data\.session\.id,\s*data\.session\.model_id\)/,
-  "an explicitly created first session must initialize its own model immediately",
+  /body:\s*JSON\.stringify\(\{\s*title:\s*"新对话",\s*\}\)[\s\S]*?initializeSessionChatModel\(data\.session\.id,\s*data\.session\.model_id\)/,
+  "an explicitly created first session must use the server-bound model",
+);
+assert.doesNotMatch(
+  createSessionSource,
+  /model_id\s*:/,
+  "new sessions must not submit a client-side model",
 );
 assert.match(
   app,
@@ -811,6 +818,16 @@ assert.ok(
     sendMessageSource.indexOf("await flushLatestSettingsDraft()") <
       sendMessageSource.indexOf('setMessage("")'),
   "text chat must save the latest role settings before consuming the draft",
+);
+assert.match(
+  sendMessageSource,
+  /if \(activeSessionIdRef\.current\) \{\s*await sessionModelSaveQueueRef\.current;\s*\}/,
+  "an existing session must finish saving its selected model before sending",
+);
+assert.doesNotMatch(
+  sendMessageSource,
+  /model:\s*(?:requestModel|selectedChatModel|activeChatModel|settings\.model)/,
+  "chat streams must use the persisted session model instead of a stale client model",
 );
 const submitVoiceSource = sourceBetween(
   "async function submitVoiceBlob",

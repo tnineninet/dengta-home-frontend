@@ -1156,7 +1156,7 @@ button:active:not(:disabled) {
   box-shadow:
     0 13px 30px rgb(70 53 61 / 0.1),
     inset 0 1px 0 rgb(255 255 255 / 0.66);
-  font-family: "ChillRoundF", "Noto Sans SC", "PingFang SC", sans-serif;
+  font-family: var(--dengta-font);
   font-size: 16px;
   font-weight: 550;
   letter-spacing: 0;
@@ -1194,10 +1194,13 @@ button:active:not(:disabled) {
   white-space: pre-wrap;
 }
 
-.app-shell[data-chat-skin="taotao-cream"] pre,
-.app-shell[data-chat-skin="taotao-cream"] code,
 .app-shell[data-chat-skin="taotao-cream"] a {
-  font-family: "Noto Sans SC", "PingFang SC", sans-serif;
+  font-family: var(--dengta-font);
+}
+
+.app-shell[data-chat-skin="taotao-cream"] pre,
+.app-shell[data-chat-skin="taotao-cream"] code {
+  font-family: var(--font-data), monospace;
 }
 
 .app-shell[data-chat-skin="taotao-cream"] .chat-skin-ornament {
@@ -1275,7 +1278,7 @@ button:active:not(:disabled) {
 }
 
 .app-shell[data-chat-skin="taotao-cream"] .thinking-panel {
-  font-family: "LXGW WenKai Lite", "Noto Sans SC", sans-serif;
+  font-family: var(--dengta-font);
 }
 
 .app-shell[data-chat-skin="taotao-cream"] .message-footer {
@@ -1302,13 +1305,13 @@ button:active:not(:disabled) {
 .app-shell[data-chat-skin="taotao-cream"] .composer textarea {
   max-height: 82px;
   color: rgb(var(--cream-ink));
-  font-family: "ChillRoundF", "Noto Sans SC", sans-serif;
+  font-family: var(--dengta-font);
   font-size: 15px;
 }
 
 .app-shell[data-chat-skin="taotao-cream"] .composer textarea::placeholder {
   color: rgb(var(--cream-line) / 0.52);
-  font-family: "LXGW WenKai Lite", "Noto Sans SC", sans-serif;
+  font-family: var(--dengta-font);
 }
 
 .app-shell[data-chat-skin="taotao-cream"] .chat-attach-button,
@@ -2196,12 +2199,11 @@ button:active:not(:disabled) {
 /* 2026 optical-glass theme system */
 :root {
   --font-ui:
-    "Noto Sans SC", "HarmonyOS Sans SC", "PingFang SC", "Microsoft YaHei",
-    system-ui, sans-serif;
+    var(--dengta-font);
   --font-display:
     "Noto Serif SC", "Songti SC", "STSong", Georgia, serif;
   --font-hand:
-    "LXGW WenKai Lite", "KaiTi", "STKaiti", "Segoe Print", cursive;
+    var(--dengta-font);
   --font-data:
     "Roboto Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   --theme-accent: #a96854;
@@ -2730,6 +2732,48 @@ body,
 }
 
 .theme-appearance-control button.active {
+  color: #fff;
+  background: color-mix(in srgb, var(--theme-accent) 86%, #17191a);
+  box-shadow: 0 6px 16px rgba(28, 32, 34, 0.12);
+}
+
+.theme-font-control {
+  display: grid;
+  gap: 13px;
+  padding-top: 17px;
+  border-top: 1px solid rgba(78, 84, 88, 0.09);
+}
+
+.theme-font-control > span {
+  display: grid;
+  gap: 3px;
+}
+
+.theme-font-control small {
+  color: color-mix(in srgb, var(--theme-ink) 56%, transparent);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.theme-font-control > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  background: rgba(85, 91, 94, 0.08);
+}
+
+.theme-font-control button {
+  min-height: 40px;
+  border: 0;
+  border-radius: 999px;
+  color: color-mix(in srgb, var(--theme-ink) 68%, transparent);
+  background: transparent;
+  font-size: 12px;
+}
+
+.theme-font-control button.active {
   color: #fff;
   background: color-mix(in srgb, var(--theme-accent) 86%, #17191a);
   box-shadow: 0 6px 16px rgba(28, 32, 34, 0.12);

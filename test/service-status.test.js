@@ -11,7 +11,6 @@ const cards = buildServiceStatusCards({
   health: {
     ok: true,
     version: "0.11.1",
-    configuration: { provider_pins_valid: true },
     features: {
       hervoice_proxy_configured: true,
       expressive_tts_configured: false,
@@ -40,6 +39,55 @@ assert.equal(
   "尚未配置自然语音",
 );
 assert.equal(cards.find((item) => item.id === "ombre-mcp").status, "pending");
+
+const providerCenterCards = buildServiceStatusCards({
+  health: {
+    ok: true,
+    features: {
+      ai_provider_center: true,
+      ai_provider_active_profile: {
+        name: "我的 GPT 接口",
+        protocol: "openai-responses",
+        default_model: "gpt-5.6-sol",
+        health: { state: "catalog_ok" },
+      },
+    },
+  },
+  // The legacy settings row is intentionally empty. The provider center is
+  // authoritative once the backend advertises it.
+  settings: { api_url: "", model: "" },
+  hasLoadedSettings: true,
+  isOnline: true,
+  error: "",
+});
+const providerCenterCard = providerCenterCards.find(
+  (item) => item.id === "provider",
+);
+assert.equal(providerCenterCard.status, "online");
+assert.equal(providerCenterCard.summary, "我的 GPT 接口 · gpt-5.6-sol");
+
+const missingProviderCenterModel = buildServiceStatusCards({
+  health: {
+    ok: true,
+    features: {
+      ai_provider_center: true,
+      ai_provider_active_profile: {
+        name: "我的 GPT 接口",
+        protocol: "openai-responses",
+        default_model: "",
+        health: { state: "untested" },
+      },
+    },
+  },
+  settings: { api_url: "https://stale.invalid/v1", model: "stale-model" },
+  hasLoadedSettings: true,
+  isOnline: true,
+  error: "",
+});
+assert.equal(
+  missingProviderCenterModel.find((item) => item.id === "provider").summary,
+  "活动接口尚未填写模型",
+);
 
 const awaitingVoice = describeExpressiveTts({
   expressive_tts_configured: false,
@@ -84,7 +132,6 @@ assert.match(readyDeepgramWithFallback.settingsText, /自动使用服务器 Mini
 const deepgramCards = buildServiceStatusCards({
   health: {
     ok: true,
-    configuration: { provider_pins_valid: true },
     features: {},
   },
   settings: { api_url: "https://example.test/v1", model: "test-model" },

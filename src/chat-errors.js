@@ -10,6 +10,7 @@ const ERROR_ENVELOPE_KEYS = new Set([
   "details",
   "error",
   "errors",
+  "id",
   "message",
   "param",
   "request_id",
@@ -35,6 +36,12 @@ const ERROR_CODE_PATTERN =
 
 const PUBLIC_ERROR_BY_CODE = Object.freeze({
   CHAT_GENERATION_IN_PROGRESS: "这条消息已经保存，AI 仍在服务器处理中。",
+  MODEL_NOT_AVAILABLE:
+    "请求的模型不在当前接口可用列表中 / The requested model is not available from the current API.",
+  data_inspection_failed:
+    "输入内容未通过模型接口的内容检查 / The input did not pass the model provider's content inspection.",
+  provider_boundary_residue:
+    "模型没有返回可保存的对话内容 / The model did not return savable conversation content.",
 });
 
 const MARKUP_OR_DOCUMENT_PATTERN =
@@ -43,6 +50,12 @@ const STACK_OR_CODE_PATTERN =
   /(?:^|\s)(?:traceback|syntaxerror|typeerror|referenceerror|stack(?:trace)?\s*[:=]|at\s+[\w$.<>]+\s*\([^\n]*:\d+:\d+\)|node_modules[\\/]|webpack:\/\/|```|econnrefused|enotfound|fetch failed|sqlstate|permission denied|relation\s+.+\s+does not exist)/i;
 const SECRET_PATTERN =
   /(?:authorization\s*[:=]|bearer\s+[a-z0-9._-]{12,}|api[_ -]?key\s*[:=]|cookie\s*[:=]|sk-[a-z0-9_-]{12,}|sb_secret_[a-z0-9_-]+)/i;
+const GENERIC_UPSTREAM_ERROR_PATTERN =
+  /^(?:upstream (?:request )?failed|bad gateway|gateway timeout|service unavailable|internal server error)$/i;
+const UPSTREAM_PROTOCOL_ERROR_PATTERN =
+  /^upstream stream ended (?:without|before) (?:a )?terminal response event$/i;
+const CONTENT_INSPECTION_ERROR_PATTERN =
+  /(?:data_inspection_failed|input text data may contain inappropriate content)/i;
 
 function errorCandidate(source) {
   if (typeof source === "string") return source;
@@ -127,8 +140,20 @@ function providerTextVerdict(
   { final = false, maxProbeLength = DEFAULT_MAX_PROVIDER_PROBE_LENGTH } = {},
 ) {
   const source = String(value || "").replace(/^\uFEFF/, "");
-  const text = source.trimStart();
+  let text = source.trimStart();
   if (!text) return final || source.length >= 64 ? "safe" : "pending";
+
+  const ssePrefix = "data:";
+  if (
+    text.length < ssePrefix.length &&
+    ssePrefix.startsWith(text.toLowerCase())
+  ) {
+    return final ? "safe" : "pending";
+  }
+  if (text.toLowerCase().startsWith(ssePrefix)) {
+    text = text.slice(ssePrefix.length).trimStart();
+    if (!text) return final ? "safe" : "pending";
+  }
 
   if (text.startsWith("<")) return htmlDocumentVerdict(text, final);
   if (!text.startsWith("{")) return "safe";
@@ -208,17 +233,27 @@ export function sanitizeStoredChatMessage(message = {}) {
 export function publicChatErrorMessage(source, fallback = CHAT_ERROR_FALLBACK) {
   const code = String(source?.code || "");
   const safeFallback = PUBLIC_ERROR_BY_CODE[code] || fallback;
+  if (code && code !== "CHAT_GENERATION_IN_PROGRESS" && PUBLIC_ERROR_BY_CODE[code]) {
+    return safeFallback;
+  }
 
   const candidate = stripControlCharacters(errorCandidate(source))
     .replace(/\s+/g, " ")
     .trim();
   if (!candidate) return safeFallback;
+  if (UPSTREAM_PROTOCOL_ERROR_PATTERN.test(candidate)) {
+    return "上游模型流没有正常结束，请重试或检查接口兼容性 / The upstream model stream ended without a terminal response event. Retry or check API compatibility.";
+  }
+  if (CONTENT_INSPECTION_ERROR_PATTERN.test(candidate)) {
+    return PUBLIC_ERROR_BY_CODE.data_inspection_failed;
+  }
   if (candidate.length > MAX_PUBLIC_ERROR_LENGTH) return safeFallback;
   if (/^[{[]/.test(candidate) && /[}\]]$/.test(candidate)) return safeFallback;
   if (
     MARKUP_OR_DOCUMENT_PATTERN.test(candidate) ||
     STACK_OR_CODE_PATTERN.test(candidate) ||
-    SECRET_PATTERN.test(candidate)
+    SECRET_PATTERN.test(candidate) ||
+    GENERIC_UPSTREAM_ERROR_PATTERN.test(candidate)
   ) {
     return safeFallback;
   }

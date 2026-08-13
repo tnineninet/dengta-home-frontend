@@ -157,6 +157,14 @@ export function buildScreenGlanceTurn(value = {}) {
   });
 }
 
+export function clearPendingScreenGlanceTurn(
+  pending,
+  revokeAttachment = () => {},
+) {
+  if (pending?.attachment) revokeAttachment(pending.attachment);
+  return null;
+}
+
 export async function readScreenGlanceState({
   capacitor = Capacitor,
   plugin = ScreenGlance,

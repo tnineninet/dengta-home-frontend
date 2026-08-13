@@ -118,6 +118,31 @@ export default function ThemeStudio({
         </div>
       </div>
 
+      <div className="theme-font-control">
+        <span>
+          <strong>字体</strong>
+          <small>聊天与界面文字</small>
+        </span>
+        <div role="group" aria-label="字体模式">
+          <button
+            type="button"
+            className={preferences.fontMode === "standard" ? "active" : ""}
+            aria-pressed={preferences.fontMode === "standard"}
+            onClick={() => updateTheme({ fontMode: "standard" })}
+          >
+            DengTa 标准
+          </button>
+          <button
+            type="button"
+            className={preferences.fontMode === "system" ? "active" : ""}
+            aria-pressed={preferences.fontMode === "system"}
+            onClick={() => updateTheme({ fontMode: "system" })}
+          >
+            跟随系统
+          </button>
+        </div>
+      </div>
+
       <section className="chat-skin-control" aria-labelledby="chat-skin-title">
         <div className="settings-card-heading">
           <div>

@@ -2,10 +2,22 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import {
   buildScreenGlanceTurn,
+  clearPendingScreenGlanceTurn,
   normalizeScreenGlanceConfig,
   normalizeScreenGlanceState,
   screenGlanceCaptureToFile,
 } from "../src/screen-glance.js";
+
+{
+  const attachment = { previewUrl: "blob:screen-glance" };
+  const revoked = [];
+  assert.equal(
+    clearPendingScreenGlanceTurn({ attachment }, (value) => revoked.push(value)),
+    null,
+  );
+  assert.deepEqual(revoked, [attachment]);
+  assert.equal(clearPendingScreenGlanceTurn(null, () => revoked.push("unexpected")), null);
+}
 
 const state = normalizeScreenGlanceState({
   supported: true,
@@ -163,6 +175,26 @@ assert.match(app, /只共享屏幕/);
 assert.match(app, /暂停捕获/);
 assert.match(app, /结束并清除/);
 assert.match(app, /consumeLatestCapture/);
+assert.match(
+  app,
+  /function releasePendingScreenGlanceTurn\([\s\S]*?clearPendingScreenGlanceTurn\(pending, revokeAttachmentDraft\)/,
+  "pending screen-glance attachments must have one cleanup path",
+);
+assert.match(
+  app,
+  /componentMountedRef\.current = false;[\s\S]*?releasePendingScreenGlanceTurn\(pendingScreenGlanceTurnRef\)/,
+  "unmounting after logout must revoke a pending screen-glance attachment",
+);
+assert.match(
+  app,
+  /const prepared = await prepareChatAttachmentFile\([\s\S]*?if \(!componentMountedRef\.current\) return null;/,
+  "an async screen-glance conversion must not create a draft after unmount",
+);
+assert.match(
+  app,
+  /const attachment = createAttachmentDraft\(prepared\.file\);[\s\S]*?releasePendingScreenGlanceTurn\(pendingScreenGlanceTurnRef\);[\s\S]*?pendingScreenGlanceTurnRef\.current = \{/,
+  "a newer capture must release an older pending draft before replacing it",
+);
 assert.match(app, /邀请一起看/);
 assert.match(app, /watchTogetherEnabled/);
 assert.match(app, /持续共看，直到你主动暂停或结束/);

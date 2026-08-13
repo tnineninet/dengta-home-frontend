@@ -133,7 +133,6 @@ import {
 import { applyPersonaResetToLocalStorage } from "./persona-reset";
 import {
   reasoningEffortForProvider,
-  reasoningEffortOptions,
 } from "./provider-reasoning-effort";
 import { readReplySuggestions } from "./chat-reply-suggestions";
 import {
@@ -155,6 +154,7 @@ import {
   SCREEN_GLANCE_DEFAULT_CONFIG,
   ScreenGlance,
   buildScreenGlanceTurn,
+  clearPendingScreenGlanceTurn,
   normalizeScreenGlanceConfig,
   normalizeScreenGlanceState,
   readCoWatchPreview,
@@ -608,6 +608,13 @@ function releaseChatRequestAttachments(request) {
   request.attachmentsReleased = true;
 }
 
+function releasePendingScreenGlanceTurn(pendingRef) {
+  const pending = pendingRef?.current;
+  clearPendingScreenGlanceTurn(pending, revokeAttachmentDraft);
+  if (pendingRef) pendingRef.current = null;
+  return pending;
+}
+
 function abortChatRequest(requestRef, reason = "cancelled") {
   const request = requestRef.current;
   if (!request || request.controller.signal.aborted) return;
@@ -757,6 +764,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     error: "",
     checkedAt: "",
   });
+  const [providerStatus, setProviderStatus] = useState(null);
   const [groqExpiryDate, setGroqExpiryDate] = useState(() =>
     readGroqExpiryDate(globalThis.localStorage, accountStorageScope),
   );
@@ -1129,7 +1137,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           throw new Error(checked.rejected[0] || "这次屏幕画面无法作为图片附件发送。");
         }
         const prepared = await prepareChatAttachmentFile(checked.accepted[0]);
+        if (!componentMountedRef.current) return null;
         const attachment = createAttachmentDraft(prepared.file);
+        releasePendingScreenGlanceTurn(pendingScreenGlanceTurnRef);
         pendingScreenGlanceTurnRef.current = {
           attachment,
           turn: buildScreenGlanceTurn(capture),
@@ -1704,6 +1714,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       abortChatRequest(chatRequestRef, "component-unmount");
       releaseChatRequestAttachments(chatRequestRef.current);
       chatRequestRef.current = null;
+      releasePendingScreenGlanceTurn(pendingScreenGlanceTurnRef);
       chatAttachmentsRef.current.forEach((item) =>
         revokeAttachmentDraft(item),
       );
@@ -2488,6 +2499,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         );
       }
       await refreshDeviceActivityContext({ silent: true });
+      if (activeSessionIdRef.current) {
+        await sessionModelSaveQueueRef.current;
+      }
 
       if (!sessionId) {
         const created = await apiRequest("/api/v2/sessions", {
@@ -2505,7 +2519,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         messagesSessionIdRef.current = sessionId;
         setActiveSessionId(sessionId);
         setMessages([]);
-        voiceModel = initializeSessionChatModel(sessionId);
+        voiceModel = String(created.session.model_id || "").trim();
+        initializeSessionChatModel(sessionId, voiceModel);
       }
 
       streamingSessionIdRef.current = sessionId;
@@ -2894,11 +2909,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     closeComposerMenu();
     requestStatusPanelClose();
     try {
+      if (!(await flushLatestSettingsDraft())) {
+        setNotice("最新角色设置还没有保存成功，这次新对话没有创建。请恢复网络后重试。");
+        return;
+      }
       const data = await apiRequest("/api/v2/sessions", {
         method: "POST",
         body: JSON.stringify({
           title: "新对话",
-          model_id: settings.model || undefined,
         }),
       });
       setSessions((current) => [data.session, ...current]);
@@ -3533,6 +3551,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       return;
     }
 
+    if (activeSessionIdRef.current) {
+      await sessionModelSaveQueueRef.current;
+    }
+
     if (voiceStateRef.current === VOICE_STATES.speaking) {
       void stopVoicePlayback();
     }
@@ -3549,8 +3571,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     let sessionId = activeSessionId;
     let localUserId = `local-user-${Date.now()}`;
     let localAssistantId = `local-assistant-${Date.now()}`;
-    let requestModel =
-      readStoredSessionChatModel(sessionId) || activeChatModel;
     let sendSucceeded = false;
     let streamFailed = false;
     let userMessageCommitted = false;
@@ -3589,7 +3609,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         streamingSessionIdRef.current = sessionId;
         setSessions((current) => [created.session, ...current]);
         setActiveSessionId(sessionId);
-        requestModel = initializeSessionChatModel(sessionId);
+        initializeSessionChatModel(sessionId, created.session.model_id);
       }
 
       const clientMessage = resolveChatClientMessage(
@@ -3690,7 +3710,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         {
           session_id: sessionId,
           message: text,
-          model: requestModel,
           client_time: shanghaiClientTime(),
           timezone: SHANGHAI_TIME_ZONE,
           emotion_understanding_enabled: emotionUnderstandingEnabled,
@@ -5828,6 +5847,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       isOnline,
       error: serviceHealth.error,
       voiceOutput: voiceOutputStatus,
+      providerStatus,
     });
     const groqExpiry = describeGroqExpiry(groqExpiryDate);
 
@@ -5838,7 +5858,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             <span className="eyebrow">控制中心</span>
             <h2>AI 与应用设置</h2>
             <p>
-              当前接口和模型可以随时更换；API Key 永远只放在后端环境变量中。
+              当前接口和模型可以随时更换；API Key 只发送到后端加密保存，页面不会回显。
             </p>
           </div>
           <WebInstallButton
@@ -6259,116 +6279,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 页面隐藏、切换离开聊天页或取消录音时会关闭麦克风轨道；尚未发送的录音会丢弃。摄像头不会被调用。
                 情绪理解流程基于 HerVoice 开源项目，由 DengTa home 接入并做了服务端安全加固。
               </p>
-            </div>
-            </div>
-          )}
-
-          {settingsCategory === "services" && (
-            <div className="settings-card legacy-provider-card">
-            <h3>旧版单接口（兼容保留）</h3>
-            <p className="card-hint">
-              这里继续保留，避免已有配置突然失效。新增或切换多个服务商时，请使用下方“多供应商 API 控制台”；启用默认接口后会真实覆盖这里的地址、模型与密钥。
-            </p>
-            <div className="settings-grid">
-              <label>
-                接口格式
-                <select
-                  value={draftSettings.provider || "custom"}
-                  onChange={(event) =>
-                    updateDraft("provider", event.target.value)
-                  }
-                >
-                  <option value="custom">自定义 / OpenAI 兼容中转</option>
-                  <option value="openai-compatible">OpenAI 兼容</option>
-                  <option value="openai-responses">OpenAI Responses</option>
-                  <option value="gemini">Gemini 原生</option>
-                  <option value="anthropic">Anthropic 原生</option>
-                </select>
-              </label>
-              <label>
-                模型名称
-                <input
-                  value={draftSettings.model || ""}
-                  onChange={(event) => updateDraft("model", event.target.value)}
-                  placeholder="暂时留空即可"
-                />
-              </label>
-              <label>
-                推理强度
-                <select
-                  value={reasoningEffortForProvider(
-                    draftSettings.provider,
-                    draftSettings.reasoning_effort,
-                  )}
-                  onChange={(event) =>
-                    updateDraft("reasoning_effort", event.target.value)
-                  }
-                  disabled={
-                    reasoningEffortOptions(draftSettings.provider).length === 1
-                  }
-                >
-                  {reasoningEffortOptions(draftSettings.provider).map((item) => (
-                    <option value={item.value} key={item.value || "default"}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-                <small>
-                  {draftSettings.provider === "openai-responses"
-                    ? "Responses 会把该值作为 reasoning.effort 发送；极高推理会增加等待时间和模型费用。"
-                    : ["custom", "openai-compatible"].includes(
-                          draftSettings.provider,
-                        )
-                      ? "为保留聊天工具，Chat 兼容接口只能使用 none；需要极高推理请切换为 Responses。"
-                      : "当前接口类型不使用 OpenAI 推理强度参数。"}
-                </small>
-              </label>
-              <label className="full-width">
-                API 地址
-                <input
-                  value={draftSettings.api_url || ""}
-                  onChange={(event) =>
-                    updateDraft("api_url", event.target.value)
-                  }
-                  placeholder="暂时留空；以后填写服务商地址"
-                />
-              </label>
-              <label>
-                温度（0–2）
-                <input
-                  type="number"
-                  min="0"
-                  max="2"
-                  step="0.1"
-                  value={draftSettings.temperature ?? 0.7}
-                  onChange={(event) =>
-                    updateDraft("temperature", event.target.value)
-                  }
-                />
-              </label>
-              <label>
-                上下文保留轮数
-                <input
-                  type="number"
-                  min="1"
-                  max="200"
-                  value={draftSettings.context_turns ?? 20}
-                  onChange={(event) =>
-                    updateDraft("context_turns", event.target.value)
-                  }
-                />
-              </label>
-              <label>
-                最大回复 Token
-                <input
-                  type="number"
-                  min="64"
-                  value={draftSettings.max_tokens ?? 2048}
-                  onChange={(event) =>
-                    updateDraft("max_tokens", event.target.value)
-                  }
-                />
-              </label>
             </div>
             </div>
           )}
@@ -6916,7 +6826,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             {settingsCategory === "services" && (
               <>
                 <Suspense fallback={<DeferredFeature label="正在打开 AI 接口管理…" />}>
-                  <AiProviderCenter />
+                  <AiProviderCenter onStatusChange={setProviderStatus} />
                 </Suspense>
                 <Suspense fallback={<DeferredFeature label="正在打开创作中心…" />}>
                   <CompanionCreativeSettings />

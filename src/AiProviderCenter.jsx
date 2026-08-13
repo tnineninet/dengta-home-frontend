@@ -314,7 +314,7 @@ function ProviderFields({ value, onChange, models = [], editing = false }) {
   );
 }
 
-export default function AiProviderCenter() {
+export default function AiProviderCenter({ onStatusChange = null } = {}) {
   const [status, setStatus] = useState({ checking: true });
   const [profiles, setProfiles] = useState([]);
   const [draft, setDraft] = useState({ ...EMPTY_PROVIDER_DRAFT });
@@ -330,8 +330,11 @@ export default function AiProviderCenter() {
     try {
       const data = await aiProviderRequest("/api/ai-providers/status");
       setStatus({ ...data, checking: false });
+      onStatusChange?.(data);
     } catch (error) {
-      setStatus({ checking: false, available: false, message: error.message });
+      const failed = { checking: false, available: false, message: error.message };
+      setStatus(failed);
+      onStatusChange?.(failed);
     }
   }
 
@@ -360,18 +363,25 @@ export default function AiProviderCenter() {
       .then(([statusData, profilesData]) => {
         if (!active) return;
         setStatus({ ...statusData, checking: false });
+        onStatusChange?.(statusData);
         setProfiles(Array.isArray(profilesData.profiles) ? profilesData.profiles : []);
       })
       .catch((error) => {
         if (active) {
-          setStatus({ checking: false, available: false, message: error.message });
+          const failed = {
+            checking: false,
+            available: false,
+            message: error.message,
+          };
+          setStatus(failed);
+          onStatusChange?.(failed);
           setFeedback(error.message);
         }
       });
     return () => {
       active = false;
     };
-  }, []);
+  }, [onStatusChange]);
 
   const routableCount = useMemo(
     () => profiles.filter((profile) => providerIsRoutable(profile)).length,
@@ -752,7 +762,7 @@ export default function AiProviderCenter() {
                 )}
               </article>
             ))}
-            {profiles.length === 0 && <p className="provider-empty">还没有保存接口。旧版单接口会继续工作，不会因这里为空而中断聊天。</p>}
+            {profiles.length === 0 && <p className="provider-empty">还没有保存活动接口。请在上方填写并保存一个供应商配置，之后新聊天会使用它。</p>}
         </div>
       </>
 

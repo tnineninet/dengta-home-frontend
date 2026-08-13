@@ -8,6 +8,7 @@ import "./apple-ui.css";
 import "./sun-glass-ui.css";
 import "./jelly-motion.css";
 import "./sun-glass-chat.css";
+import "./typography.css";
 import App from "./LazyApp.jsx";
 import AuthGate from "./AuthGate.jsx";
 import DengTaPrelude from "./DengTaPrelude.jsx";

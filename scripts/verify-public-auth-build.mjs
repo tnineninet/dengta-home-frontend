@@ -9,9 +9,32 @@ const requiredVariables = [
   "VITE_SUPABASE_URL",
   "VITE_SUPABASE_ANON_KEY",
 ];
+const envFileNames = [
+  ".env",
+  ".env.local",
+  ".env.production",
+  ".env.production.local",
+];
+
+function readPublicEnvFallback() {
+  const values = {};
+  for (const fileName of envFileNames) {
+    if (!fs.existsSync(fileName)) continue;
+    for (const line of fs.readFileSync(fileName, "utf8").split(/\r?\n/)) {
+      const match = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$/);
+      if (!match) continue;
+      const [, name, rawValue] = match;
+      const quoted = rawValue.match(/^(?:"([\s\S]*)"|'([\s\S]*)')$/);
+      values[name] = quoted ? quoted[1] ?? quoted[2] ?? "" : rawValue;
+    }
+  }
+  return values;
+}
+
+const fallbackEnv = readPublicEnvFallback();
 const configuredValues = requiredVariables.map((name) => ({
   name,
-  value: String(process.env[name] || "").trim(),
+  value: String(process.env[name] || fallbackEnv[name] || "").trim(),
 }));
 const missingVariables = configuredValues
   .filter(({ value }) => !value)

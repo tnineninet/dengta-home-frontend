@@ -4,7 +4,7 @@ DengTa home 的 React + Vite 前端，包含聊天、会话、朋友圈、Supaba
 
 ## 手机网页版
 
-手机直连入口（推荐）：[https://dengta-home-backend.onrender.com/web/](https://dengta-home-backend.onrender.com/web/)
+手机直连入口（推荐）：[https://dengta-home-backend-rkmq.onrender.com/web/](https://dengta-home-backend-rkmq.onrender.com/web/)
 
 国际入口：[https://dengta-home.vercel.app/](https://dengta-home.vercel.app/)。部分网络会污染或阻断 `vercel.app`，遇到持续加载时请改用上面的手机直连入口。
 
@@ -32,9 +32,10 @@ npm run lint
 npm run build
 ```
 
-旧版单接口设置现在也提供 OpenAI Responses 与推理强度选择。Responses 会把
-`xhigh` 作为 `reasoning.effort` 发送；保留函数工具的 Chat 兼容接口只允许
-`none`。多供应商控制台和旧版设置页共用同一套校验规则。
+聊天接口统一在“多供应商 API 控制台”中配置。每个账号自行保存活动接口、
+API 地址、密钥和默认模型；部署环境不会替账号锁定供应商或地址。
+OpenAI Responses 会把 `xhigh` 作为 `reasoning.effort` 发送；保留函数工具的
+Chat 兼容接口只允许 `none`。
 
 ## Android
 

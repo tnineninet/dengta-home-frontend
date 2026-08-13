@@ -60,12 +60,15 @@ jobs:
           npm run build
           npm run verify:public-auth-build
         env:
-          VITE_API_URL: https://dengta-home-backend.onrender.com
+          VITE_API_URL: https://dengta-home-backend-rkmq.onrender.com
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
       - name: Sync Android project
-        run: npx cap sync android
+        run: |
+          npx cap sync android
+          test -f android/app/src/main/assets/public/fonts/DengTaSans-cjk-v2.woff2
+          cmp public/fonts/DengTaSans-cjk-v2.woff2 android/app/src/main/assets/public/fonts/DengTaSans-cjk-v2.woff2
 
       - name: Allow Gradle wrapper to run
         run: chmod +x android/gradlew

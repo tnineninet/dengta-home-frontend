@@ -7,6 +7,7 @@ import {
   dismissChatErrorMessage,
   isProviderErrorDocument,
   publicChatErrorMessage,
+  sanitizeChatErrorEvent,
 } from "../src/chat-errors.js";
 import { hydrateChatMessage } from "../src/chat-history.js";
 
@@ -21,6 +22,36 @@ assert.equal(
 assert.equal(
   publicChatErrorMessage("Authorization: Bearer secret-provider-token"),
   CHAT_ERROR_FALLBACK,
+);
+assert.equal(
+  publicChatErrorMessage("Upstream request failed"),
+  CHAT_ERROR_FALLBACK,
+);
+assert.equal(
+  publicChatErrorMessage(
+    "Upstream stream ended without a terminal response event",
+  ),
+  "上游模型流没有正常结束，请重试或检查接口兼容性 / The upstream model stream ended without a terminal response event. Retry or check API compatibility.",
+);
+assert.equal(
+  publicChatErrorMessage({
+    code: "MODEL_NOT_AVAILABLE",
+    message: "request model unavailable",
+  }),
+  "请求的模型不在当前接口可用列表中 / The requested model is not available from the current API.",
+);
+assert.equal(
+  publicChatErrorMessage(
+    'data: {"error":{"code":"data_inspection_failed","message":"Input text data may contain inappropriate content."}}',
+  ),
+  "输入内容未通过模型接口的内容检查 / The input did not pass the model provider's content inspection.",
+);
+assert.equal(
+  sanitizeChatErrorEvent({
+    content: "Upstream request failed",
+    user_message_committed: true,
+  }).content,
+  COMMITTED_CHAT_ERROR_FALLBACK,
 );
 assert.equal(publicChatErrorMessage("模型接口等待超时，请稍后重试。"), "模型接口等待超时，请稍后重试。");
 
@@ -38,6 +69,12 @@ assert.deepEqual(
 assert.equal(
   isProviderErrorDocument(
     '<!doctype html><html><body><pre>gateway denied</pre></body></html>',
+  ),
+  true,
+);
+assert.equal(
+  isProviderErrorDocument(
+    'data: {"error":{"code":"data_inspection_failed","message":"Input text data may contain inappropriate content."},"id":"chatcmpl-test"}',
   ),
   true,
 );

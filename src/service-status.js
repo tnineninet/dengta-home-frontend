@@ -1,7 +1,7 @@
 export const GROQ_EXPIRY_STORAGE_KEY = "dengta_groq_key_expires_at";
 
 export const SERVICE_LINKS = Object.freeze({
-  backend: "https://dashboard.render.com/web/srv-d9f2mtrrjlhs73ddv8mg",
+  backend: "https://dashboard.render.com/web/srv-d9ukrqvqj5pc73frp5d0",
   database: "https://supabase.com/dashboard/project/nyyqizwrlmejpfdhgrnd",
   groq: "https://console.groq.com/keys",
   groqUsage: "https://console.groq.com/dashboard",
@@ -145,14 +145,31 @@ export function buildServiceStatusCards({
   isOnline,
   error,
   voiceOutput = null,
+  providerStatus = null,
 }) {
   const backendOnline = isOnline && health?.ok === true;
   const features = health?.features || {};
-  const providerValid = health?.configuration?.provider_pins_valid !== false;
-  const providerReady =
-    backendOnline &&
-    providerValid &&
-    Boolean(settings?.api_url && settings?.model);
+  const providerCenterAuthoritative =
+    providerStatus !== null || features.ai_provider_center === true;
+  const activeProfile = providerStatus !== null
+    ? providerStatus.active_profile || null
+    : features.ai_provider_active_profile || null;
+  const activeProfileModel = String(activeProfile?.default_model || "").trim();
+  const activeProfileHealth = activeProfile?.health?.state || "";
+  const providerReady = providerCenterAuthoritative
+    ? backendOnline &&
+      Boolean(activeProfile && activeProfileModel) &&
+      activeProfileHealth !== "expired"
+    : backendOnline &&
+      Boolean(settings?.api_url && settings?.model);
+  const providerName = providerCenterAuthoritative
+    ? String(
+        activeProfile?.name || activeProfile?.protocol || "自定义接口",
+      ).trim()
+    : settings?.provider || "自定义接口";
+  const providerModel = providerCenterAuthoritative
+    ? activeProfileModel
+    : settings?.model;
   const expressiveTts = describeExpressiveTts(
     expressiveFeaturesForAccount(features, voiceOutput),
   );
@@ -183,15 +200,19 @@ export function buildServiceStatusCards({
     statusCard(
       "provider",
       "当前聊天模型",
-      providerReady ? "online" : providerValid ? "pending" : "error",
+      providerReady ? "online" : "pending",
       providerReady
-        ? `${settings.provider || "自定义接口"} · ${settings.model}`
-        : providerValid
-          ? "接口或模型尚未完整填写"
-          : "服务器检测到接口配置冲突",
+        ? `${providerName} · ${providerModel}`
+        : providerCenterAuthoritative
+          ? activeProfile
+            ? "活动接口尚未填写模型"
+            : "尚未选择活动接口"
+          : "接口或模型尚未完整填写",
       providerReady
         ? "模型调用仍按实际供应商额度计费；这里不会读取或显示 API Key。"
-        : "到“唯一的活动接口”中检查 API 地址和模型名称。",
+        : providerCenterAuthoritative
+          ? "到“多供应商 API 控制台”中添加、测试并启用一个接口。"
+          : "请检查 API 地址和模型名称。",
       "",
       "",
     ),
