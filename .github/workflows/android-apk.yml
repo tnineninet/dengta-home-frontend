@@ -39,6 +39,15 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      - name: Restore stable Android debug signing key
+        env:
+          ANDROID_STABLE_DEBUG_KEYSTORE_BASE64: ${{ secrets.ANDROID_STABLE_DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$ANDROID_STABLE_DEBUG_KEYSTORE_BASE64"
+          install -d -m 700 "$HOME/.android"
+          printf '%s' "$ANDROID_STABLE_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
+          chmod 600 "$HOME/.android/debug.keystore"
+
       - name: Install web dependencies
         run: npm ci
 
@@ -81,7 +90,9 @@ jobs:
         run: |
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           test -n "$APKSIGNER"
-          "$APKSIGNER" verify --verbose --print-certs android/app/build/outputs/apk/debug/app-debug.apk
+          SIGNATURE_OUTPUT="$("$APKSIGNER" verify --verbose --print-certs android/app/build/outputs/apk/debug/app-debug.apk)"
+          printf '%s\n' "$SIGNATURE_OUTPUT"
+          printf '%s\n' "$SIGNATURE_OUTPUT" | grep -F "Signer #1 certificate SHA-256 digest: 38a03ab2815c285bef17521d7fc7d4cd6ea4c85d6f14e337ef7391af9b2bb4c6"
 
       - name: Upload APK
         uses: actions/upload-artifact@v6

@@ -72,6 +72,16 @@ assert.match(
 );
 assert.match(androidWorkflow, /test -n "\$VITE_SUPABASE_URL"/);
 assert.match(androidWorkflow, /test -n "\$VITE_SUPABASE_ANON_KEY"/);
+assert.match(
+  androidWorkflow,
+  /secrets\.ANDROID_STABLE_DEBUG_KEYSTORE_BASE64/,
+  "CI builds must restore the stable Android signing key",
+);
+assert.match(
+  androidWorkflow,
+  /38a03ab2815c285bef17521d7fc7d4cd6ea4c85d6f14e337ef7391af9b2bb4c6/,
+  "CI must reject APKs signed by a transient runner certificate",
+);
 assert.equal(
   packageJson.scripts["verify:public-auth-build"],
   "node scripts/verify-public-auth-build.mjs",
