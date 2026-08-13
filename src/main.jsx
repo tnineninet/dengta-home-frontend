@@ -29,6 +29,7 @@ createRoot(document.getElementById("root")).render(
             accountControl={accountControl}
             accountScope={snapshot.user?.id || ""}
             userName={snapshot.user?.displayName}
+            companionScope={snapshot.activeCompanionId || ""}
           />
         </Suspense>
       )}

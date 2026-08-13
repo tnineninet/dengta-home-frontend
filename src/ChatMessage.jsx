@@ -10,6 +10,7 @@ import {
 import { getStickerById } from "./sticker-catalog";
 import { formatVoiceConfidence } from "./voice";
 import ChatSkinOrnament from "./ChatSkinOrnament";
+import { privateMediaAsset, privateMediaContentPath } from "./private-media";
 
 function formatMessageTime(value) {
   if (!value) return "刚刚";
@@ -34,6 +35,9 @@ function ChatMessage({
   innerMonologuePending = false,
   innerMonologueError = "",
   onRequestInnerMonologue,
+  userAvatar = "",
+  companionAvatar = "",
+  privateMediaCatalog = null,
 }) {
   const isUser = item.role === "user";
   const displayName = isUser ? userName : aiName;
@@ -46,6 +50,14 @@ function ChatMessage({
   const sticker = !isUser
     ? getStickerById(item.tool_calls?.sticker_id)
     : null;
+  const customSticker = !isUser
+    ? privateMediaAsset(
+        privateMediaCatalog,
+        String(item.tool_calls?.custom_sticker_id || ""),
+        "custom_sticker",
+      )
+    : null;
+  const avatar = isUser ? userAvatar : companionAvatar;
   const artworkId = !isUser
     ? String(item.tool_calls?.artwork_id || "")
     : "";
@@ -130,7 +142,26 @@ function ChatMessage({
       onPointerCancel={cancelLongPress}
       onContextMenu={preventTriggeredContextMenu}
     >
-      <span
+      {avatar ? (
+        <AuthenticatedImage
+          src={avatar}
+          alt={`${displayName}的头像`}
+          className={`message-avatar message-avatar-image ${
+            isUser ? "is-user" : "is-assistant"
+          }`}
+          fallback={
+            <span
+              className={`message-avatar message-avatar-letter ${
+                isUser ? "is-user" : "is-assistant"
+              }`}
+              role="img"
+              aria-label={`${displayName}的标记`}
+            >
+              {isUser ? "桃" : "D"}
+            </span>
+          }
+        />
+      ) : <span
         className={`message-avatar message-avatar-letter ${
           isUser ? "is-user" : "is-assistant"
         }`}
@@ -138,7 +169,7 @@ function ChatMessage({
         aria-label={`${displayName}的标记`}
       >
         {isUser ? "桃" : "D"}
-      </span>
+      </span>}
       <div className="message-column">
         <div className="message-role">{displayName}</div>
         <div className="message-bubble">
@@ -170,6 +201,15 @@ function ChatMessage({
             >
               <img src={sticker.assetPath} alt={sticker.alt} loading="lazy" />
             </button>
+          )}
+          {customSticker && (
+            <AuthenticatedImage
+              src={privateMediaContentPath(customSticker.id)}
+              alt={customSticker.alt_text || customSticker.display_name || "自定义表情"}
+              className="message-sticker-image"
+              buttonClassName="message-sticker"
+              onPreview={onPreview}
+            />
           )}
           {artworkId && (
             <div className="message-artwork">

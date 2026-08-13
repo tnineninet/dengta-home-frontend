@@ -25,7 +25,7 @@
     "test:auth-gate": "node test/auth-gate.test.js && node test/auth-gate.component.test.js",
     "test:auth-redirect": "node test/auth-redirect.test.js",
     "test:background-notification-identity": "node test/background-notification-identity.test.js",
-    "test:private-media": "node test/private-media.test.js",
+    "test:private-media": "node --test --experimental-test-coverage --test-coverage-include=src/private-media.js --test-coverage-include=src/private-media-api.js test/private-media.test.js test/private-media-mvp.test.js",
     "test:composer-interactions": "node test/composer-interactions.test.js",
     "test:message-reference": "node test/message-reference.test.js",
     "test:voice": "node test/voice.test.js",

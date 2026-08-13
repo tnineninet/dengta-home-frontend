@@ -7,6 +7,7 @@ export function AuthenticatedImage({
   buttonClassName,
   loading = "lazy",
   onPreview,
+  fallback = null,
 }) {
   const media = usePrivateMediaSource(src);
 
@@ -19,6 +20,7 @@ export function AuthenticatedImage({
     );
   }
   if (!media.url) {
+    if (fallback) return fallback;
     return (
       <span
         className="private-media-placeholder is-error"

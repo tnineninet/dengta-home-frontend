@@ -32,12 +32,18 @@ import {
 import CompanionStatus from "./CompanionStatus";
 import AmbientContextBadge from "./AmbientContextBadge";
 import ChatMessage from "./ChatMessage";
+import ChatBackground from "./ChatBackground";
 import CelestialBackdrop from "./CelestialBackdrop";
 import SunGlassTimeDeck from "./SunGlassTimeDeck";
 import FeatureAtmosphere from "./FeatureAtmosphere";
 import RainbowAgentMark from "./RainbowAgentMark";
 import SettingsFlowField from "./SettingsFlowField";
 import { AuthenticatedImage } from "./PrivateMedia";
+import { getPrivateMediaCatalog } from "./private-media-api.js";
+import {
+  privateMediaContentPath,
+  selectedPrivateMedia,
+} from "./private-media.js";
 import { SelectedAttachmentStrip } from "./ChatMessageExtras";
 import {
   attachmentKind,
@@ -243,6 +249,7 @@ const IntimateDuel = lazy(() => import("./IntimateDuel"));
 const OmbreMemories = lazy(() => import("./OmbreMemories"));
 const Together = lazy(() => import("./Together.jsx"));
 const ThemeStudio = lazy(() => import("./ThemeStudio"));
+const MediaSettings = lazy(() => import("./MediaSettings"));
 const VoiceProviderSettings = lazy(
   () => import("./VoiceProviderSettings"),
 );
@@ -646,6 +653,7 @@ function hydrateSessionChatHistory(messages, sessionId) {
 
 function App({ accountControl = null, accountScope = "", userName = "" }) {
   const visualPreview = arguments[0]?.visualPreview === true;
+  const companionScope = String(arguments[0]?.companionScope || "").trim();
   const accountStorageScope = String(accountScope || "").trim();
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);
@@ -705,6 +713,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [settingsAutosaveState, setSettingsAutosaveState] = useState("idle");
   const [settingsSaveError, setSettingsSaveError] = useState("");
   const [settingsSaveReceipt, setSettingsSaveReceipt] = useState(null);
+  const [privateMediaCatalog, setPrivateMediaCatalog] = useState(null);
+  const [privateMediaLoading, setPrivateMediaLoading] = useState(false);
+  const [privateMediaError, setPrivateMediaError] = useState("");
   const [lastPromptReceipt, setLastPromptReceipt] = useState(() =>
     readPromptReceipt(accountStorageScope),
   );
@@ -743,6 +754,35 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+  const refreshPrivateMediaCatalog = useCallback(async () => {
+    if (visualPreview) return null;
+    setPrivateMediaLoading(true);
+    setPrivateMediaError("");
+    try {
+      const catalog = await getPrivateMediaCatalog();
+      setPrivateMediaCatalog(catalog);
+      return catalog;
+    } catch (error) {
+      setPrivateMediaError(error?.message || "私密媒体目录暂时无法读取。");
+      return null;
+    } finally {
+      setPrivateMediaLoading(false);
+    }
+  }, [visualPreview]);
+
+  useEffect(() => {
+    void refreshPrivateMediaCatalog();
+  }, [accountStorageScope, companionScope, refreshPrivateMediaCatalog]);
+
+  useEffect(() => {
+    function refreshAfterImport() {
+      void refreshPrivateMediaCatalog();
+    }
+    window.addEventListener("dengta:memories-imported", refreshAfterImport);
+    return () =>
+      window.removeEventListener("dengta:memories-imported", refreshAfterImport);
+  }, [refreshPrivateMediaCatalog]);
 
   useEffect(
     () => () => {
@@ -5144,6 +5184,21 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   function renderChat() {
+    const userAvatarAsset = selectedPrivateMedia(
+      privateMediaCatalog,
+      "user_avatar",
+    );
+    const companionAvatarAsset = selectedPrivateMedia(
+      privateMediaCatalog,
+      "companion_avatar",
+    );
+    const chatBackgroundAsset = selectedPrivateMedia(
+      privateMediaCatalog,
+      "chat_background",
+    );
+    const userAvatar = privateMediaContentPath(userAvatarAsset?.id);
+    const companionAvatar = privateMediaContentPath(companionAvatarAsset?.id);
+    const chatBackground = privateMediaContentPath(chatBackgroundAsset?.id);
     const latestMessage = messages.at(-1);
     const replySuggestions =
       latestMessage?.role === "assistant" &&
@@ -5172,6 +5227,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           aria-live="polite"
           onScroll={trackMessageScroll}
         >
+          {chatBackground && <ChatBackground src={chatBackground} />}
           {isLoading ? (
             <div className="empty-state">正在加载 DengTa home…</div>
           ) : messages.length === 0 ? (
@@ -5210,6 +5266,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 }
                 innerMonologueError={innerMonologueErrors[item.id] || ""}
                 onRequestInnerMonologue={requestVisibleInnerMonologue}
+                userAvatar={userAvatar}
+                companionAvatar={companionAvatar}
+                privateMediaCatalog={privateMediaCatalog}
               />
             ))
           )}
@@ -6131,14 +6190,26 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             </div>
 
             {settingsCategory === "appearance" && (
-              <Suspense fallback={<DeferredFeature label="正在打开外观设置…" />}>
-                <ThemeStudio
-                  preferences={themePreferences}
-                  updateTheme={updateTheme}
-                  chatSkinPreferences={chatSkinPreferences}
-                  updateChatSkin={updateChatSkinPreferences}
-                />
-              </Suspense>
+              <>
+                <Suspense fallback={<DeferredFeature label="正在打开外观设置…" />}>
+                  <ThemeStudio
+                    preferences={themePreferences}
+                    updateTheme={updateTheme}
+                    chatSkinPreferences={chatSkinPreferences}
+                    updateChatSkin={updateChatSkinPreferences}
+                  />
+                </Suspense>
+                <Suspense fallback={<DeferredFeature label="正在打开私密媒体设置…" />}>
+                  <MediaSettings
+                    catalog={privateMediaCatalog}
+                    loading={privateMediaLoading}
+                    error={privateMediaError}
+                    onRefresh={refreshPrivateMediaCatalog}
+                    onCatalogChange={setPrivateMediaCatalog}
+                    onPreview={handleImagePreview}
+                  />
+                </Suspense>
+              </>
             )}
 
             {settingsCategory === "data-import" && (
