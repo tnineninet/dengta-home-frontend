@@ -59,6 +59,12 @@ const screenGlanceService = fs.readFileSync(
 assert.match(buildGradle, /applicationId "home\.dengta\.app"/);
 assert.match(buildGradle, /versionCode 40\b/);
 assert.match(buildGradle, /versionName "2\.8\.18"/);
+assert.match(
+  buildGradle,
+  /storeFile file\(System\.getProperty\("user\.home"\) \+ "\/\.android\/debug\.keystore"\)/,
+  "Android debug builds must use the restored stable keystore explicitly",
+);
+assert.match(buildGradle, /signingConfig signingConfigs\.debug/);
 assert.match(variablesGradle, /minSdkVersion = 31\b/);
 assert.match(variablesGradle, /targetSdkVersion = 36\b/);
 assert.match(androidWorkflow, /npm test\s+npm run lint/);
