@@ -18,6 +18,10 @@ import {
   reasoningEffortForProvider,
   reasoningEffortOptions,
 } from "./provider-reasoning-effort";
+import {
+  providerCredentialNeedsRecovery,
+  settingsServiceErrorMessage,
+} from "./settings-service-errors";
 
 const PROTOCOL_OPTIONS = [
   {
@@ -76,12 +80,26 @@ async function aiProviderRequest(
       body: body === undefined ? undefined : JSON.stringify(body),
       retry: false,
     });
-  } catch {
-    throw new Error("无法连接 DengTa 后端，请稍后再试。");
+  } catch (error) {
+    throw new Error(
+      settingsServiceErrorMessage(
+        error,
+        "无法连接 DengTa 后端，请稍后再试 / Unable to connect to the DengTa backend. Try again shortly.",
+      ),
+      { cause: error },
+    );
   }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.message || "请求失败（" + response.status + "）");
+    const error = new Error(
+      settingsServiceErrorMessage(
+        data,
+        `请求失败（HTTP ${response.status}）/ Request failed (HTTP ${response.status}).`,
+      ),
+    );
+    error.code = data.code || "AI_PROVIDER_REQUEST_FAILED";
+    error.status = response.status;
+    throw error;
   }
   return data;
 }
@@ -356,27 +374,35 @@ export default function AiProviderCenter({ onStatusChange = null } = {}) {
 
   useEffect(() => {
     let active = true;
-    Promise.all([
+    Promise.allSettled([
       aiProviderRequest("/api/ai-providers/status"),
       aiProviderRequest("/api/ai-providers/manage"),
     ])
-      .then(([statusData, profilesData]) => {
+      .then(([statusResult, profilesResult]) => {
         if (!active) return;
-        setStatus({ ...statusData, checking: false });
-        onStatusChange?.(statusData);
-        setProfiles(Array.isArray(profilesData.profiles) ? profilesData.profiles : []);
-      })
-      .catch((error) => {
-        if (active) {
+        if (statusResult.status === "fulfilled") {
+          setStatus({ ...statusResult.value, checking: false });
+          onStatusChange?.(statusResult.value);
+        } else {
           const failed = {
             checking: false,
             available: false,
-            message: error.message,
+            message: statusResult.reason.message,
           };
           setStatus(failed);
           onStatusChange?.(failed);
-          setFeedback(error.message);
         }
+        if (profilesResult.status === "fulfilled") {
+          setProfiles(
+            Array.isArray(profilesResult.value.profiles)
+              ? profilesResult.value.profiles
+              : [],
+          );
+        }
+        const failures = [statusResult, profilesResult]
+          .filter((result) => result.status === "rejected")
+          .map((result) => result.reason.message);
+        if (failures.length > 0) setFeedback([...new Set(failures)].join("\n"));
       });
     return () => {
       active = false;
@@ -618,6 +644,16 @@ export default function AiProviderCenter({ onStatusChange = null } = {}) {
         <p>如果某个教程要求 auth.json、OAuth 凭据、卡密 JSON、Cookie 或账号 Token，请在你自己信任的 Sub2API / CPA / Cockpit 工具里完成登录或导入。DengTa 这里只接收最终的 Base URL、对外 API Key 和模型名。</p>
       </div>
 
+      <div className="provider-recovery-note" role="note">
+        <strong>迁移后无法聊天？重新保存活动 GPT 密钥 / Chat unavailable after migration?</strong>
+        <p>
+          更换 Render 服务或后端加密密钥后，旧接口仍会显示在列表里，但原密文不能继续使用。无需删除接口：在对应卡片重新粘贴 API Key，确认“启用这个接口”，保存修改，检查模型目录，再设为下次聊天首选。
+        </p>
+        <small>
+          After a backend migration, re-enter the API key on the existing profile, enable and save it, check the model catalog, then make it the next-chat default.
+        </small>
+      </div>
+
       <div className="provider-summary-grid">
         <span><strong>{profiles.length}</strong><small>已保存接口</small></span>
         <span>
@@ -666,6 +702,12 @@ export default function AiProviderCenter({ onStatusChange = null } = {}) {
                   </div>
                 </div>
                 <ProviderHealthSummary profile={profile} />
+                {providerCredentialNeedsRecovery(profile) && (
+                  <div className="provider-recovery-note is-required" role="alert">
+                    <strong>此接口需要重新保存 API Key / This provider key must be saved again</strong>
+                    <p>在下方密钥框粘贴新值并点“保存修改”，再点“检查模型目录”。其他资料不需要重填。</p>
+                  </div>
+                )}
                 <ProviderFields
                   value={profile}
                   editing

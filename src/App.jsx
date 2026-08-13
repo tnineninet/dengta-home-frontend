@@ -4885,6 +4885,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     setIsSettingsOpen(true);
   }
 
+  function openProviderRecovery() {
+    closeComposerMenu();
+    requestStatusPanelClose();
+    setIsSidebarOpen(false);
+    setIsMobileNavOpen(false);
+    setSettingsCategory("services");
+    setIsSettingsOpen(true);
+  }
+
   function closeSettingsPanel() {
     if (hasLoadedSettingsRef.current) {
       scheduleSettingsAutosave(draftSettingsRef.current, {
@@ -7098,9 +7107,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                     "正在恢复设置和会话。"}
               </span>
             </div>
-            <button type="button" onClick={retryStartupConnection}>
-              立即重试
-            </button>
+            <div className="connection-recovery-actions">
+              {startupConnection.failureCount > 0 && (
+                <button type="button" onClick={openProviderRecovery}>
+                  修复聊天接口 / Fix chat API
+                </button>
+              )}
+              <button type="button" onClick={retryStartupConnection}>
+                立即重试
+              </button>
+            </div>
           </div>
         )}
 

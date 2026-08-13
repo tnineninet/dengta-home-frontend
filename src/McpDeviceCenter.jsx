@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "./api";
+import { settingsServiceErrorMessage } from "./settings-service-errors";
 
 const EMPTY_DRAFT = {
   name: "",
@@ -19,7 +20,10 @@ async function mcpRequest(path, { method = "GET", body } = {}) {
     });
   } catch (error) {
     throw new Error(
-      error?.message || "无法连接 DengTa 后端，请稍后再试。",
+      settingsServiceErrorMessage(
+        error,
+        "无法连接 DengTa 后端，请稍后再试 / Unable to connect to the DengTa backend. Try again shortly.",
+      ),
       { cause: error },
     );
   }
@@ -178,6 +182,11 @@ export default function McpDeviceCenter() {
       <div className="mcp-safety-note">
         <strong>默认零权限</strong>
         <p>新连接的所有工具均为“禁止自动执行”。你必须逐项改成允许并启用连接，聊天模型才看得到它。设备凭据只在后端加密保存，不会回传页面。</p>
+      </div>
+
+      <div className="mcp-setup-required" role="note">
+        <strong>迁移后设备测试失败 / Device test fails after migration</strong>
+        <p>无需删除连接。在对应卡片的“更新访问令牌”重新填写 Token，保存权限后再测试 / Re-enter the token on the existing connection, save it, then test again.</p>
       </div>
 
       {!status.checking && !status.configured && (

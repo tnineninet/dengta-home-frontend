@@ -924,6 +924,29 @@ button:disabled {
   font-weight: 700;
 }
 
+.connection-recovery > .connection-recovery-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+@media (max-width: 680px) {
+  .connection-recovery {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .connection-recovery > .connection-recovery-actions {
+    justify-content: stretch;
+  }
+
+  .connection-recovery-actions button {
+    flex: 1 1 150px;
+  }
+}
+
 .view-content {
   display: grid;
   min-width: 0;
@@ -2917,6 +2940,7 @@ button:disabled {
 }
 
 .provider-safety-note,
+.provider-recovery-note,
 .provider-feedback,
 .provider-empty,
 .provider-error {
@@ -2937,6 +2961,39 @@ button:disabled {
 
 .provider-safety-note p {
   margin: 0;
+}
+
+.provider-recovery-note {
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(186, 135, 59, 0.34);
+  border-radius: 12px;
+  color: #6f5735;
+  background: rgba(255, 244, 219, 0.7);
+  line-height: 1.65;
+}
+
+.provider-recovery-note strong,
+.provider-recovery-note p,
+.provider-recovery-note small {
+  display: block;
+  margin: 0;
+}
+
+.provider-recovery-note p {
+  margin-top: 4px;
+}
+
+.provider-recovery-note small {
+  margin-top: 5px;
+  color: inherit;
+  opacity: 0.82;
+}
+
+.provider-recovery-note.is-required {
+  border-color: rgba(178, 79, 94, 0.4);
+  color: #934052;
+  background: rgba(245, 218, 222, 0.58);
 }
 
 .provider-error {
