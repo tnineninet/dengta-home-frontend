@@ -9,6 +9,7 @@ const EMPTY_DRAFT = {
   auth_header: "X-API-Key",
   credential: "",
   protocol_version: "2025-03-26",
+  provider_profile: "",
 };
 
 const NETEASE_MCP_PRESET = Object.freeze({
@@ -16,6 +17,7 @@ const NETEASE_MCP_PRESET = Object.freeze({
   name: "网易云音乐 MCP（Code-MonkeyZhang，自托管）",
   endpoint: "https://你的公网域名/mcp",
   auth_type: "bearer",
+  provider_profile: "netease_cloud_music",
 });
 
 const NETEASE_TOOL_RISKS = Object.freeze({
@@ -58,6 +60,14 @@ async function mcpRequest(path, { method = "GET", body } = {}) {
 
 function policyLabel(value) {
   return value === "auto" ? "允许 AI 自动执行" : "禁止自动执行（默认）";
+}
+
+function userClickOnlyTool(toolName) {
+  return toolName === "cloud_music_login" || toolName === "cloud_music_play";
+}
+
+function safeToolPolicies(policies = {}) {
+  return Object.fromEntries(Object.entries(policies).map(([name, value]) => [name, userClickOnlyTool(name) ? "disabled" : value]));
 }
 
 export default function McpDeviceCenter() {
@@ -157,7 +167,8 @@ export default function McpDeviceCenter() {
           auth_type: connection.auth_type,
           auth_header: connection.auth_header,
           protocol_version: connection.protocol_version,
-          tool_policies: connection.tool_policies,
+          provider_profile: connection.provider_profile || "",
+           tool_policies: safeToolPolicies(connection.tool_policies),
           ...(connection.credential ? { credential: connection.credential } : {}),
         },
       });
@@ -261,6 +272,13 @@ export default function McpDeviceCenter() {
                 <input value={draft.name} onChange={(event) => updateDraft("name", event.target.value)} placeholder="例如：家里的空调" />
               </label>
               <label>
+                Provider Profile
+                <select value={draft.provider_profile} onChange={(event) => updateDraft("provider_profile", event.target.value)}>
+                  <option value="">通用 MCP</option>
+                  <option value="netease_cloud_music">网易云音乐</option>
+                </select>
+              </label>
+              <label>
                 协议版本
                 <select value={draft.protocol_version} onChange={(event) => updateDraft("protocol_version", event.target.value)}>
                   <option value="2025-03-26">2025-03-26（推荐）</option>
@@ -353,15 +371,17 @@ export default function McpDeviceCenter() {
                       <span><strong>{tool.name}</strong><span className="mcp-tool-risk">{toolRiskLabel(tool.name)}</span><small>{tool.description || "服务没有提供说明"}</small></span>
                       <select
                         aria-label={`${tool.name} 的自动执行权限`}
-                        value={connection.tool_policies?.[tool.name] || "disabled"}
+                        value={userClickOnlyTool(tool.name) ? "disabled" : connection.tool_policies?.[tool.name] || "disabled"}
+                        disabled={userClickOnlyTool(tool.name)}
                         onChange={(event) => editConnection(connection.id, (current) => ({
                           ...current,
                           tool_policies: { ...current.tool_policies, [tool.name]: event.target.value },
                         }))}
                       >
                         <option value="disabled">{policyLabel("disabled")}</option>
-                        <option value="auto">{policyLabel("auto")}</option>
+                        <option value="auto" disabled={userClickOnlyTool(tool.name)}>{policyLabel("auto")}</option>
                       </select>
+                      {userClickOnlyTool(tool.name) && <small>{tool.name === "cloud_music_login" ? "只能在自托管管理页完成登录，DengTa 不调用此工具。" : "只能由用户点击外部播放按钮触发，禁止 AI 自动执行。"}</small>}
                     </label>
                   ))}
                 </div>

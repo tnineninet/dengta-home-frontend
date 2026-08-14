@@ -47,6 +47,9 @@ function normalizeItem(item, index = 0) {
     artist: text(source.artist || source.author, 180),
     album: text(source.album, 180),
     url,
+    providerTrackId: text(source.provider_track_id ?? source.providerTrackId, 20),
+    externalUrl: text(source.external_url ?? source.externalUrl, 4096),
+    playbackMode: text(source.playback_mode ?? source.playbackMode ?? (url ? "direct_https" : ""), 40),
     durationSeconds: number(source.duration_seconds ?? source.duration),
     lyrics: String(source.lyrics ?? source.lyric ?? ""),
   });
@@ -73,9 +76,65 @@ export function normalizeMusicPlaylist(value) {
     id: text(source.id, 100),
     name: text(source.name || source.title || "未命名歌单", 180),
     provider: text(source.provider || source.source_format || "local_playlist", 80),
+    providerPlaylistId: text(source.provider_playlist_id ?? source.providerPlaylistId, 100),
     itemCount: number(source.item_count ?? source.itemCount, items.length),
     items: Object.freeze(items),
     createdAt: source.created_at || "",
+  });
+}
+
+function queryWithConnection(path, connectionId, parameters = {}) {
+  const query = new URLSearchParams({ connection_id: text(connectionId, 100) });
+  for (const [key, value] of Object.entries(parameters)) query.set(key, text(value, 500));
+  return `${path}?${query}`;
+}
+
+function normalizeRemotePlaylists(data) {
+  const values = Array.isArray(data?.playlists) ? data.playlists : Array.isArray(data) ? data : [];
+  return Object.freeze(values.slice(0, MAX_ITEMS).map(normalizeMusicPlaylist));
+}
+
+export async function listNeteaseConnections() {
+  const data = await apiRequest("/api/mcp/connections/manage", { timeoutMs: READ_TIMEOUT_MS });
+  return Object.freeze((Array.isArray(data?.connections) ? data.connections : []).filter(
+    (connection) => connection?.provider_profile === "netease_cloud_music",
+  ));
+}
+
+export async function getNeteaseConnectionStatus(connectionId) {
+  return apiRequest(`/api/v2/music/providers/netease/connections/${encodeURIComponent(connectionId)}/status`, { timeoutMs: READ_TIMEOUT_MS });
+}
+
+export async function listNeteasePlaylists(connectionId) {
+  return normalizeRemotePlaylists(await apiRequest(queryWithConnection("/api/v2/music/providers/netease/playlists", connectionId), { timeoutMs: READ_TIMEOUT_MS }));
+}
+
+export async function getNeteasePlaylist(connectionId, providerPlaylistId) {
+  return normalizeMusicPlaylist(await apiRequest(queryWithConnection(
+    `/api/v2/music/providers/netease/playlists/${encodeURIComponent(providerPlaylistId)}`,
+    connectionId,
+  ), { timeoutMs: READ_TIMEOUT_MS }));
+}
+
+export async function searchNeteaseMusic(connectionId, query) {
+  const data = await apiRequest(queryWithConnection("/api/v2/music/providers/netease/search", connectionId, { q: query }), { timeoutMs: READ_TIMEOUT_MS });
+  const values = Array.isArray(data?.items) ? data.items : Array.isArray(data?.tracks) ? data.tracks : Array.isArray(data) ? data : [];
+  return Object.freeze(values.slice(0, MAX_ITEMS).map(normalizeItem));
+}
+
+export async function importNeteaseShare(connectionId, shareUrl) {
+  return normalizeMusicPlaylist(await apiRequest("/api/v2/music/providers/netease/imports/share", {
+    method: "POST",
+    timeoutMs: WRITE_TIMEOUT_MS,
+    body: JSON.stringify({ connection_id: text(connectionId, 100), share_url: text(shareUrl, 4096) }),
+  }));
+}
+
+export async function requestExternalMusicPlayback(resourceType, resourceId) {
+  return apiRequest("/api/v2/music/providers/netease/external-playback", {
+    method: "POST",
+    timeoutMs: WRITE_TIMEOUT_MS,
+    body: JSON.stringify({ resource_type: resourceType, resource_id: text(resourceId, 20) }),
   });
 }
 

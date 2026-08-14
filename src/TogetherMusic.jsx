@@ -27,8 +27,10 @@ import {
   listMusicFavorites,
   listMusicPlaylists,
   putMusicFavorite,
-  validateDirectAudioUrl,
+  requestExternalMusicPlayback,
 } from "./music-listening.js";
+import { MUSIC_PLAYBACK_MODES, musicPlaybackIsInternal, resolveMusicPlayback } from "./music-playback.js";
+import { openNeteasePlayback } from "./netease-playback.js";
 
 const ERROR_MESSAGE = "音频无法播放。链接可能已过期、需要登录、受到防盗链限制，或使用了 DRM。DengTa 不会绕过这些限制。";
 const REPEAT_LABELS = Object.freeze({ off: "不循环", all: "列表循环", one: "单曲循环" });
@@ -71,7 +73,9 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
     : playlist?.items?.[localIndex] || null;
   const itemPlaylist = active ? queuedPlaylist : playlist;
   const favorite = Boolean(item && favorites.some((entry) => entry.itemId === item.id));
-  const playableItemUrl = item ? validateDirectAudioUrl(item.url) : null;
+  const playback = resolveMusicPlayback(item);
+  const internalPlayback = musicPlaybackIsInternal(playback);
+  const playableItemUrl = internalPlayback ? playback.url : "";
 
   const rememberPlaylist = (next) => {
     if (!next?.id) return;
@@ -208,14 +212,27 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
 
   useEffect(() => {
     if (!item || !audioRef.current) return;
-    audioRef.current.load();
-    setPosition(0);
-    setDuration(item.durationSeconds || 0);
-    if (autoPlayNextRef.current) {
-      autoPlayNextRef.current = false;
-      void audioRef.current.play().catch(() => setStatus("下一首已准备好，请点击播放。"));
-    }
-  }, [item]);
+    const audio = audioRef.current;
+    Promise.resolve().then(() => {
+      if (!mountedRef.current) return;
+      if (!internalPlayback) {
+        audio.pause();
+        audio.removeAttribute("src");
+        audio.load();
+        setPlaying(false);
+        setPosition(0);
+        setDuration(item.durationSeconds || 0);
+        return;
+      }
+      audio.load();
+      setPosition(0);
+      setDuration(item.durationSeconds || 0);
+      if (autoPlayNextRef.current) {
+        autoPlayNextRef.current = false;
+        void audio.play().catch(() => setStatus("下一首已准备好，请点击播放。"));
+      }
+    });
+  }, [item, internalPlayback]);
 
   const report = (event, immediate = false) => {
     const audio = event?.currentTarget || audioRef.current;
@@ -287,7 +304,11 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
 
   const start = async () => {
     if (!item || !playlist) return;
-    const validation = validateDirectAudioUrl(item.url);
+    if (!internalPlayback) {
+      setError("网易云外部曲目不能开始 Together，也不能加入 Together 队列。请使用“在网易云播放”。");
+      return;
+    }
+    const validation = playback.validation || { ok: true, message: "" };
     if (!validation.ok) {
       setError(validation.message);
       return;
@@ -312,7 +333,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
       const playbackOrder = [
         ...playlist.items.slice(localIndex),
         ...playlist.items.slice(0, localIndex),
-      ];
+      ].filter((entry) => musicPlaybackIsInternal(resolveMusicPlayback(entry)));
       await runQueueOperation(
         { type: "replace", item_ids: playbackOrder.map((entry) => entry.id) },
         { retryConflict: true, sessionId },
@@ -325,6 +346,18 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
     } finally {
       setLoading(false);
     }
+  };
+
+  const openExternal = async () => {
+    if (playback.mode !== MUSIC_PLAYBACK_MODES.external) return;
+    setError("");
+    try {
+      await Promise.all([
+        requestExternalMusicPlayback(playback.resourceType, playback.resourceId),
+        openNeteasePlayback(playback.resourceType, playback.resourceId),
+      ]);
+      setStatus("已交给网易云打开；普通歌曲、VIP 歌曲和版权可用性由网易云判断。");
+    } catch (caught) { setError(caught?.message || "无法打开网易云播放。"); }
   };
 
   const toggleFavorite = async () => {
@@ -410,7 +443,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
     {!active && playlist && <label>曲目<select value={localIndex} onChange={(event) => setLocalIndex(Number(event.target.value))}>{playlist.items.map((entry, itemIndex) => <option key={entry.id || itemIndex} value={itemIndex}>{itemIndex + 1}. {entry.title}{entry.artist ? ` · ${entry.artist}` : ""}</option>)}</select></label>}
     <audio
       ref={audioRef}
-      src={playableItemUrl?.ok ? playableItemUrl.url : ""}
+      src={playableItemUrl}
       preload="metadata"
       controls={false}
       onLoadedMetadata={(event) => report(event)}
@@ -422,10 +455,10 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
       onError={() => { setPlaying(false); setError(ERROR_MESSAGE); }}
       aria-label="一起听歌音频播放器"
     />
-    <input className="music-progress-range" type="range" min="0" max={duration || 0} step="0.1" value={Math.min(position, duration || position)} disabled={!duration} onChange={(event) => { const next = Number(event.target.value); if (audioRef.current) audioRef.current.currentTime = next; setPosition(next); }} aria-label="播放进度" />
+    <input className="music-progress-range" type="range" min="0" max={duration || 0} step="0.1" value={Math.min(position, duration || position)} disabled={!duration || !internalPlayback} onChange={(event) => { const next = Number(event.target.value); if (audioRef.current) audioRef.current.currentTime = next; setPosition(next); }} aria-label="播放进度" />
     <div className="music-player-actions">
       <button type="button" aria-label="上一首" disabled={!localCanGoBack || controlsBusy} onClick={() => setLocalIndex((current) => Math.max(0, current - 1))}><SkipBack aria-hidden="true" /></button>
-      <button type="button" className="together-primary" disabled={!item || controlsBusy} onClick={() => { if (playing) audioRef.current?.pause(); else if (active) void audioRef.current?.play().catch(() => setError("浏览器阻止了自动播放，请再次点击播放。")); else void start(); }}>{playing ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}{playing ? "暂停" : active ? "播放" : "开始一起听"}</button>
+      {playback.mode === MUSIC_PLAYBACK_MODES.external ? <button type="button" className="together-primary" disabled={!item || controlsBusy} onClick={() => void openExternal()}><Play aria-hidden="true" />在网易云播放</button> : <button type="button" className="together-primary" disabled={!item || controlsBusy} onClick={() => { if (playing) audioRef.current?.pause(); else if (active) void audioRef.current?.play().catch(() => setError("浏览器阻止了自动播放，请再次点击播放。")); else void start(); }}>{playing ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}{playing ? "暂停" : active ? "播放" : "开始一起听"}</button>}
       <button type="button" aria-label="下一首" disabled={active ? controlsBusy || !queue?.currentQueueItemId : controlsBusy || !playlist || localIndex >= playlist.items.length - 1} onClick={() => active ? void advance(true) : setLocalIndex((current) => current + 1)}><SkipForward aria-hidden="true" /></button>
     </div>
     {active && <>
@@ -444,10 +477,10 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
           </div>
         </li>)}</ol> : <p>队列是空的，可以从下面的歌单加入曲目。</p>}
       </section>
-      {playlist && <section className="music-queue-picker" aria-label="从当前歌单加入队列"><strong>{playlist.name}</strong>{playlist.items.map((entry) => <div key={entry.id}><span>{entry.title}</span><button type="button" disabled={controlsBusy} onClick={() => void runQueueOperation({ type: "add", item_id: entry.id, position: Math.max(0, currentQueueIndex + 1) }, { retryConflict: true }).catch(() => {})}><Play aria-hidden="true" />下一首播放</button><button type="button" disabled={controlsBusy} onClick={() => void runQueueOperation({ type: "add", item_id: entry.id }, { retryConflict: true }).catch(() => {})}><ListPlus aria-hidden="true" />加入队尾</button></div>)}</section>}
+      {playlist && <section className="music-queue-picker" aria-label="从当前歌单加入队列"><strong>{playlist.name}</strong>{playlist.items.map((entry) => { const entryPlayback = resolveMusicPlayback(entry); const external = entryPlayback.mode === MUSIC_PLAYBACK_MODES.external; return <div key={entry.id}><span>{entry.title}{external && <small> · 外部播放，不能加入 Together 队列</small>}</span>{external ? <button type="button" onClick={() => { void Promise.all([requestExternalMusicPlayback(entryPlayback.resourceType, entryPlayback.resourceId), openNeteasePlayback(entryPlayback.resourceType, entryPlayback.resourceId)]).catch((caught) => setError(caught?.message || "无法打开网易云播放。")); }}><Play aria-hidden="true" />在网易云播放</button> : <><button type="button" disabled={controlsBusy} onClick={() => void runQueueOperation({ type: "add", item_id: entry.id, position: Math.max(0, currentQueueIndex + 1) }, { retryConflict: true }).catch(() => {})}><Play aria-hidden="true" />下一首播放</button><button type="button" disabled={controlsBusy} onClick={() => void runQueueOperation({ type: "add", item_id: entry.id }, { retryConflict: true }).catch(() => {})}><ListPlus aria-hidden="true" />加入队尾</button></>}</div>; })}</section>}
     </>}
     {active && <button type="button" disabled={busy} onClick={() => void onEnd?.({ title: item?.title, mediaPositionSeconds: position, musicPlaylistId: itemPlaylist?.id, musicPlaylistItemId: item?.id })}><CircleStop aria-hidden="true" />结束本场</button>}
-    <p className="together-device-note">{formatMediaTime(position)} / {duration ? formatMediaTime(duration) : "等待媒体信息"}。队列不保存音频 URL，播放地址仅从本机已加载歌单解析；不代理、不下载、不绕过 DRM。</p>
+    <p className="together-device-note">{formatMediaTime(position)} / {duration ? formatMediaTime(duration) : "等待媒体信息"}。{playback.mode === MUSIC_PLAYBACK_MODES.external ? "外部曲目不进入 App audio 或 Together 队列；普通、VIP 与版权由网易云判断。" : "队列不保存音频 URL，播放地址仅从本机已加载歌单解析；不代理、不下载、不绕过 DRM。"}</p>
     {status && <p className="together-feedback" role="status">{loading || queueBusy ? "正在处理 · " : ""}{status}</p>}
     {error && <p className="together-feedback is-error" role="alert">{error}</p>}
   </div>;

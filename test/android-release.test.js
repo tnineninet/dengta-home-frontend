@@ -55,10 +55,25 @@ const screenGlanceService = fs.readFileSync(
   ),
   "utf8",
 );
+const neteasePlaybackPlugin = fs.readFileSync(
+  path.join(
+    projectRoot,
+    "android",
+    "app",
+    "src",
+    "main",
+    "java",
+    "home",
+    "dengta",
+    "app",
+    "NeteasePlaybackPlugin.java",
+  ),
+  "utf8",
+);
 
 assert.match(buildGradle, /applicationId "home\.dengta\.app"/);
-assert.match(buildGradle, /versionCode 51\b/);
-assert.match(buildGradle, /versionName "2\.9\.4"/);
+assert.match(buildGradle, /versionCode 52\b/);
+assert.match(buildGradle, /versionName "2\.10\.0"/);
 assert.match(
   buildGradle,
   /storeFile file\(System\.getProperty\("user\.home"\) \+ "\/\.android\/debug\.keystore"\)/,
@@ -118,4 +133,11 @@ assert.doesNotMatch(
   /小灯|桃桃/,
   "native background notifications must not ship a private companion identity",
 );
-console.log("Android 2.9.4 Cloud Music MCP release tests passed");
+assert.match(neteasePlaybackPlugin, /Pattern\.compile\("\^\[0-9\]\{1,20\}\$"\)/);
+assert.match(neteasePlaybackPlugin, /\\"cmd\\":\\"play\\"/);
+assert.match(neteasePlaybackPlugin, /Base64\.NO_WRAP/);
+assert.match(neteasePlaybackPlugin, /Uri\.parse\("orpheus:\/\/" \+ encoded\)/);
+assert.match(neteasePlaybackPlugin, /new AlertDialog\.Builder/);
+assert.match(neteasePlaybackPlugin, /Intent\.CATEGORY_BROWSABLE/);
+assert.doesNotMatch(neteasePlaybackPlugin, /getString\("(?:url|intent|package|component)"/);
+console.log("Android 2.10.0 NetEase playlist release tests passed");
