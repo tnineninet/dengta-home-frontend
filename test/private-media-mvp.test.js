@@ -50,6 +50,10 @@ test("private media upload uses apiFetch with browser-managed FormData headers",
   assert.equal(request.options.method, "POST");
   assert.equal(request.options.headers, undefined, "不得手工设置 multipart Content-Type");
   assert.ok(request.options.body instanceof FormData);
+  const sentFile = request.options.body.get("file");
+  assert.ok(sentFile instanceof Blob, "二进制必须使用后端约定的 file 字段");
+  assert.equal(sentFile.size, image.size);
+  assert.equal(sentFile.type, image.type);
   assert.equal(request.options.body.get("purpose"), "custom_sticker");
   assert.equal(request.options.body.get("display_name"), "成人/情色名称");
   assert.equal(request.options.body.get("alt_text"), "成人/情色替代文字");
@@ -66,16 +70,19 @@ test("private media API wrappers preserve endpoint methods and JSON bodies", asy
   };
   await getPrivateMediaCatalog(client);
   await updatePrivateMediaPreferences({ user_avatar_asset_id: UUIDS.user }, client);
+  await updatePrivateMediaPreferences({ chat_background_asset_id: null }, client);
   await patchPrivateMediaAsset(UUIDS.sticker, { display_name: "新名字" }, client);
   await archivePrivateMediaAsset(UUIDS.sticker, client);
 
   assert.deepEqual(calls, [
     ["/api/v2/private-media/catalog", {}],
-    ["/api/v2/private-media/preferences", { method: "PUT", body: JSON.stringify({ user_avatar_asset_id: UUIDS.user }) }],
+    ["/api/v2/private-media/preferences", { method: "PUT", body: JSON.stringify({ purpose: "user_avatar", asset_id: UUIDS.user }) }],
+    ["/api/v2/private-media/preferences", { method: "PUT", body: JSON.stringify({ purpose: "chat_background", asset_id: null }) }],
     [`/api/v2/private-media/assets/${UUIDS.sticker}`, { method: "PATCH", body: JSON.stringify({ display_name: "新名字" }) }],
     [`/api/v2/private-media/assets/${UUIDS.sticker}`, { method: "DELETE" }],
   ]);
 
+  assert.deepEqual(await updatePrivateMediaPreferences({}, client), { ok: true, preferences: [] }, "空偏好不得产生请求");
   assert.throws(
     () => patchPrivateMediaAsset("../outside", {}, client),
     /ID 无效/,
@@ -84,7 +91,7 @@ test("private media API wrappers preserve endpoint methods and JSON bodies", asy
     () => archivePrivateMediaAsset("not-a-uuid", client),
     /ID 无效/,
   );
-  assert.equal(calls.length, 4, "非法 UUID 不得产生编辑或归档请求");
+  assert.equal(calls.length, 5, "非法 UUID 不得产生编辑或归档请求");
 });
 
 test("size guidance warns at 5/12 MB without blocking submission", () => {

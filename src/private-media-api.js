@@ -41,7 +41,8 @@ export async function uploadPrivateMediaAsset(
   client = { apiFetch },
 ) {
   const form = new FormData();
-  form.append("image", image);
+  // Backend multer expects the binary under the "file" field.
+  form.append("file", image);
   form.append("purpose", purpose);
   form.append("display_name", displayName);
   form.append("alt_text", altText);
@@ -57,11 +58,30 @@ export async function uploadPrivateMediaAsset(
   return parseResponse(response, "图片上传失败，请稍后重试。");
 }
 
+const PREFERENCE_PURPOSES = ["user_avatar", "companion_avatar", "chat_background"];
+
 export function updatePrivateMediaPreferences(preferences, client = { apiRequest }) {
-  return client.apiRequest("/api/v2/private-media/preferences", {
-    method: "PUT",
-    body: JSON.stringify(preferences),
+  const source = preferences && typeof preferences === "object" ? preferences : {};
+  // Translate the map-style API ({user_avatar_asset_id: id}) into the
+  // backend's one-purpose-per-request contract ({purpose, asset_id}).
+  const pairs = PREFERENCE_PURPOSES.flatMap((purpose) => {
+    const value = Object.hasOwn(source, `${purpose}_asset_id`)
+      ? source[`${purpose}_asset_id`]
+      : Object.hasOwn(source, purpose)
+        ? source[purpose]
+        : undefined;
+    if (value === undefined) return [];
+    return [{ purpose, asset_id: value || null }];
   });
+  if (!pairs.length) return Promise.resolve({ ok: true, preferences: [] });
+  return Promise.all(
+    pairs.map((pair) =>
+      client.apiRequest("/api/v2/private-media/preferences", {
+        method: "PUT",
+        body: JSON.stringify(pair),
+      }),
+    ),
+  ).then((results) => results[results.length - 1]);
 }
 
 export function patchPrivateMediaAsset(id, changes, client = { apiRequest }) {

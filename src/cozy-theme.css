@@ -514,7 +514,8 @@ body {
 .message-row {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr);
-  align-items: end;
+  /* WeChat/QQ rule: the avatar sits at the top edge of the bubble. */
+  align-items: start;
   gap: 9px;
   margin: 16px 0;
   animation: cozy-message-in 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
@@ -530,7 +531,7 @@ body {
   height: 42px;
   grid-column: 1;
   grid-row: 1;
-  align-self: end;
+  align-self: start;
   border: 2px solid rgba(255, 250, 240, 0.9);
   border-radius: 14px;
   object-fit: cover;
