@@ -3777,6 +3777,18 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
+.mcp-discovered-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.mcp-discovered-tools > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
 .mcp-list-heading {
   align-items: center;
   padding-top: 8px;
@@ -3870,6 +3882,18 @@ button:disabled {
 
 .mcp-tool-list strong {
   overflow-wrap: anywhere;
+}
+
+.mcp-tool-risk {
+  width: fit-content;
+  padding: 2px 7px;
+  border: 1px solid #dfc2a4;
+  border-radius: 999px;
+  color: #795739;
+  background: #fff7ed;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.5;
 }
 
 .mcp-card-actions {

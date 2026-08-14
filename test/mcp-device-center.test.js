@@ -18,11 +18,14 @@ assert.match(component, /settingsServiceErrorMessage/);
 assert.match(component, /禁止自动执行（默认）/);
 assert.match(component, /允许 AI 自动执行/);
 assert.match(component, /Home Assistant/);
-assert.match(component, /Vael-KY\/netease-music-mcp/);
-assert.match(component, /用户自托管的公网 HTTPS/);
-assert.match(component, /DengTa 不接收这些值，也绝不接收 Cookie 请求头/);
+assert.match(component, /Code-MonkeyZhang\/cloud-music-mcp/);
+assert.match(component, /--transport http/);
+assert.match(component, /每位用户独占/);
+assert.match(component, /不能控制 Android App，也不能为 Together 提供音频/);
 assert.match(component, /MUSIC_U\|__csrf\|NETEASE_COOKIE/);
-assert.match(component, /play_music/);
+assert.match(component, /cloud_music_play/);
+assert.match(component, /账户写入/);
+assert.match(component, /启动外部应用/);
 assert.match(component, /setDraft\(NETEASE_MCP_PRESET\)/);
 assert.match(component, /\/api\/mcp/);
 assert.match(component, /stdio MCP/);
@@ -44,5 +47,6 @@ assert.doesNotMatch(
 assert.match(css, /\.view-content\s*\{[^}]*overflow:\s*hidden/s);
 assert.match(css, /@media[\s\S]*?\.view-content\s*\{[^}]*margin-bottom:\s*0/s);
 assert.match(css, /\.mcp-tool-list/);
+assert.match(css, /\.mcp-tool-risk/);
 
 console.log("MCP device center UI tests passed");

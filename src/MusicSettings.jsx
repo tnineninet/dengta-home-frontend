@@ -142,7 +142,7 @@ export default function MusicSettings({ providerStatus = null, onOpenMcpDeviceCe
       {PROVIDERS.map(([id, label, fallbackStatus, fallbackText]) => {
         const remote = Array.isArray(providerStatus?.providers) ? providerStatus.providers.find((item) => item?.id === id) : null;
         const status = remote?.status || fallbackStatus;
-        return <div className="music-provider-status" key={id}><strong>{label}</strong><span className={`provider-dot ${status}`}>{remote?.display_name || fallbackText}</span>{id === "netease" && <><small>可通过用户自托管的网易云 MCP 管理歌单；网页分享不会被当作音频导入。</small><button type="button" onClick={onOpenMcpDeviceCenter}>去连接网易云 MCP</button></>}</div>;
+        return <div className="music-provider-status" key={id}><strong>{label}</strong><span className={`provider-dot ${status}`}>{remote?.display_name || fallbackText}</span>{id === "netease" && <><small>通过用户自托管的 Code-MonkeyZhang/cloud-music-mcp 接入：元数据/歌单管理可用，Together 音频不可用。</small><button type="button" onClick={onOpenMcpDeviceCenter}>去连接网易云 MCP</button></>}</div>;
       })}
     </div>
     <div className="music-import-grid">

@@ -13,9 +13,29 @@ const EMPTY_DRAFT = {
 
 const NETEASE_MCP_PRESET = Object.freeze({
   ...EMPTY_DRAFT,
-  name: "网易云音乐 MCP（自托管）",
+  name: "网易云音乐 MCP（Code-MonkeyZhang，自托管）",
   endpoint: "https://你的公网域名/mcp",
+  auth_type: "bearer",
 });
+
+const NETEASE_TOOL_RISKS = Object.freeze({
+  cloud_music_login: "登录与会话",
+  cloud_music_status: "登录与会话",
+  cloud_music_get_daily_recommend: "账户隐私读取",
+  cloud_music_my_playlists: "账户隐私读取",
+  cloud_music_playlist_detail: "公开查询",
+  cloud_music_create_playlist: "账户写入",
+  cloud_music_add_to_playlist: "账户写入",
+  cloud_music_search: "公开查询",
+  cloud_music_album_info: "公开查询",
+  cloud_music_artist_info: "公开查询",
+  cloud_music_my_subscriptions: "账户隐私读取",
+  cloud_music_play: "启动外部应用",
+});
+
+function toolRiskLabel(toolName) {
+  return NETEASE_TOOL_RISKS[toolName] || "外部工具";
+}
 
 async function mcpRequest(path, { method = "GET", body } = {}) {
   try {
@@ -203,9 +223,15 @@ export default function McpDeviceCenter() {
       </div>
 
       <div className="mcp-setup-required netease-mcp-preset" role="note">
-        <strong>网易云音乐 MCP · Vael-KY/netease-music-mcp</strong>
-        <p>仅支持你自行部署并公开的 <code>https://你的域名/mcp</code>。请只在自托管服务端配置 <code>MUSIC_U</code>、<code>__csrf</code> 或 <code>NETEASE_COOKIE</code>；DengTa 不接收这些值，也绝不接收 Cookie 请求头。</p>
-        <p>MCP 可用于查询/管理歌单、推荐和收藏。工具返回的 <code>play_music</code> 网页入口只用于前往网易云，不代表能在 DengTa 内播放。</p>
+        <strong>网易云音乐 MCP · Code-MonkeyZhang/cloud-music-mcp</strong>
+        <ol>
+          <li>在每位用户独占的 Windows/macOS 主机实例中安装上游；它原生是 stdio，配置里的 <code>command</code>/<code>args</code> 不能直接填入 DengTa。</li>
+          <li>用 <code>uv run fastmcp run "src/cloud_music_mcp/main.py:mcp" --transport http --host 127.0.0.1 --port 8000</code> 仅监听回环地址。</li>
+          <li>在实例前增加带 Bearer 鉴权的包装层，再通过 HTTPS 反向代理公开为 <code>https://你的公网域名/mcp</code>；不要把无鉴权的 FastMCP 端口直接暴露到公网。</li>
+          <li>扫码登录必须在运行 Python 的自托管主机完成，或通过另行保护的管理页完成。Cookie 明文只留在该用户实例，绝不填写到 DengTa。</li>
+        </ol>
+        <p><code>cloud_music_play</code> 只会启动或控制自托管主机上的网易云桌面客户端，不能控制 Android App，也不能为 Together 提供音频。DengTa 不抓取网易云网页、不解析音频直链、不绕过 DRM。</p>
+        <p>发现的全部工具仍默认禁用。风险标签只用于解释影响，不构成授权；请按工具逐项审阅后再启用。</p>
         <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => { setDraft(NETEASE_MCP_PRESET); setDiscovery(null); setFeedback("已填入网易云 MCP 安全预设，请把域名替换为你自托管的公网 HTTPS 地址。"); }}>使用网易云 MCP 预设</button>
       </div>
 
@@ -278,7 +304,11 @@ export default function McpDeviceCenter() {
             {discovery && (
               <div className="mcp-discovery-result">
                 <strong>{discovery.server_name || "MCP 服务"} 已响应</strong>
-                <span>{(discovery.tools || []).map((tool) => tool.name).join("、") || "没有公开工具"}</span>
+                {(discovery.tools || []).length ? (
+                  <div className="mcp-discovered-tools">
+                    {discovery.tools.map((tool) => <span key={tool.name}><code>{tool.name}</code><span className="mcp-tool-risk">{toolRiskLabel(tool.name)}</span></span>)}
+                  </div>
+                ) : <span>没有公开工具</span>}
               </div>
             )}
           </form>
@@ -320,7 +350,7 @@ export default function McpDeviceCenter() {
                 <div className="mcp-tool-list">
                   {(connection.discovered_tools || []).map((tool) => (
                     <label key={tool.name}>
-                      <span><strong>{tool.name}</strong><small>{tool.description || "服务没有提供说明"}</small></span>
+                      <span><strong>{tool.name}</strong><span className="mcp-tool-risk">{toolRiskLabel(tool.name)}</span><small>{tool.description || "服务没有提供说明"}</small></span>
                       <select
                         aria-label={`${tool.name} 的自动执行权限`}
                         value={connection.tool_policies?.[tool.name] || "disabled"}
