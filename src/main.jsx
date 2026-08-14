@@ -11,6 +11,7 @@ import "./sun-glass-chat.css";
 import "./typography.css";
 import LoadedApp from "./LoadedApp.jsx";
 import AuthGate from "./AuthGate.jsx";
+import { authSession } from "./auth-session.js";
 import DengTaPrelude from "./DengTaPrelude.jsx";
 import { prewarmBackend } from "./backend-prewarm.js";
 import { pwaInstallController } from "./pwa-install.js";
@@ -37,7 +38,10 @@ createRoot(document.getElementById("root")).render(
       <DengTaPrelude />
       <AuthGate>
         {({ accountControl, snapshot }) => (
-          <AppStartupBoundary>
+          <AppStartupBoundary
+            accountScope={snapshot.user?.id || ""}
+            sessionManager={authSession}
+          >
             <Suspense fallback={<AppLoadingScreen />}>
               <LoadedApp key={snapshot.user?.id} accountControl={accountControl} accountScope={snapshot.user?.id || ""} userName={snapshot.user?.displayName} companionScope={snapshot.activeCompanionId || ""} />
             </Suspense>

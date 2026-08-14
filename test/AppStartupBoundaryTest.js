@@ -50,7 +50,12 @@ class AppStartupBoundaryTest {
       AppLoadingScreen,
       AppStartupBoundary,
     } = await vite.ssrLoadModule("/src/AppStartupBoundary.jsx");
-    const { installChunkRecovery, markAppLoaded } =
+    const {
+      clearLocalUiPreferences,
+      installChunkRecovery,
+      markAppLoaded,
+      startupDiagnosticCode,
+    } =
       await vite.ssrLoadModule("/src/app-startup-recovery.js");
 
     let renderer;
@@ -62,14 +67,24 @@ class AppStartupBoundaryTest {
     assert.match(textContent(renderer.toJSON()), /载入聊天、记忆与伴侣空间/);
     await act(async () => renderer.unmount());
 
+    let signOutCount = 0;
     await act(async () => {
-      renderer = TestRenderer.create(React.createElement(AppFailureScreen));
+      renderer = TestRenderer.create(React.createElement(AppFailureScreen, {
+        diagnosticCode: "DT-START-PM-01",
+        accountScope: "account-1",
+        sessionManager: { signOut: async () => { signOutCount += 1; } },
+      }));
     });
     const failurePage = renderer.root.findByType("main");
     assert.equal(failurePage.props.role, "alert");
     assert.match(textContent(renderer.toJSON()), /账号和聊天数据不会因此丢失/);
+    assert.match(textContent(renderer.toJSON()), /DT-START-PM-01/);
+    assert.equal(renderer.root.findAllByType("button").length, 3);
+    await act(async () => renderer.root.findAllByType("button")[2].props.onClick());
+    assert.equal(signOutCount, 1);
+    reloadCount = 0;
     storage.set("dengta:app-chunk-recovery", "attempted");
-    await act(async () => renderer.root.findByType("button").props.onClick());
+    await act(async () => renderer.root.findAllByType("button")[0].props.onClick());
     assert.equal(storage.has("dengta:app-chunk-recovery"), false);
     assert.equal(reloadCount, 1);
     await act(async () => renderer.unmount());
@@ -85,8 +100,24 @@ class AppStartupBoundaryTest {
     boundary.componentDidCatch({ name: "ChunkLoadError" });
     assert.deepEqual(loggedFailure, {
       message: "DengTa 应用界面载入失败",
-      detail: { name: "ChunkLoadError" },
+      detail: { name: "ChunkLoadError", diagnosticCode: "DT-START-CH-01" },
     });
+
+    assert.equal(
+      startupDiagnosticCode(new TypeError("Cannot read properties of null (reading 'catalog')")),
+      "DT-START-PM-01",
+    );
+    const uiStorage = new Map([
+      ["dengta.ui-theme.v2", "theme"],
+      ["dengta.ui-theme.v2:account-1", "scoped-theme"],
+      ["dengta_home_auth_v1", "must-stay-private"],
+    ]);
+    clearLocalUiPreferences("account-1", {
+      removeItem: (key) => uiStorage.delete(key),
+    });
+    assert.equal(uiStorage.has("dengta.ui-theme.v2"), false);
+    assert.equal(uiStorage.has("dengta.ui-theme.v2:account-1"), false);
+    assert.equal(uiStorage.get("dengta_home_auth_v1"), "must-stay-private");
 
     installChunkRecovery();
     assert.equal(typeof preloadErrorListener, "function");

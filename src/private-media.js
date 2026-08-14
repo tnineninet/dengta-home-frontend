@@ -42,7 +42,10 @@ export function isPrivateMediaAssetId(id) {
 }
 
 export function normalizePrivateMediaCatalog(data = {}) {
-  const root = data.catalog || data;
+  const source = data && typeof data === "object" ? data : {};
+  const root = source.catalog && typeof source.catalog === "object"
+    ? source.catalog
+    : source;
   const grouped = root.assets || root.items || [];
   const assets = Array.isArray(grouped)
     ? grouped
@@ -65,7 +68,7 @@ export function normalizePrivateMediaCatalog(data = {}) {
               .filter(Boolean),
       }))
       .filter((asset) => privateMediaContentPath(asset.id)),
-    preferences: root.preferences || data.preferences || {},
+    preferences: root.preferences || source.preferences || {},
   };
 }
 

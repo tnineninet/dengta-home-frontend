@@ -2104,7 +2104,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           (item) => item.id && !seenSet.has(item.id),
         );
         const allMessages = data.messages || [];
-        const latest = allMessages.at(-1);
+        const latest = allMessages[allMessages.length - 1];
 
         if (latest?.created_at) {
           localStorage.setItem(pushCursorKey, latest.created_at);
@@ -5338,7 +5338,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     const userAvatar = privateMediaContentPath(userAvatarAsset?.id);
     const companionAvatar = privateMediaContentPath(companionAvatarAsset?.id);
     const chatBackground = privateMediaContentPath(chatBackgroundAsset?.id);
-    const latestMessage = messages.at(-1);
+    const latestMessage = messages[messages.length - 1];
     const replySuggestions =
       latestMessage?.role === "assistant" &&
       !latestMessage.isStreaming &&

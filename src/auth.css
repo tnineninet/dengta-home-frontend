@@ -574,7 +574,9 @@
 
 .app-startup-page strong { font: 700 1.25rem Georgia, "Songti SC", serif; }
 .app-startup-page span { max-width: 340px; color: #66736d; line-height: 1.6; }
+.app-startup-page small { color: #66736d; font: 500 .78rem ui-monospace, SFMono-Regular, Consolas, monospace; }
 .app-startup-failure button { min-height: 44px; margin-top: 8px; padding: 0 18px; border: 0; border-radius: 14px; color: #fff; background: #27352f; font: inherit; }
+.app-startup-failure button:disabled { opacity: .58; }
 
 :root[data-dengta-appearance="night"] .app-startup-page {
   color: #edf3f0;
@@ -582,3 +584,4 @@
 }
 
 :root[data-dengta-appearance="night"] .app-startup-page span { color: #b2beb8; }
+:root[data-dengta-appearance="night"] .app-startup-page small { color: #b2beb8; }

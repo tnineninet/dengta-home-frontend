@@ -119,6 +119,14 @@ test("catalog selects safe avatars/background and keeps display text verbatim", 
   assert.equal(sticker.alt_text, "成人/情色替代文字");
 });
 
+test("catalog treats the pre-fetch null state as an empty safe catalog", () => {
+  assert.deepEqual(normalizePrivateMediaCatalog(null), {
+    assets: [],
+    preferences: {},
+  });
+  assert.equal(selectedPrivateMedia(null, "user_avatar"), null);
+});
+
 test("content whitelist accepts only valid UUID assets on the API origin", () => {
   const path = `/api/v2/private-media/assets/${UUIDS.sticker}/content`;
   assert.equal(privateMediaContentPath(UUIDS.sticker), path);

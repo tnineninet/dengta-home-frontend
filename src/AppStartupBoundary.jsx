@@ -1,5 +1,9 @@
-import { Component } from "react";
-import { reloadApplication } from "./app-startup-recovery.js";
+import { Component, useState } from "react";
+import {
+  clearUiPreferencesAndReload,
+  reloadApplication,
+  startupDiagnosticCode,
+} from "./app-startup-recovery.js";
 
 export function AppLoadingScreen() {
   return (
@@ -11,13 +15,42 @@ export function AppLoadingScreen() {
   );
 }
 
-export function AppFailureScreen() {
+export function AppFailureScreen({
+  diagnosticCode = "DT-START-UI-01",
+  accountScope = "",
+  sessionManager,
+}) {
+  const [signOutState, setSignOutState] = useState("");
+
+  async function exitAccount() {
+    setSignOutState("busy");
+    try {
+      await sessionManager?.signOut();
+      reloadApplication();
+    } catch {
+      setSignOutState("error");
+    }
+  }
+
   return (
     <main className="app-startup-page app-startup-failure" role="alert">
       <div className="app-startup-mark" aria-hidden="true">灯</div>
       <strong>这次没有顺利点亮</strong>
       <span>应用内容载入失败，账号和聊天数据不会因此丢失。</span>
+      <small>诊断码：{diagnosticCode}</small>
       <button type="button" onClick={reloadApplication}>重新载入应用</button>
+      <button
+        type="button"
+        onClick={() => clearUiPreferencesAndReload(accountScope)}
+      >
+        清理本机界面偏好后重试
+      </button>
+      <button type="button" disabled={signOutState === "busy"} onClick={exitAccount}>
+        {signOutState === "busy" ? "正在退出…" : "退出当前账号"}
+      </button>
+      {signOutState === "error" && (
+        <span role="status">退出失败，请检查网络后重试。</span>
+      )}
     </main>
   );
 }
@@ -25,7 +58,7 @@ export function AppFailureScreen() {
 export class AppStartupBoundary extends Component {
   constructor(props) {
     super(props);
-    this.state = { failed: false };
+    this.state = { failed: false, diagnosticCode: "DT-START-UI-01" };
   }
 
   static getDerivedStateFromError() {
@@ -34,10 +67,18 @@ export class AppStartupBoundary extends Component {
 
   componentDidCatch(error) {
     const name = String(error?.name || "Error").slice(0, 80);
-    console.error("DengTa 应用界面载入失败", { name });
+    const diagnosticCode = startupDiagnosticCode(error);
+    this.setState({ diagnosticCode });
+    console.error("DengTa 应用界面载入失败", { name, diagnosticCode });
   }
 
   render() {
-    return this.state.failed ? <AppFailureScreen /> : this.props.children;
+    return this.state.failed ? (
+      <AppFailureScreen
+        diagnosticCode={this.state.diagnosticCode}
+        accountScope={this.props.accountScope}
+        sessionManager={this.props.sessionManager}
+      />
+    ) : this.props.children;
   }
 }
