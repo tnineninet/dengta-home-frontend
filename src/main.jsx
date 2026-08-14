@@ -9,15 +9,24 @@ import "./sun-glass-ui.css";
 import "./jelly-motion.css";
 import "./sun-glass-chat.css";
 import "./typography.css";
-import App from "./LazyApp.jsx";
+import LoadedApp from "./LoadedApp.jsx";
 import AuthGate from "./AuthGate.jsx";
 import DengTaPrelude from "./DengTaPrelude.jsx";
 import { prewarmBackend } from "./backend-prewarm.js";
 import { pwaInstallController } from "./pwa-install.js";
 import ReceiverApp from "./ReceiverApp.jsx";
+import {
+  AppLoadingScreen,
+  AppStartupBoundary,
+} from "./AppStartupBoundary.jsx";
+import {
+  installChunkRecovery,
+} from "./app-startup-recovery.js";
 
 const isReceiverRoute = window.location.pathname === "/receive";
+
 if (!isReceiverRoute) {
+  installChunkRecovery();
   void prewarmBackend();
   pwaInstallController.start();
 }
@@ -28,9 +37,11 @@ createRoot(document.getElementById("root")).render(
       <DengTaPrelude />
       <AuthGate>
         {({ accountControl, snapshot }) => (
-          <Suspense fallback={null}>
-            <App key={snapshot.user?.id} accountControl={accountControl} accountScope={snapshot.user?.id || ""} userName={snapshot.user?.displayName} companionScope={snapshot.activeCompanionId || ""} />
-          </Suspense>
+          <AppStartupBoundary>
+            <Suspense fallback={<AppLoadingScreen />}>
+              <LoadedApp key={snapshot.user?.id} accountControl={accountControl} accountScope={snapshot.user?.id || ""} userName={snapshot.user?.displayName} companionScope={snapshot.activeCompanionId || ""} />
+            </Suspense>
+          </AppStartupBoundary>
         )}
       </AuthGate>
     </>}
