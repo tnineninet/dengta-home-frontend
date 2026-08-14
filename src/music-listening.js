@@ -101,6 +101,19 @@ export async function listNeteaseConnections() {
   ));
 }
 
+export async function connectNeteaseMcp({ name, endpoint, token } = {}) {
+  const data = await apiRequest("/api/v2/music/providers/netease/connections", {
+    method: "POST",
+    timeoutMs: WRITE_TIMEOUT_MS,
+    body: JSON.stringify({
+      name: text(name, 80),
+      endpoint: text(endpoint, 1000),
+      token: String(token ?? "").trim(),
+    }),
+  });
+  return Object.freeze(data?.connection || data);
+}
+
 export async function getNeteaseConnectionStatus(connectionId) {
   return apiRequest(`/api/v2/music/providers/netease/connections/${encodeURIComponent(connectionId)}/status`, { timeoutMs: READ_TIMEOUT_MS });
 }

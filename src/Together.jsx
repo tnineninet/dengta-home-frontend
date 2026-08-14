@@ -663,7 +663,7 @@ export default function Together({
       <section className="together-dialog" aria-label="本场回应">
         <header>
           <MessageCircleMore aria-hidden="true" />
-          <div><strong>本场回应</strong><span>{aiName} 看到有意思的地方会主动说话</span></div>
+          <div><strong>本场回应</strong><span>{selectedMode === "music" ? `和${aiName}围绕当前歌曲聊聊` : `${aiName} 看到有意思的地方会主动说话`}</span></div>
           <button type="button" onClick={onRefresh} disabled={busy} aria-label="刷新本场状态">
             <RefreshCw aria-hidden="true" />
           </button>
@@ -689,7 +689,7 @@ export default function Together({
               value={reply}
               onChange={(event) => setReply(event.target.value)}
               maxLength={500}
-              placeholder={`和${aiName}聊聊正在看的内容`}
+              placeholder={selectedMode === "music" ? `和${aiName}聊聊当前歌曲` : `和${aiName}聊聊正在看的内容`}
               aria-label="共看消息"
             />
             <button type="submit" disabled={busy || !reply.trim()}>

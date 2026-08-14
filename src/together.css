@@ -131,6 +131,14 @@
 .music-netease-search { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
 .music-playlist-detail div:has(button) { grid-template-columns: 28px minmax(0, 1fr) auto auto; }
 .music-local-audio audio { width: 100%; }
+.music-provider-connect { min-width: 0; border: 1px solid rgba(42, 67, 56, .16); border-radius: 10px; background: rgba(242, 236, 221, .5); overflow: hidden; }
+.music-provider-connect summary { padding: 13px 14px; cursor: pointer; font-family: Georgia, "Times New Roman", serif; font-weight: 700; color: #315646; }
+.music-provider-connect-body { display: grid; gap: 13px; min-width: 0; padding: 0 14px 14px; border-top: 1px solid rgba(42, 67, 56, .1); }
+.music-provider-connect-body > p { margin: 12px 0 0; color: var(--together-muted); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+.music-provider-connect-body form { display: grid; gap: 10px; min-width: 0; }
+.music-provider-connect-body code { padding: 1px 4px; border-radius: 4px; background: rgba(255, 255, 255, .58); }
+.music-provider-import { padding-top: 12px; border-top: 1px dashed rgba(42, 67, 56, .2); }
+.music-provider-feedback { margin: 0 !important; padding: 9px 10px; border-radius: 7px; background: rgba(101, 184, 152, .12); color: #315646 !important; }
 .together-time-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .together-direct-actions { display: grid; grid-template-columns: 1fr 1.15fr; gap: 8px; }
 .together-page button { min-height: 44px; border: 1px solid rgba(42, 67, 56, .18); border-radius: 7px; background: rgba(255, 255, 255, .75); color: inherit; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font: inherit; }
@@ -217,4 +225,11 @@
   .music-content-label { grid-column: auto; }
   .music-queue-picker > div { grid-template-columns: minmax(0, 1fr) 1fr; }
   .music-queue-picker > div span { grid-column: 1 / -1; }
+  .music-provider-connect,
+  .music-provider-connect-body,
+  .music-provider-connect-body form,
+  .music-provider-connect-body label { width: 100%; max-width: 100%; min-width: 0; }
+  .music-provider-connect-body input,
+  .music-provider-connect-body select,
+  .music-provider-connect-body button { width: 100%; max-width: 100%; }
 }

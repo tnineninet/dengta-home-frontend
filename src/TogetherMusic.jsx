@@ -22,8 +22,11 @@ import {
   readCoWatchMusicQueue,
 } from "./co-watch.js";
 import {
+  connectNeteaseMcp,
   deleteMusicFavorite,
   getMusicPlaylist,
+  importNeteaseShare,
+  listNeteaseConnections,
   listMusicFavorites,
   listMusicPlaylists,
   putMusicFavorite,
@@ -62,16 +65,30 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   const [duration, setDuration] = useState(0);
   const [status, setStatus] = useState("正在读取歌单与收藏…");
   const [error, setError] = useState("");
+  const [connections, setConnections] = useState([]);
+  const [connectionId, setConnectionId] = useState("");
+  const [connectionName, setConnectionName] = useState("");
+  const [connectionEndpoint, setConnectionEndpoint] = useState("");
+  const [connectionToken, setConnectionToken] = useState("");
+  const [shareUrl, setShareUrl] = useState("");
+  const [providerBusy, setProviderBusy] = useState(false);
+  const [providerStatus, setProviderStatus] = useState("");
 
   const active = session?.status === "active" && session?.sessionMode === "listening";
+  const sessionPlaylist = active ? loadedPlaylists[session?.musicPlaylistId] || null : null;
+  const sessionItem = sessionPlaylist?.items.find((entry) => entry.id === session?.musicPlaylistItemId) || null;
+  const externalSession = Boolean(active && sessionItem && resolveMusicPlayback(sessionItem).mode === MUSIC_PLAYBACK_MODES.external);
+  const sessionItemPending = Boolean(active && session?.musicPlaylistId && session?.musicPlaylistItemId && !sessionItem);
   const currentQueueItem = active
     ? queue?.items.find((entry) => entry.id === queue.currentQueueItemId) || null
     : null;
   const queuedPlaylist = currentQueueItem ? loadedPlaylists[currentQueueItem.playlistId] : null;
   const item = active
-    ? queuedPlaylist?.items.find((entry) => entry.id === currentQueueItem.itemId) || null
+    ? externalSession
+      ? sessionItem
+      : queuedPlaylist?.items.find((entry) => entry.id === currentQueueItem?.itemId) || sessionItem
     : playlist?.items?.[localIndex] || null;
-  const itemPlaylist = active ? queuedPlaylist : playlist;
+  const itemPlaylist = active ? externalSession ? sessionPlaylist : queuedPlaylist || sessionPlaylist : playlist;
   const favorite = Boolean(item && favorites.some((entry) => entry.itemId === item.id));
   const playback = resolveMusicPlayback(item);
   const internalPlayback = musicPlaybackIsInternal(playback);
@@ -164,14 +181,19 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
     else setRefreshing(true);
     setError("");
     try {
-      const [playlistResult, favoriteResult] = await Promise.allSettled([listMusicPlaylists(), listMusicFavorites()]);
+      const [playlistResult, favoriteResult, connectionResult] = await Promise.allSettled([listMusicPlaylists(), listMusicFavorites(), listNeteaseConnections()]);
       if (!mountedRef.current) return;
       if (playlistResult.status === "fulfilled") {
         setPlaylists(playlistResult.value);
         setStatus(playlistResult.value.length ? "选择歌单后即可开始。" : "还没有可播放歌单，请先在设置中导入。");
       }
       if (favoriteResult.status === "fulfilled") setFavorites(favoriteResult.value);
-      const failure = playlistResult.status === "rejected" ? playlistResult.reason : favoriteResult.status === "rejected" ? favoriteResult.reason : null;
+      if (connectionResult.status === "fulfilled") {
+        const availableConnections = connectionResult.value.filter((connection) => connection.enabled && connection.auth_configured);
+        setConnections(availableConnections);
+        setConnectionId((current) => availableConnections.some((connection) => connection.id === current) ? current : availableConnections[0]?.id || "");
+      }
+      const failure = playlistResult.status === "rejected" ? playlistResult.reason : favoriteResult.status === "rejected" ? favoriteResult.reason : connectionResult.status === "rejected" ? connectionResult.reason : null;
       if (failure) setError(failure?.message || "部分音乐资料暂时无法读取，可稍后重试。");
     } finally {
       if (mountedRef.current) { setLoading(false); setRefreshing(false); }
@@ -185,8 +207,31 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   }, [refreshLibrary]);
 
   useEffect(() => {
+    if (!active || !session?.musicPlaylistId || loadedPlaylistsRef.current[session.musicPlaylistId]) return;
+    let cancelled = false;
+    getMusicPlaylist(session.musicPlaylistId).then((next) => {
+      if (!cancelled && mountedRef.current) rememberPlaylist(next);
+    }).catch((caught) => {
+      if (!cancelled) setError(caught?.message || "本场歌曲暂时无法读取。");
+    });
+    return () => { cancelled = true; };
+  }, [active, session?.musicPlaylistId]);
+
+  useEffect(() => {
     if (!active || !session.id) {
       queueRef.current = null;
+      return;
+    }
+    if (sessionItemPending) return;
+    if (externalSession) {
+      queueRef.current = null;
+      Promise.resolve().then(() => {
+        if (!mountedRef.current) return;
+        setPosition(Number(session.mediaPositionSeconds) || 0);
+        setDuration(sessionItem?.durationSeconds || Number(session.mediaDurationSeconds) || 0);
+        setStatus("AI 陪听中。外部曲目不会读取或初始化服务端队列，请在网易云中播放。");
+        setLoading(false);
+      });
       return;
     }
     let cancelled = false;
@@ -208,7 +253,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
       if (!cancelled) setLoading(false);
     });
     return () => { cancelled = true; };
-  }, [active, session?.id, loadQueuePlaylists]);
+  }, [active, externalSession, session?.id, session?.mediaDurationSeconds, session?.mediaPositionSeconds, sessionItem, sessionItemPending, loadQueuePlaylists]);
 
   useEffect(() => {
     if (!item || !audioRef.current) return;
@@ -220,8 +265,8 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
         audio.removeAttribute("src");
         audio.load();
         setPlaying(false);
-        setPosition(0);
-        setDuration(item.durationSeconds || 0);
+        setPosition(externalSession ? Number(session?.mediaPositionSeconds) || 0 : 0);
+        setDuration(item.durationSeconds || Number(session?.mediaDurationSeconds) || 0);
         return;
       }
       audio.load();
@@ -232,7 +277,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
         void audio.play().catch(() => setStatus("下一首已准备好，请点击播放。"));
       }
     });
-  }, [item, internalPlayback]);
+  }, [externalSession, item, internalPlayback, session?.mediaDurationSeconds, session?.mediaPositionSeconds]);
 
   const report = (event, immediate = false) => {
     const audio = event?.currentTarget || audioRef.current;
@@ -305,7 +350,27 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   const start = async () => {
     if (!item || !playlist) return;
     if (!internalPlayback) {
-      setError("网易云外部曲目不能开始 Together，也不能加入 Together 队列。请使用“在网易云播放”。");
+      setLoading(true);
+      setError("");
+      try {
+        const started = await onStart?.({
+          title: item.title,
+          sessionMode: "listening",
+          musicPlaylistId: playlist.id,
+          musicPlaylistItemId: item.id,
+          mediaDurationSeconds: item.durationSeconds,
+          mediaPositionSeconds: 0,
+        });
+        if (!started) return;
+        rememberPlaylist(playlist);
+        setPosition(0);
+        setDuration(item.durationSeconds || 0);
+        setStatus("AI 陪听已开始，仅同步歌曲与安全进度元数据；请点击“在网易云播放”自行播放。");
+      } catch (caught) {
+        setError(caught?.message || "暂时无法开始 AI 陪听。");
+      } finally {
+        setLoading(false);
+      }
       return;
     }
     const validation = playback.validation || { ok: true, message: "" };
@@ -358,6 +423,67 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
       ]);
       setStatus("已交给网易云打开；普通歌曲、VIP 歌曲和版权可用性由网易云判断。");
     } catch (caught) { setError(caught?.message || "无法打开网易云播放。"); }
+  };
+
+  const connectProvider = async (event) => {
+    event.preventDefault();
+    if (providerBusy) return;
+    setProviderBusy(true);
+    setError("");
+    setProviderStatus("正在发现并连接网易云 MCP…");
+    try {
+      const connection = await connectNeteaseMcp({ name: connectionName, endpoint: connectionEndpoint, token: connectionToken });
+      const nextConnections = (await listNeteaseConnections()).filter((entry) => entry.enabled && entry.auth_configured);
+      setConnections(nextConnections);
+      setConnectionId(connection.id);
+      setConnectionToken("");
+      setProviderStatus(`已连接并启用“${connection.name}”，Token 已从页面清空。`);
+    } catch (caught) {
+      setError(caught?.message || "网易云 MCP 连接失败。");
+      setProviderStatus("");
+    } finally {
+      setProviderBusy(false);
+    }
+  };
+
+  const importShare = async (event) => {
+    event.preventDefault();
+    if (!connectionId || providerBusy) return;
+    setProviderBusy(true);
+    setError("");
+    setProviderStatus("正在通过网易云 MCP 导入歌单…");
+    try {
+      const imported = await importNeteaseShare(connectionId, shareUrl);
+      const nextPlaylists = await listMusicPlaylists();
+      const selected = await getMusicPlaylist(imported.id);
+      setPlaylists(nextPlaylists);
+      setPlaylist(selected);
+      rememberPlaylist(selected);
+      setLocalIndex(0);
+      setPosition(0);
+      setShareUrl("");
+      setProviderStatus(`已导入“${selected.name}”，曲目现在可以直接查看。`);
+    } catch (caught) {
+      setError(caught?.message || "网易云歌单导入失败。");
+      setProviderStatus("");
+    } finally {
+      setProviderBusy(false);
+    }
+  };
+
+  const updateExternalPosition = (nextPosition) => {
+    setPosition(nextPosition);
+    onPositionChange?.(nextPosition);
+    if (!active || !item) return;
+    onPlaybackChange?.({
+      sessionId: session.id,
+      playbackState: "paused",
+      mediaPositionSeconds: nextPosition,
+      mediaDurationSeconds: duration || item.durationSeconds || 0,
+      musicPlaylistId: itemPlaylist?.id,
+      musicPlaylistItemId: item.id,
+      revision: session.revision,
+    });
   };
 
   const toggleFavorite = async () => {
@@ -433,6 +559,24 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   const controlsBusy = busy || loading || queueBusy;
 
   return <div className="together-setup together-music-setup" aria-busy={loading || queueBusy}>
+    {!active && <details className="music-provider-connect">
+      <summary>高级用户：连接自己的网易云 MCP</summary>
+      <div className="music-provider-connect-body">
+        <p>仅连接公开 HTTPS <code>/mcp</code> 自托管包装层。Token 不是网易云 Cookie，请勿填写 Cookie、MUSIC_U、__csrf 或 NETEASE_COOKIE。</p>
+        <form onSubmit={connectProvider}>
+          <label>显示名称<input value={connectionName} maxLength={80} autoComplete="off" onChange={(event) => setConnectionName(event.target.value)} placeholder="我的网易云 MCP" /></label>
+          <label>HTTPS /mcp 地址<input type="url" inputMode="url" maxLength={1000} autoCapitalize="off" autoCorrect="off" spellCheck="false" autoComplete="off" value={connectionEndpoint} onChange={(event) => setConnectionEndpoint(event.target.value)} placeholder="https://music.example.com/mcp" /></label>
+          <label>包装层 Token<input type="password" maxLength={4096} autoComplete="new-password" value={connectionToken} onChange={(event) => setConnectionToken(event.target.value)} placeholder="自托管包装层 Bearer Token" /></label>
+          <button type="submit" className="together-primary" disabled={providerBusy || !connectionName.trim() || !connectionEndpoint.trim() || !connectionToken.trim()}>{providerBusy ? "正在连接…" : "发现、保存并启用"}</button>
+        </form>
+        <form className="music-provider-import" onSubmit={importShare}>
+          <label>网易云 MCP 连接<select value={connectionId} disabled={providerBusy || !connections.length} onChange={(event) => setConnectionId(event.target.value)}><option value="">选择已启用连接</option>{connections.map((connection) => <option key={connection.id} value={connection.id}>{connection.name}</option>)}</select></label>
+          <label>网易云分享歌单 URL<input type="url" inputMode="url" maxLength={4096} autoCapitalize="off" autoCorrect="off" spellCheck="false" value={shareUrl} onChange={(event) => setShareUrl(event.target.value)} placeholder="https://music.163.com/playlist?id=…" /></label>
+          <button type="submit" disabled={providerBusy || !connectionId || !shareUrl.trim()}>导入并查看曲目</button>
+        </form>
+        {providerStatus && <p className="music-provider-feedback" role="status">{providerStatus}</p>}
+      </div>
+    </details>}
     <div className="music-player-title">
       <Music2 aria-hidden="true" />
       <div><strong>{item?.title || (loading ? "正在读取音乐档案…" : "选择一首歌")}</strong><span>{item?.artist || "一起听歌"}</span></div>
@@ -455,13 +599,14 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
       onError={() => { setPlaying(false); setError(ERROR_MESSAGE); }}
       aria-label="一起听歌音频播放器"
     />
-    <input className="music-progress-range" type="range" min="0" max={duration || 0} step="0.1" value={Math.min(position, duration || position)} disabled={!duration || !internalPlayback} onChange={(event) => { const next = Number(event.target.value); if (audioRef.current) audioRef.current.currentTime = next; setPosition(next); }} aria-label="播放进度" />
+    <input className="music-progress-range" type="range" min="0" max={duration || 0} step="0.1" value={Math.min(position, duration || position)} disabled={!duration || (!internalPlayback && !externalSession)} onChange={(event) => { const next = Number(event.target.value); if (internalPlayback && audioRef.current) audioRef.current.currentTime = next; if (externalSession) updateExternalPosition(next); else setPosition(next); }} aria-label={externalSession ? "手动同步播放进度" : "播放进度"} />
+    {!active && playback.mode === MUSIC_PLAYBACK_MODES.external && <button type="button" className="together-primary" disabled={!item || controlsBusy} onClick={() => void start()}><Music2 aria-hidden="true" />开始 AI 陪听</button>}
     <div className="music-player-actions">
       <button type="button" aria-label="上一首" disabled={!localCanGoBack || controlsBusy} onClick={() => setLocalIndex((current) => Math.max(0, current - 1))}><SkipBack aria-hidden="true" /></button>
       {playback.mode === MUSIC_PLAYBACK_MODES.external ? <button type="button" className="together-primary" disabled={!item || controlsBusy} onClick={() => void openExternal()}><Play aria-hidden="true" />在网易云播放</button> : <button type="button" className="together-primary" disabled={!item || controlsBusy} onClick={() => { if (playing) audioRef.current?.pause(); else if (active) void audioRef.current?.play().catch(() => setError("浏览器阻止了自动播放，请再次点击播放。")); else void start(); }}>{playing ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}{playing ? "暂停" : active ? "播放" : "开始一起听"}</button>}
       <button type="button" aria-label="下一首" disabled={active ? controlsBusy || !queue?.currentQueueItemId : controlsBusy || !playlist || localIndex >= playlist.items.length - 1} onClick={() => active ? void advance(true) : setLocalIndex((current) => current + 1)}><SkipForward aria-hidden="true" /></button>
     </div>
-    {active && <>
+    {active && !externalSession && <>
       <div className="music-mode-actions" aria-label="播放方式">
         <button type="button" aria-pressed={queue?.shuffleEnabled || false} disabled={controlsBusy} onClick={() => { const enabled = !queue?.shuffleEnabled; void runQueueOperation({ type: "set_mode", shuffle_enabled: enabled }, { retryConflict: true }).then(() => setStatus(enabled ? "已开启随机播放。" : "已关闭随机播放。")).catch(() => {}); }}><Shuffle aria-hidden="true" />{queue?.shuffleEnabled ? "随机中" : "顺序"}</button>
         <button type="button" disabled={controlsBusy} onClick={() => { const modes = ["off", "all", "one"]; const next = modes[(modes.indexOf(queue?.repeatMode || "off") + 1) % modes.length]; void runQueueOperation({ type: "set_mode", repeat_mode: next }, { retryConflict: true }).then(() => setStatus(`播放方式：${REPEAT_LABELS[next]}。`)).catch(() => {}); }}><Repeat2 aria-hidden="true" />{REPEAT_LABELS[queue?.repeatMode || "off"]}</button>

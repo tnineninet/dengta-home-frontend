@@ -97,7 +97,7 @@ export function normalizeCoWatchSession(value) {
     revision: cleanNumber(value.playback_revision ?? value.revision, 1_000_000_000),
     playbackState: value.playback_state === "playing" ? "playing" : "paused",
     musicPlaylistId: cleanText(value.playlist_id ?? value.music_playlist_id, 100),
-    musicPlaylistItemId: cleanText(value.item_id ?? value.music_playlist_item_id, 100),
+    musicPlaylistItemId: cleanText(value.item_id ?? value.playlist_item_id ?? value.music_playlist_item_id, 100),
     castReceiver: Object.freeze({
       status: cleanText(receiver.status ?? receiver.state ?? value.receiver_status, 40),
       name: cleanText(receiver.name ?? value.receiver_name, 100),
