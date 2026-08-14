@@ -28,15 +28,35 @@ export function validateDirectAudioUrl(value) {
   return { ok: true, code: "ok", url: url.href, message: "" };
 }
 
-export function detectNeteasePlaylistShare(value) {
+export function detectNeteaseShare(value) {
   const raw = String(value || "").trim();
-  const match = raw.match(/https?:\/\/(?:y\.)?music\.163\.com\/(?:m\/)?playlist\?[^\s]*\bid=(\d+)/i);
-  if (!match) return null;
-  const beforeLink = raw.slice(0, match.index).replace(/^(?:分享|复制).*?[:：]\s*/i, "").trim();
+  const urlMatch = raw.match(/https?:\/\/(?:[\w-]+\.)?(?:music\.163\.com|163cn\.tv)\/[^\s<>"']*/i);
+  if (!urlMatch) return null;
+  const cleanedUrl = urlMatch[0].replace(/[，。；、!！?？)）\]]+$/, "");
+  let parsed;
+  try { parsed = new URL(cleanedUrl); } catch { return null; }
+  const host = parsed.hostname.toLowerCase();
+  if (host === "163cn.tv" || host.endsWith(".163cn.tv")) {
+    return Object.freeze({ provider: "网易云音乐", providerId: "netease", resourceType: "short", resourceId: "", playlistId: "", title: "网易云短链", shareUrl: parsed.href });
+  }
+  if (host !== "music.163.com" && !host.endsWith(".music.163.com")) return null;
+  const pathMatch = parsed.pathname.match(/\/(?:m\/)?(playlist|song)(?:\/|$)/i);
+  const hashMatch = parsed.hash.match(/#\/(playlist|song)\?[^#]*\bid=(\d+)/i);
+  const resourceType = (pathMatch?.[1] || hashMatch?.[1] || "").toLowerCase();
+  const resourceId = parsed.searchParams.get("id") || hashMatch?.[2] || "";
+  if (!new Set(["playlist", "song"]).has(resourceType) || !/^\d{1,20}$/.test(resourceId)) return null;
+  parsed.hash = "";
+  parsed.search = `?id=${resourceId}`;
+  const beforeLink = raw.slice(0, urlMatch.index).replace(/^(?:分享|复制).*?[:：]\s*/i, "").trim();
   const titleLines = beforeLink.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-  const title = titleLines[titleLines.length - 1] || "网易云歌单";
-  return Object.freeze({ provider: "网易云音乐", providerId: "netease", playlistId: match[1], title: text(title, 180) });
+  const title = titleLines[titleLines.length - 1] || (resourceType === "song" ? "网易云单曲" : "网易云歌单");
+  return Object.freeze({ provider: "网易云音乐", providerId: "netease", resourceType, resourceId, playlistId: resourceType === "playlist" ? resourceId : "", title: text(title, 180), shareUrl: parsed.href });
 }
+
+export const detectNeteasePlaylistShare = (value) => {
+  const resource = detectNeteaseShare(value);
+  return resource?.resourceType === "playlist" ? resource : null;
+};
 
 function normalizeItem(item, index = 0) {
   const source = typeof item === "string" ? { url: item } : item || {};
@@ -77,6 +97,8 @@ export function normalizeMusicPlaylist(value) {
     name: text(source.name || source.title || "未命名歌单", 180),
     provider: text(source.provider || source.source_format || "local_playlist", 80),
     providerPlaylistId: text(source.provider_playlist_id ?? source.providerPlaylistId, 100),
+    externalUrl: text(source.external_url ?? source.externalUrl, 4096),
+    sourceFormat: text(source.source_format ?? source.sourceFormat, 80),
     itemCount: number(source.item_count ?? source.itemCount, items.length),
     items: Object.freeze(items),
     createdAt: source.created_at || "",
@@ -190,8 +212,8 @@ function resolveImportFormat(content, format) {
 }
 
 export async function importMusicPlaylist({ format = "auto", sourceName = "粘贴内容", name = "我的歌单", content }) {
-  if (detectNeteasePlaylistShare(content)) {
-    throw new Error("这是网易云歌单网页分享，不是音频直链或歌单文件，不能直接导入。");
+  if (detectNeteaseShare(content)) {
+    throw new Error("这是网易云网页分享，请使用网易云导入操作。");
   }
   const resolvedFormat = resolveImportFormat(content, format);
   const items = parseMusicText(content, resolvedFormat);

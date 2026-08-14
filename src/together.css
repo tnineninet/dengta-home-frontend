@@ -109,13 +109,17 @@
 .music-provider-status { display: grid; gap: 5px; padding: 12px; border: 1px solid rgba(42, 67, 56, .14); border-radius: 8px; }
 .music-provider-status span, .music-provider-status small { color: var(--together-muted); font-size: 12px; }
 .music-import-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.music-import-entry { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 14px; padding: 14px; border: 1px solid rgba(42, 67, 56, .14); border-radius: 16px; background: rgba(255, 250, 242, .72); }
+.music-import-entry p { margin: 4px 0 0; }
 .music-import-grid label { display: grid; gap: 6px; }
 .music-content-label { grid-column: 1 / -1; }
 .music-content-label textarea { resize: vertical; }
 .music-playlist-list article { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 8px; }
 .music-playlist-summary { display: flex; justify-content: space-between; text-align: left; }
 .music-playlist-detail { margin-top: 16px; }
-.music-playlist-detail div { display: grid; grid-template-columns: 28px 1fr auto; gap: 8px; padding: 8px 0; border-bottom: 1px solid rgba(42, 67, 56, .1); }
+.music-playlist-detail div { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid rgba(42, 67, 56, .1); }
+.music-playlist-detail div > span:nth-child(2) { display: grid; gap: 3px; min-width: 0; }
+.music-playlist-detail audio { width: min(220px, 38vw); }
 .music-feedback.is-error { color: #a34444; }
 .music-clipboard-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .music-clipboard-actions span { color: var(--together-muted); font-size: 12px; }

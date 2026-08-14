@@ -252,7 +252,6 @@ const OmbreMemories = lazy(() => import("./OmbreMemories"));
 const Together = lazy(() => import("./Together.jsx"));
 const ThemeStudio = lazy(() => import("./ThemeStudio"));
 const MediaSettings = lazy(() => import("./MediaSettings"));
-const MusicSettings = lazy(() => import("./MusicSettings.jsx"));
 const VoiceProviderSettings = lazy(
   () => import("./VoiceProviderSettings"),
 );
@@ -6838,9 +6837,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             )}
             {settingsCategory === "devices" && (
               <>
-            <Suspense fallback={<DeferredFeature label="正在打开一起听歌设置…" />}>
-              <MusicSettings providerStatus={providerStatus} onOpenMcpDeviceCenter={() => { setSettingsCategory("devices"); setSettingsFocusTarget("mcp-device-center"); }} />
-            </Suspense>
             <div className="notification-feature-panel device-activity-panel">
               <div className="device-activity-heading">
                 <div>

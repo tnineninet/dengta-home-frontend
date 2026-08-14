@@ -34,6 +34,7 @@ import {
 } from "./music-listening.js";
 import { MUSIC_PLAYBACK_MODES, musicPlaybackIsInternal, resolveMusicPlayback } from "./music-playback.js";
 import { openNeteasePlayback } from "./netease-playback.js";
+import MusicSettings from "./MusicSettings.jsx";
 
 const ERROR_MESSAGE = "音频无法播放。链接可能已过期、需要登录、受到防盗链限制，或使用了 DRM。DengTa 不会绕过这些限制。";
 const REPEAT_LABELS = Object.freeze({ off: "不循环", all: "列表循环", one: "单曲循环" });
@@ -73,6 +74,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   const [shareUrl, setShareUrl] = useState("");
   const [providerBusy, setProviderBusy] = useState(false);
   const [providerStatus, setProviderStatus] = useState("");
+  const [importOpen, setImportOpen] = useState(false);
 
   const active = session?.status === "active" && session?.sessionMode === "listening";
   const sessionPlaylist = active ? loadedPlaylists[session?.musicPlaylistId] || null : null;
@@ -534,6 +536,8 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   const controlsBusy = busy || loading || queueBusy;
 
   return <div className="together-setup together-music-setup" aria-busy={loading || queueBusy}>
+    {!active && <section className="music-import-entry"><div><strong>把想听的歌带进来</strong><p>支持安全的文本歌单、本机音频与网易云分享链接。</p></div><button type="button" className="together-primary" aria-expanded={importOpen} aria-controls="together-music-import" onClick={() => setImportOpen((current) => !current)}><ListPlus aria-hidden="true" />{importOpen ? "收起导入" : "导入歌单"}</button></section>}
+    {!active && importOpen && <div id="together-music-import"><MusicSettings /></div>}
     {!active && <details className="music-provider-connect">
       <summary>高级用户：连接自己的网易云接口</summary>
       <div className="music-provider-connect-body">

@@ -5,6 +5,7 @@ import {
   deleteMusicFavorite,
   deleteMusicPlaylist,
   detectNeteasePlaylistShare,
+  detectNeteaseShare,
   getMusicPlaylist,
   getNeteaseConnectionStatus,
   getNeteasePlaylist,
@@ -21,6 +22,7 @@ import {
   searchNeteaseMusic,
   validateDirectAudioUrl,
 } from "../src/music-listening.js";
+import { MAX_PLAYLIST_TEXT_LENGTH, readPlaylistTextFile } from "../src/playlist-file.js";
 
 const source = (path) => fs.readFileSync(new URL(path, import.meta.url), "utf8");
 const json = parseMusicText(JSON.stringify({ items: [{ title: "Explicit adult title", url: "https://media.example.com/a.mp3", lyrics: "成人歌词原文" }] }), "json");
@@ -31,10 +33,17 @@ assert.equal(parseMusicText("https://media.example.com/one.mp3\nhttps://media.ex
 assert.equal(validateDirectAudioUrl("https://media.example.com/song.mp3").ok, true);
 assert.equal(validateDirectAudioUrl("").code, "required");
 assert.equal(validateDirectAudioUrl("not a url").code, "invalid");
-assert.deepEqual(detectNeteasePlaylistShare("分享歌单：晚风\nhttps://music.163.com/m/playlist?id=8547232002&creatorId=1"), { provider: "网易云音乐", providerId: "netease", playlistId: "8547232002", title: "晚风" });
+assert.equal(detectNeteasePlaylistShare("分享歌单：晚风\nhttps://music.163.com/m/playlist?id=8547232002&creatorId=1").playlistId, "8547232002");
+assert.deepEqual(detectNeteaseShare("分享：海边 https://music.163.com/song?id=364757&uct2=tracking"), { provider: "网易云音乐", providerId: "netease", resourceType: "song", resourceId: "364757", playlistId: "", title: "海边", shareUrl: "https://music.163.com/song?id=364757" });
+assert.equal(detectNeteaseShare("复制这条消息 https://163cn.tv/abc123").resourceType, "short");
 assert.equal(detectNeteasePlaylistShare("https://example.com/playlist?id=1"), null);
+const playlistBlob = (name, type, bytes) => Object.assign(new Blob([Uint8Array.from(bytes)], { type }), { name });
+await assert.rejects(() => readPlaylistTextFile(playlistBlob("track.mp3", "audio/mpeg", [0x49, 0x44, 0x33, 0x04])), /仅支持 JSON.*选择本机音频/);
+await assert.rejects(() => readPlaylistTextFile(playlistBlob("track.txt", "text/plain", [0x49, 0x44, 0x33, 0x04])), /检测到音频文件头/);
+await assert.rejects(() => readPlaylistTextFile({ name: "huge.txt", type: "text/plain", size: MAX_PLAYLIST_TEXT_LENGTH + 1 }), /不能超过 1 MiB/);
+assert.equal(await readPlaylistTextFile(playlistBlob("safe.m3u8", "application/vnd.apple.mpegurl", Array.from(new TextEncoder().encode("#EXTM3U\nhttps://media.example.com/a.mp3")))), "#EXTM3U\nhttps://media.example.com/a.mp3");
 assert.deepEqual(normalizeMusicPlaylist({ id: "p1", title: "夜航", tracks: [{ id: "1", name: "星海", author: "桃桃", duration: 188 }] }), {
-  id: "p1", name: "夜航", provider: "local_playlist", providerPlaylistId: "", itemCount: 1,
+  id: "p1", name: "夜航", provider: "local_playlist", providerPlaylistId: "", externalUrl: "", sourceFormat: "", itemCount: 1,
   items: [{ id: "1", title: "星海", artist: "桃桃", album: "", url: "", providerTrackId: "", externalUrl: "", playbackMode: "", durationSeconds: 188, lyrics: "" }],
   createdAt: "",
 });
@@ -71,6 +80,8 @@ assert.match(settings, /URL\.revokeObjectURL/);
 assert.match(settings, /仅本机播放，不能投屏\/跨设备同步/);
 assert.match(settings, /导入歌单文件（JSON\/M3U\/M3U8\/TXT）/);
 assert.match(settings, /选择本机音频（MP3\/M4A\/AAC\/WAV\/OGG\/OPUS\/FLAC）/);
+assert.match(settings, /readPlaylistTextFile\(file\)/);
+assert.doesNotMatch(settings, /choosePlaylistFile[\s\S]{0,800}file\.text\(\)/);
 assert.doesNotMatch(settings, /localAudio[\s\S]{0,120}file\.text/);
 assert.doesNotMatch(api + player + settings, /成人.*(?:filter|replace)|敏感词|屏蔽词/i);
 const together = source("../src/Together.jsx");
@@ -115,7 +126,7 @@ nextPayload = { playback: { accepted: true } };
 assert.equal((await requestExternalMusicPlayback("song", "9")).playback.accepted, true);
 nextPayload = { playlist: { id: "local", name: "本地", items: [{ id: "a", url: "https://media.example.com/a.mp3" }] } };
 assert.equal((await importMusicPlaylist({ content: "https://media.example.com/a.mp3", name: "本地" })).id, "local");
-await assert.rejects(() => importMusicPlaylist({ content: "https://music.163.com/playlist?id=88" }), /网易云歌单网页分享/);
+await assert.rejects(() => importMusicPlaylist({ content: "https://music.163.com/playlist?id=88" }), /网易云网页分享/);
 nextPayload = { playlists: [{ id: "p2", name: "列表", item_count: 0 }] };
 assert.equal((await listMusicPlaylists())[0].id, "p2");
 nextPayload = {};

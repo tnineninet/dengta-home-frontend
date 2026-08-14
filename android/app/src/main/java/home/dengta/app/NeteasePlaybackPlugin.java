@@ -3,7 +3,6 @@ package home.dengta.app;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.net.Uri;
-import android.util.Base64;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -11,7 +10,6 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
-import java.nio.charset.StandardCharsets;
 import java.util.regex.Pattern;
 
 @CapacitorPlugin(name = "NeteasePlayback")
@@ -27,9 +25,7 @@ public final class NeteasePlaybackPlugin extends Plugin {
             return;
         }
 
-        String payload = "{\"type\":\"" + resourceType + "\",\"id\":\"" + resourceId + "\",\"cmd\":\"play\"}";
-        String encoded = Base64.encodeToString(payload.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
-        Uri appUri = Uri.parse("orpheus://" + encoded);
+        Uri appUri = Uri.parse("orpheus://" + resourceType + "/" + resourceId);
         Uri webUri = Uri.parse("https://music.163.com/#/" + resourceType + "?id=" + resourceId);
 
         getActivity().runOnUiThread(() -> new AlertDialog.Builder(getActivity())

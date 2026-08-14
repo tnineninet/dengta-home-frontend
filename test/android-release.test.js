@@ -72,8 +72,8 @@ const neteasePlaybackPlugin = fs.readFileSync(
 );
 
 assert.match(buildGradle, /applicationId "home\.dengta\.app"/);
-assert.match(buildGradle, /versionCode 54\b/);
-assert.match(buildGradle, /versionName "2\.10\.2"/);
+assert.match(buildGradle, /versionCode 55\b/);
+assert.match(buildGradle, /versionName "2\.10\.3"/);
 assert.match(
   buildGradle,
   /storeFile file\(System\.getProperty\("user\.home"\) \+ "\/\.android\/debug\.keystore"\)/,
@@ -134,9 +134,7 @@ assert.doesNotMatch(
   "native background notifications must not ship a private companion identity",
 );
 assert.match(neteasePlaybackPlugin, /Pattern\.compile\("\^\[0-9\]\{1,20\}\$"\)/);
-assert.match(neteasePlaybackPlugin, /\\"cmd\\":\\"play\\"/);
-assert.match(neteasePlaybackPlugin, /Base64\.NO_WRAP/);
-assert.match(neteasePlaybackPlugin, /Uri\.parse\("orpheus:\/\/" \+ encoded\)/);
+assert.match(neteasePlaybackPlugin, /Uri\.parse\("orpheus:\/\/" \+ resourceType \+ "\/" \+ resourceId\)/);
 assert.match(neteasePlaybackPlugin, /new AlertDialog\.Builder/);
 assert.match(neteasePlaybackPlugin, /Intent\.CATEGORY_BROWSABLE/);
 assert.doesNotMatch(neteasePlaybackPlugin, /getString\("(?:url|intent|package|component)"/);
