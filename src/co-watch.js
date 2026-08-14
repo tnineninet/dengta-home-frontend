@@ -51,6 +51,9 @@ function normalizeQueueItem(value) {
     artist: cleanText(source.artist, 300),
     album: cleanText(source.album, 300),
     durationSeconds: cleanNumber(source.duration_seconds ?? source.durationSeconds),
+    playbackMode: cleanText(source.playback_mode ?? source.playbackMode, 40) || "direct_https",
+    providerTrackId: cleanText(source.provider_track_id ?? source.providerTrackId, 20),
+    externalUrl: cleanText(source.external_url ?? source.externalUrl, 4096),
   });
 }
 

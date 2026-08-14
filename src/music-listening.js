@@ -102,7 +102,7 @@ export async function listNeteaseConnections() {
 }
 
 export async function connectNeteaseMcp({ name, endpoint, token } = {}) {
-  const data = await apiRequest("/api/v2/music/providers/netease/connections", {
+  const data = await apiRequest("/api/v2/music/providers/netease/connections/provision", {
     method: "POST",
     timeoutMs: WRITE_TIMEOUT_MS,
     body: JSON.stringify({
