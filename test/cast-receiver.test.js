@@ -20,6 +20,7 @@ import {
   shouldApplyReceiverRevision,
   shouldSeekReceiver,
 } from "../src/receiver-playback.js";
+import { normalizeCoWatchSession } from "../src/co-watch.js";
 
 const source = (path) => fs.readFileSync(new URL(path, import.meta.url), "utf8");
 
@@ -31,27 +32,28 @@ test("receiver API pairs anonymously and keeps token out of URLs", async () => {
       calls.length === 1 ? { receiver_token: "secret-receiver-token" } : { ok: true },
     ), { status: 200, headers: { "Content-Type": "application/json" } });
   };
-  const paired = await pairCastReceiver("123456", "客厅电视");
+  const paired = await pairCastReceiver("session-1234567890", "123456", "客厅电视");
   assert.equal(paired.receiver_token, "secret-receiver-token");
   await readCastReceiverSession("secret-receiver-token");
   await acknowledgeCastReceiver("secret-receiver-token", {
-    revision: 7, playbackState: "playing", mediaPositionSeconds: 12.5, event: "seek",
+    revision: 7, sequence: 9, playbackState: "playing", mediaPositionSeconds: 12.5, event: "seek",
   });
   assert.equal(calls[0].url.endsWith("/api/v2/cast/pair"), true);
-  assert.deepEqual(JSON.parse(calls[0].options.body), { pairing_code: "123456", receiver_name: "客厅电视" });
+  assert.deepEqual(JSON.parse(calls[0].options.body), { session_id: "session-1234567890", pairing_code: "123456", receiver_name: "客厅电视" });
   assert.equal(calls.every((call) => call.options.cache === "no-store"), true);
   assert.equal(calls.every((call) => !call.url.includes("secret-receiver-token")), true);
   assert.equal(calls[0].options.headers.has("Authorization"), false);
-  assert.equal(calls[1].options.headers.get("X-DengTa-Receiver-Token"), "secret-receiver-token");
-  assert.equal(calls[2].options.headers.get("X-DengTa-Receiver-Token"), "secret-receiver-token");
+  assert.equal(calls[1].options.headers.get("Authorization"), "Bearer secret-receiver-token");
+  assert.equal(calls[2].options.headers.get("Authorization"), "Bearer secret-receiver-token");
+  assert.equal(calls[1].options.headers.has("X-DengTa-Receiver-Token"), false);
   assert.deepEqual(JSON.parse(calls[2].options.body), {
-    playback_revision: 7, playback_state: "playing", media_position_seconds: 12.5, event: "seek",
+    revision: 7, sequence: 9, state: "playing", position_seconds: 12.5, event: "seek",
   });
 });
 
 test("receiver API rejects failures without leaking response details", async () => {
   globalThis.fetch = async () => new Response(JSON.stringify({ code: "expired", message: "配对码已过期" }), { status: 410 });
-  await assert.rejects(() => pairCastReceiver("000000", "电视"), (error) => {
+  await assert.rejects(() => pairCastReceiver("session-1234567890", "000000", "电视"), (error) => {
     assert.equal(error.status, 410);
     assert.equal(error.code, "expired");
     assert.equal(error.message, "配对码已过期");
@@ -86,6 +88,16 @@ test("receiver playback normalizes direct_media and preserves adult titles", () 
   const ended = normalizeReceiverSession({ status: "ended", media_url: "https://media.example.com/end.mp4", revision: 3 });
   assert.equal(ended.status, "ended");
   assert.equal(ended.revision, 3);
+});
+
+test("co-watch DTO accepts the existing nested receiver shape", () => {
+  const session = normalizeCoWatchSession({
+    id: "session-1",
+    receiver: { state: "playing", acknowledged: true, position_seconds: 7, reported_at: "2026-08-14T08:00:00.000Z" },
+  });
+  assert.deepEqual(session.castReceiver, {
+    status: "playing", name: "", acknowledged: true, positionSeconds: 7, lastAckAt: "2026-08-14T08:00:00.000Z",
+  });
 });
 
 test("revision is applied once and drift threshold avoids noisy seeks", () => {
@@ -137,7 +149,10 @@ test("receiver route, SW bypass, Vercel rewrite and controller contract are wire
   assert.doesNotMatch(receiver, /localStorage|receiver_token.*location|console\./);
   assert.match(receiver, /NotAllowedError|再次确认播放|点击播放器的播放按钮/);
   assert.match(receiver, /onPlay=.*ack\("play"\)[\s\S]*onPause=.*ack\("pause"\)[\s\S]*onSeeked=.*ack\("seek"\)/);
+  assert.match(receiver, /sequence: \+\+sequenceRef\.current/);
+  assert.match(receiver, /pairCastReceiver\(pairingSessionId, pairingCode, receiverName\)/);
   assert.match(together, /在电视上接收/);
+  assert.match(together, /会话编号：\{castPairing\.sessionId\}/);
   assert.match(together, /不会显示媒体 URL 或接收端凭据/);
   assert.match(together, /成人|曲名和歌词不会在前端过滤/);
   assert.match(app, /sessionMode: "direct_media"[\s\S]*mediaUrl: options\.mediaUrl/);

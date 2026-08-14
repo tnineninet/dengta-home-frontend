@@ -539,7 +539,7 @@ export default function Together({
               {directActive && <section className="together-cast" aria-label="电视接收">
                 <header><strong>在电视上接收</strong><span>{castReceiver?.status === "online" ? "接收端在线" : castReceiver?.status || "等待接收端"}</span></header>
                 <p>在电视浏览器打开 <strong>{globalThis.location?.origin || ""}/receive</strong>，再输入短期配对码。这里不会显示媒体 URL 或接收端凭据。</p>
-                {castPairing?.pairingCode ? <div className="together-pairing-code"><b>{castPairing.pairingCode}</b><small>有效期至 {castPairing.expiresAt ? new Date(castPairing.expiresAt).toLocaleTimeString("zh-CN") : "短期有效"}</small></div> : <button type="button" disabled={busy} onClick={onGenerateCastPairing}>生成配对码</button>}
+                {castPairing?.pairingCode ? <div className="together-pairing-code"><b>{castPairing.pairingCode}</b><small>会话编号：{castPairing.sessionId}</small><small>有效期至 {castPairing.expiresAt ? new Date(castPairing.expiresAt).toLocaleTimeString("zh-CN") : "短期有效"}</small></div> : <button type="button" disabled={busy} onClick={onGenerateCastPairing}>生成配对码</button>}
                 {castReceiver?.lastAckAt && <small>最近确认：{formatMoment(castReceiver.lastAckAt)}</small>}
                 <div className="cast-provider-list">{castProviders.map((provider) => <span key={provider.id}><b>{provider.label}</b><small>{provider.status === "ready" ? "可用" : `计划中${provider.detected ? " · 检测到浏览器能力" : ""}`}</small></span>)}</div>
               </section>}

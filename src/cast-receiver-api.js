@@ -11,7 +11,7 @@ function cleanText(value, maximum = 180) {
 async function receiverRequest(path, { method = "GET", body, token = "" } = {}) {
   const headers = new Headers({ Accept: "application/json" });
   if (body !== undefined) headers.set("Content-Type", "application/json");
-  if (token) headers.set("X-DengTa-Receiver-Token", token);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method,
     headers,
@@ -44,10 +44,11 @@ export function clearReceiverToken(storage) {
   storage?.removeItem(RECEIVER_TOKEN_KEY);
 }
 
-export async function pairCastReceiver(pairingCode, receiverName) {
+export async function pairCastReceiver(sessionId, pairingCode, receiverName) {
   return receiverRequest("/api/v2/cast/pair", {
     method: "POST",
     body: {
+      session_id: cleanText(sessionId, 80),
       pairing_code: cleanText(pairingCode, 20),
       receiver_name: cleanText(receiverName, 100),
     },
@@ -63,9 +64,10 @@ export function acknowledgeCastReceiver(token, input = {}) {
     method: "POST",
     token,
     body: {
-      playback_revision: Number(input.revision) || 0,
-      playback_state: input.playbackState === "playing" ? "playing" : "paused",
-      media_position_seconds: Math.max(0, Number(input.mediaPositionSeconds) || 0),
+      revision: Number(input.revision) || 0,
+      sequence: Math.max(0, Number(input.sequence) || 0),
+      state: input.playbackState === "playing" ? "playing" : "paused",
+      position_seconds: Math.max(0, Number(input.mediaPositionSeconds) || 0),
       event: cleanText(input.event, 40) || "heartbeat",
     },
   });

@@ -1,54 +1,441 @@
-import { useEffect, useRef, useState } from "react";
-import { CircleStop, Music2, Pause, Play, SkipBack, SkipForward } from "lucide-react";
-import { formatMediaTime } from "./co-watch.js";
-import { getMusicPlaylist, listMusicPlaylists, validateDirectAudioUrl } from "./music-listening.js";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import {
+  ArrowDown,
+  ArrowUp,
+  CircleStop,
+  Heart,
+  ListMusic,
+  ListPlus,
+  Music2,
+  Pause,
+  Play,
+  Repeat2,
+  Shuffle,
+  SkipBack,
+  SkipForward,
+  Trash2,
+} from "lucide-react";
+import {
+  applyCoWatchMusicQueueOperation,
+  formatMediaTime,
+  readCoWatchMusicQueue,
+} from "./co-watch.js";
+import {
+  deleteMusicFavorite,
+  getMusicPlaylist,
+  listMusicFavorites,
+  listMusicPlaylists,
+  putMusicFavorite,
+  validateDirectAudioUrl,
+} from "./music-listening.js";
 
 const ERROR_MESSAGE = "音频无法播放。链接可能已过期、需要登录、受到防盗链限制，或使用了 DRM。DengTa 不会绕过这些限制。";
+const REPEAT_LABELS = Object.freeze({ off: "不循环", all: "列表循环", one: "单曲循环" });
+
+function queueConflict(error) {
+  return error?.status === 409 && error?.code === "music_queue_revision_conflict";
+}
 
 export default function TogetherMusic({ session, busy = false, onStart, onEnd, onPlaybackChange, onPositionChange }) {
   const audioRef = useRef(null);
+  const mountedRef = useRef(true);
+  const queueRef = useRef(null);
+  const loadedPlaylistsRef = useRef({});
+  const queueRunRef = useRef(Promise.resolve());
   const lastReportRef = useRef(0);
+  const autoPlayNextRef = useRef(false);
   const [playlists, setPlaylists] = useState([]);
+  const [loadedPlaylists, setLoadedPlaylists] = useState({});
   const [playlist, setPlaylist] = useState(null);
-  const [index, setIndex] = useState(0);
+  const [localIndex, setLocalIndex] = useState(0);
+  const [favorites, setFavorites] = useState([]);
+  const [queue, setQueue] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [queueBusy, setQueueBusy] = useState(false);
+  const [favoriteBusy, setFavoriteBusy] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [feedback, setFeedback] = useState("");
+  const [status, setStatus] = useState("正在读取歌单与收藏…");
+  const [error, setError] = useState("");
 
-  useEffect(() => { void listMusicPlaylists().then(setPlaylists).catch((error) => setFeedback(error?.message || "歌单暂时无法读取。")); }, []);
-  const item = playlist?.items?.[index] || null;
+  const active = session?.status === "active" && session?.sessionMode === "listening";
+  const currentQueueItem = active
+    ? queue?.items.find((entry) => entry.id === queue.currentQueueItemId) || null
+    : null;
+  const queuedPlaylist = currentQueueItem ? loadedPlaylists[currentQueueItem.playlistId] : null;
+  const item = active
+    ? queuedPlaylist?.items.find((entry) => entry.id === currentQueueItem.itemId) || null
+    : playlist?.items?.[localIndex] || null;
+  const itemPlaylist = active ? queuedPlaylist : playlist;
+  const favorite = Boolean(item && favorites.some((entry) => entry.itemId === item.id));
+  const playableItemUrl = item ? validateDirectAudioUrl(item.url) : null;
+
+  const rememberPlaylist = (next) => {
+    if (!next?.id) return;
+    setLoadedPlaylists((current) => {
+      const updated = { ...current, [next.id]: next };
+      loadedPlaylistsRef.current = updated;
+      return updated;
+    });
+  };
+
+  const loadQueuePlaylists = useCallback(async (nextQueue, preferredPlaylist = null) => {
+    const ids = new Set((nextQueue?.items || []).map((entry) => entry.playlistId).filter(Boolean));
+    if (preferredPlaylist?.id) ids.delete(preferredPlaylist.id);
+    const missing = Array.from(ids).filter((id) => !loadedPlaylistsRef.current[id]);
+    const results = await Promise.allSettled(missing.map((id) => getMusicPlaylist(id)));
+    if (!mountedRef.current) return;
+    const nextLoaded = {};
+    if (preferredPlaylist?.id) nextLoaded[preferredPlaylist.id] = preferredPlaylist;
+    for (const result of results) {
+      if (result.status === "fulfilled" && result.value?.id) nextLoaded[result.value.id] = result.value;
+    }
+    if (Object.keys(nextLoaded).length) {
+      setLoadedPlaylists((current) => {
+        const updated = { ...current, ...nextLoaded };
+        loadedPlaylistsRef.current = updated;
+        return updated;
+      });
+    }
+  }, []);
+
+  const refreshQueue = async (sessionId = session?.id) => {
+    if (!sessionId) return null;
+    const next = await readCoWatchMusicQueue(sessionId);
+    if (mountedRef.current) {
+      queueRef.current = next;
+      setQueue(next);
+      await loadQueuePlaylists(next);
+    }
+    return next;
+  };
+
+  const runQueueOperation = (operation, { retryConflict = false, sessionId = session?.id } = {}) => {
+    const run = async () => {
+      if (!sessionId) throw new Error("请先开始一起听歌。");
+      setQueueBusy(true);
+      setError("");
+      try {
+        let current = queueRef.current;
+        if (!current || current.sessionId !== sessionId) current = await refreshQueue(sessionId);
+        try {
+          const result = await applyCoWatchMusicQueueOperation(sessionId, {
+            expectedRevision: current?.revision || 0,
+            operation,
+          });
+          queueRef.current = result.queue;
+          setQueue(result.queue);
+          await loadQueuePlaylists(result.queue, playlist);
+          return result.queue;
+        } catch (caught) {
+          if (!queueConflict(caught)) throw caught;
+          const refreshed = await refreshQueue(sessionId);
+          if (!retryConflict) throw caught;
+          const retried = await applyCoWatchMusicQueueOperation(sessionId, {
+            expectedRevision: refreshed?.revision || 0,
+            operation,
+          });
+          queueRef.current = retried.queue;
+          setQueue(retried.queue);
+          await loadQueuePlaylists(retried.queue, playlist);
+          return retried.queue;
+        }
+      } finally {
+        if (mountedRef.current) setQueueBusy(false);
+      }
+    };
+    const nextRun = queueRunRef.current.then(run, run);
+    queueRunRef.current = nextRun.catch(() => {});
+    return nextRun.catch((caught) => {
+      if (mountedRef.current) setError(caught?.message || "播放队列同步失败。");
+      throw caught;
+    });
+  };
+
+  useEffect(() => {
+    mountedRef.current = true;
+    Promise.all([listMusicPlaylists(), listMusicFavorites()]).then(([nextPlaylists, nextFavorites]) => {
+      if (!mountedRef.current) return;
+      setPlaylists(nextPlaylists);
+      setFavorites(nextFavorites);
+      setStatus(nextPlaylists.length ? "选择歌单后即可开始。" : "还没有可播放歌单，请先在设置中导入。");
+    }).catch((caught) => {
+      if (mountedRef.current) setError(caught?.message || "歌单与收藏暂时无法读取。");
+    }).finally(() => {
+      if (mountedRef.current) setLoading(false);
+    });
+    return () => { mountedRef.current = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!active || !session.id) {
+      queueRef.current = null;
+      return;
+    }
+    let cancelled = false;
+    Promise.resolve().then(() => {
+      if (!cancelled) {
+        setLoading(true);
+        setStatus("正在同步这场一起听的队列…");
+      }
+      return readCoWatchMusicQueue(session.id);
+    }).then(async (next) => {
+      if (cancelled || !mountedRef.current) return;
+      queueRef.current = next;
+      setQueue(next);
+      await loadQueuePlaylists(next);
+      if (!cancelled) setStatus("队列已与服务端同步。");
+    }).catch((caught) => {
+      if (!cancelled) setError(caught?.message || "播放队列暂时无法读取。");
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [active, session?.id, loadQueuePlaylists]);
+
+  useEffect(() => {
+    if (!item || !audioRef.current) return;
+    audioRef.current.load();
+    setPosition(0);
+    setDuration(item.durationSeconds || 0);
+    if (autoPlayNextRef.current) {
+      autoPlayNextRef.current = false;
+      void audioRef.current.play().catch(() => setStatus("下一首已准备好，请点击播放。"));
+    }
+  }, [item]);
+
   const report = (event, immediate = false) => {
     const audio = event?.currentTarget || audioRef.current;
-    if (!audio || !session?.id) return;
+    if (!audio || !session?.id || !item) return;
     const nextPosition = Number(audio.currentTime) || 0;
-    const nextDuration = Number(audio.duration) || item?.durationSeconds || 0;
-    setPosition(nextPosition); setDuration(nextDuration); onPositionChange?.(nextPosition);
+    const nextDuration = Number(audio.duration) || item.durationSeconds || 0;
+    setPosition(nextPosition);
+    setDuration(nextDuration);
+    onPositionChange?.(nextPosition);
     if (immediate || Date.now() - lastReportRef.current >= 15_000) {
       lastReportRef.current = Date.now();
-      onPlaybackChange?.({ sessionId: session.id, playbackState: audio.paused ? "paused" : "playing", mediaPositionSeconds: nextPosition, mediaDurationSeconds: nextDuration, musicPlaylistId: playlist?.id, musicPlaylistItemId: item?.id, revision: session.revision });
+      onPlaybackChange?.({
+        sessionId: session.id,
+        playbackState: audio.paused ? "paused" : "playing",
+        mediaPositionSeconds: nextPosition,
+        mediaDurationSeconds: nextDuration,
+        musicPlaylistId: itemPlaylist?.id,
+        musicPlaylistItemId: item.id,
+        revision: session.revision,
+      });
     }
   };
-  const selectPlaylist = async (id) => { const next = await getMusicPlaylist(id); setPlaylist(next); setIndex(0); setPosition(0); setFeedback(""); };
-  const selectItem = (nextIndex) => {
-    const boundedIndex = Math.max(0, Math.min((playlist?.items?.length || 1) - 1, nextIndex));
-    const nextItem = playlist?.items?.[boundedIndex];
-    setIndex(boundedIndex); setPosition(0); setPlaying(false);
-    if (session?.id && nextItem) onPlaybackChange?.({ sessionId: session.id, playbackState: "paused", mediaPositionSeconds: 0, mediaDurationSeconds: nextItem.durationSeconds, musicPlaylistId: playlist.id, musicPlaylistItemId: nextItem.id, revision: session.revision });
-  };
-  const start = async () => { if (!item) return; const validation = validateDirectAudioUrl(item.url); if (!validation.ok) { setFeedback(validation.message); return; } const result = await onStart?.({ title: item.title, sessionMode: "listening", musicPlaylistId: playlist.id, musicPlaylistItemId: item.id, mediaDurationSeconds: item.durationSeconds, mediaPositionSeconds: 0 }); if (result === false) return; setFeedback("一起听歌已开始。音频由浏览器直接播放。"); window.setTimeout(() => void audioRef.current?.play().catch(() => setFeedback("浏览器阻止了自动播放，请点击播放按钮。")), 0); };
-  useEffect(() => { if (!item || !audioRef.current) return; audioRef.current.load(); }, [item]);
-  useEffect(() => { if (!item || typeof navigator === "undefined" || !("mediaSession" in navigator)) return; const changeTrack = (nextIndex) => { const boundedIndex = Math.max(0, Math.min((playlist?.items?.length || 1) - 1, nextIndex)); const nextItem = playlist?.items?.[boundedIndex]; setIndex(boundedIndex); setPosition(0); setPlaying(false); if (session?.id && nextItem) onPlaybackChange?.({ sessionId: session.id, playbackState: "paused", mediaPositionSeconds: 0, mediaDurationSeconds: nextItem.durationSeconds, musicPlaylistId: playlist.id, musicPlaylistItemId: nextItem.id, revision: session.revision }); }; navigator.mediaSession.metadata = new MediaMetadata({ title: item.title, artist: item.artist || "", album: item.album || playlist?.name || "一起听歌" }); navigator.mediaSession.setActionHandler?.("play", () => void audioRef.current?.play()); navigator.mediaSession.setActionHandler?.("pause", () => audioRef.current?.pause()); navigator.mediaSession.setActionHandler?.("previoustrack", () => changeTrack(index - 1)); navigator.mediaSession.setActionHandler?.("nexttrack", () => changeTrack(index + 1)); }, [item, index, playlist, session, onPlaybackChange]);
 
-  return <div className="together-setup together-music-setup">
-    <div className="music-player-title"><Music2 aria-hidden="true" /><div><strong>{item?.title || "选择一首歌"}</strong><span>{item?.artist || "一起听歌"}</span></div></div>
-    <label>歌单<select value={playlist?.id || ""} onChange={(event) => void selectPlaylist(event.target.value)}><option value="">选择已导入歌单</option>{playlists.map((entry) => <option key={entry.id} value={entry.id}>{entry.name}</option>)}</select></label>
-    {playlist && <label>曲目<select value={index} onChange={(event) => selectItem(Number(event.target.value))}>{playlist.items.map((entry, itemIndex) => <option key={entry.id || itemIndex} value={itemIndex}>{itemIndex + 1}. {entry.title}{entry.artist ? ` · ${entry.artist}` : ""}</option>)}</select></label>}
-    <audio ref={audioRef} src={item?.url || ""} preload="metadata" controls={false} onLoadedMetadata={(event) => report(event, false)} onTimeUpdate={(event) => report(event)} onPlay={(event) => { setPlaying(true); report(event, true); }} onPause={(event) => { setPlaying(false); report(event, true); }} onSeeked={(event) => report(event, true)} onEnded={(event) => { setPlaying(false); report(event, true); if (index < (playlist?.items?.length || 1) - 1) selectItem(index + 1); }} onError={() => { setPlaying(false); setFeedback(ERROR_MESSAGE); }} aria-label="一起听歌音频播放器" />
+  const selectPlaylist = async (id) => {
+    if (!id) {
+      setPlaylist(null);
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const next = await getMusicPlaylist(id);
+      setPlaylist(next);
+      rememberPlaylist(next);
+      setLocalIndex(0);
+      setPosition(0);
+      setStatus(`${next.name} · ${next.itemCount} 首`);
+    } catch (caught) {
+      setError(caught?.message || "歌单暂时无法读取。");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const advance = async (userInitiated = true) => {
+    if (!active || queueBusy) return;
+    const previousQueueItemId = queueRef.current?.currentQueueItemId;
+    autoPlayNextRef.current = playing || !userInitiated;
+    setPlaying(false);
+    try {
+      const next = await runQueueOperation({ type: "advance" }, { retryConflict: userInitiated });
+      if (!next.currentQueueItemId) {
+        autoPlayNextRef.current = false;
+        setStatus("队列已经播放完了。");
+      } else if (next.currentQueueItemId === previousQueueItemId && audioRef.current) {
+        const shouldResume = autoPlayNextRef.current;
+        autoPlayNextRef.current = false;
+        audioRef.current.currentTime = 0;
+        setPosition(0);
+        if (shouldResume) {
+          void audioRef.current.play().catch(() => setStatus("单曲已回到开头，请点击播放。"));
+        }
+      }
+    } catch {
+      autoPlayNextRef.current = false;
+    }
+  };
+  const advanceFromMediaSession = useEffectEvent(() => void advance(true));
+
+  const start = async () => {
+    if (!item || !playlist) return;
+    const validation = validateDirectAudioUrl(item.url);
+    if (!validation.ok) {
+      setError(validation.message);
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const started = await onStart?.({
+        title: item.title,
+        sessionMode: "listening",
+        musicPlaylistId: playlist.id,
+        musicPlaylistItemId: item.id,
+        mediaDurationSeconds: item.durationSeconds,
+        mediaPositionSeconds: 0,
+      });
+      if (!started) return;
+      const sessionId = started?.id || session?.id;
+      const emptyQueue = await readCoWatchMusicQueue(sessionId);
+      queueRef.current = emptyQueue;
+      setQueue(emptyQueue);
+      autoPlayNextRef.current = true;
+      const playbackOrder = [
+        ...playlist.items.slice(localIndex),
+        ...playlist.items.slice(0, localIndex),
+      ];
+      await runQueueOperation(
+        { type: "replace", item_ids: playbackOrder.map((entry) => entry.id) },
+        { retryConflict: true, sessionId },
+      );
+      void audioRef.current?.play().catch(() => setStatus("队列已保存，请点击播放开始聆听。"));
+      setStatus("一起听歌已开始，队列已保存到服务端。音频仍由本机浏览器直连播放。");
+    } catch (caught) {
+      autoPlayNextRef.current = false;
+      setError(caught?.message || "暂时无法开始一起听歌。");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleFavorite = async () => {
+    if (!item || favoriteBusy) return;
+    setFavoriteBusy(true);
+    setError("");
+    try {
+      if (favorite) {
+        await deleteMusicFavorite(item.id);
+        setFavorites((current) => current.filter((entry) => entry.itemId !== item.id));
+        setStatus("已取消收藏当前曲目。");
+      } else {
+        const next = await putMusicFavorite(item.id);
+        setFavorites((current) => [next, ...current.filter((entry) => entry.itemId !== item.id)]);
+        setStatus("已收藏当前曲目。");
+      }
+    } catch (caught) {
+      setError(caught?.message || "收藏状态暂时无法更新。");
+    } finally {
+      setFavoriteBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!item || typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    if (typeof globalThis.MediaMetadata === "function") {
+      navigator.mediaSession.metadata = new globalThis.MediaMetadata({
+        title: item.title,
+        artist: item.artist || "",
+        album: item.album || itemPlaylist?.name || "一起听歌",
+      });
+    }
+    const handlers = {
+      play: () => void audioRef.current?.play(),
+      pause: () => audioRef.current?.pause(),
+      previoustrack: () => {
+        if (!active) setLocalIndex((current) => Math.max(0, current - 1));
+      },
+      nexttrack: () => {
+        if (active) advanceFromMediaSession();
+        else setLocalIndex((current) => Math.min((playlist?.items.length || 1) - 1, current + 1));
+      },
+      seekto: (details) => {
+        if (audioRef.current && Number.isFinite(details?.seekTime)) audioRef.current.currentTime = details.seekTime;
+      },
+    };
+    for (const [action, handler] of Object.entries(handlers)) {
+      try { navigator.mediaSession.setActionHandler(action, handler); } catch { /* Unsupported action. */ }
+    }
+    return () => {
+      for (const action of Object.keys(handlers)) {
+        try { navigator.mediaSession.setActionHandler(action, null); } catch { /* Unsupported action. */ }
+      }
+    };
+  }, [active, item, itemPlaylist, playlist]);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
+    navigator.mediaSession.playbackState = playing ? "playing" : "paused";
+    if (duration > 0 && navigator.mediaSession.setPositionState) {
+      try {
+        navigator.mediaSession.setPositionState({
+          duration,
+          playbackRate: audioRef.current?.playbackRate || 1,
+          position: Math.min(position, duration),
+        });
+      } catch { /* Media position can race metadata changes. */ }
+    }
+  }, [duration, playing, position]);
+
+  const currentQueueIndex = queue?.items.findIndex((entry) => entry.id === queue.currentQueueItemId) ?? -1;
+  const localCanGoBack = !active && localIndex > 0;
+  const controlsBusy = busy || loading || queueBusy;
+
+  return <div className="together-setup together-music-setup" aria-busy={loading || queueBusy}>
+    <div className="music-player-title">
+      <Music2 aria-hidden="true" />
+      <div><strong>{item?.title || (loading ? "正在读取音乐档案…" : "选择一首歌")}</strong><span>{item?.artist || "一起听歌"}</span></div>
+      <button type="button" className={favorite ? "is-favorite" : ""} aria-label={favorite ? "取消收藏当前曲目" : "收藏当前曲目"} aria-pressed={favorite} disabled={!item || favoriteBusy} onClick={() => void toggleFavorite()}><Heart aria-hidden="true" /></button>
+    </div>
+    <label>{active ? "加入曲目的来源歌单" : "歌单"}<select value={playlist?.id || ""} disabled={loading} onChange={(event) => void selectPlaylist(event.target.value)}><option value="">选择已导入歌单</option>{playlists.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} · {entry.itemCount} 首</option>)}</select></label>
+    {!active && playlist && <label>曲目<select value={localIndex} onChange={(event) => setLocalIndex(Number(event.target.value))}>{playlist.items.map((entry, itemIndex) => <option key={entry.id || itemIndex} value={itemIndex}>{itemIndex + 1}. {entry.title}{entry.artist ? ` · ${entry.artist}` : ""}</option>)}</select></label>}
+    <audio
+      ref={audioRef}
+      src={playableItemUrl?.ok ? playableItemUrl.url : ""}
+      preload="metadata"
+      controls={false}
+      onLoadedMetadata={(event) => report(event)}
+      onTimeUpdate={(event) => report(event)}
+      onPlay={(event) => { setPlaying(true); report(event, true); }}
+      onPause={(event) => { setPlaying(false); if (!event.currentTarget.ended) report(event, true); }}
+      onSeeked={(event) => report(event, true)}
+      onEnded={() => { setPlaying(false); void advance(false); }}
+      onError={() => { setPlaying(false); setError(ERROR_MESSAGE); }}
+      aria-label="一起听歌音频播放器"
+    />
     <input className="music-progress-range" type="range" min="0" max={duration || 0} step="0.1" value={Math.min(position, duration || position)} disabled={!duration} onChange={(event) => { const next = Number(event.target.value); if (audioRef.current) audioRef.current.currentTime = next; setPosition(next); }} aria-label="播放进度" />
-    <div className="music-player-actions"><button type="button" aria-label="上一首" disabled={!playlist || index === 0} onClick={() => selectItem(index - 1)}><SkipBack /></button><button type="button" className="together-primary" disabled={!item || busy} onClick={() => { if (playing) audioRef.current?.pause(); else if (session?.status === "active") void audioRef.current?.play(); else void start(); }}>{playing ? <Pause /> : <Play />}{playing ? "暂停" : session?.status === "active" ? "播放" : "开始一起听"}</button><button type="button" aria-label="下一首" disabled={!playlist || index >= playlist.items.length - 1} onClick={() => selectItem(index + 1)}><SkipForward /></button></div>
-    {session?.status === "active" && <button type="button" disabled={busy} onClick={() => void onEnd?.({ title: item?.title, mediaPositionSeconds: position, musicPlaylistId: playlist?.id, musicPlaylistItemId: item?.id })}><CircleStop />结束本场</button>}
-    <p className="together-device-note">{formatMediaTime(position)} / {duration ? formatMediaTime(duration) : "等待媒体信息"}。只接受可直接访问的 HTTPS 音频地址；不代理、不下载、不绕过 DRM。</p>
-    {feedback && <p className="together-feedback is-error" role="alert">{feedback}</p>}
+    <div className="music-player-actions">
+      <button type="button" aria-label="上一首" disabled={!localCanGoBack || controlsBusy} onClick={() => setLocalIndex((current) => Math.max(0, current - 1))}><SkipBack aria-hidden="true" /></button>
+      <button type="button" className="together-primary" disabled={!item || controlsBusy} onClick={() => { if (playing) audioRef.current?.pause(); else if (active) void audioRef.current?.play().catch(() => setError("浏览器阻止了自动播放，请再次点击播放。")); else void start(); }}>{playing ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}{playing ? "暂停" : active ? "播放" : "开始一起听"}</button>
+      <button type="button" aria-label="下一首" disabled={active ? controlsBusy || !queue?.currentQueueItemId : controlsBusy || !playlist || localIndex >= playlist.items.length - 1} onClick={() => active ? void advance(true) : setLocalIndex((current) => current + 1)}><SkipForward aria-hidden="true" /></button>
+    </div>
+    {active && <>
+      <div className="music-mode-actions" aria-label="播放方式">
+        <button type="button" aria-pressed={queue?.shuffleEnabled || false} disabled={controlsBusy} onClick={() => { const enabled = !queue?.shuffleEnabled; void runQueueOperation({ type: "set_mode", shuffle_enabled: enabled }, { retryConflict: true }).then(() => setStatus(enabled ? "已开启随机播放。" : "已关闭随机播放。")).catch(() => {}); }}><Shuffle aria-hidden="true" />{queue?.shuffleEnabled ? "随机中" : "顺序"}</button>
+        <button type="button" disabled={controlsBusy} onClick={() => { const modes = ["off", "all", "one"]; const next = modes[(modes.indexOf(queue?.repeatMode || "off") + 1) % modes.length]; void runQueueOperation({ type: "set_mode", repeat_mode: next }, { retryConflict: true }).then(() => setStatus(`播放方式：${REPEAT_LABELS[next]}。`)).catch(() => {}); }}><Repeat2 aria-hidden="true" />{REPEAT_LABELS[queue?.repeatMode || "off"]}</button>
+      </div>
+      <section className="music-queue" aria-labelledby="music-queue-title">
+        <header><div><ListMusic aria-hidden="true" /><strong id="music-queue-title">本场队列</strong></div><span>{queue?.items.length || 0} 首 · revision {queue?.revision || 0}</span></header>
+        {queue?.items.length ? <ol>{queue.items.map((entry, entryIndex) => <li key={entry.id} className={entry.id === queue.currentQueueItemId ? "is-current" : ""}>
+          <div><span>{entry.id === queue.currentQueueItemId ? "正在播放" : `第 ${entryIndex + 1} 首`}</span><strong>{entry.title || "未命名曲目"}</strong><small>{entry.artist || "未知艺术家"}</small></div>
+          <div className="music-queue-actions">
+            <button type="button" aria-label={`上移 ${entry.title}`} disabled={controlsBusy || entryIndex === 0} onClick={() => void runQueueOperation({ type: "move", queue_item_id: entry.id, position: entryIndex - 1 }, { retryConflict: true }).catch(() => {})}><ArrowUp aria-hidden="true" /></button>
+            <button type="button" aria-label={`下移 ${entry.title}`} disabled={controlsBusy || entryIndex === queue.items.length - 1} onClick={() => void runQueueOperation({ type: "move", queue_item_id: entry.id, position: entryIndex + 1 }, { retryConflict: true }).catch(() => {})}><ArrowDown aria-hidden="true" /></button>
+            <button type="button" aria-label={`移除 ${entry.title}`} disabled={controlsBusy} onClick={() => void runQueueOperation({ type: "remove", queue_item_id: entry.id }, { retryConflict: true }).catch(() => {})}><Trash2 aria-hidden="true" /></button>
+          </div>
+        </li>)}</ol> : <p>队列是空的，可以从下面的歌单加入曲目。</p>}
+      </section>
+      {playlist && <section className="music-queue-picker" aria-label="从当前歌单加入队列"><strong>{playlist.name}</strong>{playlist.items.map((entry) => <div key={entry.id}><span>{entry.title}</span><button type="button" disabled={controlsBusy} onClick={() => void runQueueOperation({ type: "add", item_id: entry.id, position: Math.max(0, currentQueueIndex + 1) }, { retryConflict: true }).catch(() => {})}><Play aria-hidden="true" />下一首播放</button><button type="button" disabled={controlsBusy} onClick={() => void runQueueOperation({ type: "add", item_id: entry.id }, { retryConflict: true }).catch(() => {})}><ListPlus aria-hidden="true" />加入队尾</button></div>)}</section>}
+    </>}
+    {active && <button type="button" disabled={busy} onClick={() => void onEnd?.({ title: item?.title, mediaPositionSeconds: position, musicPlaylistId: itemPlaylist?.id, musicPlaylistItemId: item?.id })}><CircleStop aria-hidden="true" />结束本场</button>}
+    <p className="together-device-note">{formatMediaTime(position)} / {duration ? formatMediaTime(duration) : "等待媒体信息"}。队列不保存音频 URL，播放地址仅从本机已加载歌单解析；不代理、不下载、不绕过 DRM。</p>
+    {status && <p className="together-feedback" role="status">{loading || queueBusy ? "正在处理 · " : ""}{status}</p>}
+    {error && <p className="together-feedback is-error" role="alert">{error}</p>}
   </div>;
 }

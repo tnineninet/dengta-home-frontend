@@ -10,8 +10,76 @@ function cleanNumber(value, maximum = 604800) {
   return Math.min(maximum, Math.max(0, Math.round(number)));
 }
 
+const QUEUE_ERROR_MESSAGES = Object.freeze({
+  co_watch_session_not_found: "找不到这场一起听，请重新开始。",
+  music_queue_item_not_found: "这首歌已不在可用歌单或队列中。",
+  music_queue_revision_conflict: "播放队列刚刚在别处更新，正在同步最新内容。",
+  music_queue_session_inactive: "这场一起听已经结束。",
+  music_queue_session_invalid: "当前会话不是一起听会话。",
+  music_queue_item_limit: "播放队列最多保存 500 首歌曲。",
+  music_queue_item_invalid: "歌曲或队列项编号格式不正确。",
+  music_queue_items_invalid: "替换队列需要不超过 500 首有效歌曲。",
+  music_queue_operation_invalid: "无法识别这次队列操作。",
+  music_queue_position_invalid: "目标队列位置不正确，请同步后重试。",
+  music_queue_repeat_mode_invalid: "循环模式不正确。",
+  music_queue_shuffle_invalid: "随机播放设置不正确。",
+  music_queue_request_id_invalid: "队列请求编号无效，请重新操作。",
+  music_queue_revision_invalid: "队列同步版本无效，请刷新后重试。",
+});
+
+function queueRequestId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  const bytes = new Uint8Array(16);
+  globalThis.crypto?.getRandomValues?.(bytes);
+  if (!bytes.some(Boolean)) {
+    for (let index = 0; index < bytes.length; index += 1) bytes[index] = Math.floor(Math.random() * 256);
+  }
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+function normalizeQueueItem(value) {
+  const source = value || {};
+  return Object.freeze({
+    id: cleanText(source.id, 100),
+    itemId: cleanText(source.item_id ?? source.itemId, 100),
+    playlistId: cleanText(source.playlist_id ?? source.playlistId, 100),
+    position: cleanNumber(source.position, 499),
+    title: cleanText(source.title, 300),
+    artist: cleanText(source.artist, 300),
+    album: cleanText(source.album, 300),
+    durationSeconds: cleanNumber(source.duration_seconds ?? source.durationSeconds),
+  });
+}
+
+export function normalizeMusicQueue(value) {
+  const source = value?.queue || value || {};
+  return Object.freeze({
+    sessionId: cleanText(source.session_id ?? source.sessionId, 100),
+    revision: cleanNumber(source.revision, 1_000_000_000),
+    repeatMode: ["off", "all", "one"].includes(source.repeat_mode ?? source.repeatMode)
+      ? (source.repeat_mode ?? source.repeatMode)
+      : "off",
+    shuffleEnabled: Boolean(source.shuffle_enabled ?? source.shuffleEnabled),
+    currentQueueItemId: cleanText(source.current_queue_item_id ?? source.currentQueueItemId, 100),
+    items: Object.freeze((Array.isArray(source.items) ? source.items : []).slice(0, 500).map(normalizeQueueItem)),
+  });
+}
+
+function stableQueueError(error) {
+  if (!error?.code || !QUEUE_ERROR_MESSAGES[error.code]) return error;
+  const translated = new Error(QUEUE_ERROR_MESSAGES[error.code], { cause: error });
+  translated.status = error.status;
+  translated.code = error.code;
+  translated.requestId = error.requestId;
+  return translated;
+}
+
 export function normalizeCoWatchSession(value) {
   if (!value?.id) return null;
+  const receiver = value.receiver || value.cast_receiver || {};
   return Object.freeze({
     id: cleanText(value.id, 80),
     conversationId: cleanText(value.conversation_id, 80),
@@ -31,9 +99,11 @@ export function normalizeCoWatchSession(value) {
     musicPlaylistId: cleanText(value.playlist_id ?? value.music_playlist_id, 100),
     musicPlaylistItemId: cleanText(value.item_id ?? value.music_playlist_item_id, 100),
     castReceiver: Object.freeze({
-      status: cleanText(value.cast_receiver?.status ?? value.receiver_status, 40),
-      name: cleanText(value.cast_receiver?.name ?? value.receiver_name, 100),
-      lastAckAt: value.cast_receiver?.last_ack_at ?? value.receiver_last_ack_at ?? "",
+      status: cleanText(receiver.status ?? receiver.state ?? value.receiver_status, 40),
+      name: cleanText(receiver.name ?? value.receiver_name, 100),
+      acknowledged: Boolean(receiver.acknowledged),
+      positionSeconds: cleanNumber(receiver.position_seconds),
+      lastAckAt: receiver.last_ack_at ?? receiver.reported_at ?? value.receiver_last_ack_at ?? "",
     }),
     frameCount: cleanNumber(value.frame_count, 1_000_000),
     reactionCount: cleanNumber(value.reaction_count, 1_000_000),
@@ -104,6 +174,43 @@ export async function patchCoWatchPlayback(sessionId, input = {}) {
   return normalizeCoWatchSession(data?.session || data);
 }
 
+export async function readCoWatchMusicQueue(sessionId) {
+  try {
+    return normalizeMusicQueue(await apiRequest(
+      `/api/v2/co-watch/sessions/${encodeURIComponent(sessionId)}/queue`,
+      { timeoutMs: 12_000 },
+    ));
+  } catch (error) {
+    throw stableQueueError(error);
+  }
+}
+
+export async function applyCoWatchMusicQueueOperation(sessionId, input = {}) {
+  const requestId = input.requestId || queueRequestId();
+  try {
+    const data = await apiRequest(
+      `/api/v2/co-watch/sessions/${encodeURIComponent(sessionId)}/queue/operations`,
+      {
+        method: "POST",
+        timeoutMs: 15_000,
+        body: JSON.stringify({
+          request_id: requestId,
+          expected_revision: cleanNumber(input.expectedRevision, 1_000_000_000),
+          operation: input.operation || {},
+        }),
+      },
+    );
+    return Object.freeze({
+      requestId: cleanText(data?.request_id ?? requestId, 100),
+      replayed: Boolean(data?.replayed),
+      queue: normalizeMusicQueue(data?.queue),
+    });
+  } catch (error) {
+    error.requestId = requestId;
+    throw stableQueueError(error);
+  }
+}
+
 export async function createCoWatchPairingCode(sessionId) {
   const data = await apiRequest(
     `/api/v2/co-watch/sessions/${encodeURIComponent(sessionId)}/pairing-code`,
@@ -111,6 +218,7 @@ export async function createCoWatchPairingCode(sessionId) {
   );
   return Object.freeze({
     pairingCode: cleanText(data?.pairing_code, 20),
+    sessionId: cleanText(data?.session_id ?? sessionId, 80),
     expiresAt: data?.expires_at || "",
   });
 }

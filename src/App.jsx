@@ -926,6 +926,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const flushLatestSettingsDraftRef = useRef(() => Promise.resolve(true));
   const settingsMigrationPendingRef = useRef(false);
   const componentMountedRef = useRef(true);
+  const musicPlaybackSyncRef = useRef({
+    sessionId: "",
+    revision: 0,
+    inFlight: false,
+    pending: null,
+  });
   const startupReconnectRef = useRef(null);
   const sessionModelSaveQueueRef = useRef(Promise.resolve());
   const speechRunRef = useRef(0);
@@ -4778,7 +4784,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     try {
       const next = coWatchSession?.sessionMode === "listening" ? coWatchSession : await createCoWatchSession({ ...options, sessionMode: "listening", sourceApp: "local_playlist", cadenceSeconds: 90 });
       setCoWatchSession(next); setCoWatchReceipt(null); setCoWatchDialog([]);
-      return true;
+      musicPlaybackSyncRef.current = {
+        sessionId: next?.id || "",
+        revision: next?.revision || 0,
+        inFlight: false,
+        pending: null,
+      };
+      return next;
     } catch (error) {
       setScreenGlanceFeedback({ status: "error", message: error?.message || "暂时无法开始一起听歌。" });
       return false;
@@ -4787,15 +4799,53 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   async function updateMusicCoWatchPlayback(snapshot = {}) {
     if (!snapshot.sessionId) return;
+    const sync = musicPlaybackSyncRef.current;
+    if (sync.sessionId !== snapshot.sessionId) {
+      sync.sessionId = snapshot.sessionId;
+      sync.revision = snapshot.revision || 0;
+      sync.pending = null;
+    } else {
+      sync.revision = Math.max(sync.revision, snapshot.revision || 0);
+    }
+    sync.pending = { ...snapshot, conflictRetried: false };
+    if (sync.inFlight) return;
+    sync.inFlight = true;
     try {
-      const next = await patchCoWatchPlayback(snapshot.sessionId, snapshot);
-      if (next) setCoWatchSession(next);
-    } catch (error) {
-      if (error?.status === 409 || error?.code === "revision_conflict") {
-        await refreshCoWatchExperience({ silent: true });
-        return;
+      while (sync.pending && sync.sessionId === snapshot.sessionId) {
+        const nextSnapshot = sync.pending;
+        sync.pending = null;
+        try {
+          const next = await patchCoWatchPlayback(sync.sessionId, {
+            ...nextSnapshot,
+            revision: sync.revision,
+          });
+          if (next) {
+            sync.revision = next.revision;
+            setCoWatchSession(next);
+          }
+        } catch (error) {
+          if (
+            error?.status === 409 &&
+            error?.code === "co_watch_playback_revision_conflict" &&
+            !nextSnapshot.conflictRetried
+          ) {
+            const refreshed = await refreshCoWatchExperience({ silent: true });
+            if (refreshed.session?.id === sync.sessionId) {
+              sync.revision = refreshed.session.revision;
+              sync.pending = sync.pending || { ...nextSnapshot, conflictRetried: true };
+            } else {
+              setScreenGlanceFeedback({ status: "error", message: "一起听会话已结束，播放状态未再提交。" });
+            }
+            continue;
+          }
+          setScreenGlanceFeedback({ status: "error", message: error?.message || "播放状态同步失败，播放器仍可在本机使用。" });
+        }
       }
-      setScreenGlanceFeedback({ status: "error", message: error?.message || "播放状态同步失败，播放器仍可在本机使用。" });
+    } finally {
+      sync.inFlight = false;
+      if (sync.pending && sync.sessionId === snapshot.sessionId) {
+        void updateMusicCoWatchPlayback(sync.pending);
+      }
     }
   }
 
@@ -4804,7 +4854,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     setIsScreenGlanceBusy(true);
     try {
       if (coWatchSession?.id) setCoWatchReceipt(await endCoWatchSession(coWatchSession.id, options));
-      setCoWatchSession(null); setCoWatchDialog([]); return true;
+      setCoWatchSession(null); setCoWatchDialog([]);
+      musicPlaybackSyncRef.current = { sessionId: "", revision: 0, inFlight: false, pending: null };
+      return true;
     } catch (error) {
       setScreenGlanceFeedback({ status: "error", message: error?.message || "暂时无法结束一起听歌。" });
       return false;

@@ -24,8 +24,10 @@ function receiverLabel() {
 export default function ReceiverApp() {
   const videoRef = useRef(null);
   const revisionRef = useRef(-1);
+  const sequenceRef = useRef(0);
   const [token, setToken] = useState(() => readReceiverToken(globalThis.sessionStorage));
   const [pairingCode, setPairingCode] = useState("");
+  const [pairingSessionId, setPairingSessionId] = useState("");
   const [receiverName, setReceiverName] = useState(receiverLabel);
   const [session, setSession] = useState(null);
   const [ready, setReady] = useState(false);
@@ -42,6 +44,7 @@ export default function ReceiverApp() {
     }
     clearReceiverToken(globalThis.sessionStorage);
     revisionRef.current = -1;
+    sequenceRef.current = 0;
     setToken("");
     setSession(null);
     setReady(false);
@@ -53,6 +56,7 @@ export default function ReceiverApp() {
     if (!token || !video) return;
     await acknowledgeCastReceiver(token, {
       revision: revisionRef.current,
+      sequence: ++sequenceRef.current,
       playbackState: video.paused ? "paused" : "playing",
       mediaPositionSeconds: video.currentTime,
       event,
@@ -107,15 +111,16 @@ export default function ReceiverApp() {
 
   const pair = async (event) => {
     event.preventDefault();
-    if (!pairingCode.trim() || !receiverName.trim() || busy) return;
+    if (!pairingSessionId.trim() || !pairingCode.trim() || !receiverName.trim() || busy) return;
     setBusy(true);
     setMessage("正在配对…");
     try {
-      const data = await pairCastReceiver(pairingCode, receiverName);
+      const data = await pairCastReceiver(pairingSessionId, pairingCode, receiverName);
       const nextToken = storeReceiverToken(globalThis.sessionStorage, data?.receiver_token);
       if (!nextToken) throw new Error("服务端没有返回有效的接收端凭据。");
       setToken(nextToken);
       setPairingCode("");
+      setPairingSessionId("");
       if (data?.session) setSession(normalizeReceiverSession(data));
       setMessage("配对成功。请在电视上确认一次“准备播放”。");
     } catch (error) {
@@ -144,9 +149,10 @@ export default function ReceiverApp() {
       <header><small>DENGTA CAST RECEIVER</small><h1>在这块屏幕上接收</h1><p>无需登录。配对凭据只保存在当前标签页会话中。</p></header>
       {!token ? (
         <form className="receiver-card" onSubmit={pair}>
+          <label>会话编号<input value={pairingSessionId} onChange={(event) => setPairingSessionId(event.target.value.trim())} autoComplete="off" maxLength={80} /></label>
           <label>配对码<input value={pairingCode} onChange={(event) => setPairingCode(event.target.value.replace(/\s/g, ""))} inputMode="numeric" autoComplete="one-time-code" maxLength={20} autoFocus /></label>
           <label>接收端名称<input value={receiverName} onChange={(event) => setReceiverName(event.target.value)} maxLength={100} /></label>
-          <button type="submit" disabled={busy || !pairingCode.trim() || !receiverName.trim()}>{busy ? "正在配对…" : "连接控制端"}</button>
+          <button type="submit" disabled={busy || !pairingSessionId.trim() || !pairingCode.trim() || !receiverName.trim()}>{busy ? "正在配对…" : "连接控制端"}</button>
         </form>
       ) : (
         <section className="receiver-stage">

@@ -67,7 +67,7 @@ export default function MusicSettings({ providerStatus = null }) {
     </div>
     <button type="button" className="together-primary" disabled={busy || !content.trim()} onClick={() => void importPlaylist()}>导入歌单</button>
     {error && <p className="music-feedback is-error" role="alert">{error}</p>}{message && <p className="music-feedback" role="status">{message}</p>}
-    <div className="music-playlist-list"><h4>已保存歌单</h4>{playlists.length ? playlists.map((playlist) => <article key={playlist.id}><button type="button" className="music-playlist-summary" onClick={async () => setSelected(await getMusicPlaylist(playlist.id))}><strong>{playlist.name}</strong><span>{playlist.items.length} 首 · {playlist.provider}</span></button><button type="button" className="danger" disabled={busy} onClick={() => void removePlaylist(playlist.id)}>删除</button></article>) : <p>还没有导入歌单。</p>}</div>
+    <div className="music-playlist-list"><h4>已保存歌单</h4>{playlists.length ? playlists.map((playlist) => <article key={playlist.id}><button type="button" className="music-playlist-summary" onClick={async () => setSelected(await getMusicPlaylist(playlist.id))}><strong>{playlist.name}</strong><span>{playlist.itemCount} 首 · {playlist.provider}</span></button><button type="button" className="danger" disabled={busy} onClick={() => void removePlaylist(playlist.id)}>删除</button></article>) : <p>还没有导入歌单。</p>}</div>
     {selected && <section className="music-playlist-detail" aria-label="歌单详情"><h4>{selected.name}</h4>{selected.items.map((item, index) => <div key={item.id || index}><span>{index + 1}</span><strong>{item.title}</strong><small>{item.artist || "未知艺术家"}</small></div>)}</section>}
   </section>;
 }
