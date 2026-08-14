@@ -86,11 +86,14 @@ async function fetchFromApi(path, options = {}) {
       if (authContext?.companionId) {
         headers.set("X-DengTa-Companion-Id", authContext.companionId);
       }
-      const response = await fetch(`${API_BASE_URL}${path}`, {
-        ...requestOptions,
-        headers,
-        ...(controller ? { signal: controller.signal } : {}),
-      });
+      const response = await awaitWithAbortSignal(
+        fetch(`${API_BASE_URL}${path}`, {
+          ...requestOptions,
+          headers,
+          ...(controller ? { signal: controller.signal } : {}),
+        }),
+        controller?.signal,
+      );
       authSession?.captureCompanionFromResponse?.(response);
       if (
         attempt < retryDelays.length - 1 &&

@@ -3,6 +3,8 @@ import { isPrivateMediaHostname } from "./direct-media.js";
 
 const MAX_TEXT = 500;
 const MAX_ITEMS = 2_000;
+const READ_TIMEOUT_MS = 12_000;
+const WRITE_TIMEOUT_MS = 15_000;
 
 function text(value, maximum = MAX_TEXT) {
   return String(value ?? "").trim().slice(0, maximum);
@@ -24,6 +26,16 @@ export function validateDirectAudioUrl(value) {
     return { ok: false, code: "private_host", message: "不能播放本机、局域网或私有 IP 的音频。" };
   }
   return { ok: true, code: "ok", url: url.href, message: "" };
+}
+
+export function detectNeteasePlaylistShare(value) {
+  const raw = String(value || "").trim();
+  const match = raw.match(/https?:\/\/(?:y\.)?music\.163\.com\/(?:m\/)?playlist\?[^\s]*\bid=(\d+)/i);
+  if (!match) return null;
+  const beforeLink = raw.slice(0, match.index).replace(/^(?:分享|复制).*?[:：]\s*/i, "").trim();
+  const titleLines = beforeLink.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const title = titleLines[titleLines.length - 1] || "网易云歌单";
+  return Object.freeze({ provider: "网易云音乐", providerId: "netease", playlistId: match[1], title: text(title, 180) });
 }
 
 function normalizeItem(item, index = 0) {
@@ -106,30 +118,33 @@ function resolveImportFormat(content, format) {
 }
 
 export async function importMusicPlaylist({ format = "auto", sourceName = "粘贴内容", name = "我的歌单", content }) {
+  if (detectNeteasePlaylistShare(content)) {
+    throw new Error("这是网易云歌单网页分享，不是音频直链或歌单文件，不能直接导入。");
+  }
   const resolvedFormat = resolveImportFormat(content, format);
   const items = parseMusicText(content, resolvedFormat);
   if (!items.length) throw new Error("没有解析到可播放曲目。");
   return normalizeMusicPlaylist(await apiRequest("/api/v2/music/playlists/import", {
-    method: "POST", timeoutMs: 15_000,
+    method: "POST", timeoutMs: WRITE_TIMEOUT_MS,
     body: JSON.stringify({ format: resolvedFormat, source_name: text(sourceName, 180), name: text(name, 180), content: String(content || "") }),
   }));
 }
 
 export async function listMusicPlaylists() {
-  const data = await apiRequest("/api/v2/music/playlists");
+  const data = await apiRequest("/api/v2/music/playlists", { timeoutMs: READ_TIMEOUT_MS });
   return (Array.isArray(data?.playlists) ? data.playlists : []).map(normalizeMusicPlaylist);
 }
 
 export async function getMusicPlaylist(id) {
-  return normalizeMusicPlaylist(await apiRequest(`/api/v2/music/playlists/${encodeURIComponent(id)}`));
+  return normalizeMusicPlaylist(await apiRequest(`/api/v2/music/playlists/${encodeURIComponent(id)}`, { timeoutMs: READ_TIMEOUT_MS }));
 }
 
 export async function deleteMusicPlaylist(id) {
-  return apiRequest(`/api/v2/music/playlists/${encodeURIComponent(id)}`, { method: "DELETE" });
+  return apiRequest(`/api/v2/music/playlists/${encodeURIComponent(id)}`, { method: "DELETE", timeoutMs: WRITE_TIMEOUT_MS });
 }
 
 export async function listMusicFavorites() {
-  const data = await apiRequest("/api/v2/music/favorites");
+  const data = await apiRequest("/api/v2/music/favorites", { timeoutMs: READ_TIMEOUT_MS });
   const favorites = Array.isArray(data?.favorites) ? data.favorites : Array.isArray(data) ? data : [];
   return Object.freeze(favorites.map(normalizeFavorite).filter((entry) => entry.itemId));
 }
@@ -137,6 +152,7 @@ export async function listMusicFavorites() {
 export async function putMusicFavorite(itemId) {
   const data = await apiRequest(`/api/v2/music/favorites/${encodeURIComponent(itemId)}`, {
     method: "PUT",
+    timeoutMs: WRITE_TIMEOUT_MS,
     body: "{}",
   });
   return normalizeFavorite(data?.favorite || data);
@@ -145,6 +161,7 @@ export async function putMusicFavorite(itemId) {
 export async function deleteMusicFavorite(itemId) {
   const data = await apiRequest(`/api/v2/music/favorites/${encodeURIComponent(itemId)}`, {
     method: "DELETE",
+    timeoutMs: WRITE_TIMEOUT_MS,
   });
   return Object.freeze({
     itemId: text(data?.deleted?.item_id ?? itemId, 100),

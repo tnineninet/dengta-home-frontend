@@ -1,7 +1,7 @@
 {
   "name": "dengta-home-react",
   "private": true,
-  "version": "2.9.2",
+  "version": "2.9.3",
   "type": "module",
   "scripts": {
     "pretest": "node --test test/mobile-chat-shell.test.js && node test/settings-folders.test.js && npm run test:music-listening",
@@ -70,6 +70,7 @@
   },
   "dependencies": {
     "@capacitor/android": "^8.4.2",
+    "@capacitor/clipboard": "^8.0.1",
     "@capacitor/core": "^8.4.2",
     "@capacitor/local-notifications": "^8.0.0",
     "@supabase/auth-js": "^2.110.8",

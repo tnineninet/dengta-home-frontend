@@ -117,6 +117,11 @@
 .music-playlist-detail { margin-top: 16px; }
 .music-playlist-detail div { display: grid; grid-template-columns: 28px 1fr auto; gap: 8px; padding: 8px 0; border-bottom: 1px solid rgba(42, 67, 56, .1); }
 .music-feedback.is-error { color: #a34444; }
+.music-clipboard-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.music-clipboard-actions span { color: var(--together-muted); font-size: 12px; }
+.music-share-recognition, .music-local-audio { display: grid; gap: 8px; margin: 12px 0; padding: 12px; border: 1px solid rgba(42, 67, 56, .16); border-radius: 8px; background: rgba(255,255,255,.45); }
+.music-share-recognition p, .music-local-audio p { margin: 0; color: var(--together-muted); font-size: 12px; line-height: 1.5; }
+.music-local-audio audio { width: 100%; }
 .together-time-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .together-direct-actions { display: grid; grid-template-columns: 1fr 1.15fr; gap: 8px; }
 .together-page button { min-height: 44px; border: 1px solid rgba(42, 67, 56, .18); border-radius: 7px; background: rgba(255, 255, 255, .75); color: inherit; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font: inherit; }

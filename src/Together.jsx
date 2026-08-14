@@ -60,6 +60,7 @@ export default function Together({
   onGenerateCastPairing,
   dialog = [],
   onReply,
+  initialMode = "external",
 }) {
   const [restoredDirectMedia] = useState(() =>
     readDirectMediaSession(globalThis.sessionStorage, accountScope),
@@ -69,7 +70,7 @@ export default function Together({
       ? "music"
       : session?.sourceApp === DIRECT_MEDIA_SOURCE_APP || restoredDirectMedia?.url
       ? "direct"
-      : "external",
+      : initialMode === "music" ? "music" : "external",
   );
   const [title, setTitle] = useState(
     session?.title || restoredDirectMedia?.title || "",
@@ -336,7 +337,7 @@ export default function Together({
         </span>
       </header>
 
-      <div className="together-mode-switch" role="tablist" aria-label="一起看方式">
+      {selectedMode !== "music" && <div className="together-mode-switch" role="tablist" aria-label="一起看方式">
         <button
           type="button"
           role="tab"
@@ -359,18 +360,7 @@ export default function Together({
           <Link2 aria-hidden="true" />
           DengTa 视频直链
         </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={selectedMode === "music"}
-          className={selectedMode === "music" ? "is-selected" : ""}
-          disabled={modeLocked && selectedMode !== "music"}
-          onClick={() => setMode("music")}
-        >
-          <Music2 aria-hidden="true" />
-          一起听歌
-        </button>
-      </div>
+      </div>}
 
       <div className="together-layout">
         <div className="together-stage">

@@ -9,6 +9,7 @@ import {
   Music2,
   Pause,
   Play,
+  RefreshCw,
   Repeat2,
   Shuffle,
   SkipBack,
@@ -51,6 +52,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   const [favorites, setFavorites] = useState([]);
   const [queue, setQueue] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [queueBusy, setQueueBusy] = useState(false);
   const [favoriteBusy, setFavoriteBusy] = useState(false);
   const [playing, setPlaying] = useState(false);
@@ -153,20 +155,30 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
     });
   };
 
+  const refreshLibrary = useCallback(async ({ initial = false } = {}) => {
+    if (initial) setLoading(true);
+    else setRefreshing(true);
+    setError("");
+    try {
+      const [playlistResult, favoriteResult] = await Promise.allSettled([listMusicPlaylists(), listMusicFavorites()]);
+      if (!mountedRef.current) return;
+      if (playlistResult.status === "fulfilled") {
+        setPlaylists(playlistResult.value);
+        setStatus(playlistResult.value.length ? "选择歌单后即可开始。" : "还没有可播放歌单，请先在设置中导入。");
+      }
+      if (favoriteResult.status === "fulfilled") setFavorites(favoriteResult.value);
+      const failure = playlistResult.status === "rejected" ? playlistResult.reason : favoriteResult.status === "rejected" ? favoriteResult.reason : null;
+      if (failure) setError(failure?.message || "部分音乐资料暂时无法读取，可稍后重试。");
+    } finally {
+      if (mountedRef.current) { setLoading(false); setRefreshing(false); }
+    }
+  }, []);
+
   useEffect(() => {
     mountedRef.current = true;
-    Promise.all([listMusicPlaylists(), listMusicFavorites()]).then(([nextPlaylists, nextFavorites]) => {
-      if (!mountedRef.current) return;
-      setPlaylists(nextPlaylists);
-      setFavorites(nextFavorites);
-      setStatus(nextPlaylists.length ? "选择歌单后即可开始。" : "还没有可播放歌单，请先在设置中导入。");
-    }).catch((caught) => {
-      if (mountedRef.current) setError(caught?.message || "歌单与收藏暂时无法读取。");
-    }).finally(() => {
-      if (mountedRef.current) setLoading(false);
-    });
+    void Promise.resolve().then(() => refreshLibrary({ initial: true }));
     return () => { mountedRef.current = false; };
-  }, []);
+  }, [refreshLibrary]);
 
   useEffect(() => {
     if (!active || !session.id) {
@@ -392,6 +404,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
       <Music2 aria-hidden="true" />
       <div><strong>{item?.title || (loading ? "正在读取音乐档案…" : "选择一首歌")}</strong><span>{item?.artist || "一起听歌"}</span></div>
       <button type="button" className={favorite ? "is-favorite" : ""} aria-label={favorite ? "取消收藏当前曲目" : "收藏当前曲目"} aria-pressed={favorite} disabled={!item || favoriteBusy} onClick={() => void toggleFavorite()}><Heart aria-hidden="true" /></button>
+      <button type="button" aria-label="刷新音乐资料" disabled={refreshing} onClick={() => void refreshLibrary()}><RefreshCw aria-hidden="true" />{refreshing ? "刷新中" : "刷新"}</button>
     </div>
     <label>{active ? "加入曲目的来源歌单" : "歌单"}<select value={playlist?.id || ""} disabled={loading} onChange={(event) => void selectPlaylist(event.target.value)}><option value="">选择已导入歌单</option>{playlists.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} · {entry.itemCount} 首</option>)}</select></label>
     {!active && playlist && <label>曲目<select value={localIndex} onChange={(event) => setLocalIndex(Number(event.target.value))}>{playlist.items.map((entry, itemIndex) => <option key={entry.id || itemIndex} value={itemIndex}>{itemIndex + 1}. {entry.title}{entry.artist ? ` · ${entry.artist}` : ""}</option>)}</select></label>}

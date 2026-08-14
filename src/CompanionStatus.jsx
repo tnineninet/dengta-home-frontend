@@ -78,6 +78,7 @@ function CompanionStatus({
   onExpandedChange,
   onInteract,
   onWatchTogether,
+  onListenTogether,
   onOpenNavigation,
   onOpenSettings,
 }) {
@@ -272,6 +273,7 @@ function CompanionStatus({
   function runDesireAction(action) {
     const baseAction = RECOVERY_ACTIONS.find((item) => item.id === "wish");
     if (!baseAction) return;
+    if (action.id === "music") onListenTogether?.();
     if (action.id === "watching") onWatchTogether?.();
     touchZone({
       ...baseAction,

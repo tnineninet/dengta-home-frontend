@@ -11,10 +11,17 @@ const EMPTY_DRAFT = {
   protocol_version: "2025-03-26",
 };
 
+const NETEASE_MCP_PRESET = Object.freeze({
+  ...EMPTY_DRAFT,
+  name: "网易云音乐 MCP（自托管）",
+  endpoint: "https://你的公网域名/mcp",
+});
+
 async function mcpRequest(path, { method = "GET", body } = {}) {
   try {
     return await apiRequest(path, {
       method,
+      timeoutMs: 12_000,
       headers: { Accept: "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
@@ -65,10 +72,20 @@ export default function McpDeviceCenter() {
     setDiscovery(null);
   }
 
+  function validateDraft() {
+    let endpoint;
+    try { endpoint = new URL(draft.endpoint); } catch { throw new Error("请填写完整的公网 HTTPS MCP 地址。"); }
+    if (endpoint.protocol !== "https:") throw new Error("云端 MCP 只支持公网 HTTPS 端点。");
+    if (/网易云|netease/i.test(draft.name) && endpoint.pathname !== "/mcp") throw new Error("网易云 MCP 只支持用户自托管的公网 HTTPS /mcp 端点。");
+    if (draft.auth_type === "custom_header" && draft.auth_header.trim().toLowerCase() === "cookie") throw new Error("DengTa 绝不接收或转发 Cookie 请求头，请改用 MCP 服务自己的 Token/API Key（如有）。");
+    if (/(?:MUSIC_U|__csrf|NETEASE_COOKIE)\s*=/i.test(draft.credential)) throw new Error("请不要向 DengTa 填写 MUSIC_U、__csrf、NETEASE_COOKIE 或任何 Cookie；它们只能配置在你自托管的 MCP 服务端。");
+  }
+
   async function discover() {
     setBusy("discover");
     setFeedback("");
     try {
+      validateDraft();
       const data = await mcpRequest("/api/mcp/connections/manage/discover", {
         method: "POST",
         body: draft,
@@ -88,6 +105,7 @@ export default function McpDeviceCenter() {
     setBusy("create");
     setFeedback("");
     try {
+      validateDraft();
       const data = await mcpRequest("/api/mcp/connections/manage", {
         method: "POST",
         body: draft,
@@ -171,7 +189,7 @@ export default function McpDeviceCenter() {
         <div>
           <h3>MCP 设备中心</h3>
           <p className="card-hint">
-            接入空调、灯、Home Assistant 或其他 MCP 服务。模型会根据对话选择你明确授权的工具；这是一套可核验的工具调用机制，不是意识。
+            接入空调、灯、Home Assistant、网易云音乐或其他 MCP 服务。模型只会使用你明确授权的工具；这是一套可核验的工具调用机制，不是意识。
           </p>
         </div>
         <span className={`status-chip ${status.available ? "online" : "pending"}`}>
@@ -182,6 +200,13 @@ export default function McpDeviceCenter() {
       <div className="mcp-safety-note">
         <strong>默认零权限</strong>
         <p>新连接的所有工具均为“禁止自动执行”。你必须逐项改成允许并启用连接，聊天模型才看得到它。设备凭据只在后端加密保存，不会回传页面。</p>
+      </div>
+
+      <div className="mcp-setup-required netease-mcp-preset" role="note">
+        <strong>网易云音乐 MCP · Vael-KY/netease-music-mcp</strong>
+        <p>仅支持你自行部署并公开的 <code>https://你的域名/mcp</code>。请只在自托管服务端配置 <code>MUSIC_U</code>、<code>__csrf</code> 或 <code>NETEASE_COOKIE</code>；DengTa 不接收这些值，也绝不接收 Cookie 请求头。</p>
+        <p>MCP 可用于查询/管理歌单、推荐和收藏。工具返回的 <code>play_music</code> 网页入口只用于前往网易云，不代表能在 DengTa 内播放。</p>
+        <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => { setDraft(NETEASE_MCP_PRESET); setDiscovery(null); setFeedback("已填入网易云 MCP 安全预设，请把域名替换为你自托管的公网 HTTPS 地址。"); }}>使用网易云 MCP 预设</button>
       </div>
 
       <div className="mcp-setup-required" role="note">
@@ -219,7 +244,7 @@ export default function McpDeviceCenter() {
               <label className="full-width">
                 完整 MCP 地址
                 <input value={draft.endpoint} onChange={(event) => updateDraft("endpoint", event.target.value)} placeholder="例如：https://你的-home-assistant.example.com/api/mcp" />
-                <small>必须填写完整 HTTPS 端点，不要只填网站首页；云端不能访问 192.168.x.x 或 localhost。</small>
+                <small>必须填写完整公网 HTTPS 端点；网易云预设必须以 /mcp 结尾。不要填网站首页、192.168.x.x、localhost 或 Cookie。</small>
               </label>
               <label>
                 授权方式
@@ -232,7 +257,7 @@ export default function McpDeviceCenter() {
               {draft.auth_type === "custom_header" && (
                 <label>
                   请求头名称
-                  <input value={draft.auth_header} onChange={(event) => updateDraft("auth_header", event.target.value)} placeholder="X-API-Key" />
+                    <input value={draft.auth_header} onChange={(event) => updateDraft("auth_header", event.target.value)} placeholder="X-API-Key（禁止 Cookie）" />
                 </label>
               )}
               {draft.auth_type !== "none" && (

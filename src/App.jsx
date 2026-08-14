@@ -676,6 +676,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const effectiveAiName =
     String(settings.ai_name || "").trim() || "伴侣";
   const [activeView, setActiveView] = useState("chat");
+  const [togetherEntryMode, setTogetherEntryMode] = useState("external");
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsCategory, setSettingsCategory] = useState(null);
   const [settingsFocusTarget, setSettingsFocusTarget] = useState("");
@@ -6198,6 +6199,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     return (
       <Suspense fallback={<DeferredFeature label="正在打开一起看…" />}>
         <Together
+          key={`together-${togetherEntryMode}`}
           aiName={effectiveAiName}
           accountScope={accountStorageScope}
           session={coWatchSession}
@@ -6258,6 +6260,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               setIsScreenGlanceBusy(false);
             }
           }}
+          initialMode={togetherEntryMode}
         />
       </Suspense>
     );
@@ -6836,7 +6839,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             {settingsCategory === "devices" && (
               <>
             <Suspense fallback={<DeferredFeature label="正在打开一起听歌设置…" />}>
-              <MusicSettings providerStatus={providerStatus} />
+              <MusicSettings providerStatus={providerStatus} onOpenMcpDeviceCenter={() => { setSettingsCategory("devices"); setSettingsFocusTarget("mcp-device-center"); }} />
             </Suspense>
             <div className="notification-feature-panel device-activity-panel">
               <div className="device-activity-heading">
@@ -7275,7 +7278,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             )}
             {settingsCategory === "devices" && (
               <Suspense fallback={<DeferredFeature label="正在打开设备连接…" />}>
-                <McpDeviceCenter />
+                <div id="mcp-device-center"><McpDeviceCenter /></div>
               </Suspense>
             )}
             {settingsCategory === "voice" && (
@@ -7504,7 +7507,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             onChange={setCompanionStatus}
             onExpandedChange={handleStatusPanelExpandedChange}
             onInteract={handleCompanionInteraction}
-            onWatchTogether={() => changeView("together")}
+            onListenTogether={() => { setTogetherEntryMode("music"); changeView("together"); }}
+            onWatchTogether={() => { setTogetherEntryMode("external"); changeView("together"); }}
             onOpenNavigation={() => setIsSidebarOpen(true)}
             onOpenSettings={openSettingsPanel}
           />
