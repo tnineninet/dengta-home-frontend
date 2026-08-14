@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import DeviceActionReceipts from "./DeviceActionReceipts";
 import { MessageAttachments, ThinkingPanel } from "./ChatMessageExtras";
 import { AuthenticatedImage } from "./PrivateMedia";
@@ -63,6 +63,8 @@ function ChatMessage({
     : "";
   const artworkAlt =
     item.tool_calls?.artwork_alt || `${aiName}创作的图片`;
+  const isGenerating = item.isStreaming === true || item.generationInProgress === true;
+  const [thinkingDetailOpen, setThinkingDetailOpen] = useState(false);
 
   const cancelLongPress = useCallback(() => {
     if (longPressRef.current?.timerId) {
@@ -242,15 +244,34 @@ function ChatMessage({
             )}
           {!isUser && (
             <>
-              <ThinkingPanel
-                message={item}
-                aiName={aiName}
-                companionMood={companionMood}
-                innerMonologue={innerMonologue}
-                innerMonologuePending={innerMonologuePending}
-                innerMonologueError={innerMonologueError}
-                onRequestInnerMonologue={onRequestInnerMonologue}
-              />
+              {isGenerating && !thinkingDetailOpen ? (
+                <div className="thinking-panel-minimal">
+                  <span className="typing-indicator-inline" aria-label="正在回复中">
+                    <span className="dot" />
+                    <span className="dot" />
+                    <span className="dot" />
+                  </span>
+                  <button
+                    type="button"
+                    className="thinking-panel-minimal-toggle"
+                    onClick={() => setThinkingDetailOpen(true)}
+                    title="查看当前进度"
+                  >
+                    <span className="chevron">▸</span>
+                    详情
+                  </button>
+                </div>
+              ) : (
+                <ThinkingPanel
+                  message={item}
+                  aiName={aiName}
+                  companionMood={companionMood}
+                  innerMonologue={innerMonologue}
+                  innerMonologuePending={innerMonologuePending}
+                  innerMonologueError={innerMonologueError}
+                  onRequestInnerMonologue={onRequestInnerMonologue}
+                />
+              )}
               <DeviceActionReceipts actions={item.tool_calls?.mcp_actions} />
             </>
           )}
@@ -263,7 +284,7 @@ function ChatMessage({
               </strong>
             </div>
           )}
-          {item.isStreaming && (
+          {item.isStreaming && !isGenerating === false && thinkingDetailOpen && (
             <span className="stream-caret" aria-label="正在回复">
               ♥
             </span>

@@ -28,6 +28,24 @@ body,
   height: 100%;
   margin: 0;
   overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: auto;
+}
+
+/* 100dvh 降级：不支持的浏览器回退到 window.innerHeight（由 --app-height JS 更新） */
+@supports not (height: 100dvh) {
+  :root {
+    --app-height: 100vh;
+  }
+}
+
+/* 防止极端曲面屏/挖孔屏内容被裁剪 */
+@supports (padding: max(0px)) {
+  .app-shell {
+    padding-left: max(0px, env(safe-area-inset-left));
+    padding-right: max(0px, env(safe-area-inset-right));
+  }
 }
 
 body {
@@ -1205,6 +1223,12 @@ button:disabled {
   line-height: 1.7;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
+  animation: content-in 0.3s ease both;
+}
+
+/* 生成完成后从省略号到完整消息的平滑过渡 */
+.message-row:not(.user) .message-content {
+  animation: content-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .message-attachments {
@@ -1758,6 +1782,82 @@ button:disabled {
   color: var(--rose);
   animation: breathe 0.85s ease-in-out infinite;
   font-size: 11px;
+}
+
+/* 省略号打字动画——替代详细状态展示 */
+.typing-indicator-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0;
+  min-height: 20px;
+}
+.typing-indicator-inline .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #9c7a89;
+  animation: typing-bounce 1.4s ease-in-out infinite;
+}
+.typing-indicator-inline .dot:nth-child(1) { animation-delay: -0.32s; }
+.typing-indicator-inline .dot:nth-child(2) { animation-delay: -0.16s; }
+.typing-indicator-inline .dot:nth-child(3) { animation-delay: 0s; }
+@keyframes typing-bounce {
+  0%, 80%, 100% { transform: translateY(0); }
+  40% { transform: translateY(-5px); }
+}
+
+/* 最小化思考面板：生成中只显示点点和展开按钮 */
+.thinking-panel-minimal {
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.thinking-panel-minimal-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid #ded7e7;
+  border-radius: 999px;
+  background: transparent;
+  color: #918ca0;
+  font-size: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.thinking-panel-minimal-toggle:hover {
+  background: #f0ecf5;
+  color: #5e596f;
+}
+.thinking-panel-minimal-toggle .chevron {
+  font-size: 8px;
+  transition: transform 0.2s ease;
+}
+.thinking-panel-minimal-toggle .chevron.open {
+  transform: rotate(180deg);
+}
+.thinking-panel-minimal-label {
+  color: #918ca0;
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+/* 夜间模式适配 */
+[data-dengta-appearance="night"] .thinking-panel-minimal-label {
+  color: #8680a0;
+}
+[data-dengta-appearance="night"] .thinking-panel-minimal-toggle {
+  border-color: #3d3750;
+  color: #8680a0;
+}
+[data-dengta-appearance="night"] .thinking-panel-minimal-toggle:hover {
+  background: #2d2740;
+  color: #c8c0e0;
+}
+[data-dengta-appearance="night"] .typing-indicator-inline .dot {
+  background: #8a7fa0;
 }
 
 @keyframes breathe {
