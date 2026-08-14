@@ -233,7 +233,7 @@ export default function ContentImport({ api }) {
           <label><span>内容格式</span><select aria-label="内容格式" value={format} onChange={(event) => setFormat(event.target.value)}><option value="auto">自动识别</option><option value="sillytavern">SillyTavern</option><option value="generic_json">通用 JSON</option><option value="plain_text">纯文本</option></select></label>
         </div>
         {inputMode === "file" ? (
-          <label className="content-import-dropzone"><span>{file ? file.name : "选择 JSON、TXT、CSV、Markdown 等文本文件"}</span><small>最大 10MB，文件只用于本次预览与导入；其他文本后缀也会自动识别。</small><input aria-label="选择导入文件" type="file" accept=".json,.txt,.text,.md,.markdown,.log,.csv,application/json,text/plain,text/markdown,text/csv" onChange={(event) => setFile(event.target.files?.[0] || null)} /></label>
+          <label className="content-import-dropzone"><span>{file ? file.name : "选择 JSON、TXT、CSV、Markdown 等文本文件"}</span><small>最大 100MB，文件只用于本次预览与导入；其他文本后缀也会自动识别。</small><input aria-label="选择导入文件" type="file" accept=".json,.txt,.text,.md,.markdown,.log,.csv,application/json,text/plain,text/markdown,text/csv" onChange={(event) => setFile(event.target.files?.[0] || null)} /></label>
         ) : (
           <label className="content-import-paste"><span>粘贴原始内容</span><textarea aria-label="粘贴导入内容" value={content} onChange={(event) => setContent(event.target.value)} rows={8} placeholder="内容会按原文发送，不进行关键词过滤。" /></label>
         )}

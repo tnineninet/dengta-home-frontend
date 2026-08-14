@@ -1,11 +1,11 @@
 import { apiFetch, apiRequest } from "./api.js";
 
-export const CONTENT_IMPORT_MAX_BYTES = 10 * 1024 * 1024;
+export const CONTENT_IMPORT_MAX_BYTES = 100 * 1024 * 1024;
 
 const IMPORT_ERROR_MESSAGES = Object.freeze({
-  payload_too_large: "导入文件超过 10MB，请拆分后重试。",
-  file_too_large: "导入文件超过 10MB，请拆分后重试。",
-  import_file_too_large: "导入文件超过 10MB，请拆分后重试。",
+  payload_too_large: "导入文件超过 100MB，请拆分后重试。",
+  file_too_large: "导入文件超过 100MB，请拆分后重试。",
+  import_file_too_large: "导入文件超过 100MB，请拆分后重试。",
   unsupported_file_type: "仅支持 JSON、TXT 或 Markdown 文件。",
   import_file_type_unsupported: "仅支持 JSON、TXT 或 Markdown 文件。",
   import_media_type_unsupported: "仅支持 JSON、TXT 或 Markdown 文件。",
