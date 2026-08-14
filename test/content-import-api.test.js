@@ -86,7 +86,7 @@ test("file validation and backend failures have explicit translated errors", asy
   );
   assert.throws(
     () => validateImportFile({ name: "large.md", size: CONTENT_IMPORT_MAX_BYTES + 1 }),
-    /超过 10MB/,
+    /超过 100MB/,
   );
   assert.equal(translatedImportError({ code: "invalid_json" }), "JSON 内容无法解析，请检查格式是否完整。");
   assert.equal(translatedImportError({ message: "后端明确原因" }, "fallback"), "后端明确原因");
@@ -97,7 +97,7 @@ test("file validation and backend failures have explicit translated errors", asy
       { file: new File(["x"], "book.txt"), kind: "world_book" },
       { apiFetch: async () => ({ ok: false, status: 413, json: async () => ({ code: "payload_too_large" }) }) },
     ),
-    (error) => error.status === 413 && /10MB/.test(error.message),
+    (error) => error.status === 413 && /100MB/.test(error.message),
   );
   await assert.rejects(
     listContentImports({ apiRequest: async () => { throw Object.assign(new Error("expired"), { code: "import_not_found" }); } }),
