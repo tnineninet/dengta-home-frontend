@@ -84,7 +84,7 @@ export function validateImportFile(file) {
   if (Number(file.size) > CONTENT_IMPORT_MAX_BYTES) {
     throw importError({ code: "file_too_large" });
   }
-  if (!/\.(json|txt|md|markdown)$/i.test(String(file.name || ""))) {
+  if (!/\.(json|txt|text|md|markdown|log|csv)$/i.test(String(file.name || ""))) {
     throw importError({ code: "unsupported_file_type" });
   }
   return file;
