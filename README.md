@@ -32,6 +32,19 @@ npm run lint
 npm run build
 ```
 
+- `npm run build` 只执行 `vite build`，产出 `dist/`。
+- `npm run build:web` 额外执行 `verify:public-auth-build`，校验公开认证配置已打进产物（CI 用这个）。
+
+公开认证（Supabase 登录）依赖两个**公开**变量，必须在构建时注入：
+
+| 变量 | 说明 |
+| --- | --- |
+| `VITE_SUPABASE_URL` | Supabase 项目地址 |
+| `VITE_SUPABASE_ANON_KEY` | Supabase publishable/anon key（**不是** service role 密钥） |
+
+注入方式：本地写进 `.env.local`（已 gitignore），CI/生产由构建平台 secrets 注入；模板见 `.env.example`。
+缺失时：`AuthGate` 显示“登录服务尚未接通”页，且 `npm run build:web` 会因 `verify:public-auth-build` 报错 `Missing required public auth environment variables: ...`。
+
 聊天接口统一在“多供应商 API 控制台”中配置。每个账号自行保存活动接口、
 API 地址、密钥和默认模型；部署环境不会替账号锁定供应商或地址。
 OpenAI Responses 会把 `xhigh` 作为 `reasoning.effort` 发送；保留函数工具的
