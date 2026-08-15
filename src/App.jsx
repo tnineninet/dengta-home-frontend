@@ -14,6 +14,7 @@ import {
   DatabaseZap,
   Mic2,
   MonitorSmartphone,
+  Music,
   Palette,
   ServerCog,
 } from "lucide-react";
@@ -242,6 +243,7 @@ const CompanionCreativeSettings = lazy(
 const CompanionDiary = lazy(() => import("./CompanionDiary"));
 const CompanionProfile = lazy(() => import("./CompanionProfile"));
 const ContentImport = lazy(() => import("./ContentImport"));
+const MusicSettings = lazy(() => import("./MusicSettings"));
 const ExternalMemoryConnections = lazy(
   () => import("./ExternalMemoryConnections"),
 );
@@ -314,6 +316,12 @@ const SETTINGS_CATEGORIES = [
     label: "数据导入",
     description: "世界书与聊天记录",
     Icon: DatabaseZap,
+  },
+  {
+    id: "music-import",
+    label: "音乐导入",
+    description: "网易云歌单导入与搜索",
+    Icon: Music,
   },
 ];
 
@@ -6365,7 +6373,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               </Suspense>
             )}
 
-            {settingsCategory !== "data-import" && (
+            {settingsCategory === "music-import" && (
+              <Suspense fallback={<DeferredFeature label="正在打开音乐导入…" />}>
+                <MusicSettings />
+              </Suspense>
+            )}
+
+            {settingsCategory !== "data-import" && settingsCategory !== "music-import" && (
             <form className="settings-form" onSubmit={saveSettings}>
           {settingsCategory === "services" && (
             <div className="settings-card service-manager-card">
@@ -6621,8 +6635,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 <span className="prompt-toggle-visual" aria-hidden="true" />
                 <span className="prompt-toggle-copy">
                   <span>
-                    <strong>亲密表达</strong>
-                    <small>允许更温暖、俏皮和带暧昧感的表达</small>
+                    <strong>亲密与成人表达</strong>
+                    <small>
+                      允许亲密、暧昧和明确成人表达；具体内容服从个性化指令、你的详情和当前对话
+                    </small>
                   </span>
                   <em>
                     {draftSettings.intimate_expression_enabled
@@ -7138,7 +7154,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 你的详情 {settingsSaveReceipt.userDetailsLength} 字
               </span>
               <span>
-                统一提示词模式 · 亲密表达
+                统一提示词模式 · 亲密与成人表达
                 {settingsSaveReceipt.intimateExpressionEnabled
                   ? "已开启"
                   : "已关闭"}
@@ -7171,7 +7187,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                         : "未发送"}
                     </span>
                     <span>
-                      最高应用级指令合计：
+                      应用 system 指令合计：
                       {lastPromptReceipt.delivery.mainSystem.applied
                         ? `${lastPromptReceipt.delivery.mainSystem.chars ?? "—"} 字`
                         : "未发送"}

@@ -72,8 +72,8 @@ const neteasePlaybackPlugin = fs.readFileSync(
 );
 
 assert.match(buildGradle, /applicationId "home\.dengta\.app"/);
-assert.match(buildGradle, /versionCode 55\b/);
-assert.match(buildGradle, /versionName "2\.10\.3"/);
+assert.match(buildGradle, /versionCode 56\b/);
+assert.match(buildGradle, /versionName "2\.10\.4"/);
 assert.match(
   buildGradle,
   /storeFile file\(System\.getProperty\("user\.home"\) \+ "\/\.android\/debug\.keystore"\)/,
