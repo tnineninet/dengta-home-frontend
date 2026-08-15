@@ -9,8 +9,10 @@ const PUBLIC_ERROR_BY_CODE = Object.freeze({
     "请求的模型不在当前接口可用列表中 / The requested model is not available from the current API.",
   data_inspection_failed:
     "输入内容未通过模型接口的内容检查 / The input did not pass the model provider's content inspection.",
+  provider_error_document:
+    "模型接口返回了错误文档，本轮回复未保存 / The model API returned an error document; this reply was not saved.",
   provider_boundary_residue:
-    "模型没有返回可保存的对话内容 / The model did not return savable conversation content.",
+    "模型供应商拒绝了本轮回复，拒答正文未保存 / The model provider refused this turn; the refusal text was not saved.",
 });
 
 const MARKUP_OR_DOCUMENT_PATTERN =
