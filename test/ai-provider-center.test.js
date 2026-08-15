@@ -16,6 +16,7 @@ import {
 } from "../src/provider-reasoning-effort.js";
 import {
   providerCredentialNeedsRecovery,
+  settingsServiceErrorDetail,
   settingsServiceErrorMessage,
 } from "../src/settings-service-errors.js";
 
@@ -144,7 +145,7 @@ assert.doesNotMatch(saveProfileSource, /setProfiles\(/);
 assert.doesNotMatch(makeDefaultSource, /setProfiles\(/);
 assert.match(
   testProfileSource,
-  /catch \(error\) \{[\s\S]*?await refreshProfilesAfterProbeFailure\(\);[\s\S]*?setFeedback\(error\.message\)/,
+  /catch \(error\) \{[\s\S]*?await refreshProfilesAfterProbeFailure\(\);[\s\S]*?settingsServiceErrorDetail\(error/,
 );
 assert.match(bridge, /ccswitch:\/\/v1\/import/);
 assert.match(bridge, /enabled: "false"/);
@@ -171,6 +172,20 @@ assert.match(
   settingsServiceErrorMessage({ code: "MCP_CREDENTIAL_INVALID" }),
   /saved device credential cannot be decrypted/i,
 );
+assert.match(
+  settingsServiceErrorDetail(
+    {
+      code: "AI_PROVIDER_UPSTREAM_AUTH_FAILED",
+      status: 502,
+      upstream_status: 403,
+    },
+    "fallback",
+  ),
+  /AI_PROVIDER_UPSTREAM_AUTH_FAILED · 后端 HTTP 502 · 上游 HTTP 403/,
+);
+assert.match(component, /data\.error \|\| data\.code/);
+assert.match(component, /data\.upstream_status/);
+assert.match(component, /settingsServiceErrorDetail\(error/);
 assert.equal(
   providerCredentialNeedsRecovery({
     health: { detail: "接口凭据无法解密，请重新填写 API Key。" },

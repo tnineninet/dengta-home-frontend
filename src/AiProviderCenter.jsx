@@ -20,6 +20,7 @@ import {
 } from "./provider-reasoning-effort";
 import {
   providerCredentialNeedsRecovery,
+  settingsServiceErrorDetail,
   settingsServiceErrorMessage,
 } from "./settings-service-errors";
 
@@ -97,8 +98,9 @@ async function aiProviderRequest(
         `请求失败（HTTP ${response.status}）/ Request failed (HTTP ${response.status}).`,
       ),
     );
-    error.code = data.code || "AI_PROVIDER_REQUEST_FAILED";
+    error.code = data.error || data.code || "AI_PROVIDER_REQUEST_FAILED";
     error.status = response.status;
+    error.upstreamStatus = data.upstream_status;
     throw error;
   }
   return data;
@@ -526,7 +528,9 @@ export default function AiProviderCenter({ onStatusChange = null } = {}) {
       setFeedback("模型目录可读取，发现 " + (data.models?.length || 0) + " 个模型。检查不会保存密钥。");
     } catch (error) {
       setDraftModels([]);
-      setFeedback(error.message);
+      setFeedback(
+        settingsServiceErrorDetail(error, "供应商请求失败 / Provider request failed."),
+      );
     } finally {
       setBusy("");
     }
@@ -547,7 +551,9 @@ export default function AiProviderCenter({ onStatusChange = null } = {}) {
       setFeedback("接口已加密保存。启用并设为下次聊天首选后，新的聊天请求才会优先使用它。");
       await refreshStatus();
     } catch (error) {
-      setFeedback(error.message);
+      setFeedback(
+        settingsServiceErrorDetail(error, "供应商请求失败 / Provider request failed."),
+      );
     } finally {
       setBusy("");
     }
@@ -565,7 +571,9 @@ export default function AiProviderCenter({ onStatusChange = null } = {}) {
       setFeedback("接口设置已保存，并会用于下一次新的模型请求。");
       await refreshStatus();
     } catch (error) {
-      setFeedback(error.message);
+      setFeedback(
+        settingsServiceErrorDetail(error, "供应商请求失败 / Provider request failed."),
+      );
     } finally {
       setBusy("");
     }
@@ -584,7 +592,9 @@ export default function AiProviderCenter({ onStatusChange = null } = {}) {
       await refreshStatus();
     } catch (error) {
       await refreshProfilesAfterProbeFailure();
-      setFeedback(error.message);
+      setFeedback(
+        settingsServiceErrorDetail(error, "供应商请求失败 / Provider request failed."),
+      );
     } finally {
       setBusy("");
     }
@@ -602,7 +612,9 @@ export default function AiProviderCenter({ onStatusChange = null } = {}) {
       setFeedback("下次聊天首选已更新；这不表示接口正在运行，新的聊天请求才会使用它。");
       await refreshStatus();
     } catch (error) {
-      setFeedback(error.message);
+      setFeedback(
+        settingsServiceErrorDetail(error, "供应商请求失败 / Provider request failed."),
+      );
     } finally {
       setBusy("");
     }
@@ -620,7 +632,9 @@ export default function AiProviderCenter({ onStatusChange = null } = {}) {
       setFeedback("接口及其加密密钥已删除。");
       await refreshStatus();
     } catch (error) {
-      setFeedback(error.message);
+      setFeedback(
+        settingsServiceErrorDetail(error, "供应商请求失败 / Provider request failed."),
+      );
     } finally {
       setBusy("");
     }
