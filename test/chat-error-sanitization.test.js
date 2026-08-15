@@ -41,6 +41,13 @@ assert.equal(
   "请求的模型不在当前接口可用列表中 / The requested model is not available from the current API.",
 );
 assert.equal(
+  publicChatErrorMessage({
+    code: "provider_error_document",
+    message: "raw upstream html",
+  }),
+  "模型接口返回了错误文档，本轮回复未保存 / The model API returned an error document; this reply was not saved.",
+);
+assert.equal(
   publicChatErrorMessage(
     'data: {"error":{"code":"data_inspection_failed","message":"Input text data may contain inappropriate content."}}',
   ),
