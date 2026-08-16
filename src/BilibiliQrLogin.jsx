@@ -225,7 +225,19 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
             <button type="button" disabled={busy} onClick={() => void startLogin()}><RefreshCw aria-hidden="true" />重新生成</button>
             <button type="button" onClick={cancelLogin}>取消</button>
           </div>
-          {qrContent && <a className="netease-qr-fallback" href={qrContent} target="_blank" rel="noopener noreferrer">二维码显示不出来？点这里打开哔哩哔哩登录页</a>}
+          <small className="netease-qr-hint">
+            扫不上码?也可以点下面的按钮,在手机浏览器里登录哔哩哔哩,成功后这里会自动完成绑定,无需回传任何内容。
+          </small>
+          {qrContent && (
+            <a
+              className="netease-qr-fallback-button"
+              href={qrContent}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              🔗 跳转到手机浏览器登录
+            </a>
+          )}
         </div>
       </div>, document.body)}
       {folders.length > 0 && <div className="netease-qr-playlists">

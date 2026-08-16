@@ -240,6 +240,17 @@
 .netease-qr-actions { display: flex; gap: 0.6rem; }
 .netease-qr-fallback { font-size: 0.82rem; word-break: break-all; }
 .netease-qr-hint { font-size: 0.78rem; opacity: 0.68; }
+.netease-qr-fallback-button {
+  display: inline-block;
+  margin-top: 2px;
+  padding: 9px 16px;
+  border-radius: 999px;
+  background: rgba(120, 130, 255, 0.14);
+  border: 1px solid rgba(120, 130, 255, 0.5);
+  color: #5a63d9;
+  font-size: 13px;
+  text-decoration: none;
+}
 .netease-qr-playlists ul { list-style: none; margin: 0.6rem 0 0; padding: 0; display: grid; gap: 0.4rem; }
 .netease-qr-playlists li button { width: 100%; text-align: left; padding: 0.5rem 0.7rem; border-radius: 10px; }
 .music-cover { width: 44px; height: 44px; border-radius: 10px; object-fit: cover; flex: 0 0 auto; }
