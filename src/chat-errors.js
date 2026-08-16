@@ -12,7 +12,7 @@ const PUBLIC_ERROR_BY_CODE = Object.freeze({
   provider_error_document:
     "模型接口返回了错误文档，本轮回复未保存 / The model API returned an error document; this reply was not saved.",
   provider_boundary_residue:
-    "模型供应商拒绝了本轮回复，拒答正文未保存 / The model provider refused this turn; the refusal text was not saved.",
+    "模型回复被识别为拒答残留，拒答正文未保存 / The model response was identified as refusal residue; the refusal text was not saved.",
 });
 
 const MARKUP_OR_DOCUMENT_PATTERN =
@@ -27,6 +27,11 @@ const UPSTREAM_PROTOCOL_ERROR_PATTERN =
   /^upstream stream ended (?:without|before) (?:a )?terminal response event$/i;
 const CONTENT_INSPECTION_ERROR_PATTERN =
   /(?:data_inspection_failed|input text data may contain inappropriate content)/i;
+const SAFE_PROVIDER_CODE_PATTERN = /^[a-zA-Z][a-zA-Z0-9_.-]{0,63}$/;
+const PUBLIC_ERROR_SOURCES = new Set([
+  "upstream_provider_or_gateway",
+  "dengta_output_guard",
+]);
 
 function errorCandidate(source) {
   if (typeof source === "string") return source;
@@ -40,6 +45,34 @@ function stripControlCharacters(value) {
       return code >= 32 || [9, 10, 13].includes(code);
     })
     .join("");
+}
+
+function publicDiagnosticCode(source) {
+  const code = String(source?.provider_code || source?.providerCode || "").trim();
+  return SAFE_PROVIDER_CODE_PATTERN.test(code) ? code : "";
+}
+
+function publicDiagnosticSource(source) {
+  const value = String(source?.error_source || source?.errorSource || "").trim();
+  return PUBLIC_ERROR_SOURCES.has(value) ? value : "";
+}
+
+function withDiagnostic(message, source) {
+  const providerCode = publicDiagnosticCode(source);
+  const errorSource = publicDiagnosticSource(source);
+  const hasMetadata = Boolean(
+    providerCode ||
+      errorSource ||
+      source?.provider_phase ||
+      source?.upstream_status !== undefined,
+  );
+  if (!hasMetadata) return message;
+  const visibleCode = providerCode || String(source?.code || "").trim();
+  const status = Number(source?.upstream_status);
+  const statusText = Number.isInteger(status) && status >= 100 && status <= 599
+    ? `；HTTP / HTTP: ${status}`
+    : "";
+  return `${message}（错误代码 / Code: ${visibleCode || "unknown"}；来源 / Source: ${errorSource || "dengta"}${statusText}）`;
 }
 
 export function isProviderErrorDocument(value) {
@@ -68,7 +101,7 @@ export function publicChatErrorMessage(source, fallback = CHAT_ERROR_FALLBACK) {
   const code = String(source?.code || "");
   const safeFallback = PUBLIC_ERROR_BY_CODE[code] || fallback;
   if (code && code !== "CHAT_GENERATION_IN_PROGRESS" && PUBLIC_ERROR_BY_CODE[code]) {
-    return safeFallback;
+    return withDiagnostic(safeFallback, source);
   }
 
   const candidate = stripControlCharacters(errorCandidate(source))
@@ -76,22 +109,25 @@ export function publicChatErrorMessage(source, fallback = CHAT_ERROR_FALLBACK) {
     .trim();
   if (!candidate) return safeFallback;
   if (UPSTREAM_PROTOCOL_ERROR_PATTERN.test(candidate)) {
-    return "上游模型流没有正常结束，请重试或检查接口兼容性 / The upstream model stream ended without a terminal response event. Retry or check API compatibility.";
+    return withDiagnostic(
+      "上游模型流没有正常结束，请重试或检查接口兼容性 / The upstream model stream ended without a terminal response event. Retry or check API compatibility.",
+      source,
+    );
   }
   if (CONTENT_INSPECTION_ERROR_PATTERN.test(candidate)) {
-    return PUBLIC_ERROR_BY_CODE.data_inspection_failed;
+    return withDiagnostic(PUBLIC_ERROR_BY_CODE.data_inspection_failed, source);
   }
-  if (candidate.length > MAX_PUBLIC_ERROR_LENGTH) return safeFallback;
-  if (/^[{[]/.test(candidate) && /[}\]]$/.test(candidate)) return safeFallback;
+  if (candidate.length > MAX_PUBLIC_ERROR_LENGTH) return withDiagnostic(safeFallback, source);
+  if (/^[{[]/.test(candidate) && /[}\]]$/.test(candidate)) return withDiagnostic(safeFallback, source);
   if (
     MARKUP_OR_DOCUMENT_PATTERN.test(candidate) ||
     STACK_OR_CODE_PATTERN.test(candidate) ||
     SECRET_PATTERN.test(candidate) ||
     GENERIC_UPSTREAM_ERROR_PATTERN.test(candidate)
   ) {
-    return safeFallback;
+    return withDiagnostic(safeFallback, source);
   }
-  return candidate;
+  return withDiagnostic(candidate, source);
 }
 
 export function sanitizeChatErrorEvent(event = {}) {

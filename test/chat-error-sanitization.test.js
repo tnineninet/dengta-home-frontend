@@ -54,6 +54,15 @@ assert.equal(
   "输入内容未通过模型接口的内容检查 / The input did not pass the model provider's content inspection.",
 );
 assert.equal(
+  publicChatErrorMessage({
+    code: "data_inspection_failed",
+    provider_code: "data_inspection_failed",
+    error_source: "upstream_provider_or_gateway",
+    message: "raw upstream message must not be displayed",
+  }),
+  "输入内容未通过模型接口的内容检查 / The input did not pass the model provider's content inspection.（错误代码 / Code: data_inspection_failed；来源 / Source: upstream_provider_or_gateway）",
+);
+assert.equal(
   sanitizeChatErrorEvent({
     content: "Upstream request failed",
     user_message_committed: true,
@@ -171,6 +180,26 @@ await assert.rejects(
       error.message,
       /<!doctype|<html|<pre>|UPSTREAM_POLICY_DENIED|stack=/i,
     );
+    return true;
+  },
+);
+
+await assert.rejects(
+  streamWithEvents([
+    {
+      type: "error",
+      code: "data_inspection_failed",
+      provider_code: "data_inspection_failed",
+      error_source: "upstream_provider_or_gateway",
+      provider_phase: "event",
+      content: "Input text data may contain inappropriate content.",
+    },
+  ]),
+  (error) => {
+    assert.equal(error.code, "data_inspection_failed");
+    assert.equal(error.provider_code, "data_inspection_failed");
+    assert.equal(error.error_source, "upstream_provider_or_gateway");
+    assert.match(error.message, /data_inspection_failed.*upstream_provider_or_gateway/);
     return true;
   },
 );

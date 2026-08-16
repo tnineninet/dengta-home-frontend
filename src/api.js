@@ -168,6 +168,10 @@ export async function apiRequest(path, options = {}) {
     );
     error.status = response.status;
     error.code = data.code || "api_request_failed";
+    if (data.provider_code) error.provider_code = data.provider_code;
+    if (data.error_source) error.error_source = data.error_source;
+    if (data.provider_phase) error.provider_phase = data.provider_phase;
+    if (data.upstream_status) error.upstream_status = data.upstream_status;
     throw error;
   }
 
@@ -282,6 +286,10 @@ export async function streamChat(
     const error = new Error(message);
     error.userMessageCommitted = userMessageCommitted;
     if (source?.code) error.code = source.code;
+    if (source?.provider_code) error.provider_code = source.provider_code;
+    if (source?.error_source) error.error_source = source.error_source;
+    if (source?.provider_phase) error.provider_phase = source.provider_phase;
+    if (source?.upstream_status) error.upstream_status = source.upstream_status;
     error.generationInProgress = isChatGenerationInProgress(source);
     return error;
   }
