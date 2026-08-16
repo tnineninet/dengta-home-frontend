@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 
 const LOOP_SECONDS = 15.466667;
-const ACTIVE_FRAME_MS = 1000 / 24;
+const ACTIVE_FRAME_MS = 1000 / 15; // 15fps:降低手机 GPU 负担,肉眼几乎无差别
 
 const VERTEX_SHADER = `
 attribute vec2 a_position;
@@ -218,8 +218,8 @@ export default function SettingsFlowField() {
         const rect = canvas.getBoundingClientRect();
         const longestSide = Math.max(rect.width, rect.height);
         const mobileScale = window.matchMedia("(max-width: 820px)").matches
-          ? 0.64
-          : 0.82;
+          ? 0.5
+          : 0.78;
         const renderScale = Math.min(
           mobileScale,
           760 / Math.max(longestSide, 1),

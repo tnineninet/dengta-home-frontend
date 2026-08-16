@@ -17,6 +17,7 @@ import {
   Music,
   Palette,
   ServerCog,
+  Trophy,
 } from "lucide-react";
 import { API_BASE_URL, apiRequest, streamChat } from "./api";
 import WebInstallButton from "./WebInstallButton.jsx";
@@ -333,6 +334,12 @@ const SETTINGS_CATEGORIES = [
     label: "设备与共看",
     description: "通知、活动感知、屏幕共看与设备",
     Icon: MonitorSmartphone,
+  },
+  {
+    id: "fun",
+    label: "成就与新玩法",
+    description: "成就、纪念日、外卖与小红书",
+    Icon: Trophy,
   },
   {
     id: "data-import",
@@ -7332,6 +7339,222 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 Android 的“使用情况访问”是单独的系统权限；关闭本功能会立即停止附带摘要，撤销系统权限仍需在授权页操作。
               </small>
             </div>
+            <div className="notification-feature-panel screen-glance-panel">
+              <div className="device-activity-heading">
+                <div>
+                  <strong>屏幕共看</strong>
+                  <span>
+                    {screenGlanceState.active
+                      ? screenGlanceState.paused
+                        ? "Android · 已暂停"
+                        : "Android · 系统正在共享"
+                      : "Android · 默认关闭"}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className={`privacy-switch${
+                    screenGlanceConfig.randomEnabled ? " is-on" : ""
+                  }`}
+                  role="switch"
+                  aria-checked={screenGlanceConfig.randomEnabled}
+                  aria-label={
+                    screenGlanceConfig.randomEnabled
+                      ? "关闭随机查看"
+                      : "允许随机查看"
+                  }
+                  disabled={isScreenGlanceBusy || !screenGlanceState.supported}
+                  onClick={() =>
+                    void saveScreenGlanceConfig({
+                      ...screenGlanceConfig,
+                      randomEnabled: !screenGlanceConfig.randomEnabled,
+                    })
+                  }
+                >
+                  <span aria-hidden="true" />
+                </button>
+              </div>
+              <p>
+                每次会话都由 Android 系统确认，并持续显示共享通知。邀请一起看后，手机会在后台稀疏采样，只有画面明显变化才调用当前伴侣模型。
+              </p>
+              <div className="screen-glance-options">
+                <label>
+                  最短间隔（分钟）
+                  <input
+                    type="number"
+                    min="1"
+                    max="180"
+                    value={screenGlanceConfig.minimumMinutes}
+                    disabled={isScreenGlanceBusy}
+                    onChange={(event) =>
+                      setScreenGlanceConfig((current) =>
+                        normalizeScreenGlanceConfig({
+                          ...current,
+                          minimumMinutes: event.target.value,
+                        }),
+                      )
+                    }
+                    onBlur={() => void saveScreenGlanceConfig()}
+                  />
+                </label>
+                <label>
+                  最长间隔（分钟）
+                  <input
+                    type="number"
+                    min="1"
+                    max="180"
+                    value={screenGlanceConfig.maximumMinutes}
+                    disabled={isScreenGlanceBusy}
+                    onChange={(event) =>
+                      setScreenGlanceConfig((current) =>
+                        normalizeScreenGlanceConfig({
+                          ...current,
+                          maximumMinutes: event.target.value,
+                        }),
+                      )
+                    }
+                    onBlur={() => void saveScreenGlanceConfig()}
+                  />
+                </label>
+                <label className="screen-glance-check">
+                  <input
+                    type="checkbox"
+                    checked={screenGlanceConfig.wifiOnly}
+                    disabled={isScreenGlanceBusy}
+                    onChange={(event) =>
+                      void saveScreenGlanceConfig({
+                        ...screenGlanceConfig,
+                        wifiOnly: event.target.checked,
+                      })
+                    }
+                  />
+                  仅 Wi-Fi
+                </label>
+                <label className="screen-glance-check">
+                  <input
+                    type="checkbox"
+                    checked={screenGlanceConfig.chargingOnly}
+                    disabled={isScreenGlanceBusy}
+                    onChange={(event) =>
+                      void saveScreenGlanceConfig({
+                        ...screenGlanceConfig,
+                        chargingOnly: event.target.checked,
+                      })
+                    }
+                  />
+                  仅充电时
+                </label>
+              </div>
+              <div className="screen-glance-toggle-row">
+                <span>
+                  <strong>一起看时主动回应</strong>
+                  <small>开启后持续共看，直到你主动暂停或结束。</small>
+                </span>
+                <button
+                  type="button"
+                  className={`privacy-switch${
+                    screenGlanceConfig.watchTogetherEnabled ? " is-on" : ""
+                  }`}
+                  role="switch"
+                  aria-checked={screenGlanceConfig.watchTogetherEnabled}
+                  aria-label="一起看时主动回应"
+                  disabled={isScreenGlanceBusy || !screenGlanceState.supported}
+                  onClick={() =>
+                    void saveScreenGlanceConfig({
+                      ...screenGlanceConfig,
+                      watchTogetherEnabled:
+                        !screenGlanceConfig.watchTogetherEnabled,
+                    })
+                  }
+                >
+                  <span aria-hidden="true" />
+                </button>
+              </div>
+              {(screenGlanceState.capturedAt ||
+                screenGlanceState.nextCaptureAt) && (
+                <div className="screen-glance-times">
+                  {screenGlanceState.capturedAt && (
+                    <span>
+                      最近查看：{formatDateTime(screenGlanceState.capturedAt)}
+                    </span>
+                  )}
+                  {screenGlanceState.nextCaptureAt && (
+                    <span>
+                      下次随机窗口：
+                      {formatDateTime(screenGlanceState.nextCaptureAt)}
+                    </span>
+                  )}
+                  {screenGlanceState.lastReactionAt && (
+                    <span>
+                      最近共看回应：
+                      {formatDateTime(screenGlanceState.lastReactionAt)}
+                    </span>
+                  )}
+                </div>
+              )}
+              <p
+                className={`notification-feature-feedback ${screenGlanceFeedback.status}`}
+                role="status"
+                aria-live="polite"
+              >
+                {screenGlanceFeedback.message}
+              </p>
+              <div className="device-activity-actions">
+                {!screenGlanceState.active ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={
+                        isScreenGlanceBusy || !screenGlanceState.supported
+                      }
+                      onClick={() =>
+                        void startScreenGlanceSession({ watchTogether: true })
+                      }
+                    >
+                      邀请一起看
+                    </button>
+                    <button
+                      type="button"
+                      disabled={
+                        isScreenGlanceBusy || !screenGlanceState.supported
+                      }
+                      onClick={() => void startScreenGlanceSession()}
+                    >
+                      只共享屏幕
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      disabled={isScreenGlanceBusy}
+                      onClick={() =>
+                        void setScreenGlancePaused(!screenGlanceState.paused)
+                      }
+                    >
+                      {screenGlanceState.paused ? "继续捕获" : "暂停捕获"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isScreenGlanceBusy}
+                      onClick={() => void stopScreenGlanceSession()}
+                    >
+                      结束并清除
+                    </button>
+                  </>
+                )}
+              </div>
+              <small>
+                共看没有倒计时，会持续到你手动暂停或结束；锁屏会暂停采样，结束系统共享后，本机临时画面会立即清除。
+              </small>
+            </div>
+              </>
+            )}
+          </div>
+          )}
+
+            {settingsCategory === "fun" && (
+              <>
             {takeoutPluginAvailable() ? (
               <div className="notification-feature-panel device-activity-panel">
                 <div className="device-activity-heading">
@@ -7559,219 +7782,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               ) : null}
               <small>登录态只存在服务端，随时可在这里退出。</small>
             </div>
-            <div className="notification-feature-panel screen-glance-panel">
-              <div className="device-activity-heading">
-                <div>
-                  <strong>屏幕共看</strong>
-                  <span>
-                    {screenGlanceState.active
-                      ? screenGlanceState.paused
-                        ? "Android · 已暂停"
-                        : "Android · 系统正在共享"
-                      : "Android · 默认关闭"}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  className={`privacy-switch${
-                    screenGlanceConfig.randomEnabled ? " is-on" : ""
-                  }`}
-                  role="switch"
-                  aria-checked={screenGlanceConfig.randomEnabled}
-                  aria-label={
-                    screenGlanceConfig.randomEnabled
-                      ? "关闭随机查看"
-                      : "允许随机查看"
-                  }
-                  disabled={isScreenGlanceBusy || !screenGlanceState.supported}
-                  onClick={() =>
-                    void saveScreenGlanceConfig({
-                      ...screenGlanceConfig,
-                      randomEnabled: !screenGlanceConfig.randomEnabled,
-                    })
-                  }
-                >
-                  <span aria-hidden="true" />
-                </button>
-              </div>
-              <p>
-                每次会话都由 Android 系统确认，并持续显示共享通知。邀请一起看后，手机会在后台稀疏采样，只有画面明显变化才调用当前伴侣模型。
-              </p>
-              <div className="screen-glance-options">
-                <label>
-                  最短间隔（分钟）
-                  <input
-                    type="number"
-                    min="1"
-                    max="180"
-                    value={screenGlanceConfig.minimumMinutes}
-                    disabled={isScreenGlanceBusy}
-                    onChange={(event) =>
-                      setScreenGlanceConfig((current) =>
-                        normalizeScreenGlanceConfig({
-                          ...current,
-                          minimumMinutes: event.target.value,
-                        }),
-                      )
-                    }
-                    onBlur={() => void saveScreenGlanceConfig()}
-                  />
-                </label>
-                <label>
-                  最长间隔（分钟）
-                  <input
-                    type="number"
-                    min="1"
-                    max="180"
-                    value={screenGlanceConfig.maximumMinutes}
-                    disabled={isScreenGlanceBusy}
-                    onChange={(event) =>
-                      setScreenGlanceConfig((current) =>
-                        normalizeScreenGlanceConfig({
-                          ...current,
-                          maximumMinutes: event.target.value,
-                        }),
-                      )
-                    }
-                    onBlur={() => void saveScreenGlanceConfig()}
-                  />
-                </label>
-                <label className="screen-glance-check">
-                  <input
-                    type="checkbox"
-                    checked={screenGlanceConfig.wifiOnly}
-                    disabled={isScreenGlanceBusy}
-                    onChange={(event) =>
-                      void saveScreenGlanceConfig({
-                        ...screenGlanceConfig,
-                        wifiOnly: event.target.checked,
-                      })
-                    }
-                  />
-                  仅 Wi-Fi
-                </label>
-                <label className="screen-glance-check">
-                  <input
-                    type="checkbox"
-                    checked={screenGlanceConfig.chargingOnly}
-                    disabled={isScreenGlanceBusy}
-                    onChange={(event) =>
-                      void saveScreenGlanceConfig({
-                        ...screenGlanceConfig,
-                        chargingOnly: event.target.checked,
-                      })
-                    }
-                  />
-                  仅充电时
-                </label>
-              </div>
-              <div className="screen-glance-toggle-row">
-                <span>
-                  <strong>一起看时主动回应</strong>
-                  <small>开启后持续共看，直到你主动暂停或结束。</small>
-                </span>
-                <button
-                  type="button"
-                  className={`privacy-switch${
-                    screenGlanceConfig.watchTogetherEnabled ? " is-on" : ""
-                  }`}
-                  role="switch"
-                  aria-checked={screenGlanceConfig.watchTogetherEnabled}
-                  aria-label="一起看时主动回应"
-                  disabled={isScreenGlanceBusy || !screenGlanceState.supported}
-                  onClick={() =>
-                    void saveScreenGlanceConfig({
-                      ...screenGlanceConfig,
-                      watchTogetherEnabled:
-                        !screenGlanceConfig.watchTogetherEnabled,
-                    })
-                  }
-                >
-                  <span aria-hidden="true" />
-                </button>
-              </div>
-              {(screenGlanceState.capturedAt ||
-                screenGlanceState.nextCaptureAt) && (
-                <div className="screen-glance-times">
-                  {screenGlanceState.capturedAt && (
-                    <span>
-                      最近查看：{formatDateTime(screenGlanceState.capturedAt)}
-                    </span>
-                  )}
-                  {screenGlanceState.nextCaptureAt && (
-                    <span>
-                      下次随机窗口：
-                      {formatDateTime(screenGlanceState.nextCaptureAt)}
-                    </span>
-                  )}
-                  {screenGlanceState.lastReactionAt && (
-                    <span>
-                      最近共看回应：
-                      {formatDateTime(screenGlanceState.lastReactionAt)}
-                    </span>
-                  )}
-                </div>
-              )}
-              <p
-                className={`notification-feature-feedback ${screenGlanceFeedback.status}`}
-                role="status"
-                aria-live="polite"
-              >
-                {screenGlanceFeedback.message}
-              </p>
-              <div className="device-activity-actions">
-                {!screenGlanceState.active ? (
-                  <>
-                    <button
-                      type="button"
-                      disabled={
-                        isScreenGlanceBusy || !screenGlanceState.supported
-                      }
-                      onClick={() =>
-                        void startScreenGlanceSession({ watchTogether: true })
-                      }
-                    >
-                      邀请一起看
-                    </button>
-                    <button
-                      type="button"
-                      disabled={
-                        isScreenGlanceBusy || !screenGlanceState.supported
-                      }
-                      onClick={() => void startScreenGlanceSession()}
-                    >
-                      只共享屏幕
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      disabled={isScreenGlanceBusy}
-                      onClick={() =>
-                        void setScreenGlancePaused(!screenGlanceState.paused)
-                      }
-                    >
-                      {screenGlanceState.paused ? "继续捕获" : "暂停捕获"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isScreenGlanceBusy}
-                      onClick={() => void stopScreenGlanceSession()}
-                    >
-                      结束并清除
-                    </button>
-                  </>
-                )}
-              </div>
-              <small>
-                共看没有倒计时，会持续到你手动暂停或结束；锁屏会暂停采样，结束系统共享后，本机临时画面会立即清除。
-              </small>
-            </div>
               </>
             )}
-          </div>
-          )}
 
           {settingsCategory === "persona" && settingsSaveReceipt && (
             <div className="settings-save-receipt" role="status">
@@ -7958,7 +7970,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     <div
       className={`app-shell${
         chatSkinPreferences.reduceMotion ? " reduce-chat-motion" : ""
-      }`}
+      }${isSettingsOpen ? " is-settings-open" : ""}`}
       data-chat-skin={chatSkinPreferences.skin}
       data-ornament-activity={chatSkinPreferences.ornamentActivity}
     >

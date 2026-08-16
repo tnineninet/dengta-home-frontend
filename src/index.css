@@ -5524,6 +5524,35 @@ button:disabled {
   animation: dim-in 0.22s ease both;
 }
 
+/* 性能优化:设置面板打开时隐藏主界面绘制,避免底层动画/玻璃与设置层同时合成
+   (修复安卓 WebView 图标丢失、图层闪烁、大面积掉图) */
+.app-shell.is-settings-open > :not(.settings-sheet-backdrop) {
+  visibility: hidden;
+}
+
+.app-shell.is-settings-open .settings-sheet-backdrop {
+  visibility: visible;
+}
+
+/* 移动端:降低设置面板的昂贵模糊,减少 GPU 合成压力 */
+@media (max-width: 820px) {
+  .settings-sheet {
+    backdrop-filter: saturate(140%) blur(10px) !important;
+    -webkit-backdrop-filter: saturate(140%) blur(10px) !important;
+  }
+  .settings-sheet-backdrop {
+    backdrop-filter: blur(4px) !important;
+    -webkit-backdrop-filter: blur(4px) !important;
+  }
+  .settings-sheet .settings-card,
+  .settings-sheet .notification-feature-panel,
+  .settings-sheet .settings-page,
+  .settings-sheet .prompt-layer {
+    contain: content;
+  }
+}
+
+
 .dialog-card {
   width: min(420px, 100%);
   padding: 23px;
