@@ -70,21 +70,24 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
     return () => { cancelled = true; };
   }, []);
 
-  const drawQr = useCallback(async (content) => {
-    setQrContent(content);
+  // 弹窗挂载后再绘制:修复第一次点击时画布还没渲染导致二维码空白的问题。
+  useEffect(() => {
+    if (!qrOpen || !qrContent) return;
     const canvas = canvasRef.current;
-    if (!canvas || !content) return;
-    try {
-      const QRCode = (await import("qrcode")).default;
-      await QRCode.toCanvas(canvas, content, {
+    if (!canvas) return;
+    let cancelled = false;
+    import("qrcode")
+      .then(({ default: QRCode }) => QRCode.toCanvas(canvas, qrContent, {
         width: 220,
         margin: 1,
         errorCorrectionLevel: "M",
+      }))
+      .catch((caught) => {
+        if (cancelled) return;
+        setError("二维码渲染失败，请点击“重新生成”再试。" + (caught?.message ? `（${caught.message}）` : ""));
       });
-    } catch (caught) {
-      setError("二维码渲染失败，请点击“重新生成”再试。" + (caught?.message ? `（${caught.message}）` : ""));
-    }
-  }, []);
+    return () => { cancelled = true; };
+  }, [qrOpen, qrContent]);
 
   const startLogin = useCallback(async () => {
     autoRefreshCountRef.current = 0;
@@ -103,7 +106,7 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
           : "⚠️ 未上报设备信息(网页版无设备,或 App 版本过旧)"
       );
       setLastPollLine("正在等待服务器响应…");
-      await drawQr(session.qr_content);
+      setQrContent(session.qr_content);
       stopPolling();
       pollTimerRef.current = window.setInterval(() => {
         void (async () => {
@@ -175,7 +178,7 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
     } finally {
       setBusy(false);
     }
-  }, [drawQr, refreshStatus, stopPolling]);
+  }, [refreshStatus, stopPolling]);
 
   const cancelLogin = useCallback(() => {
     stopPolling();

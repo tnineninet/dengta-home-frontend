@@ -43,21 +43,23 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
 
   useEffect(() => () => stopPolling(), [stopPolling]);
 
-  const drawQr = useCallback(async (content) => {
-    setQrContent(content);
+  // 弹窗挂载后再绘制:修复第一次点击时画布还没渲染导致二维码空白的问题。
+  useEffect(() => {
+    if (!qrOpen || !qrContent) return;
     const canvas = canvasRef.current;
-    if (!canvas || !content) return;
-    try {
-      const QRCode = (await import("qrcode")).default;
-      await QRCode.toCanvas(canvas, content, {
+    if (!canvas) return;
+    let cancelled = false;
+    import("qrcode")
+      .then(({ default: QRCode }) => QRCode.toCanvas(canvas, qrContent, {
         width: 220,
         margin: 1,
         errorCorrectionLevel: "M",
+      }))
+      .catch(() => {
+        if (!cancelled) setError("二维码渲染失败，请点击“重新生成”再试。");
       });
-    } catch {
-      setError("二维码渲染失败，请点击“重新生成”再试。");
-    }
-  }, []);
+    return () => { cancelled = true; };
+  }, [qrOpen, qrContent]);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,7 +84,7 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
       if (!session?.key || !session.qr_content) throw new Error("没有拿到登录二维码。");
       setQrStatus("waiting");
       setQrOpen(true);
-      await drawQr(session.qr_content);
+      setQrContent(session.qr_content);
       stopPolling();
       const key = session.key;
       pollTimerRef.current = window.setInterval(() => {
@@ -136,7 +138,7 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
     } finally {
       setBusy(false);
     }
-  }, [drawQr, stopPolling]);
+  }, [stopPolling]);
 
   const cancelLogin = useCallback(() => {
     stopPolling();
