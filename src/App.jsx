@@ -4870,7 +4870,28 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     visible: false,
     items: [],
   });
-  const [onboarding, setOnboarding] = useState({ open: false, step: 0 });
+  const [onboarding, setOnboarding] = useState(() => {
+    // 进度持久化:跳去设置/聊天后再回来,引导从上次的步骤继续。
+    try {
+      const saved = JSON.parse(
+        window.localStorage.getItem("dengta_onboarding_v1") || "{}",
+      );
+      return { open: false, step: Number(saved.step) || 0 };
+    } catch {
+      return { open: false, step: 0 };
+    }
+  });
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "dengta_onboarding_v1",
+        JSON.stringify({ step: onboarding.step }),
+      );
+    } catch {
+      // 本地存储不可用时只影响续接。
+    }
+  }, [onboarding.step]);
   const unlockedCodesRef = useRef(null);
 
   function detectAchievementUnlocks(achievements) {
@@ -4979,7 +5000,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }, [achievementPopup.visible]);
 
   useEffect(() => {
-    if (!onboarding.open) return undefined;
+    if (!onboarding.open && onboarding.step !== 2) return undefined;
     let cancelled = false;
     const tick = async () => {
       try {
@@ -4990,6 +5011,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         const items = Array.isArray(data?.achievements) ? data.achievements : [];
         const firstChat = items.find((item) => item.code === "first_chat");
         if (firstChat?.unlocked && onboarding.step === 2) {
+          // 第一句话发出后自动进入第 3 步(领取毕业成就),即使引导窗口此刻关着。
+          setOnboarding((previous) => ({ ...previous, step: 3 }));
+        }
+        const graduated = items.find((item) => item.code === "onboarding_1");
+        if (graduated?.unlocked && onboarding.step < 3) {
           setOnboarding((previous) => ({ ...previous, step: 3 }));
         }
       } catch {
@@ -5005,7 +5031,34 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       clearInterval(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onboarding.open]);
+  }, [onboarding.open, onboarding.step]);
+
+  const onboardingAutoShownRef = useRef(false);
+  useEffect(() => {
+    if (onboardingAutoShownRef.current || funLabsState.achievements.length === 0) {
+      return;
+    }
+    onboardingAutoShownRef.current = true;
+    const firstChat = funLabsState.achievements.find(
+      (item) => item.code === "first_chat",
+    );
+    const graduated = funLabsState.achievements.find(
+      (item) => item.code === "onboarding_1",
+    );
+    try {
+      if (
+        !firstChat?.unlocked &&
+        !graduated?.unlocked &&
+        !window.localStorage.getItem("dengta_onboarding_auto_shown")
+      ) {
+        window.localStorage.setItem("dengta_onboarding_auto_shown", "1");
+        setOnboarding({ open: true, step: 0 });
+      }
+    } catch {
+      // 本地存储不可用时仅跳过自动弹出。
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [funLabsState.achievements]);
 
   async function removeSpecialDate(id) {
     try {
@@ -6469,6 +6522,35 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               : "加载中…"}
           </p>
         </header>
+        {(() => {
+          const firstChatDone = funLabsState.achievements.find(
+            (item) => item.code === "first_chat",
+          )?.unlocked;
+          const graduated = funLabsState.achievements.find(
+            (item) => item.code === "onboarding_1",
+          )?.unlocked;
+          if (graduated) return null;
+          const targetStep = firstChatDone ? 3 : onboarding.step;
+          const label = firstChatDone
+            ? "最后一步 · 领取毕业成就"
+            : onboarding.step === 0
+              ? "新手引导 · 第 1/3 步"
+              : onboarding.step === 1
+                ? "新手引导 · 第 2/3 步（接入 AI 接口）"
+                : "新手引导 · 已发出第一句话，进入最后一步";
+          return (
+            <div className="onboarding-progress">
+              <span>{label}</span>
+              <button
+                type="button"
+                className="fun-onboarding-button"
+                onClick={() => setOnboarding({ open: true, step: targetStep })}
+              >
+                {firstChatDone ? "领取成就 🎉" : onboarding.step === 0 ? "开始引导" : "继续引导"}
+              </button>
+            </div>
+          );
+        })()}
         <div className="notification-feature-panel device-activity-panel">
           <div className="device-activity-heading">
             <div>
@@ -8267,16 +8349,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               ) : onboarding.step === 1 ? (
                 <>
                   <div className="onboarding-emoji" aria-hidden="true">🔑</div>
-                  <h3>第一步 · 接入你的 AI API</h3>
+                  <h3>第一步 · 接入 AI 接口</h3>
                   <p>
-                    打开右上角设置 → 「服务」分类 → 填入你的模型 API
-                    密钥。接入后灯塔才能回应你。
+                    点「去设置」，在「服务」分类里填入你的模型 API
+                    密钥（就是你平时用的那个 key）。填好后回到成就页，点「我已接入」继续。
                   </p>
                   <div className="onboarding-actions">
                     <button
                       type="button"
                       onClick={() => {
-                        setOnboarding({ open: false, step: 0 });
+                        setOnboarding((previous) => ({ ...previous, open: false }));
                         openSettingsPanel();
                         setSettingsCategory("services");
                       }}
@@ -8288,26 +8370,32 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                       className="is-secondary"
                       onClick={() => setOnboarding({ open: true, step: 2 })}
                     >
-                      我已接入
+                      我已接入，下一步
                     </button>
                   </div>
+                  <small className="onboarding-hint">
+                    进度会自动保存；从设置返回后，到「🏆 成就」页点「继续引导」即可。
+                  </small>
                 </>
               ) : onboarding.step === 2 ? (
                 <>
                   <div className="onboarding-emoji" aria-hidden="true">💌</div>
                   <h3>第二步 · 说第一句话</h3>
                   <p>
-                    去聊天页跟小灯打个招呼吧。发出第一句话，就能解锁「初次相遇」。
+                    点「去聊天」跟小灯打个招呼，发出第一句话就能解锁「初次相遇」。说完回到成就页，系统会自动进入最后一步。
                   </p>
                   <div className="onboarding-actions">
                     <button
                       type="button"
-                      onClick={() => setOnboarding({ open: false, step: 0 })}
+                      onClick={() => {
+                        setOnboarding((previous) => ({ ...previous, open: false }));
+                        changeView("chat");
+                      }}
                     >
                       去聊天
                     </button>
                     <small className="onboarding-hint">
-                      说完第一句话后回来，会自动进入下一步
+                      进度会自动保存；说完第一句话后，成就页会显示「领取成就」。
                     </small>
                   </div>
                 </>

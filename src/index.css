@@ -5331,6 +5331,24 @@ button:disabled {
   opacity: 0.45;
 }
 
+
+.onboarding-progress {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid rgba(226, 166, 80, 0.4);
+  border-radius: 12px;
+  background: rgba(255, 246, 229, 0.92);
+  font-size: 12.5px;
+  color: #a06a1f;
+}
+
+.onboarding-progress .fun-onboarding-button {
+  flex: 0 0 auto;
+}
+
 .fun-onboarding-button {
   margin-left: 8px;
   min-height: 24px;
@@ -5345,7 +5363,7 @@ button:disabled {
 
 .achievement-popup-backdrop {
   position: fixed;
-  z-index: 90;
+  z-index: 300; /* 高于设置面板,任何界面都能看到 */
   inset: 0;
   display: grid;
   place-items: center;
