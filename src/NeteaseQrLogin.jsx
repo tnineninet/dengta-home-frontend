@@ -242,7 +242,8 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
             <button type="button" onClick={cancelLogin}>取消</button>
           </div>
           <small className="netease-qr-hint">
-            扫不上码?也可以点下面的按钮,在手机浏览器里登录网易云(账号密码或扫码都行),成功后这里会自动完成绑定,无需回传任何内容。
+            推荐:用你手机上的网易云 App 扫上面的码,App 里点确认即完成(凭证自动回到灯塔)。
+            不想扫码的话,点下面按钮,在打开的网页里直接用账号密码或验证码登录——登录成功后本页会自动完成绑定,无需跳转任何 App。
           </small>
           {qrContent && (
             <a
@@ -251,7 +252,7 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
               target="_blank"
               rel="noopener noreferrer"
             >
-              🔗 跳转到手机浏览器登录
+              🔗 改用网页账号密码登录
             </a>
           )}
         </div>
