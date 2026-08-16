@@ -5240,6 +5240,106 @@ button:disabled {
   margin: 0;
 }
 
+
+.style-distill-panel {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px dashed rgba(226, 166, 80, 0.45);
+  border-radius: 14px;
+  background: rgba(255, 248, 235, 0.55);
+}
+
+.style-distill-panel input,
+.style-distill-panel textarea {
+  width: 100%;
+  min-height: 32px;
+  padding: 7px 10px;
+  border: 1px solid rgba(112, 89, 99, 0.2);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.85);
+  font: inherit;
+  font-size: 12px;
+}
+
+.distill-modal-backdrop {
+  z-index: 320;
+}
+
+.distill-modal-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(680px, 100%);
+  max-height: 88vh;
+  padding: 18px;
+  border-radius: 18px;
+  background: #fffdf8;
+  box-shadow: 0 24px 80px rgba(96, 62, 18, 0.35);
+  animation: achievement-card-in 0.3s ease both;
+}
+
+.distill-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 15px;
+  color: #7a4b16;
+}
+
+.distill-modal-header button {
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  color: #b0987d;
+  line-height: 1;
+  padding: 2px 6px;
+}
+
+.distill-modal-hint {
+  margin: 0;
+  font-size: 12px;
+  color: #a08d95;
+}
+
+.distill-modal-editor {
+  width: 100%;
+  min-height: 300px;
+  padding: 12px;
+  border: 1px solid rgba(112, 89, 99, 0.22);
+  border-radius: 12px;
+  background: #fff;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.7;
+  resize: vertical;
+}
+
+.distill-modal-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.distill-modal-actions button {
+  min-height: 36px;
+  padding: 8px 20px;
+  border: none;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f4b74e, #e9933a);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  box-shadow: 0 8px 20px rgba(233, 147, 58, 0.4);
+}
+
+.distill-modal-actions button.is-secondary {
+  background: rgba(255, 255, 255, 0.95);
+  color: #a06a1f;
+  border: 1px solid rgba(226, 166, 80, 0.6);
+  box-shadow: none;
+}
+
 .fun-achievements-wrap { margin: 8px 0; }
 
 .fun-achievements-grid {

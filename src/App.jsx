@@ -4866,6 +4866,62 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     emoji: "",
     description: "",
   });
+  const [distillState, setDistillState] = useState({
+    busy: false,
+    source: "",
+    name: "",
+    error: "",
+    result: null,
+    edited: "",
+    modalOpen: false,
+  });
+
+  async function runDistill() {
+    const source = distillState.source.trim();
+    if (source.length < 40 || distillState.busy) return;
+    setDistillState((previous) => ({
+      ...previous,
+      busy: true,
+      error: "",
+      result: null,
+      modalOpen: false,
+    }));
+    try {
+      const data = await apiRequest("/api/v2/style-distill", {
+        method: "POST",
+        timeoutMs: 180_000,
+        body: JSON.stringify({
+          source_text: source,
+          name: distillState.name.trim(),
+          kind: "聊天记录",
+        }),
+      });
+      const distilled = data?.result?.distilled || "";
+      if (!distilled) throw new Error("提纯结果为空，请换一段更清晰的聊天记录。");
+      setDistillState((previous) => ({
+        ...previous,
+        busy: false,
+        result: data.result,
+        edited: distilled,
+        modalOpen: true,
+      }));
+    } catch (error) {
+      setDistillState((previous) => ({
+        ...previous,
+        busy: false,
+        error: error?.message || "提纯失败，请稍后再试。",
+      }));
+    }
+  }
+
+  function applyDistilledToPrompt() {
+    const text = distillState.edited.trim();
+    if (!text) return;
+    updateUnifiedPrompt(text);
+    setDistillState((previous) => ({ ...previous, modalOpen: false }));
+    setNotice("已填入「个性化指令」，记得点保存。");
+  }
+
   const [achievementPopup, setAchievementPopup] = useState({
     visible: false,
     items: [],
@@ -7293,6 +7349,57 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 />
               </label>
 
+              <div className="prompt-layer style-distill-panel">
+                <span className="prompt-layer-title">
+                  <span className="prompt-priority-number">蒸</span>
+                  <span>
+                    <strong>风格提纯</strong>
+                    <small>
+                      粘贴目标 AI 的聊天记录，蒸馏出可直接使用的提示词文档
+                    </small>
+                  </span>
+                </span>
+                <p>
+                  把你想模仿的那个 AI 的聊天记录(微信/其他平台/文档)粘进来，提纯后会在新窗口展示一份「个性化指令」文档，你可以修改、复制，再一键填到上方。
+                </p>
+                <input
+                  value={distillState.name}
+                  onChange={(event) =>
+                    setDistillState((previous) => ({
+                      ...previous,
+                      name: event.target.value,
+                    }))
+                  }
+                  placeholder="目标角色名字(可选)，如：小灯"
+                  aria-label="目标角色名字"
+                />
+                <textarea
+                  value={distillState.source}
+                  onChange={(event) =>
+                    setDistillState((previous) => ({
+                      ...previous,
+                      source: event.target.value,
+                    }))
+                  }
+                  placeholder="粘贴聊天记录……（至少 40 字，最多 6 万字）"
+                  rows="6"
+                />
+                <div className="device-activity-actions">
+                  <button
+                    type="button"
+                    disabled={distillState.busy || distillState.source.trim().length < 40}
+                    onClick={() => void runDistill()}
+                  >
+                    {distillState.busy ? "正在提纯…" : "开始提纯"}
+                  </button>
+                </div>
+                {distillState.error ? (
+                  <p className="notification-feature-feedback error" role="alert">
+                    {distillState.error}
+                  </p>
+                ) : null}
+              </div>
+
               <section className="prompt-memory-summary" aria-label="稳定长期记忆摘要">
                 <div>
                   <span className="prompt-memory-icon" aria-hidden="true">∞</span>
@@ -8419,6 +8526,58 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               >
                 ×
               </button>
+            </div>
+          </div>
+        ) : null}
+
+        {distillState.modalOpen ? (
+          <div
+            className="achievement-popup-backdrop distill-modal-backdrop"
+            role="dialog"
+            aria-modal="true"
+            onClick={() => setDistillState((previous) => ({ ...previous, modalOpen: false }))}
+          >
+            <div className="distill-modal-card" onClick={(event) => event.stopPropagation()}>
+              <header className="distill-modal-header">
+                <strong>🎯 提纯结果 · {distillState.result?.name || "未命名"}</strong>
+                <button
+                  type="button"
+                  aria-label="关闭"
+                  onClick={() => setDistillState((previous) => ({ ...previous, modalOpen: false }))}
+                >
+                  ×
+                </button>
+              </header>
+              <p className="distill-modal-hint">
+                这是蒸馏出的「个性化指令」文档，可直接修改。满意后点「应用到个性化指令」一键填入设置。
+              </p>
+              <textarea
+                className="distill-modal-editor"
+                value={distillState.edited}
+                onChange={(event) =>
+                  setDistillState((previous) => ({
+                    ...previous,
+                    edited: event.target.value,
+                  }))
+                }
+                rows={18}
+                aria-label="提纯结果编辑"
+              />
+              <div className="distill-modal-actions">
+                <button
+                  type="button"
+                  className="is-secondary"
+                  onClick={() => {
+                    void navigator.clipboard?.writeText(distillState.edited).catch(() => {});
+                    setNotice("已复制到剪贴板。");
+                  }}
+                >
+                  复制全文
+                </button>
+                <button type="button" onClick={applyDistilledToPrompt}>
+                  应用到个性化指令
+                </button>
+              </div>
             </div>
           </div>
         ) : null}
