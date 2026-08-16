@@ -4736,6 +4736,33 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     achievements: [],
     shots: { today: null, recent: [] },
   });
+  const [customAchievement, setCustomAchievement] = useState({
+    title: "",
+    emoji: "",
+    description: "",
+  });
+  const [achievementPopup, setAchievementPopup] = useState({
+    visible: false,
+    items: [],
+  });
+  const [onboarding, setOnboarding] = useState({ open: false, step: 0 });
+  const unlockedCodesRef = useRef(null);
+
+  function detectAchievementUnlocks(achievements) {
+    const unlocked = achievements
+      .filter((item) => item.unlocked)
+      .map((item) => item.code || item.id);
+    const previous = unlockedCodesRef.current;
+    unlockedCodesRef.current = unlocked;
+    if (!previous) return;
+    const fresh = achievements.filter(
+      (item) =>
+        item.unlocked && !previous.includes(item.code || item.id)
+    );
+    if (fresh.length > 0) {
+      setAchievementPopup({ visible: true, items: fresh.slice(0, 3) });
+    }
+  }
 
   async function refreshFunLabs() {
     setFunLabsState((previous) => ({ ...previous, status: "busy" }));
@@ -4745,18 +4772,115 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         apiRequest("/api/v2/fun-labs/achievements", { timeoutMs: 12_000 }),
         apiRequest("/api/v2/fun-labs/daily-shots", { timeoutMs: 12_000 }),
       ]);
+      const achievements = Array.isArray(achievementsData?.achievements)
+        ? achievementsData.achievements
+        : [];
       setFunLabsState({
         status: "success",
         dates: Array.isArray(datesData?.dates) ? datesData.dates : [],
-        achievements: Array.isArray(achievementsData?.achievements)
-          ? achievementsData.achievements
-          : [],
+        achievements,
         shots: shotsData || { today: null, recent: [] },
       });
+      detectAchievementUnlocks(achievements);
     } catch {
       setFunLabsState((previous) => ({ ...previous, status: "error" }));
     }
   }
+
+  async function addCustomAchievement() {
+    if (!customAchievement.title.trim()) return;
+    try {
+      await apiRequest("/api/v2/fun-labs/achievements/custom", {
+        method: "POST",
+        timeoutMs: 12_000,
+        body: JSON.stringify({
+          title: customAchievement.title.trim(),
+          emoji: customAchievement.emoji.trim(),
+          description: customAchievement.description.trim(),
+        }),
+      });
+      setCustomAchievement({ title: "", emoji: "", description: "" });
+      await refreshFunLabs();
+    } catch {
+      // 添加失败不阻塞。
+    }
+  }
+
+  async function unlockCustomAchievement(code) {
+    try {
+      await apiRequest(
+        `/api/v2/fun-labs/achievements/${encodeURIComponent(code)}/unlock`,
+        { method: "POST", timeoutMs: 12_000, body: JSON.stringify({}) }
+      );
+      await refreshFunLabs();
+    } catch {
+      // 解锁失败不阻塞。
+    }
+  }
+
+  async function removeCustomAchievement(id) {
+    try {
+      await apiRequest(`/api/v2/fun-labs/achievements/custom/${id}`, {
+        method: "DELETE",
+        timeoutMs: 12_000,
+      });
+      await refreshFunLabs();
+    } catch {
+      // 删除失败不阻塞。
+    }
+  }
+
+  async function completeOnboarding() {
+    try {
+      await apiRequest("/api/v2/fun-labs/onboarding", {
+        method: "POST",
+        timeoutMs: 12_000,
+        body: JSON.stringify({}),
+      });
+      await refreshFunLabs();
+      setOnboarding({ open: false, step: 0 });
+    } catch {
+      // 完成失败不阻塞。
+    }
+  }
+
+  useEffect(() => {
+    if (!achievementPopup.visible) return undefined;
+    const timer = setTimeout(
+      () => setAchievementPopup({ visible: false, items: [] }),
+      5200
+    );
+    return () => clearTimeout(timer);
+  }, [achievementPopup.visible]);
+
+  useEffect(() => {
+    if (!onboarding.open) return undefined;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const data = await apiRequest("/api/v2/fun-labs/achievements", {
+          timeoutMs: 12_000,
+        });
+        if (cancelled) return;
+        const items = Array.isArray(data?.achievements) ? data.achievements : [];
+        const firstChat = items.find((item) => item.code === "first_chat");
+        if (firstChat?.unlocked && onboarding.step === 2) {
+          setOnboarding((previous) => ({ ...previous, step: 3 }));
+        }
+      } catch {
+        // 轮询失败忽略。
+      }
+    };
+    const timer = setInterval(() => {
+      void tick();
+    }, 4000);
+    void tick();
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onboarding.open]);
 
   async function removeSpecialDate(id) {
     try {
@@ -7142,24 +7266,104 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 </p>
               ) : null}
               {funLabsState.achievements.length > 0 ? (
-                <p className="fun-labs-line">
-                  成就：
-                  {
-                    funLabsState.achievements.filter((item) => item.unlocked)
-                      .length
-                  }
-                  /{funLabsState.achievements.length} 已解锁
-                  {funLabsState.achievements
-                    .filter((item) => item.unlocked)
-                    .slice(0, 4)
-                    .map((item) => item.title)
-                    .join("、") && " · "}
-                  {funLabsState.achievements
-                    .filter((item) => item.unlocked)
-                    .slice(0, 4)
-                    .map((item) => item.title)
-                    .join("、")}
-                </p>
+                <div className="fun-achievements-wrap">
+                  <p className="fun-labs-line">
+                    <strong>
+                      成就：
+                      {
+                        funLabsState.achievements.filter((item) => item.unlocked)
+                          .length
+                      }
+                      /{funLabsState.achievements.length} 已解锁
+                    </strong>
+                    <button
+                      type="button"
+                      className="fun-onboarding-button"
+                      onClick={() => setOnboarding({ open: true, step: 0 })}
+                    >
+                      🎓 新手引导
+                    </button>
+                  </p>
+                  <div className="fun-achievements-grid">
+                    {funLabsState.achievements.map((item) => (
+                      <div
+                        key={item.code || item.id}
+                        className={`fun-achievement-card${
+                          item.unlocked ? " is-unlocked" : ""
+                        }`}
+                      >
+                        <span className="fun-achievement-emoji" aria-hidden="true">
+                          {item.unlocked ? item.emoji : "🔒"}
+                        </span>
+                        <strong>{item.title}</strong>
+                        <small>{item.description}</small>
+                        {item.custom && !item.unlocked ? (
+                          <div className="fun-achievement-card-actions">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void unlockCustomAchievement(item.code)
+                              }
+                            >
+                              完成
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void removeCustomAchievement(item.id)
+                              }
+                            >
+                              删除
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="fun-achievement-form">
+                    <input
+                      value={customAchievement.emoji}
+                      onChange={(event) =>
+                        setCustomAchievement((previous) => ({
+                          ...previous,
+                          emoji: event.target.value,
+                        }))
+                      }
+                      placeholder="🎯"
+                      aria-label="成就图标"
+                      className="fun-achievement-emoji-input"
+                    />
+                    <input
+                      value={customAchievement.title}
+                      onChange={(event) =>
+                        setCustomAchievement((previous) => ({
+                          ...previous,
+                          title: event.target.value,
+                        }))
+                      }
+                      placeholder="自定义成就名，如：一起看 100 部电影"
+                      aria-label="成就名称"
+                    />
+                    <input
+                      value={customAchievement.description}
+                      onChange={(event) =>
+                        setCustomAchievement((previous) => ({
+                          ...previous,
+                          description: event.target.value,
+                        }))
+                      }
+                      placeholder="完成条件（可选）"
+                      aria-label="完成条件"
+                    />
+                    <button
+                      type="button"
+                      disabled={!customAchievement.title.trim()}
+                      onClick={() => void addCustomAchievement()}
+                    >
+                      ＋ 添加自定义成就
+                    </button>
+                  </div>
+                </div>
               ) : null}
               {funLabsState.dates.length > 0 ? (
                 <div className="fun-labs-list">
@@ -7760,6 +7964,154 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             </button>
           </div>
         </header>
+
+        {achievementPopup.visible ? (
+          <div
+            className="achievement-popup-backdrop"
+            role="dialog"
+            aria-modal="true"
+            onClick={() => setAchievementPopup({ visible: false, items: [] })}
+          >
+            <div
+              className="achievement-popup-card"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="achievement-popup-confetti" aria-hidden="true">
+                {Array.from({ length: 16 }).map((_, index) => (
+                  <span key={index} />
+                ))}
+              </div>
+              <div className="achievement-popup-emoji" aria-hidden="true">
+                {achievementPopup.items[0]?.emoji || "🏆"}
+              </div>
+              <h3>成就解锁！</h3>
+              {achievementPopup.items.map((item) => (
+                <div
+                  key={item.code || item.id}
+                  className="achievement-popup-item"
+                >
+                  <strong>
+                    {item.emoji} {item.title}
+                  </strong>
+                  <small>{item.description}</small>
+                </div>
+              ))}
+              <button
+                type="button"
+                className="achievement-popup-close"
+                onClick={() => setAchievementPopup({ visible: false, items: [] })}
+              >
+                收下
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {onboarding.open ? (
+          <div
+            className="achievement-popup-backdrop"
+            role="dialog"
+            aria-modal="true"
+            onClick={() => setOnboarding({ open: false, step: 0 })}
+          >
+            <div
+              className="onboarding-card"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="onboarding-steps" aria-hidden="true">
+                {[0, 1, 2, 3].map((step) => (
+                  <span
+                    key={step}
+                    className={`onboarding-dot${
+                      onboarding.step >= step ? " is-done" : ""
+                    }${onboarding.step === step ? " is-current" : ""}`}
+                  />
+                ))}
+              </div>
+              {onboarding.step === 0 ? (
+                <>
+                  <div className="onboarding-emoji" aria-hidden="true">🗼</div>
+                  <h3>欢迎来到灯塔</h3>
+                  <p>
+                    三步点亮你的灯塔，领取「🎓 新手毕业」成就。跟着引导走，每一步都有成就等你。
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setOnboarding({ open: true, step: 1 })}
+                  >
+                    开始引导
+                  </button>
+                </>
+              ) : onboarding.step === 1 ? (
+                <>
+                  <div className="onboarding-emoji" aria-hidden="true">🔑</div>
+                  <h3>第一步 · 接入你的 AI API</h3>
+                  <p>
+                    打开右上角设置 → 「服务」分类 → 填入你的模型 API
+                    密钥。接入后灯塔才能回应你。
+                  </p>
+                  <div className="onboarding-actions">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setOnboarding({ open: false, step: 0 });
+                        openSettingsPanel();
+                        setSettingsCategory("services");
+                      }}
+                    >
+                      去设置
+                    </button>
+                    <button
+                      type="button"
+                      className="is-secondary"
+                      onClick={() => setOnboarding({ open: true, step: 2 })}
+                    >
+                      我已接入
+                    </button>
+                  </div>
+                </>
+              ) : onboarding.step === 2 ? (
+                <>
+                  <div className="onboarding-emoji" aria-hidden="true">💌</div>
+                  <h3>第二步 · 说第一句话</h3>
+                  <p>
+                    去聊天页跟小灯打个招呼吧。发出第一句话，就能解锁「初次相遇」。
+                  </p>
+                  <div className="onboarding-actions">
+                    <button
+                      type="button"
+                      onClick={() => setOnboarding({ open: false, step: 0 })}
+                    >
+                      去聊天
+                    </button>
+                    <small className="onboarding-hint">
+                      说完第一句话后回来，会自动进入下一步
+                    </small>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="onboarding-emoji" aria-hidden="true">🎓</div>
+                  <h3>毕业啦！</h3>
+                  <p>
+                    三步全部完成。收下你的「新手毕业」成就，去探索更多玩法吧。
+                  </p>
+                  <button type="button" onClick={() => void completeOnboarding()}>
+                    领取成就 🎉
+                  </button>
+                </>
+              )}
+              <button
+                type="button"
+                className="onboarding-close"
+                aria-label="关闭引导"
+                onClick={() => setOnboarding({ open: false, step: 0 })}
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         <div
           className={`chat-presence-stack${
