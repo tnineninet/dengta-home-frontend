@@ -139,6 +139,33 @@ export async function controlNowPlaying(action, {
   }
 }
 
+
+export async function readNotificationAccessState({
+  capacitor = Capacitor,
+  plugin = DeviceActivity,
+} = {}) {
+  if (!deviceActivityPluginAvailable(capacitor)) return { granted: false };
+  try {
+    const result = await plugin.getNotificationAccessState();
+    return { granted: result?.granted === true };
+  } catch {
+    return { granted: false };
+  }
+}
+
+export async function openNotificationAccessSettings({
+  capacitor = Capacitor,
+  plugin = DeviceActivity,
+} = {}) {
+  if (!deviceActivityPluginAvailable(capacitor)) return false;
+  try {
+    await plugin.openNotificationAccessSettings();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function mergeCurrentAppContext(environmentContext, currentApp) {
   const source =
     environmentContext &&

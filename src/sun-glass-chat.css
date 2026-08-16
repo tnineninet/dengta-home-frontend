@@ -3029,7 +3029,7 @@
   }
 }
 
-.sun-glass-capsule-decoration {
+.sun-glass-liquid-capsule-toggle.has-now-playing .sun-glass-capsule-decoration {
   animation: sun-glass-capsule-old-leave 300ms ease both;
 }
 

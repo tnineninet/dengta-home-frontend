@@ -297,37 +297,164 @@ public final class DeviceActivityPlugin extends Plugin {
      */
     @PluginMethod
     public void getNowPlaying(PluginCall call) {
+        // 1) 优先读取通知监听缓存（Android 13+ 媒体会话可见性受限，通知是最可靠的来源）
+        JSObject fromNotification = buildNowPlayingFromNotification();
+        if (fromNotification != null) {
+            call.resolve(fromNotification);
+            return;
+        }
+        // 2) 回退：尝试 MediaSessionManager（部分旧系统或同 App 会话可用）
         try {
             MediaSessionManager manager = (MediaSessionManager) getContext()
                 .getSystemService(Context.MEDIA_SESSION_SERVICE);
-            if (manager == null) {
-                call.resolve(buildNowPlaying(null));
-                return;
-            }
-            java.util.List<MediaController> controllers = manager.getActiveSessions(null);
-            MediaController best = null;
-            long bestActive = -1L;
-            for (MediaController controller : controllers) {
-                if (controller == null) continue;
-                PlaybackState state = controller.getPlaybackState();
-                if (state == null) continue;
-                long lastActive = state.getLastPositionUpdateTime();
-                boolean playing = state.getState() == PlaybackState.STATE_PLAYING;
-                boolean buffering = state.getState() == PlaybackState.STATE_BUFFERING;
-                // 优先正在播放的；都没有播放状态时取最近活跃的
-                if (playing || buffering) {
-                    best = controller;
-                    break;
+            if (manager != null) {
+                java.util.List<MediaController> controllers = manager.getActiveSessions(null);
+                MediaController best = null;
+                long bestActive = -1L;
+                if (controllers != null) {
+                    for (MediaController controller : controllers) {
+                        if (controller == null) continue;
+                        PlaybackState state = controller.getPlaybackState();
+                        if (state == null) continue;
+                        long lastActive = state.getLastPositionUpdateTime();
+                        boolean playing = state.getState() == PlaybackState.STATE_PLAYING;
+                        boolean buffering = state.getState() == PlaybackState.STATE_BUFFERING;
+                        if (playing || buffering) {
+                            best = controller;
+                            break;
+                        }
+                        if (lastActive > bestActive) {
+                            bestActive = lastActive;
+                            best = controller;
+                        }
+                    }
                 }
-                if (lastActive > bestActive) {
-                    bestActive = lastActive;
-                    best = controller;
+                cachedNowPlayingController = best;
+                if (best != null) {
+                    call.resolve(buildNowPlaying(best));
+                    return;
                 }
             }
-            cachedNowPlayingController = best;
-            call.resolve(buildNowPlaying(best));
+        } catch (Exception ignored) {
+            // 回退失败则返回空
+        }
+        call.resolve(buildNowPlaying(null));
+    }
+
+    /** 从通知监听缓存构建 nowPlaying（标题/歌手/封面/播放状态）。 */
+    private JSObject buildNowPlayingFromNotification() {
+        try {
+            android.service.notification.StatusBarNotification sbn =
+                NowPlayingListenerService.getCachedMediaNotification();
+            if (sbn == null) return null;
+            Notification notification = sbn.getNotification();
+            if (notification == null) return null;
+            Bundle extras = notification.extras;
+            if (extras == null) return null;
+            CharSequence titleCs = extras.getCharSequence(Notification.EXTRA_TITLE);
+            CharSequence textCs = extras.getCharSequence(Notification.EXTRA_TEXT);
+            String title = titleCs == null ? "" : String.valueOf(titleCs).trim();
+            String text = textCs == null ? "" : String.valueOf(textCs).trim();
+            if (title.isEmpty() && text.isEmpty()) return null;
+
+            JSObject song = new JSObject();
+            song.put("title", truncate(title, 120));
+            song.put("artist", truncate(text, 120));
+            song.put("album", "");
+            song.put("packageName", truncate(sbn.getPackageName() == null ? "" : sbn.getPackageName(), 80));
+            // 播放状态：网易云等媒体通知通常带媒体会话；无法直接判断时默认 true（有媒体通知=在播）
+            song.put("isPlaying", true);
+            song.put("duration", 0L);
+            song.put("position", 0L);
+
+            String cover = "";
+            try {
+                Icon largeIcon = notification.getLargeIcon();
+                if (largeIcon == null) {
+                    // 尝试从 extras 拿封面位图
+                    Bitmap artwork = extras.getParcelable(Notification.EXTRA_PICTURE);
+                    if (artwork == null) {
+                        artwork = extras.getParcelable(Notification.EXTRA_LARGE_ICON);
+                    }
+                    if (artwork != null) {
+                        cover = bitmapToDataUrl(artwork);
+                    }
+                } else {
+                    cover = iconToDataUrl(largeIcon);
+                }
+            } catch (Exception ignored) {
+                cover = "";
+            }
+            song.put("cover", cover);
+            JSObject result = new JSObject();
+            result.put("nowPlaying", song);
+            return result;
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private String bitmapToDataUrl(Bitmap bitmap) {
+        try {
+            if (bitmap == null) return "";
+            int width = bitmap.getWidth();
+            int height = bitmap.getHeight();
+            if (width > 96 || height > 96) {
+                float scale = Math.min(96f / width, 96f / height);
+                int newWidth = Math.max(1, Math.round(width * scale));
+                int newHeight = Math.max(1, Math.round(height * scale));
+                Bitmap scaled = Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true);
+                if (scaled != bitmap) bitmap.recycle();
+                bitmap = scaled;
+            }
+            java.io.ByteArrayOutputStream stream = new java.io.ByteArrayOutputStream();
+            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream);
+            String data = "data:image/png;base64," +
+                android.util.Base64.encodeToString(stream.toByteArray(), android.util.Base64.NO_WRAP);
+            stream.close();
+            bitmap.recycle();
+            return data;
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    private String iconToDataUrl(Icon icon) {
+        try {
+            if (icon == null) return "";
+            Bitmap bitmap = icon.getBitmap();
+            return bitmapToDataUrl(bitmap);
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    /** 通知使用权是否已授权。 */
+    @PluginMethod
+    public void getNotificationAccessState(PluginCall call) {
+        JSObject state = new JSObject();
+        try {
+            String flat = Settings.Secure.getString(getContext().getContentResolver(),
+                "enabled_notification_listeners");
+            String ownComponent = getContext().getPackageName() + "/" +
+                NowPlayingListenerService.class.getName();
+            state.put("granted", flat != null && flat.contains(ownComponent));
+        } catch (Exception ignored) {
+            state.put("granted", false);
+        }
+        call.resolve(state);
+    }
+
+    /** 打开系统"通知使用权"设置页。 */
+    @PluginMethod
+    public void openNotificationAccessSettings(PluginCall call) {
+        try {
+            Intent intent = new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            call.resolve();
         } catch (Exception error) {
-            call.resolve(buildNowPlaying(null));
+            call.reject("无法打开通知使用权设置。");
         }
     }
 
@@ -348,7 +475,12 @@ public final class DeviceActivityPlugin extends Plugin {
         song.put("album", truncate(album == null ? "" : album, 120));
         song.put("packageName", truncate(controller.getPackageName() == null ? "" : controller.getPackageName(), 80));
         song.put("isPlaying", state != null && state.getState() == PlaybackState.STATE_PLAYING);
-        song.put("duration", state == null ? 0L : Math.max(0L, state.getDuration()));
+        // PlaybackState 没有 getDuration；时长从元数据取（毫秒）。
+        long durationMs = 0L;
+        if (metadata != null) {
+            durationMs = Math.max(0L, metadata.getLong(MediaMetadata.METADATA_KEY_DURATION));
+        }
+        song.put("duration", durationMs);
         song.put("position", state == null ? 0L : Math.max(0L, state.getPosition()));
         // 封面缩略图（base64 PNG，控制在 ~96px 内）
         String cover = "";

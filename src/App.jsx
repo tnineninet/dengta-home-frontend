@@ -159,8 +159,10 @@ import {
   normalizeDeviceActivityState,
   normalizeDeviceActivitySummary,
   controlNowPlaying,
+  openNotificationAccessSettings,
   readCurrentApp,
   readDeviceActivityState,
+  readNotificationAccessState,
   readNowPlaying,
 } from "./device-activity";
 import {
@@ -778,12 +780,21 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const nowPlayingDismissedRef = useRef(false);
   const nowPlayingPollRef = useRef(null);
 
-  // 活动感知-音乐识别：轮询系统 MediaSession（网易云/后台/本 App 播放都能感知）。
+  const [notificationAccess, setNotificationAccess] = useState({ granted: false, checking: true });
+
+  // 活动感知-音乐识别：需要"通知使用权"才能读取系统媒体通知。
+  // 轮询 NowPlayingListenerService 缓存的媒体通知（网易云/后台/本 App 播放都能感知）。
   useEffect(() => {
     if (!deviceActivityPluginAvailable()) {
+      setNotificationAccess({ granted: false, checking: false });
       setNowPlaying(null);
       return undefined;
     }
+    const checkAccess = async () => {
+      const state = await readNotificationAccessState().catch(() => ({ granted: false }));
+      setNotificationAccess({ granted: state?.granted === true, checking: false });
+      return state?.granted === true;
+    };
     const poll = async () => {
       const song = await readNowPlaying().catch(() => null);
       if (song?.title) {
@@ -793,10 +804,25 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         setNowPlaying(null);
       }
     };
-    void poll();
-    nowPlayingPollRef.current = window.setInterval(() => void poll(), 5000);
+    void (async () => {
+      const granted = await checkAccess();
+      if (granted) {
+        void poll();
+        nowPlayingPollRef.current = window.setInterval(() => void poll(), 5000);
+      }
+    })();
     return () => window.clearInterval(nowPlayingPollRef.current ?? undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const requestNotificationAccess = useCallback(async () => {
+    setNotificationAccess((previous) => ({ ...previous, checking: true }));
+    await openNotificationAccessSettings().catch(() => false);
+    // 用户从系统设置返回后重新检查
+    window.setTimeout(async () => {
+      const state = await readNotificationAccessState().catch(() => ({ granted: false }));
+      setNotificationAccess({ granted: state?.granted === true, checking: false });
+    }, 1500);
   }, []);
 
   const handleNowPlayingPlayPause = useCallback(() => {
@@ -811,8 +837,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     void controlNowPlaying("next");
     setNowPlaying(null);
     nowPlayingDismissedRef.current = true;
+    // 不把 setNotice 放进依赖数组：它声明在组件更后面，
+    // 放依赖数组会让压缩构建在渲染时访问未初始化变量（TDZ）。
+    // setNotice 是稳定 setter，闭包内直接调用即可。
     setNotice("已发送下一首指令。");
-  }, [setNotice]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleDismissNowPlaying = useCallback(() => {
     nowPlayingDismissedRef.current = true;
@@ -8038,6 +8068,37 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               </div>
               <small>
                 Android 的“使用情况访问”是单独的系统权限；关闭本功能会立即停止附带摘要，撤销系统权限仍需在授权页操作。
+              </small>
+            </div>
+            <div className="notification-feature-panel device-activity-panel">
+              <div className="device-activity-heading">
+                <div>
+                  <strong>音乐识别（彩虹胶囊显示正在播放）</strong>
+                  <span>
+                    {notificationAccess.checking
+                      ? "正在检查…"
+                      : notificationAccess.granted
+                        ? "已授权 · 播放时自动显示"
+                        : "需要通知使用权"}
+                  </span>
+                </div>
+              </div>
+              <p>
+                授权后，只要你在网易云、QQ 音乐或系统播放器里放歌，聊天页的彩虹胶囊就会变成旋转唱片，显示歌名、歌手、封面和播放控制（暂停 / 下一首）。仅读取媒体通知，不读取消息内容。
+              </p>
+              {!notificationAccess.granted && (
+                <div className="device-activity-actions">
+                  <button
+                    type="button"
+                    disabled={notificationAccess.checking}
+                    onClick={() => void requestNotificationAccess()}
+                  >
+                    {notificationAccess.checking ? "处理中…" : "去授权通知使用权"}
+                  </button>
+                </div>
+              )}
+              <small>
+                授权入口在系统设置 → 通知与状态栏 → 通知使用权 → 允许“灯塔”。授权后回到本页，状态会自动更新。
               </small>
             </div>
             <div className="notification-feature-panel screen-glance-panel">
