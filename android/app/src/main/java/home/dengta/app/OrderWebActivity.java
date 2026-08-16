@@ -22,6 +22,8 @@ public class OrderWebActivity extends Activity {
     private String mode;
     private String configJson;
     private int orderStep = 0;
+    private boolean reloadAttempted = false;
+    private String currentUrl = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
