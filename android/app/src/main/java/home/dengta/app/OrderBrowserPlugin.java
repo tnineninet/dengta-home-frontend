@@ -225,10 +225,10 @@ class OrderWebActivity extends Activity {
 
     private void runSearchStep(WebView view) {
         String js = "(function(){"
-            + "function txt(e){return (e.innerText||'').replace(/\n+/g,' | ').replace(/\s+/g,' ').trim();}"
+            + "function txt(e){return (e.innerText||'').replace(/\\n+/g,' | ').replace(/\\s+/g,' ').trim();}"
             + "var cards=[].slice.call(document.querySelectorAll('[class*=\"card\" i],[class*=\"item\" i]'))"
             + ".map(function(e){return {t:txt(e),e:e};}).filter(function(x){return /起送¥/.test(x.t)&&x.t.length<300;})"
-            + ".slice(0,20).map(function(x){var m=x.t.match(/([^|]{2,40})\s*\|\s*([\d.]+)\s*\|\s*分/);"
+            + ".slice(0,20).map(function(x){var m=x.t.match(/([^|]{2,40})\\s*\\|\\s*([\\d.]+)\\s*\\|\\s*分/);"
             + "return {name:m?m[1].trim():x.t.slice(0,40),meta:x.t.slice(0,200)};});"
             + "return {shops:cards};"
             + "})();";
@@ -242,7 +242,7 @@ class OrderWebActivity extends Activity {
             String product = config.optString("product", "");
             String js = "(function(){"
                 + "var shop=" + JSONObject.quote(shopName) + ";"
-                + "function txt(e){return (e.innerText||'').replace(/\n+/g,' ').replace(/\s+/g,' ').trim();}"
+                + "function txt(e){return (e.innerText||'').replace(/\\n+/g,' ').replace(/\\s+/g,' ').trim();}"
                 + "var cards=[].slice.call(document.querySelectorAll('[class*=\"card\" i],[class*=\"item\" i]'))"
                 + ".map(function(e){return {t:txt(e),e:e};}).filter(function(x){return /起送¥/.test(x.t)&&x.t.length<300;});"
                 + "var target=null;"
@@ -251,7 +251,7 @@ class OrderWebActivity extends Activity {
                 + "if(!target){return {status:'shop_not_found'};}"
                 + "target.setAttribute('data-dengta-pick','1');"
                 + "document.querySelector('[data-dengta-pick=\"1\"]').click();"
-                + "return {status:'opening_shop',shop:(target.innerText||'').replace(/\n+/g,' ').slice(0,80)};"
+                + "return {status:'opening_shop',shop:(target.innerText||'').replace(/\\n+/g,' ').slice(0,80)};"
                 + "})();";
             orderStep = 1;
             view.evaluateJavascript(js, null);
@@ -267,7 +267,7 @@ class OrderWebActivity extends Activity {
             orderStep = 2;
             String js = "(function(){"
                 + "var p=" + JSONObject.quote(product) + ";"
-                + "function txt(e){return (e.innerText||'').replace(/\n+/g,' ').replace(/\s+/g,' ').trim();}"
+                + "function txt(e){return (e.innerText||'').replace(/\\n+/g,' ').replace(/\\s+/g,' ').trim();}"
                 + "var items=[].slice.call(document.querySelectorAll('[class*=\"menuItem\" i],[class*=\"menu-item\" i]'))"
                 + ".map(function(e){return {t:txt(e),e:e};}).filter(function(x){return x.t.length>3&&x.t.length<200;});"
                 + "var target=null;"
