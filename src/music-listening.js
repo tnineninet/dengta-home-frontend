@@ -70,6 +70,7 @@ function normalizeItem(item, index = 0) {
     providerTrackId: text(source.provider_track_id ?? source.providerTrackId, 20),
     externalUrl: text(source.external_url ?? source.externalUrl, 4096),
     playbackMode: text(source.playback_mode ?? source.playbackMode ?? (url ? "direct_https" : ""), 40),
+    coverUrl: text(source.cover_url ?? source.coverUrl ?? source.pic_url ?? source.album?.picUrl, 4096),
     durationSeconds: number(source.duration_seconds ?? source.duration),
     lyrics: String(source.lyrics ?? source.lyric ?? ""),
   });

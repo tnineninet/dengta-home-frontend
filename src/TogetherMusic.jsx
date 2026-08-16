@@ -587,7 +587,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
       </div>
     </details>}
     <div className="music-player-title">
-      <Music2 aria-hidden="true" />
+      {item?.coverUrl ? <img className="music-cover" src={item.coverUrl} alt="" referrerPolicy="no-referrer" /> : <Music2 aria-hidden="true" />}
       <div><strong>{item?.title || (loading ? "正在读取音乐档案…" : "选择一首歌")}</strong><span>{item?.artist || "一起听歌"}</span></div>
       <button type="button" className={favorite ? "is-favorite" : ""} aria-label={favorite ? "取消收藏当前曲目" : "收藏当前曲目"} aria-pressed={favorite} disabled={!item || favoriteBusy} onClick={() => void toggleFavorite()}><Heart aria-hidden="true" /></button>
       <button type="button" aria-label="刷新音乐资料" disabled={refreshing} onClick={() => void refreshLibrary()}><RefreshCw aria-hidden="true" />{refreshing ? "刷新中" : "刷新"}</button>
