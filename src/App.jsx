@@ -4941,12 +4941,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   const [distillState, setDistillState] = useState({
     busy: false,
+    fileBusy: false,
     source: "",
     name: "",
     error: "",
     result: null,
     edited: "",
     modalOpen: false,
+    fileInfo: null,
   });
 
   async function runDistill() {
@@ -4993,6 +4995,44 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     updateUnifiedPrompt(text);
     setDistillState((previous) => ({ ...previous, modalOpen: false }));
     setNotice("已填入「个性化指令」，记得点保存。");
+  }
+  async function parseDistillFile(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (file.size > 20 * 1024 * 1024) {
+      setDistillState((previous) => ({ ...previous, error: "文件不能超过 20MB，请换一个。" }));
+      return;
+    }
+    setDistillState((previous) => ({ ...previous, busy: true, error: "", fileBusy: true }));
+    try {
+      const formData = new FormData();
+      formData.append("file", file, file.name);
+      const data = await apiFetch("/api/v2/style-distill/parse-file", {
+        method: "POST",
+        timeoutMs: 60_000,
+        body: formData,
+        retry: false,
+      });
+      const parsed = data?.parsed;
+      if (!parsed?.text) throw new Error("文件里没有解析出可用文字。");
+      setDistillState((previous) => ({
+        ...previous,
+        busy: false,
+        fileBusy: false,
+        error: "",
+        source: parsed.text,
+        fileInfo: { filename: parsed.filename, format: parsed.format, characters: parsed.characters },
+      }));
+      setNotice(`已解析「${parsed.filename}」（${parsed.format}，${parsed.characters} 字），可直接开始提纯。`);
+    } catch (caught) {
+      setDistillState((previous) => ({
+        ...previous,
+        busy: false,
+        fileBusy: false,
+        error: caught?.message || "文件解析失败，请换一个文件。",
+      }));
+    }
   }
 
   const [achievementPopup, setAchievementPopup] = useState({
@@ -7541,7 +7581,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   </span>
                 </span>
                 <p>
-                  把你想模仿的那个 AI 的聊天记录(微信/其他平台/文档)粘进来，提纯后会在新窗口展示一份「个性化指令」文档，你可以修改、复制，再一键填到上方。
+                  把你想模仿的那个 AI 的聊天记录(微信/其他平台/文档)导入进来，或直接粘贴文本；提纯后会在新窗口展示一份「个性化指令」文档，你可以修改、复制，再一键填到上方。
                 </p>
                 <input
                   value={distillState.name}
@@ -7554,6 +7594,20 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   placeholder="目标角色名字(可选)，如：小灯"
                   aria-label="目标角色名字"
                 />
+                <label className="style-distill-file-row">
+                  <input
+                    type="file"
+                    accept=".md,.markdown,.txt,.text,.json,.jsonl,.html,.htm,.csv,.log,.srt,.vtt,.eml,.pdf,.docx,.doc,.xml,.yaml,.yml"
+                    onChange={(event) => void parseDistillFile(event)}
+                    disabled={distillState.busy}
+                  />
+                  <span>导入聊天记录文件（自动识别 md / txt / json / html / csv / srt / eml / pdf / docx）</span>
+                </label>
+                {distillState.fileInfo ? (
+                  <p className="style-distill-file-info" role="status">
+                    已导入：{distillState.fileInfo.filename}（{distillState.fileInfo.format} · {distillState.fileInfo.characters} 字），可直接提纯或继续编辑。
+                  </p>
+                ) : null}
                 <textarea
                   value={distillState.source}
                   onChange={(event) =>
@@ -7562,7 +7616,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                       source: event.target.value,
                     }))
                   }
-                  placeholder="粘贴聊天记录……（至少 40 字，最多 6 万字）"
+                  placeholder="粘贴聊天记录，或先导入文件……（至少 40 字，最多 6 万字）"
                   rows="6"
                 />
                 <div className="device-activity-actions">
@@ -7571,7 +7625,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                     disabled={distillState.busy || distillState.source.trim().length < 40}
                     onClick={() => void runDistill()}
                   >
-                    {distillState.busy ? "正在提纯…" : "开始提纯"}
+                    {distillState.busy
+                      ? distillState.fileBusy
+                        ? "正在解析文件…"
+                        : "正在提纯…"
+                      : "开始提纯"}
                   </button>
                 </div>
                 {distillState.error ? (
