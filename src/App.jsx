@@ -467,6 +467,7 @@ const navItems = [
   { id: "memories", icon: "◇", label: "Memory" },
   { id: "takeout", icon: "🛵", label: "外卖" },
   { id: "achievements", icon: "🏆", label: "成就" },
+  { id: "discover", icon: "🔭", label: "发现" },
 ];
 
 function formatDateTime(value) {
@@ -4884,6 +4885,46 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     emoji: "",
     description: "",
   });
+
+  const [pendingCoWatchPage, setPendingCoWatchPage] = useState("");
+  const [discoverState, setDiscoverState] = useState({
+    busy: false,
+    interests: [],
+    recommend: null,
+    error: "",
+  });
+
+  async function loadDiscover() {
+    setDiscoverState((previous) => ({ ...previous, busy: true, error: "" }));
+    try {
+      const [interestsData, recommendData] = await Promise.all([
+        apiRequest("/api/v2/fun-labs/interests", { timeoutMs: 15_000 }),
+        apiRequest("/api/v2/fun-labs/recommend", { timeoutMs: 30_000 }),
+      ]);
+      setDiscoverState({
+        busy: false,
+        interests: Array.isArray(interestsData?.profile?.interests)
+          ? interestsData.profile.interests
+          : [],
+        recommend: recommendData?.recommend || null,
+        error: "",
+      });
+    } catch (error) {
+      setDiscoverState((previous) => ({
+        ...previous,
+        busy: false,
+        error:
+          error?.message ||
+          "暂时加载失败。先一起看几个视频,AI 才有依据为你推荐。",
+      }));
+    }
+  }
+
+  useEffect(() => {
+    void loadDiscover();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const [distillState, setDistillState] = useState({
     busy: false,
     source: "",
@@ -6533,6 +6574,104 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     );
   }
 
+
+  function renderDiscover() {
+    return (
+      <div className="fun-view">
+        <header className="fun-view-header">
+          <h2>🔭 发现</h2>
+          <p>基于你的一起看记录,AI 帮你从 B 站找到感兴趣的视频</p>
+        </header>
+        <div className="notification-feature-panel device-activity-panel">
+          <div className="device-activity-heading">
+            <div>
+              <strong>兴趣画像</strong>
+              <span>
+                {discoverState.interests.length > 0
+                  ? discoverState.interests
+                      .slice(0, 6)
+                      .map((item) => item.term)
+                      .join("、")
+                  : "一起看几个视频后,这里会出现你的兴趣关键词"}
+              </span>
+            </div>
+            <div className="device-activity-actions">
+              <button
+                type="button"
+                disabled={discoverState.busy}
+                onClick={() => void loadDiscover()}
+              >
+                {discoverState.busy ? "正在找…" : "换一批"}
+              </button>
+            </div>
+          </div>
+          {discoverState.error ? (
+            <p className="notification-feature-feedback error" role="alert">
+              {discoverState.error}
+            </p>
+          ) : null}
+        </div>
+        {discoverState.recommend?.reason ? (
+          <p className="fun-labs-line">💡 {discoverState.recommend.reason}</p>
+        ) : null}
+        {discoverState.recommend?.videos?.length > 0 ? (
+          <div className="discover-grid">
+            {discoverState.recommend.videos.map((video) => (
+              <article key={video.bvid} className="discover-card">
+                {video.cover ? (
+                  <img
+                    src={video.cover.startsWith("//") ? "https:" + video.cover : video.cover}
+                    alt=""
+                    loading="lazy"
+                  />
+                ) : (
+                  <div className="discover-card-cover-fallback">📺</div>
+                )}
+                <div className="discover-card-body">
+                  <strong>{video.title}</strong>
+                  <small>
+                    {video.author} · 播放 {video.play} · {video.duration}
+                  </small>
+                  <div className="discover-card-actions">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPendingCoWatchPage(
+                          "https://www.bilibili.com/video/" + video.bvid,
+                        );
+                        setTogetherEntryMode("external");
+                        changeView("together");
+                      }}
+                    >
+                      ▶ 一起看
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void navigator.clipboard
+                          ?.writeText("https://www.bilibili.com/video/" + video.bvid)
+                          .catch(() => {});
+                        setNotice("已复制视频链接。");
+                      }}
+                    >
+                      复制链接
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : discoverState.busy ? (
+          <p className="fun-labs-line">正在根据你的口味找视频…</p>
+        ) : (
+          <p className="fun-labs-line">
+            还没有推荐。点上方「换一批」试试;或者先去一起看看几个视频,让 AI 了解你的口味。
+          </p>
+        )}
+      </div>
+    );
+  }
+
   function renderTakeout() {
     const available = takeoutPluginAvailable();
     return (
@@ -7054,6 +7193,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             }
           }}
           initialMode={togetherEntryMode}
+          externalPageUrl={pendingCoWatchPage}
         />
       </Suspense>
     );
@@ -8683,6 +8823,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           {activeView === "memories" && renderMemories()}
           {activeView === "takeout" && renderTakeout()}
           {activeView === "achievements" && renderAchievements()}
+          {activeView === "discover" && renderDiscover()}
         </div>
       </main>
 

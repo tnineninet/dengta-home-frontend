@@ -20,6 +20,7 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
   const canvasRef = useRef(null);
   const pollTimerRef = useRef(null);
   const autoRefreshCountRef = useRef(0);
+  const startedAtRef = useRef(0);
   const [qrContent, setQrContent] = useState("");
   const [qrStatus, setQrStatus] = useState("idle"); // idle | waiting | scanned | confirmed | expired | risk_blocked | error
   const [connection, setConnection] = useState(null);
@@ -82,6 +83,7 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
     try {
       const session = await beginBilibiliQrLogin();
       if (!session?.key || !session.qr_content) throw new Error("没有拿到登录二维码。");
+      startedAtRef.current = Date.now();
       setQrStatus("waiting");
       setQrOpen(true);
       setQrContent(session.qr_content);
@@ -108,7 +110,7 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
               setFeedback("已扫码，请在手机上点击确认登录。");
             } else if (result?.status === "expired") {
               stopPolling();
-              if (autoRefreshCountRef.current < 3) {
+              if (autoRefreshCountRef.current < 6) {
                 autoRefreshCountRef.current += 1;
                 setFeedback("二维码已过期，正在为你自动刷新…");
                 void startLogin();
@@ -123,6 +125,11 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
             } else if (result?.status === "waiting") {
               setQrStatus("waiting");
             }
+            // 主动换新:哔哩二维码约2分钟失效,每75秒自动换一张。
+            if (Date.now() - startedAtRef.current > 75_000 && autoRefreshCountRef.current < 6) {
+              autoRefreshCountRef.current += 1;
+              setFeedback("已为你换上新鲜二维码,请扫当前这张。");
+              void startLogin();
           } catch (caught) {
             if (caught?.code === "bilibili_qr_session_expired") {
               stopPolling();

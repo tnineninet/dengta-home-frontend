@@ -64,6 +64,7 @@ export default function Together({
   dialog = [],
   onReply,
   initialMode = "external",
+  externalPageUrl = "",
 }) {
   const [restoredDirectMedia] = useState(() =>
     readDirectMediaSession(globalThis.sessionStorage, accountScope),
@@ -304,6 +305,15 @@ export default function Together({
       });
     }
   };
+
+  // 从发现页传入链接时,自动切到网页模式并解析,用户点"开始网页一起看"即可。
+  useEffect(() => {
+    if (!externalPageUrl) return;
+    setMode("web");
+    setWebUrlInput(externalPageUrl);
+    void loadWebPage(externalPageUrl);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [externalPageUrl]);
 
   const loadWebPage = async (explicitUrl = "") => {
     const input = explicitUrl || webUrlInput;
