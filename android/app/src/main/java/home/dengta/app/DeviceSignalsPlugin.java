@@ -72,6 +72,26 @@ public final class DeviceSignalsPlugin extends Plugin {
         }
     };
 
+    // 真实设备标识:用于扫码登录风控(网易云等平台要求真实设备号)。
+    // 只上报 Android ID、机型与制造商,不采集 IMEI/序列号等敏感标识。
+    @PluginMethod
+    public void getDeviceIdentity(PluginCall call) {
+        JSObject identity = new JSObject();
+        try {
+            String androidId = android.provider.Settings.Secure.getString(
+                getContext().getContentResolver(),
+                android.provider.Settings.Secure.ANDROID_ID
+            );
+            identity.put("android_id", androidId == null ? "" : androidId);
+        } catch (Exception ignored) {
+            identity.put("android_id", "");
+        }
+        identity.put("model", android.os.Build.MODEL == null ? "" : android.os.Build.MODEL);
+        identity.put("manufacturer", android.os.Build.MANUFACTURER == null ? "" : android.os.Build.MANUFACTURER);
+        identity.put("brand", android.os.Build.BRAND == null ? "" : android.os.Build.BRAND);
+        call.resolve(identity);
+    }
+
     @PluginMethod
     public void getSnapshot(PluginCall call) {
         JSObject snapshot = new JSObject();

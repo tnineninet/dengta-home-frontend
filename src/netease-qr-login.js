@@ -1,4 +1,5 @@
 import { apiRequest } from "./api.js";
+import { DeviceSignals, deviceSignalsPluginAvailable } from "./device-signals.js";
 
 const READ_TIMEOUT_MS = 12_000;
 const WRITE_TIMEOUT_MS = 30_000;
@@ -8,10 +9,22 @@ function text(value, maximum = 300) {
   return String(value ?? "").trim().slice(0, maximum);
 }
 
+// 风控要求真实设备号:App 上报本机真实信息,后端据此派生设备号。
+async function readDeviceIdentity() {
+  if (!deviceSignalsPluginAvailable()) return null;
+  try {
+    return await DeviceSignals.getDeviceIdentity();
+  } catch {
+    return null;
+  }
+}
+
 export async function beginNeteaseQrLogin() {
+  const device = await readDeviceIdentity();
   const data = await apiRequest("/api/v2/music/providers/netease/qr/begin", {
     method: "POST",
     timeoutMs: WRITE_TIMEOUT_MS,
+    body: JSON.stringify({ device: device || {} }),
   });
   return data?.session || null;
 }
