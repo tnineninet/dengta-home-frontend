@@ -95,6 +95,11 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
       startedAtRef.current = Date.now();
       setQrStatus("waiting");
       setQrOpen(true);
+      setFeedback(
+        session.device_used === true
+          ? "已上报本机真实设备信息 ✓"
+          : "未上报设备信息(网页版无设备,或旧版本 App)。"
+      );
       await drawQr(session.qr_content);
       stopPolling();
       pollTimerRef.current = window.setInterval(() => {
