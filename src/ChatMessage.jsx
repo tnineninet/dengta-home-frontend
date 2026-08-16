@@ -58,6 +58,9 @@ function ChatMessage({
       )
     : null;
   const avatar = isUser ? userAvatar : companionAvatar;
+  const avatarLetter = isUser
+    ? Array.from(userName || "我")[0] || "我"
+    : Array.from(aiName || "伴")[0] || "伴";
   const artworkId = !isUser
     ? String(item.tool_calls?.artwork_id || "")
     : "";
@@ -159,7 +162,7 @@ function ChatMessage({
               role="img"
               aria-label={`${displayName}的标记`}
             >
-              {isUser ? "桃" : "D"}
+              {avatarLetter}
             </span>
           }
         />
@@ -170,7 +173,7 @@ function ChatMessage({
         role="img"
         aria-label={`${displayName}的标记`}
       >
-        {isUser ? "桃" : "D"}
+        {avatarLetter}
       </span>}
       <div className="message-column">
         <div className="message-role">{displayName}</div>
