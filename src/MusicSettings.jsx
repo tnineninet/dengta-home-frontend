@@ -13,6 +13,7 @@ import {
   listMusicPlaylists,
   requestExternalMusicPlayback,
   searchNeteaseMusic,
+  uploadLocalMusicFile,
 } from "./music-listening.js";
 import { MAX_PLAYLIST_TEXT_LENGTH, readPlaylistTextFile } from "./playlist-file.js";
 import { resolveMusicPlayback, MUSIC_PLAYBACK_MODES } from "./music-playback.js";
@@ -214,6 +215,31 @@ export default function MusicSettings({ providerStatus = null, onOpenMcpDeviceCe
     finally { input.value = ""; setFileBusy(false); }
   }
 
+  async function importLocalAudio(event) {
+    const input = event.currentTarget;
+    setFileBusy(true); setError("");
+    try {
+      const file = input.files?.[0];
+      if (!file) return;
+      if (!AUDIO_EXTENSION.test(file.name) && !String(file.type).startsWith("audio/")) throw new Error("请选择 MP3、M4A、WAV、OGG 或 FLAC 音频文件。");
+      const audio = await uploadLocalMusicFile(file);
+      const imported = await importMusicPlaylist({
+        format: "txt",
+        sourceName: "本机音频",
+        name: `本机 · ${audio.title}`,
+        content: audio.url,
+      });
+      setSelected(imported);
+      setMessage(`已把「${audio.title}」上传并导入歌单「${imported.name}」，可以在一起听里播放了。`);
+      void refresh({ quiet: true });
+    } catch (caught) {
+      setError(caught?.message || "本机音频导入失败，请重试。");
+    } finally {
+      input.value = "";
+      setFileBusy(false);
+    }
+  }
+
   return <section className="music-settings settings-card" aria-labelledby="music-settings-title">
     <div className="settings-card-heading"><div><span className="settings-kicker">LISTENING</span><h3 id="music-settings-title">一起听歌</h3><p>只播放你提供的公开音频地址，不下载、不代理、不绕过 DRM。</p></div><button type="button" onClick={() => void refresh()} disabled={refreshing}>{refreshing ? "刷新中…" : "刷新"}</button></div>
     <div className="music-provider-grid" aria-label="音乐 Provider 状态">
@@ -237,6 +263,7 @@ export default function MusicSettings({ providerStatus = null, onOpenMcpDeviceCe
       <label>格式<select value={format} onChange={(event) => setFormat(event.target.value)}><option value="auto">自动识别</option><option value="json">JSON</option><option value="m3u">M3U / M3U8</option><option value="txt">TXT</option></select></label>
       <label className="music-file-label">导入歌单文件（JSON/M3U/M3U8/TXT）<input type="file" accept={PLAYLIST_ACCEPT} disabled={busy || fileBusy} onChange={(event) => void choosePlaylistFile(event)} /></label>
       <label className="music-file-label">选择本机音频（MP3/M4A/AAC/WAV/OGG/OPUS/FLAC）<input type="file" accept={AUDIO_ACCEPT} disabled={fileBusy} onChange={chooseLocalAudio} /></label>
+      <label className="music-file-label">上传本机音频到歌单（MP3/M4A/WAV/OGG/FLAC，≤20MB）<input type="file" accept=".mp3,.m4a,.wav,.ogg,.flac,audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/flac" disabled={busy || fileBusy} onChange={(event) => void importLocalAudio(event)} /></label>
       <label className="music-content-label">粘贴歌单文本<textarea value={content} maxLength={MAX_PLAYLIST_TEXT_LENGTH} onChange={(event) => setContent(event.target.value)} rows={7} placeholder="JSON、M3U、每行一个 HTTPS 音频地址，或网易云分享文本" aria-describedby="music-content-limit" /></label>
       <div className="music-clipboard-actions"><button type="button" disabled={clipboardBusy || busy} onClick={() => void readClipboard()}>{clipboardBusy ? "读取中…" : "读取剪贴板"}</button><span id="music-content-limit" role="status">{content.trim() ? `已输入 ${content.trim().length} 个字符（上限 ${MAX_PLAYLIST_TEXT_LENGTH}）。` : "等待粘贴或读取歌单文本，最大 1 MiB。"}</span></div>
     </div>

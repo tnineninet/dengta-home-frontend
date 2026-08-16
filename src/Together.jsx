@@ -477,6 +477,14 @@ export default function Together({
                     若上方画面空白，说明该网站禁止内嵌播放；请改用视频直链或哔哩哔哩链接。
                   </p>
                 )}
+                <a
+                  className="together-device-note together-web-open"
+                  href={webPage.embedUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  画面点不开？在新窗口打开 ↗
+                </a>
               </div>
             ) : (
               <div className="together-stage-empty">

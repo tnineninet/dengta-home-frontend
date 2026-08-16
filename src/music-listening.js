@@ -1,4 +1,4 @@
-import { apiRequest } from "./api.js";
+import { apiFetch, apiRequest } from "./api.js";
 import { isPrivateMediaHostname } from "./direct-media.js";
 
 const MAX_TEXT = 500;
@@ -223,6 +223,29 @@ export async function importMusicPlaylist({ format = "auto", sourceName = "粘�
     method: "POST", timeoutMs: WRITE_TIMEOUT_MS,
     body: JSON.stringify({ format: resolvedFormat, source_name: text(sourceName, 180), name: text(name, 180), content: String(content || "") }),
   }));
+}
+
+export async function uploadLocalMusicFile(file) {
+  if (!(file instanceof Blob)) throw new Error("请选择一个音频文件。");
+  if (file.size === 0) throw new Error("音频文件是空的。");
+  if (file.size > 20 * 1024 * 1024) throw new Error("单个音频不能超过 20MB。");
+  const form = new FormData();
+  form.append("file", file, file.name || "audio.mp3");
+  const response = await apiFetch("/api/v2/music/upload-audio", {
+    method: "POST",
+    timeoutMs: 60_000,
+    body: form,
+    retry: false,
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data?.message || data?.error || "本机音频上传失败。");
+  }
+  if (!data?.audio?.url) throw new Error("上传成功但没有返回音频地址。");
+  return Object.freeze({
+    url: String(data.audio.url),
+    title: text(String(data.audio.title || "本机音频"), 180),
+  });
 }
 
 export async function listMusicPlaylists() {
