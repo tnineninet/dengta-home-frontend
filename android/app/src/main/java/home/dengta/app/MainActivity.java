@@ -18,6 +18,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(BackgroundNotificationsPlugin.class);
         registerPlugin(DeviceActivityPlugin.class);
         registerPlugin(DeviceSignalsPlugin.class);
+        registerPlugin(NeteaseCookiePlugin.class);
         registerPlugin(ScreenGlancePlugin.class);
         registerPlugin(NeteasePlaybackPlugin.class);
         registerPlugin(OrderBrowserPlugin.class);

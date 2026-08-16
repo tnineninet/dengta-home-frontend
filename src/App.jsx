@@ -194,6 +194,7 @@ import {
   screenGlanceCaptureToFile,
   screenGlancePluginAvailable,
 } from "./screen-glance";
+import { maybeNotifyNewCompanionReplies } from "./companion-reply-notifier";
 import {
   createCoWatchSession,
   createCoWatchPairingCode,
@@ -463,6 +464,7 @@ const navItems = [
   { id: "diary", icon: "▱", label: "Diary" },
   { id: "nursery", icon: "♡", label: "Family" },
   { id: "together", icon: "▻", label: "Together" },
+  { id: "music", icon: "🎵", label: "听歌" },
   { id: "duel", icon: "⚔", label: "Duel" },
   { id: "memories", icon: "◇", label: "Memory" },
   { id: "takeout", icon: "🛵", label: "外卖" },
@@ -2274,6 +2276,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       window.removeEventListener("online", pollWhenVisible);
     };
   }, [accountStorageScope, settings.ai_name, settings.push_enabled]);
+
+  useEffect(() => {
+    if (!hasLoadedSettings || settings.push_enabled !== true) return undefined;
+    void maybeNotifyNewCompanionReplies(messages, {
+      aiName: effectiveAiName,
+      sessionId: activeSessionIdRef.current || "",
+      scope: accountStorageScope,
+      hidden: document.hidden,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, settings.push_enabled, effectiveAiName, hasLoadedSettings, accountStorageScope]);
 
   useEffect(() => {
     let cancelled = false;
@@ -4887,6 +4900,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   });
 
   const [pendingCoWatchPage, setPendingCoWatchPage] = useState("");
+  const [coWatchDanmaku, setCoWatchDanmaku] = useState([]);
   const [discoverState, setDiscoverState] = useState({
     busy: false,
     interests: [],
@@ -7127,7 +7141,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     );
   }
 
-  function renderTogether() {
+  function renderTogether(viewKind = "together") {
     return (
       <Suspense fallback={<DeferredFeature label="正在打开一起看…" />}>
         <Together
@@ -7177,6 +7191,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 playbackPositionSeconds ?? coWatchSession.mediaPositionSeconds,
               );
               if (result.session) setCoWatchSession(result.session);
+              if (Array.isArray(result?.danmaku) && result.danmaku.length) {
+                setCoWatchDanmaku((current) => [
+                  ...current,
+                  ...result.danmaku.map((item) => ({
+                    ...item,
+                    media_time_seconds: Number(item.media_time_seconds) || 0,
+                  })),
+                ]);
+              }
               await refreshCoWatchExperience({ silent: true });
               return true;
             } catch (error) {
@@ -7192,6 +7215,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               setIsScreenGlanceBusy(false);
             }
           }}
+          viewKind={viewKind}
+          danmaku={coWatchDanmaku}
           initialMode={togetherEntryMode}
           externalPageUrl={pendingCoWatchPage}
         />
@@ -8758,7 +8783,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             onChange={setCompanionStatus}
             onExpandedChange={handleStatusPanelExpandedChange}
             onInteract={handleCompanionInteraction}
-            onListenTogether={() => { setTogetherEntryMode("music"); changeView("together"); }}
+            onListenTogether={() => { setTogetherEntryMode("music"); changeView("music"); }}
             onWatchTogether={() => { setTogetherEntryMode("external"); changeView("together"); }}
             onOpenNavigation={() => setIsSidebarOpen(true)}
             onOpenSettings={openSettingsPanel}
@@ -8818,7 +8843,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           {activeView === "moments" && renderMoments()}
           {activeView === "diary" && renderDiary()}
           {activeView === "nursery" && renderNursery()}
-          {activeView === "together" && renderTogether()}
+          {activeView === "together" && renderTogether("together")}
+          {activeView === "music" && renderTogether("music")}
           {activeView === "duel" && renderIntimateDuel()}
           {activeView === "memories" && renderMemories()}
           {activeView === "takeout" && renderTakeout()}

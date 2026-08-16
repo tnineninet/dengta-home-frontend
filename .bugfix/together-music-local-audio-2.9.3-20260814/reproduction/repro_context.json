@@ -1,0 +1,21 @@
+{
+  "dti_type": "API_CALL",
+  "carrier_type": "MINIMAL_TEST_HARNESS",
+  "entry_point": "src/music-listening.js#listMusicPlaylists",
+  "invocation_shape": [
+    "Install a fetch implementation whose request remains pending",
+    "Invoke listMusicPlaylists",
+    "Observe whether the refresh-facing promise settles within a bounded interval"
+  ],
+  "required_setup": [
+    "Provide browser timer globals required by the API client",
+    "Use the repository-native Node assertion harness"
+  ],
+  "evidence_sources": [
+    ".bugfix/together-music-local-audio-2.9.3-20260814/analysis_results.json",
+    "src/MusicSettings.jsx",
+    "src/music-listening.js"
+  ],
+  "template_paths": ["test/music-listening.test.js"],
+  "selected_template_path": "test/music-listening.test.js"
+}

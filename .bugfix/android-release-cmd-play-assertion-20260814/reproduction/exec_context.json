@@ -1,0 +1,9 @@
+{
+  "dti_type": "COMMAND_INVOCATION",
+  "build_cmd": "",
+  "run_cmd": "\"C:\\Program Files\\nodejs\\npm.cmd\" --prefix \"E:\\chatgpt\\dengta-home-frontend\" run test:android-release",
+  "artifacts": [],
+  "configs": ["E:\\chatgpt\\dengta-home-frontend\\package.json"],
+  "env": [],
+  "evidence": "package.json scripts.test:android-release"
+}

@@ -1,0 +1,18 @@
+{
+  "localization_outcome": "confirmed",
+  "root_cause_summary": "test/android-release.test.js 在构造 NeteasePlaybackPlugin.java 路径时引用了从未声明的 androidRoot，而同一测试已声明并持续使用 projectRoot 作为仓库路径根。",
+  "faulty_file": "test/android-release.test.js",
+  "faulty_method_or_region": "NeteasePlaybackPlugin.java fixture loading at lines 58-71",
+  "runtime_symptom": "npm run test:android-release exits with code 1 and ReferenceError: androidRoot is not defined before assertions execute.",
+  "faulty_logic": "path.join 的首段变量 androidRoot 未定义，且后续段从 app 开始；该路径应与相邻 Android 文件读取保持一致，由 projectRoot 开始并显式包含 android/app。",
+  "impact_scope": [
+    "package.json script test:android-release",
+    "test/android-release.test.js",
+    "NeteasePlaybackPlugin.java release assertions"
+  ],
+  "evidence": [
+    ".bugfix/android-release-undefined-androidroot-20260814/reproduction/stderr.txt",
+    ".bugfix/android-release-undefined-androidroot-20260814/reproduction/exit_code.txt",
+    ".bugfix/android-release-undefined-androidroot-20260814/reproduction/diagnostic_observations.txt"
+  ]
+}

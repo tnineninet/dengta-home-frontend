@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CircleStop,
   Clock3,
@@ -25,6 +25,37 @@ import {
 import "./together.css";
 import TogetherMusic from "./TogetherMusic.jsx";
 import BilibiliQrLogin from "./BilibiliQrLogin.jsx";
+
+
+function webPageStorageKey(accountScope) {
+  return "dengta_together_web_page_v1" + (accountScope ? ":" + accountScope : "");
+}
+
+function readStoredWebPage(accountScope) {
+  try {
+    const raw = globalThis.sessionStorage?.getItem(webPageStorageKey(accountScope));
+    const parsed = raw ? JSON.parse(raw) : null;
+    return parsed && parsed.page_url ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredWebPage(accountScope, page) {
+  try {
+    if (page?.page_url) {
+      globalThis.sessionStorage?.setItem(
+        webPageStorageKey(accountScope),
+        JSON.stringify(page),
+      );
+    } else {
+      globalThis.sessionStorage?.removeItem(webPageStorageKey(accountScope));
+    }
+  } catch {
+    // 存储不可用时仅影响切换页面后的恢复。
+  }
+}
+
 
 function formatMoment(value, fallback = "等待画面") {
   if (!value) return fallback;
@@ -65,20 +96,73 @@ export default function Together({
   dialog = [],
   onReply,
   initialMode = "external",
+  viewKind = "together",
   externalPageUrl = "",
+  danmaku = [],
 }) {
   const [restoredDirectMedia] = useState(() =>
     readDirectMediaSession(globalThis.sessionStorage, accountScope),
   );
   const [mode, setMode] = useState(() =>
-    session?.sessionMode === "listening"
+    viewKind === "music"
       ? "music"
+      : session?.sessionMode === "listening"
+      ? "external"
       : session?.sourceApp === WEB_PAGE_SOURCE_APP
+      ? "web"
+      : readStoredWebPage(accountScope)?.page_url
       ? "web"
       : session?.sourceApp === DIRECT_MEDIA_SOURCE_APP || restoredDirectMedia?.url
       ? "direct"
-      : initialMode === "music" ? "music" : "external",
+      : "external",
   );
+  const webVideoRef = useRef(null);
+  const [activeDanmaku, setActiveDanmaku] = useState([]);
+  const [webPositionSeconds, setWebPositionSeconds] = useState(0);
+  const danmakuCursorRef = useRef(0);
+  const danmakuSpawnedRef = useRef(new Set());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const video = webVideoRef.current || videoRef.current;
+      const current =
+        video && Number.isFinite(video.currentTime) ? video.currentTime : -1;
+      const now = Date.now();
+      if (current < 0) return;
+      if (webVideoRef.current) {
+        const rounded = Math.floor(current);
+        setWebPositionSeconds((prev) => (prev === rounded ? prev : rounded));
+      }
+      setActiveDanmaku((prev) =>
+        prev.filter((item) => now - item.spawnedAt < 9000),
+      );
+      const items = Array.isArray(danmaku) ? danmaku : [];
+      for (
+        let index = danmakuCursorRef.current;
+        index < items.length;
+        index += 1
+      ) {
+        const item = items[index];
+        const at = Number(item.media_time_seconds || 0);
+        if (at > current + 8) break;
+        const key = index + ":" + (item.text || "");
+        if (danmakuSpawnedRef.current.has(key)) continue;
+        danmakuSpawnedRef.current.add(key);
+        danmakuCursorRef.current = index + 1;
+        setActiveDanmaku((prev) => [
+          ...prev.slice(-24),
+          {
+            ...item,
+            id: key + "-" + now,
+            spawnedAt: now,
+            lane: Math.floor(Math.random() * 3),
+          },
+        ]);
+      }
+    }, 400);
+    return () => window.clearInterval(timer);
+  }, [danmaku]);
+
   const [title, setTitle] = useState(
     session?.title || restoredDirectMedia?.title || "",
   );
@@ -112,8 +196,10 @@ export default function Together({
     status: "idle",
     message: "视频链接只用于本场直链播放与已配对的浏览器接收端，不会在投屏界面公开显示。",
   });
-  const [webUrlInput, setWebUrlInput] = useState("");
-  const [webPage, setWebPage] = useState(null);
+  const [webUrlInput, setWebUrlInput] = useState(() =>
+    readStoredWebPage(accountScope)?.page_url || "",
+  );
+  const [webPage, setWebPage] = useState(() => readStoredWebPage(accountScope));
   const [webFeedback, setWebFeedback] = useState({
     status: "idle",
     message: "粘贴哔哩哔哩、爱奇艺等官方网页链接，先解析再开始一起看。",
@@ -143,7 +229,7 @@ export default function Together({
     session?.status === "active" &&
     session?.sourceApp === WEB_PAGE_SOURCE_APP;
   const musicActive = session?.status === "active" && session?.sessionMode === "listening";
-  const selectedMode = musicActive ? "music" : pageActive ? "web" : directActive ? "direct" : active ? "external" : mode;
+  const selectedMode = viewKind === "music" ? "music" : musicActive ? "music" : pageActive ? "web" : directActive ? "direct" : active ? "external" : mode;
   const selectedActive = selectedMode === "music" ? musicActive : selectedMode === "web" ? pageActive : selectedMode === "direct" ? directActive : active;
   const modeLocked = active || directActive || musicActive || pageActive;
 
@@ -154,6 +240,9 @@ export default function Together({
     return [{ key, text, at: screenState.lastReactionAt }];
   }, [screenState.lastReaction, screenState.lastReactionAt]);
   const visibleDialog = dialog.length ? dialog : fallbackDialog;
+  const lastAssistantLine = visibleDialog.length
+    ? [...visibleDialog].reverse().find((item) => item?.role === "assistant") || null
+    : null;
 
   const progress = useMemo(() => {
     const duration = Number(session?.mediaDurationSeconds || 0);
@@ -328,6 +417,7 @@ export default function Together({
       const page = await resolveCoWatchPage(input);
       if (!page?.embed_url) throw new Error("没有拿到可用的内嵌地址。");
       setWebPage(page);
+      writeStoredWebPage(accountScope, page);
       if (page.title) setTitle(page.title);
       setWebFeedback({ status: "success", message: page.message || "网页已解析，可以开始一起看了。" });
     } catch (error) {
@@ -402,11 +492,11 @@ export default function Together({
     selectedMode === "web" ? webFeedback : selectedMode === "direct" ? directFeedback : feedback;
 
   return (
-    <section className="feature-page together-page" aria-label="一起看">
+    <section className="feature-page together-page" aria-label={viewKind === "music" ? "一起听歌" : "一起看"}>
       <header className="together-heading">
         <div>
-          <small>TOGETHER</small>
-          <h2>和 {aiName} 一起看</h2>
+          <small>{viewKind === "music" ? "LISTENING" : "TOGETHER"}</small>
+          <h2>{viewKind === "music" ? "和 " + aiName + " 一起听歌" : "和 " + aiName + " 一起看"}</h2>
           <p>
             {selectedMode === "music"
               ? "在前台用浏览器音频播放器，和伴侣同步听同一份歌单。"
@@ -477,12 +567,25 @@ export default function Together({
             webPage ? (
               <div className="together-web-stage">
                 {webPage.provider === "bilibili" && webPage.bvid ? (
-                  <video
-                    controls
-                    playsInline
-                    poster={webPage.poster || ""}
-                    src={`${API_BASE_URL}/api/v2/co-watch/bilibili-stream?bvid=${encodeURIComponent(webPage.bvid)}`}
-                  />
+                  <div className="together-video-wrap">
+                    <video
+                      ref={webVideoRef}
+                      controls
+                      playsInline
+                      poster={webPage.poster || ""}
+                      src={`${API_BASE_URL}/api/v2/co-watch/bilibili-stream?bvid=${encodeURIComponent(webPage.bvid)}`}
+                    />
+                    <div className="together-danmaku-layer">
+                      {activeDanmaku.map((item) => (
+                        <div
+                          key={item.id}
+                          className={`together-danmaku-item lane-${item.lane || 0}`}
+                        >
+                          {item.text}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 ) : (
                   <iframe
                     src={webPage.embedUrl}
@@ -586,10 +689,21 @@ export default function Together({
                       ? formatMediaTime(directDurationSeconds)
                       : "等待媒体信息"
                   }`
+                : selectedMode === "web"
+                ? webPositionSeconds > 0
+                  ? formatMediaTime(webPositionSeconds)
+                  : "等待播放"
                 : formatMoment(preview?.capturedAt)}
             </time>
           </div>
         </div>
+
+        {lastAssistantLine ? (
+          <p className="together-plot-line">
+            <span>📺 {aiName} 剧情：</span>
+            {lastAssistantLine.text}
+          </p>
+        ) : null}
 
         <div className="together-controls">
           {selectedMode === "music" ? (

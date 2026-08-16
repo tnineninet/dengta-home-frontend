@@ -130,6 +130,7 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
               autoRefreshCountRef.current += 1;
               setFeedback("已为你换上新鲜二维码,请扫当前这张。");
               void startLogin();
+            }
           } catch (caught) {
             if (caught?.code === "bilibili_qr_session_expired") {
               stopPolling();

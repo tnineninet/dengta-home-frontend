@@ -166,11 +166,100 @@ export async function importNeteaseShare(connectionId, shareUrl) {
   }));
 }
 
+export async function readNeteaseCookieSession() {
+  return apiRequest("/api/v2/music/providers/netease/cookie-session", {
+    timeoutMs: 12_000,
+  });
+}
+
+export async function saveNeteaseCookieSession(cookie) {
+  return apiRequest("/api/v2/music/providers/netease/cookie-session", {
+    method: "POST",
+    timeoutMs: 20_000,
+    body: JSON.stringify({ cookie: text(cookie, 4096) }),
+  });
+}
+
+export async function clearNeteaseCookieSession() {
+  return apiRequest("/api/v2/music/providers/netease/cookie-session", {
+    method: "DELETE",
+    timeoutMs: 12_000,
+  });
+}
 export async function requestExternalMusicPlayback(resourceType, resourceId) {
   return apiRequest("/api/v2/music/providers/netease/external-playback", {
     method: "POST",
     timeoutMs: WRITE_TIMEOUT_MS,
     body: JSON.stringify({ resource_type: resourceType, resource_id: text(resourceId, 20) }),
+  });
+}
+
+
+// ---------- 网易云 Cookie 版音乐操作（App 内一键登录后可用） ----------
+
+function normalizeSearchTrack(item) {
+  return Object.freeze({
+    providerTrackId: text(item?.provider_track_id ?? item?.id, 20),
+    title: text(item?.title ?? item?.name, 180),
+    artist: text(item?.artist, 180),
+    album: text(item?.album, 180),
+    coverUrl: text(item?.cover_url ?? item?.coverUrl, 4096),
+    durationSeconds: number(item?.duration_seconds ?? item?.durationSeconds),
+    externalUrl: text(item?.external_url ?? ("https://music.163.com/#/song?id=" + (item?.provider_track_id ?? item?.id)), 4096),
+  });
+}
+
+export async function cookieSearchNetease(query, limit = 10) {
+  const data = await apiRequest("/api/v2/music/providers/netease/cookie/search?q=" + encodeURIComponent(text(query, 120)) + "&limit=" + Math.min(30, Math.max(1, number(limit, 10))), { timeoutMs: READ_TIMEOUT_MS });
+  const values = Array.isArray(data?.items) ? data.items : [];
+  return Object.freeze(values.slice(0, 50).map(normalizeSearchTrack));
+}
+
+export async function cookieGetMyPlaylists() {
+  return apiRequest("/api/v2/music/providers/netease/cookie/my-playlists", { timeoutMs: READ_TIMEOUT_MS });
+}
+
+export async function cookieGetPlaylistTracks(playlistId) {
+  return apiRequest("/api/v2/music/providers/netease/cookie/playlist?id=" + encodeURIComponent(text(playlistId, 20)), { timeoutMs: READ_TIMEOUT_MS });
+}
+
+export async function cookieGetDailyRecommend() {
+  return apiRequest("/api/v2/music/providers/netease/cookie/daily", { timeoutMs: READ_TIMEOUT_MS });
+}
+
+export async function cookieGetPlayHistory(limit = 20) {
+  return apiRequest("/api/v2/music/providers/netease/cookie/history?limit=" + Math.min(50, Math.max(1, number(limit, 20))), { timeoutMs: READ_TIMEOUT_MS });
+}
+
+export async function cookieLikeSong(songId, like) {
+  return apiRequest("/api/v2/music/providers/netease/cookie/like", {
+    method: "POST",
+    timeoutMs: WRITE_TIMEOUT_MS,
+    body: JSON.stringify({ song_id: text(songId, 20), like: like !== false }),
+  });
+}
+
+export async function cookieCreatePlaylist(name, privacy = false) {
+  return apiRequest("/api/v2/music/providers/netease/cookie/playlist", {
+    method: "POST",
+    timeoutMs: WRITE_TIMEOUT_MS,
+    body: JSON.stringify({ name: text(name, 60), privacy: privacy === true }),
+  });
+}
+
+export async function cookieAddToPlaylist(playlistId, trackIds) {
+  return apiRequest("/api/v2/music/providers/netease/cookie/playlist/tracks", {
+    method: "POST",
+    timeoutMs: WRITE_TIMEOUT_MS,
+    body: JSON.stringify({ playlist_id: text(playlistId, 20), track_ids: (Array.isArray(trackIds) ? trackIds : [trackIds]).map((id) => text(id, 20)).slice(0, 100) }),
+  });
+}
+
+export async function cookieRemoveFromPlaylist(playlistId, trackIds) {
+  return apiRequest("/api/v2/music/providers/netease/cookie/playlist/tracks", {
+    method: "DELETE",
+    timeoutMs: WRITE_TIMEOUT_MS,
+    body: JSON.stringify({ playlist_id: text(playlistId, 20), track_ids: (Array.isArray(trackIds) ? trackIds : [trackIds]).map((id) => text(id, 20)).slice(0, 100) }),
   });
 }
 

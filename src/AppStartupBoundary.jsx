@@ -17,6 +17,7 @@ export function AppLoadingScreen() {
 
 export function AppFailureScreen({
   diagnosticCode = "DT-START-UI-01",
+  errorMessage = "",
   accountScope = "",
   sessionManager,
 }) {
@@ -38,6 +39,11 @@ export function AppFailureScreen({
       <strong>这次没有顺利点亮</strong>
       <span>应用内容载入失败，账号和聊天数据不会因此丢失。</span>
       <small>诊断码：{diagnosticCode}</small>
+      {errorMessage ? (
+        <small className="app-startup-error">
+          错误详情：{errorMessage.slice(0, 300)}
+        </small>
+      ) : null}
       <button type="button" onClick={reloadApplication}>重新载入应用</button>
       <button
         type="button"
@@ -58,7 +64,7 @@ export function AppFailureScreen({
 export class AppStartupBoundary extends Component {
   constructor(props) {
     super(props);
-    this.state = { failed: false, diagnosticCode: "DT-START-UI-01" };
+    this.state = { failed: false, diagnosticCode: "DT-START-UI-01", errorMessage: "" };
   }
 
   static getDerivedStateFromError() {
@@ -68,14 +74,25 @@ export class AppStartupBoundary extends Component {
   componentDidCatch(error) {
     const name = String(error?.name || "Error").slice(0, 80);
     const diagnosticCode = startupDiagnosticCode(error);
-    this.setState({ diagnosticCode });
-    console.error("DengTa 应用界面载入失败", { name, diagnosticCode });
+    this.setState({
+      diagnosticCode,
+      errorMessage: String(error?.message || error?.name || "").slice(0, 400),
+    });
+    console.error(
+      "DengTa 应用界面载入失败",
+      JSON.stringify({
+        name,
+        diagnosticCode,
+        message: String(error?.message || ""),
+      }),
+    );
   }
 
   render() {
     return this.state.failed ? (
       <AppFailureScreen
         diagnosticCode={this.state.diagnosticCode}
+        errorMessage={this.state.errorMessage}
         accountScope={this.props.accountScope}
         sessionManager={this.props.sessionManager}
       />

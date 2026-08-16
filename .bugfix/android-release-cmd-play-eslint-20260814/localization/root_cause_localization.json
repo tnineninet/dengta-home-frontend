@@ -1,0 +1,10 @@
+{
+  "localization_outcome": "confirmed",
+  "root_cause_summary": "正则需要转义反斜杠以匹配 Java 源码，但错误地同时转义了在正则字面量中无需转义的双引号。",
+  "faulty_file": "test/android-release.test.js",
+  "faulty_method_or_region": "cmd=play assertion at line 137",
+  "runtime_symptom": "npm run lint exits with code 1 and reports four no-useless-escape errors on line 137.",
+  "faulty_logic": "模式中的每个 \\\" 以三个反斜杠表示反斜杠加被转义引号；正则字面量只需用两个反斜杠匹配源码反斜杠，双引号可直接书写。",
+  "impact_scope": ["test/android-release.test.js cmd=play assertion"],
+  "evidence": [".bugfix/android-release-cmd-play-eslint-20260814/reproduction/stdout.txt"]
+}

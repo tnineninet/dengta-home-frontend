@@ -1,0 +1,14 @@
+{
+  "issue_number": "together-music-local-audio-2.9.3-20260814",
+  "brt_path": "E:\\chatgpt\\dengta-home-frontend\\.bugfix\\together-music-local-audio-2.9.3-20260814\\reproduction\\refresh-freeze.repro.test.js",
+  "run_cmd_path": "E:\\chatgpt\\dengta-home-frontend\\.bugfix\\together-music-local-audio-2.9.3-20260814\\reproduction\\run_repro.sh",
+  "evidence_path": [
+    "E:\\chatgpt\\dengta-home-frontend\\.bugfix\\together-music-local-audio-2.9.3-20260814\\reproduction\\stdout.txt",
+    "E:\\chatgpt\\dengta-home-frontend\\.bugfix\\together-music-local-audio-2.9.3-20260814\\reproduction\\stderr.txt",
+    "E:\\chatgpt\\dengta-home-frontend\\.bugfix\\together-music-local-audio-2.9.3-20260814\\reproduction\\exit_code.txt",
+    "E:\\chatgpt\\dengta-home-frontend\\.bugfix\\together-music-local-audio-2.9.3-20260814\\reproduction\\diagnostic_observations.txt"
+  ],
+  "reproduction_result": "REPRODUCED",
+  "reproduction_analysis": "使用仓库原生 Node 断言测试模板执行刷新所调用的 listMusicPlaylists。stdout.txt 显示请求在 100ms 观察窗口后仍为 pending，且诊断输出记录 timeoutConfigured: false；stderr.txt 记录预期自行结束、实际仍挂起的断言差异；exit_code.txt 为 1。该证据复现了后端请求不返回时刷新 Promise 无界挂起、调用方无法可靠清理交互状态的核心症状。诊断跟踪已注入项目源代码并观察到输出，无需执行最小化转换。",
+  "brt_type": "WHITE_BOX"
+}

@@ -11,10 +11,15 @@ function text(value, maximum = 300) {
 
 // 风控要求真实设备号:App 上报本机真实信息,后端据此派生设备号。
 async function readDeviceIdentity() {
-  if (!deviceSignalsPluginAvailable()) return null;
+  const available = deviceSignalsPluginAvailable();
+  console.log("[qr-device] plugin available:", available);
+  if (!available) return null;
   try {
-    return await DeviceSignals.getDeviceIdentity();
-  } catch {
+    const identity = await DeviceSignals.getDeviceIdentity();
+    console.log("[qr-device] identity ok:", JSON.stringify(identity).slice(0, 120));
+    return identity;
+  } catch (error) {
+    console.log("[qr-device] identity error:", String(error?.message || error));
     return null;
   }
 }

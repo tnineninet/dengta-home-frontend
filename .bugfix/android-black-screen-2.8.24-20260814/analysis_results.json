@@ -1,0 +1,34 @@
+{
+  "preconditions": {
+    "inputs": {
+      "dataset_or_case": "安装 builds/DengTa-Home-2.8.24-world-book-runtime-debug.apk，启动应用并登录账号进入应用主体。",
+      "size_or_boundary": "从旧版 2.8.24 安装或升级到当前版本的兼容场景。",
+      "other": "登录步骤完成并进入登录后的 React/Capacitor 应用流程。"
+    },
+    "environments": {
+      "version": "Android APK 2.8.24；目标修复版本为当前 2.9.0。",
+      "other": "Capacitor Android WebView；截图确认 Android 状态栏正常显示。"
+    }
+  },
+  "expected_behavior": {
+    "description": "应用启动并登录后应渲染可交互的应用界面；若登录恢复或启动失败，应显示可恢复的错误界面，而不是空白或纯黑页面；从 2.8.24 升级后仍应正常启动。"
+  },
+  "actual_behavior": {
+    "description": "安装 2.8.24 debug APK 后，点击应用并登录账号进入后，状态栏可见，但应用主体完全纯黑，没有加载态、错误页或任何控件。"
+  },
+  "possible_root_cause": "报告要求重点检查 Capacitor Android WebView 本地 bundle、Supabase 登录 redirect/session 恢复、登录后 React 渲染异常、Android WebView API 兼容、CSS 夜间主题、WebView renderer crash/recovery、缺失构建环境变量，以及 2.8.24 与当前 2.9.0 的差异；这些均为待验证诊断方向，并非已确认根因。",
+  "reproduction_seed_snippet": "",
+  "minimal_reproduction_steps": "1. 在 Android 设备或等效测试环境安装 E:\\chatgpt\\builds\\DengTa-Home-2.8.24-world-book-runtime-debug.apk。\n2. 启动 DengTa Home。\n3. 登录账号并进入登录后的应用流程。\n4. 观察 Android 状态栏可见，但应用主体为纯黑，且无加载态、错误页或控件。",
+  "log_excerpt": "",
+  "log_evidence": {
+    "log_path": "",
+    "start_line": "",
+    "end_line": "",
+    "summary": "",
+    "content": ""
+  },
+  "workflow_readiness": {
+    "decision": "PASS",
+    "missing_or_insufficient_information": ""
+  }
+}

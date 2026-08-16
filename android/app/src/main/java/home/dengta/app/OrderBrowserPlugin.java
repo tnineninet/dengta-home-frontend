@@ -17,10 +17,12 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import androidx.activity.result.ActivityResult;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
 import org.json.JSONObject;
@@ -28,20 +30,16 @@ import org.json.JSONObject;
 /**
  * 外卖执行器（多用户手机版）：
  * - openLogin：打开外卖 H5 让用户扫码登录（Cookie 存本机 WebView，二次免扫码）；
- * - searchShops：搜索店铺并提取结构化列表（名称/起送/配送/评分/距离/价格区间）；
+ * - searchShops：搜索店铺并提取结构化列表；
  * - orderProduct：按店名+商品名加购并进入购物车/结算页，用户在页面上人工确认付款。
- * 定位注入：把手机真实位置写进页面 navigator.geolocation（风控核心）。
  */
 @CapacitorPlugin(name = "OrderBrowser")
 public final class OrderBrowserPlugin extends Plugin {
 
-    public static final int REQUEST_ORDER = 9001;
-    private PluginCall pendingCall = null;
-
     @PluginMethod
     public void openLogin(PluginCall call) {
         String url = call.getString("url", "https://h5.ele.me/msite/");
-        startOrderActivity(url, "login", "{}", "扫码登录外卖平台");
+        startOrderActivity(null, url, "login", "{}", "扫码登录外卖平台");
         JSObject out = new JSObject();
         out.put("opened", true);
         call.resolve(out);
@@ -56,8 +54,7 @@ public final class OrderBrowserPlugin extends Plugin {
         }
         String url = "https://h5.ele.me/minisearch/result?keyword="
             + android.net.Uri.encode(keyword.trim()) + "&from=mobile.default";
-        pendingCall = call;
-        startOrderActivity(url, "search", "{}", "搜索：" + keyword.trim());
+        startOrderActivity(call, url, "search", "{}", "搜索：" + keyword.trim());
     }
 
     @PluginMethod
@@ -76,8 +73,7 @@ public final class OrderBrowserPlugin extends Plugin {
         } catch (Exception ignored) {}
         String url = "https://h5.ele.me/minisearch/result?keyword="
             + android.net.Uri.encode(shopName.trim()) + "&from=mobile.default";
-        pendingCall = call;
-        startOrderActivity(url, "order", config.toString(), "点单：" + product.trim());
+        startOrderActivity(call, url, "order", config.toString(), "点单：" + product.trim());
     }
 
     @PluginMethod
@@ -107,7 +103,7 @@ public final class OrderBrowserPlugin extends Plugin {
         call.resolve(out);
     }
 
-    private void startOrderActivity(String url, String mode, String config, String title) {
+    private void startOrderActivity(PluginCall call, String url, String mode, String config, String title) {
         try {
             Intent intent = new Intent(getContext(), OrderWebActivity.class);
             intent.putExtra("url", url);
@@ -115,37 +111,33 @@ public final class OrderBrowserPlugin extends Plugin {
             intent.putExtra("config", config);
             intent.putExtra("title", title);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            getContext().startActivity(intent);
+            if (call != null) {
+                startActivityForResult(call, intent, "orderResult");
+            } else {
+                getContext().startActivity(intent);
+            }
         } catch (Exception error) {
             // 页面打不开时不要崩掉整个 App,直接按失败回给调用方。
-            if (pendingCall != null) {
-                PluginCall call = pendingCall;
-                pendingCall = null;
+            if (call != null) {
                 call.reject("外卖页面暂时无法打开。");
             }
         }
     }
 
-    @Override
-    protected void handleOnActivityResult(int requestCode, int resultCode, Intent data) {
-        if (requestCode == REQUEST_ORDER && pendingCall != null) {
-            PluginCall call = pendingCall;
-            pendingCall = null;
-            if (resultCode == Activity.RESULT_OK && data != null) {
-                String resultJson = data.getStringExtra("result");
-                try {
-                    call.resolve(new JSObject(resultJson));
-                } catch (Exception error) {
-                    call.reject("执行结果格式不正确。");
-                }
-            } else if (resultCode == Activity.RESULT_CANCELED) {
-                String message = data != null ? data.getStringExtra("message") : null;
-                call.reject(message != null ? message : "用户取消了操作。");
-            } else {
-                call.reject("执行失败。");
+    @ActivityCallback
+    private void orderResult(PluginCall call, ActivityResult result) {
+        if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+            String resultJson = result.getData().getStringExtra("result");
+            try {
+                call.resolve(new JSObject(resultJson));
+            } catch (Exception error) {
+                call.reject("执行结果格式不正确。");
             }
+        } else if (result.getResultCode() == Activity.RESULT_CANCELED) {
+            String message = result.getData() != null ? result.getData().getStringExtra("message") : null;
+            call.reject(message != null ? message : "用户取消了操作。");
         } else {
-            super.handleOnActivityResult(requestCode, resultCode, data);
+            call.reject("执行失败。");
         }
     }
 }

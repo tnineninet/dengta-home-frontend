@@ -1,0 +1,9 @@
+{
+  "dti_type": "COMMAND_INVOCATION",
+  "build_cmd": "",
+  "run_cmd": "\"C:\\Program Files\\nodejs\\npm.cmd\" --prefix \"E:\\chatgpt\\dengta-home-frontend\" run lint",
+  "artifacts": [],
+  "configs": ["E:\\chatgpt\\dengta-home-frontend\\eslint.config.js"],
+  "env": [],
+  "evidence": "package.json scripts.lint"
+}

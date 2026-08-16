@@ -1,0 +1,14 @@
+{
+  "issue_number": "android-black-screen-2.8.24-20260814",
+  "brt_path": "E:\\chatgpt\\dengta-home-frontend\\.bugfix\\android-black-screen-2.8.24-20260814\\reproduction\\repro-test.mjs",
+  "run_cmd_path": "E:\\chatgpt\\dengta-home-frontend\\.bugfix\\android-black-screen-2.8.24-20260814\\reproduction\\run_repro.sh",
+  "evidence_path": [
+    "E:\\chatgpt\\dengta-home-frontend\\.bugfix\\android-black-screen-2.8.24-20260814\\reproduction\\stdout.txt",
+    "E:\\chatgpt\\dengta-home-frontend\\.bugfix\\android-black-screen-2.8.24-20260814\\reproduction\\stderr.txt",
+    "E:\\chatgpt\\dengta-home-frontend\\.bugfix\\android-black-screen-2.8.24-20260814\\reproduction\\exit_code.txt",
+    "E:\\chatgpt\\dengta-home-frontend\\.bugfix\\android-black-screen-2.8.24-20260814\\reproduction\\diagnostic_observations.txt"
+  ],
+  "reproduction_result": "REPRODUCED",
+  "reproduction_analysis": "The final carrier executed against the exact 26,500,886-byte reported APK. stdout.txt and diagnostic_observations.txt show rootPresent=true, a concrete authenticated App chunk, nullSuspenseFallback=true, and recoverableRuntimeBoundary=false. stderr.txt records the issue-consistent visually empty path and exit_code.txt is 1 by the carrier's deterministic defect assertion. No adb device was connected, so this reproduces the APK's deterministic no-UI failure mode rather than a live device screenshot or device-specific renderer event.",
+  "brt_type": "BLACK_BOX"
+}

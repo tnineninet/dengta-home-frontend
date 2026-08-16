@@ -1,0 +1,285 @@
+diff --git a/android/app/build.gradle b/android/app/build.gradle
+index 242802a..5c63aaf 100644
+--- a/android/app/build.gradle
++++ b/android/app/build.gradle
+@@ -15,8 +15,8 @@ android {
+         applicationId "home.dengta.app"
+         minSdkVersion rootProject.ext.minSdkVersion
+         targetSdkVersion rootProject.ext.targetSdkVersion
+-        versionCode 48
+-        versionName "2.9.1"
++        versionCode 49
++        versionName "2.9.2"
+         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+         aaptOptions {
+              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+diff --git a/package-lock.json b/package-lock.json
+index 9338785..2d235b1 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "dengta-home-react",
+-  "version": "2.9.1",
++  "version": "2.9.2",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "dengta-home-react",
+-      "version": "2.9.1",
++      "version": "2.9.2",
+       "dependencies": {
+         "@capacitor/android": "^8.4.2",
+         "@capacitor/core": "^8.4.2",
+diff --git a/package.json b/package.json
+index f11dd88..1294e7e 100644
+--- a/package.json
++++ b/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "dengta-home-react",
+   "private": true,
+-  "version": "2.9.1",
++  "version": "2.9.2",
+   "type": "module",
+   "scripts": {
+     "pretest": "node --test test/mobile-chat-shell.test.js && node test/settings-folders.test.js && npm run test:music-listening",
+diff --git a/src/App.jsx b/src/App.jsx
+index f74c830..6665d1a 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -2104,7 +2104,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
+           (item) => item.id && !seenSet.has(item.id),
+         );
+         const allMessages = data.messages || [];
+-        const latest = allMessages.at(-1);
++        const latest = allMessages[allMessages.length - 1];
+ 
+         if (latest?.created_at) {
+           localStorage.setItem(pushCursorKey, latest.created_at);
+@@ -5338,7 +5338,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
+     const userAvatar = privateMediaContentPath(userAvatarAsset?.id);
+     const companionAvatar = privateMediaContentPath(companionAvatarAsset?.id);
+     const chatBackground = privateMediaContentPath(chatBackgroundAsset?.id);
+-    const latestMessage = messages.at(-1);
++    const latestMessage = messages[messages.length - 1];
+     const replySuggestions =
+       latestMessage?.role === "assistant" &&
+       !latestMessage.isStreaming &&
+diff --git a/src/AppStartupBoundary.jsx b/src/AppStartupBoundary.jsx
+index 5931409..09b775f 100644
+--- a/src/AppStartupBoundary.jsx
++++ b/src/AppStartupBoundary.jsx
+@@ -1,5 +1,9 @@
+-import { Component } from "react";
+-import { reloadApplication } from "./app-startup-recovery.js";
++import { Component, useState } from "react";
++import {
++  clearUiPreferencesAndReload,
++  reloadApplication,
++  startupDiagnosticCode,
++} from "./app-startup-recovery.js";
+ 
+ export function AppLoadingScreen() {
+   return (
+@@ -11,13 +15,42 @@ export function AppLoadingScreen() {
+   );
+ }
+ 
+-export function AppFailureScreen() {
++export function AppFailureScreen({
++  diagnosticCode = "DT-START-UI-01",
++  accountScope = "",
++  sessionManager,
++}) {
++  const [signOutState, setSignOutState] = useState("");
++
++  async function exitAccount() {
++    setSignOutState("busy");
++    try {
++      await sessionManager?.signOut();
++      reloadApplication();
++    } catch {
++      setSignOutState("error");
++    }
++  }
++
+   return (
+     <main className="app-startup-page app-startup-failure" role="alert">
+       <div className="app-startup-mark" aria-hidden="true">灯</div>
+       <strong>这次没有顺利点亮</strong>
+       <span>应用内容载入失败，账号和聊天数据不会因此丢失。</span>
++      <small>诊断码：{diagnosticCode}</small>
+       <button type="button" onClick={reloadApplication}>重新载入应用</button>
++      <button
++        type="button"
++        onClick={() => clearUiPreferencesAndReload(accountScope)}
++      >
++        清理本机界面偏好后重试
++      </button>
++      <button type="button" disabled={signOutState === "busy"} onClick={exitAccount}>
++        {signOutState === "busy" ? "正在退出…" : "退出当前账号"}
++      </button>
++      {signOutState === "error" && (
++        <span role="status">退出失败，请检查网络后重试。</span>
++      )}
+     </main>
+   );
+ }
+@@ -25,7 +58,7 @@ export function AppFailureScreen() {
+ export class AppStartupBoundary extends Component {
+   constructor(props) {
+     super(props);
+-    this.state = { failed: false };
++    this.state = { failed: false, diagnosticCode: "DT-START-UI-01" };
+   }
+ 
+   static getDerivedStateFromError() {
+@@ -34,10 +67,18 @@ export class AppStartupBoundary extends Component {
+ 
+   componentDidCatch(error) {
+     const name = String(error?.name || "Error").slice(0, 80);
+-    console.error("DengTa 应用界面载入失败", { name });
++    const diagnosticCode = startupDiagnosticCode(error);
++    this.setState({ diagnosticCode });
++    console.error("DengTa 应用界面载入失败", { name, diagnosticCode });
+   }
+ 
+   render() {
+-    return this.state.failed ? <AppFailureScreen /> : this.props.children;
++    return this.state.failed ? (
++      <AppFailureScreen
++        diagnosticCode={this.state.diagnosticCode}
++        accountScope={this.props.accountScope}
++        sessionManager={this.props.sessionManager}
++      />
++    ) : this.props.children;
+   }
+ }
+diff --git a/src/app-startup-recovery.js b/src/app-startup-recovery.js
+index 8ea72a2..3ea1b6a 100644
+--- a/src/app-startup-recovery.js
++++ b/src/app-startup-recovery.js
+@@ -1,10 +1,53 @@
+ const CHUNK_RECOVERY_KEY = "dengta:app-chunk-recovery";
++const UI_PREFERENCE_KEYS = Object.freeze([
++  "dengta.ui-theme.v1",
++  "dengta.ui-theme.v2",
++  "dengta.font-mode.v1",
++  "dengta.chat-skin.v1",
++  "dengta_home_ambient_preferences_v1",
++  "dengta_home_ambient_location_v1",
++  "dengta_home_ambient_weather_v1",
++]);
++
++export function startupDiagnosticCode(error) {
++  const message = String(error?.message || "");
++  if (/catalog/.test(message) && /null|undefined/.test(message)) {
++    return "DT-START-PM-01";
++  }
++  if (error?.name === "ChunkLoadError" || /dynamically imported module|chunk/i.test(message)) {
++    return "DT-START-CH-01";
++  }
++  if (/is not a function|not defined|unsupported/i.test(message)) {
++    return "DT-START-WV-01";
++  }
++  return "DT-START-UI-01";
++}
++
++export function clearLocalUiPreferences(
++  accountScope = "",
++  storage = globalThis.localStorage,
++) {
++  const scope = String(accountScope || "").trim();
++  for (const key of UI_PREFERENCE_KEYS) {
++    try {
++      storage?.removeItem(key);
++      if (scope) storage?.removeItem(`${key}:${scope}`);
++    } catch {
++      // A restricted WebView may reject storage access; reload remains available.
++    }
++  }
++}
+ 
+ export function reloadApplication() {
+   globalThis.sessionStorage?.removeItem(CHUNK_RECOVERY_KEY);
+   globalThis.location?.reload();
+ }
+ 
++export function clearUiPreferencesAndReload(accountScope = "") {
++  clearLocalUiPreferences(accountScope);
++  reloadApplication();
++}
++
+ export function installChunkRecovery() {
+   globalThis.addEventListener?.("vite:preloadError", (event) => {
+     event.preventDefault?.();
+diff --git a/src/auth.css b/src/auth.css
+index 00c399f..ccbac05 100644
+--- a/src/auth.css
++++ b/src/auth.css
+@@ -574,7 +574,9 @@
+ 
+ .app-startup-page strong { font: 700 1.25rem Georgia, "Songti SC", serif; }
+ .app-startup-page span { max-width: 340px; color: #66736d; line-height: 1.6; }
++.app-startup-page small { color: #66736d; font: 500 .78rem ui-monospace, SFMono-Regular, Consolas, monospace; }
+ .app-startup-failure button { min-height: 44px; margin-top: 8px; padding: 0 18px; border: 0; border-radius: 14px; color: #fff; background: #27352f; font: inherit; }
++.app-startup-failure button:disabled { opacity: .58; }
+ 
+ :root[data-dengta-appearance="night"] .app-startup-page {
+   color: #edf3f0;
+@@ -582,3 +584,4 @@
+ }
+ 
+ :root[data-dengta-appearance="night"] .app-startup-page span { color: #b2beb8; }
++:root[data-dengta-appearance="night"] .app-startup-page small { color: #b2beb8; }
+diff --git a/src/main.jsx b/src/main.jsx
+index 4c522a5..ed815ea 100644
+--- a/src/main.jsx
++++ b/src/main.jsx
+@@ -11,6 +11,7 @@ import "./sun-glass-chat.css";
+ import "./typography.css";
+ import LoadedApp from "./LoadedApp.jsx";
+ import AuthGate from "./AuthGate.jsx";
++import { authSession } from "./auth-session.js";
+ import DengTaPrelude from "./DengTaPrelude.jsx";
+ import { prewarmBackend } from "./backend-prewarm.js";
+ import { pwaInstallController } from "./pwa-install.js";
+@@ -37,7 +38,10 @@ createRoot(document.getElementById("root")).render(
+       <DengTaPrelude />
+       <AuthGate>
+         {({ accountControl, snapshot }) => (
+-          <AppStartupBoundary>
++          <AppStartupBoundary
++            accountScope={snapshot.user?.id || ""}
++            sessionManager={authSession}
++          >
+             <Suspense fallback={<AppLoadingScreen />}>
+               <LoadedApp key={snapshot.user?.id} accountControl={accountControl} accountScope={snapshot.user?.id || ""} userName={snapshot.user?.displayName} companionScope={snapshot.activeCompanionId || ""} />
+             </Suspense>
+diff --git a/src/private-media.js b/src/private-media.js
+index 36cf4e5..beea40a 100644
+--- a/src/private-media.js
++++ b/src/private-media.js
+@@ -42,7 +42,10 @@ export function isPrivateMediaAssetId(id) {
+ }
+ 
+ export function normalizePrivateMediaCatalog(data = {}) {
+-  const root = data.catalog || data;
++  const source = data && typeof data === "object" ? data : {};
++  const root = source.catalog && typeof source.catalog === "object"
++    ? source.catalog
++    : source;
+   const grouped = root.assets || root.items || [];
+   const assets = Array.isArray(grouped)
+     ? grouped
+@@ -65,7 +68,7 @@ export function normalizePrivateMediaCatalog(data = {}) {
+               .filter(Boolean),
+       }))
+       .filter((asset) => privateMediaContentPath(asset.id)),
+-    preferences: root.preferences || data.preferences || {},
++    preferences: root.preferences || source.preferences || {},
+   };
+ }
+ 

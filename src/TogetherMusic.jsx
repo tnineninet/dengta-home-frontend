@@ -23,9 +23,21 @@ import {
 } from "./co-watch.js";
 import {
   connectNeteaseMcp,
+  cookieAddToPlaylist,
+  cookieCreatePlaylist,
+  cookieGetDailyRecommend,
+  cookieGetMyPlaylists,
+  cookieGetPlayHistory,
+  cookieGetPlaylistTracks,
+  cookieLikeSong,
+  cookieRemoveFromPlaylist,
+  cookieSearchNetease,
   deleteMusicFavorite,
   getMusicPlaylist,
   importNeteaseShare,
+  clearNeteaseCookieSession,
+  readNeteaseCookieSession,
+  saveNeteaseCookieSession,
   listNeteaseConnections,
   listMusicFavorites,
   listMusicPlaylists,
@@ -34,7 +46,8 @@ import {
 } from "./music-listening.js";
 import { MUSIC_PLAYBACK_MODES, musicPlaybackIsInternal, resolveMusicPlayback } from "./music-playback.js";
 import { openNeteasePlayback } from "./netease-playback.js";
-import NeteaseQrLogin from "./NeteaseQrLogin.jsx";
+import { neteaseCookiePluginAvailable, openNeteaseCookieLogin } from "./netease-cookie.js";
+
 import MusicSettings from "./MusicSettings.jsx";
 
 const ERROR_MESSAGE = "音频无法播放。链接可能已过期、需要登录、受到防盗链限制，或使用了 DRM。DengTa 不会绕过这些限制。";
@@ -75,6 +88,12 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   const [shareUrl, setShareUrl] = useState("");
   const [providerBusy, setProviderBusy] = useState(false);
   const [providerStatus, setProviderStatus] = useState("");
+  const [cookieStatus, setCookieStatus] = useState({
+    checking: true,
+    connected: false,
+    account_name: "",
+  });
+  const [cookieBusy, setCookieBusy] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
 
   const active = session?.status === "active" && session?.sessionMode === "listening";
@@ -422,14 +441,179 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
     }
   };
 
+
+  const connectNeteaseCookie = async () => {
+    if (cookieBusy) return;
+    if (!neteaseCookiePluginAvailable()) {
+      setError("一键连接仅 Android App 可用。");
+      return;
+    }
+    setCookieBusy(true);
+    setError("");
+    try {
+      const outcome = await openNeteaseCookieLogin();
+      if (!outcome.ok || !outcome.cookie) {
+        setError(outcome.error || "没有拿到登录状态。");
+        return;
+      }
+      const saved = await saveNeteaseCookieSession(outcome.cookie);
+      setCookieStatus({
+        checking: false,
+        connected: true,
+        account_name: saved?.session?.account_name || "",
+      });
+      setStatus("网易云账号已连接，可以搜歌和导入歌单了。");
+      void refreshLibrary();
+    } catch (caught) {
+      setError(caught?.message || "连接网易云失败。");
+    } finally {
+      setCookieBusy(false);
+    }
+  };
+
+  const disconnectNeteaseCookie = async () => {
+    try {
+      await clearNeteaseCookieSession();
+    } catch {
+      // 忽略清理失败。
+    }
+    setCookieStatus({ checking: false, connected: false, account_name: "" });
+  };
+  // ---------- 网易云音乐操作面板（Cookie 登录后可用） ----------
+  const [cookiePanel, setCookiePanel] = useState("closed"); // closed | search | playlists | daily | history
+  const [cookieSearchQuery, setCookieSearchQuery] = useState("");
+  const [cookieSearchResults, setCookieSearchResults] = useState([]);
+  const [cookieSearchBusy, setCookieSearchBusy] = useState(false);
+  const [cookieMyPlaylists, setCookieMyPlaylists] = useState(null);
+  const [cookiePlaylistDetail, setCookiePlaylistDetail] = useState(null);
+  const [cookieDaily, setCookieDaily] = useState([]);
+  const [cookieHistory, setCookieHistory] = useState([]);
+  const [cookieOpBusy, setCookieOpBusy] = useState(false);
+  const [cookieOpStatus, setCookieOpStatus] = useState("");
+
+  const runCookieSearch = async (event) => {
+    event?.preventDefault();
+    if (cookieSearchBusy || !cookieSearchQuery.trim()) return;
+    setCookieSearchBusy(true);
+    setCookieOpStatus("");
+    try {
+      const items = await cookieSearchNetease(cookieSearchQuery, 12);
+      setCookieSearchResults(items);
+      setCookieOpStatus(items.length ? `找到 ${items.length} 首。` : "没有找到相关歌曲。");
+    } catch (caught) {
+      setCookieOpStatus(caught?.message || "搜索失败。");
+    } finally {
+      setCookieSearchBusy(false);
+    }
+  };
+
+  const openCookiePlaylists = async () => {
+    setCookiePanel("playlists");
+    setCookieOpStatus("");
+    try {
+      const data = await cookieGetMyPlaylists();
+      setCookieMyPlaylists(data);
+      setCookiePlaylistDetail(null);
+    } catch (caught) {
+      setCookieOpStatus(caught?.message || "读取歌单失败。");
+    }
+  };
+
+  const openCookiePlaylist = async (playlistId) => {
+    if (!playlistId) return;
+    setCookieOpBusy(true);
+    setCookieOpStatus("");
+    try {
+      const data = await cookieGetPlaylistTracks(playlistId);
+      setCookiePlaylistDetail({ id: playlistId, ...(data?.playlist || {}) });
+    } catch (caught) {
+      setCookieOpStatus(caught?.message || "读取歌单内容失败。");
+    } finally {
+      setCookieOpBusy(false);
+    }
+  };
+
+  const openCookieDaily = async () => {
+    setCookiePanel("daily");
+    setCookieOpStatus("");
+    try {
+      const data = await cookieGetDailyRecommend();
+      setCookieDaily(Array.isArray(data?.daily) ? data.daily : []);
+      setCookieOpStatus("今日推荐已加载。");
+    } catch (caught) {
+      setCookieOpStatus(caught?.message || "每日推荐读取失败。");
+    }
+  };
+
+  const openCookieHistory = async () => {
+    setCookiePanel("history");
+    setCookieOpStatus("");
+    try {
+      const data = await cookieGetPlayHistory(20);
+      setCookieHistory(Array.isArray(data?.records) ? data.records : []);
+      setCookieOpStatus("听歌记录已加载。");
+    } catch (caught) {
+      setCookieOpStatus(caught?.message || "听歌记录读取失败。");
+    }
+  };
+
+  const cookieLikeTrack = async (songId, liked) => {
+    setCookieOpBusy(true);
+    setCookieOpStatus("");
+    try {
+      const result = await cookieLikeSong(songId, liked);
+      setCookieOpStatus(result?.liked ? "已红心。♥" : "已取消红心。");
+    } catch (caught) {
+      setCookieOpStatus(caught?.message || "红心操作失败。");
+    } finally {
+      setCookieOpBusy(false);
+    }
+  };
+
+  const cookieImportPlaylist = async (playlistId) => {
+    if (!playlistId) return;
+    setCookieOpBusy(true);
+    setCookieOpStatus("");
+    try {
+      const imported = await importNeteaseShare("", `https://music.163.com/#/playlist?id=${playlistId}`);
+      const nextPlaylists = await listMusicPlaylists();
+      setPlaylists(nextPlaylists);
+      setCookieOpStatus(`已导入“${imported.name}”${imported.itemCount} 首，可以开始听了。`);
+    } catch (caught) {
+      setCookieOpStatus(caught?.message || "导入失败。");
+    } finally {
+      setCookieOpBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    readNeteaseCookieSession()
+      .then((data) => {
+        if (cancelled) return;
+        const session = data?.session || {};
+        setCookieStatus({
+          checking: false,
+          connected: session.connected === true,
+          account_name: session.account_name || "",
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setCookieStatus({ checking: false, connected: false, account_name: "" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const importShare = async (event) => {
     event.preventDefault();
-    if (!connectionId || providerBusy) return;
+    if (providerBusy) return;
     setProviderBusy(true);
     setError("");
     setProviderStatus("正在通过网易云 MCP 导入歌单…");
     try {
-      const imported = await importNeteaseShare(connectionId, shareUrl);
+      const imported = await importNeteaseShare(connectionId || "", shareUrl);
       const nextPlaylists = await listMusicPlaylists();
       const selected = await getMusicPlaylist(imported.id);
       setPlaylists(nextPlaylists);
@@ -539,10 +723,161 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   return <div className="together-setup together-music-setup" aria-busy={loading || queueBusy}>
     {!active && <section className="music-import-entry"><div><strong>把想听的歌带进来</strong><p>支持安全的文本歌单、本机音频与网易云分享链接。</p></div><button type="button" className="together-primary" aria-expanded={importOpen} aria-controls="together-music-import" onClick={() => setImportOpen((current) => !current)}><ListPlus aria-hidden="true" />{importOpen ? "收起导入" : "导入歌单"}</button></section>}
     {!active && importOpen && <div id="together-music-import"><MusicSettings /></div>}
-    {!active && <details className="music-provider-connect music-provider-qr">
-      <summary>扫码登录网易云（推荐，不需要 MCP）</summary>
-      <NeteaseQrLogin onImported={() => { void refreshLibrary(); setImportOpen(false); }} />
-    </details>}
+      {!active && (
+        <section className="music-provider-connect music-provider-cookie">
+          <div className="music-provider-connect-heading">
+            <div>
+              <strong>一键连接网易云</strong>
+              <span>
+                {cookieStatus.checking
+                  ? "正在检查登录状态…"
+                  : cookieStatus.connected
+                  ? `已连接：${cookieStatus.account_name || "网易云账号"}`
+                  : "在 App 内打开网易云登录页，登录后自动保存登录状态，AI 就能搜歌、导入歌单与你一起听。"}
+              </span>
+            </div>
+            <div>
+              {cookieStatus.connected ? (
+                <button type="button" disabled={cookieBusy} onClick={() => void disconnectNeteaseCookie()}>
+                  断开
+                </button>
+              ) : (
+                <button type="button" disabled={cookieBusy} onClick={() => void connectNeteaseCookie()}>
+                  {cookieBusy ? "处理中…" : "一键获取网易云"}
+                </button>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
+      {!active && cookieStatus.connected && (
+        <section className="music-cookie-operations">
+          <div className="music-cookie-operations-bar">
+            <strong>网易云音乐操作</strong>
+            <span className="music-cookie-operations-tabs">
+              <button type="button" className={cookiePanel === "search" ? "is-active" : ""} onClick={() => setCookiePanel("search")}>搜歌</button>
+              <button type="button" className={cookiePanel === "playlists" ? "is-active" : ""} onClick={() => void openCookiePlaylists()}>我的歌单</button>
+              <button type="button" className={cookiePanel === "daily" ? "is-active" : ""} onClick={() => void openCookieDaily()}>每日推荐</button>
+              <button type="button" className={cookiePanel === "history" ? "is-active" : ""} onClick={() => void openCookieHistory()}>听歌记录</button>
+            </span>
+          </div>
+          {cookiePanel === "search" && (
+            <div className="music-cookie-operations-body">
+              <form className="music-cookie-search" onSubmit={runCookieSearch}>
+                <input type="search" maxLength={120} value={cookieSearchQuery} onChange={(event) => setCookieSearchQuery(event.target.value)} placeholder="说个关键词找歌…" />
+                <button type="submit" disabled={cookieSearchBusy || !cookieSearchQuery.trim()}>{cookieSearchBusy ? "搜索中…" : "搜歌"}</button>
+              </form>
+              {cookieSearchResults.length > 0 && (
+                <ul className="music-cookie-track-list">
+                  {cookieSearchResults.map((track) => (
+                    <li key={track.providerTrackId}>
+                      <span className="music-cookie-track-title">{track.title}<em>{track.artist}</em></span>
+                      <span className="music-cookie-track-actions">
+                        <button type="button" disabled={cookieOpBusy} onClick={() => void cookieLikeTrack(track.providerTrackId, true)}>♥ 红心</button>
+                        <button type="button" disabled={cookieOpBusy} onClick={() => { setCookieSearchQuery(track.title); void runCookieSearch(); }}>再搜</button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+          {cookiePanel === "playlists" && (
+            <div className="music-cookie-operations-body">
+              {cookieMyPlaylists && (
+                <div>
+                  {(cookieMyPlaylists.owned?.length > 0 || cookieMyPlaylists.subscribed?.length > 0) ? (
+                    <>
+                      {cookieMyPlaylists.owned?.length > 0 && (
+                        <div className="music-cookie-playlist-group">
+                          <p className="music-cookie-playlist-group-title">自建歌单</p>
+                          <ul className="music-cookie-playlist-list">
+                            {cookieMyPlaylists.owned.map((item) => (
+                              <li key={item.playlist_id}>
+                                <button type="button" className="music-cookie-playlist-name" onClick={() => void openCookiePlaylist(item.playlist_id)}>{item.name}</button>
+                                <span>{item.item_count} 首</span>
+                                <button type="button" disabled={cookieOpBusy} onClick={() => void cookieImportPlaylist(item.playlist_id)}>导入</button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {cookieMyPlaylists.subscribed?.length > 0 && (
+                        <div className="music-cookie-playlist-group">
+                          <p className="music-cookie-playlist-group-title">收藏歌单</p>
+                          <ul className="music-cookie-playlist-list">
+                            {cookieMyPlaylists.subscribed.map((item) => (
+                              <li key={item.playlist_id}>
+                                <button type="button" className="music-cookie-playlist-name" onClick={() => void openCookiePlaylist(item.playlist_id)}>{item.name}</button>
+                                <span>{item.item_count} 首</span>
+                                <button type="button" disabled={cookieOpBusy} onClick={() => void cookieImportPlaylist(item.playlist_id)}>导入</button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <p>账号下还没有歌单。</p>
+                  )}
+                  {cookiePlaylistDetail && (
+                    <div className="music-cookie-playlist-detail">
+                      <button type="button" className="music-cookie-back" onClick={() => setCookiePlaylistDetail(null)}>← 返回歌单列表</button>
+                      <p className="music-cookie-playlist-detail-title">{cookiePlaylistDetail.name}（{cookiePlaylistDetail.tracks?.length || 0} 首）</p>
+                      <ul className="music-cookie-track-list">
+                        {(cookiePlaylistDetail.tracks || []).slice(0, 60).map((track, index) => (
+                          <li key={track.id || index}>
+                            <span className="music-cookie-track-title">{index + 1}. {track.title}<em>{track.artist}</em></span>
+                            <span className="music-cookie-track-actions">
+                              <button type="button" disabled={cookieOpBusy} onClick={() => void cookieLikeTrack(track.id, true)}>♥ 红心</button>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+          {cookiePanel === "daily" && (
+            <div className="music-cookie-operations-body">
+              {cookieDaily.length > 0 ? (
+                <ul className="music-cookie-track-list">
+                  {cookieDaily.map((track) => (
+                    <li key={track.id}>
+                      <span className="music-cookie-track-title">{track.title}<em>{track.artist}{track.reason ? ` · ${track.reason}` : ""}</em></span>
+                      <span className="music-cookie-track-actions">
+                        <button type="button" disabled={cookieOpBusy} onClick={() => void cookieLikeTrack(track.id, true)}>♥ 红心</button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>今天的推荐还没加载出来，稍后再试。</p>
+              )}
+            </div>
+          )}
+          {cookiePanel === "history" && (
+            <div className="music-cookie-operations-body">
+              {cookieHistory.length > 0 ? (
+                <ul className="music-cookie-track-list">
+                  {cookieHistory.map((track) => (
+                    <li key={track.id}>
+                      <span className="music-cookie-track-title">{track.title}<em>{track.artist}</em></span>
+                      <span className="music-cookie-track-actions">{track.play_count > 0 && <small>播放 {track.play_count} 次</small>}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>还没有听歌记录。</p>
+              )}
+            </div>
+          )}
+          {cookieOpStatus && <p className="music-provider-feedback" role="status">{cookieOpStatus}</p>}
+        </section>
+      )}
+
     {!active && <details className="music-provider-connect">
       <summary>高级用户：连接自己的网易云接口</summary>
       <div className="music-provider-connect-body">

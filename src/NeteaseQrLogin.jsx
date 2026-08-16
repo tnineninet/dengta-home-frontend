@@ -10,7 +10,7 @@ import {
   listNeteaseQrPlaylists,
 } from "./netease-qr-login.js";
 
-const POLL_INTERVAL_MS = 2_000;
+const POLL_INTERVAL_MS = 4_000; // 降低轮询频率,避免触发网易云频率风控
 const QR_EXPIRY_WARNING_MS = 240_000;
 
 function pickError(caught) {
@@ -163,7 +163,10 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
             } else if (result?.status === "risk_blocked") {
               stopPolling();
               setQrStatus("risk_blocked");
-              setFeedback(result.message || "登录被网易云风控拦截，请稍后再试。");
+              setFeedback(
+                (result.message || "登录被网易云风控拦截。") +
+                  " 大概率是短时间尝试过频,请等 2-5 分钟后再点一次。"
+              );
             } else if (result?.status === "waiting") {
               setQrStatus("waiting");
             }
