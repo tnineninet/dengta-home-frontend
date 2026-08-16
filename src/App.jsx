@@ -170,6 +170,11 @@ import {
   reportDeviceState,
 } from "./device-signals.js";
 import {
+  openTakeoutLogin,
+  startTakeoutRunner,
+  takeoutPluginAvailable,
+} from "./takeout-executor.js";
+import {
   SCREEN_GLANCE_DEFAULT_CONFIG,
   ScreenGlance,
   buildScreenGlanceTurn,
@@ -4698,6 +4703,33 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
   }
 
+  const [takeoutLoginFeedback, setTakeoutLoginFeedback] = useState({
+    status: "idle",
+    message: "",
+  });
+
+  async function openTakeoutQrLogin() {
+    setTakeoutLoginFeedback({ status: "busy", message: "正在打开外卖登录页…" });
+    const outcome = await openTakeoutLogin();
+    if (outcome?.ok) {
+      setTakeoutLoginFeedback({
+        status: "success",
+        message:
+          "已打开登录页。扫码登录后即可让 AI 帮你点单；登录态只保存在本机，不会上传服务器。",
+      });
+    } else {
+      setTakeoutLoginFeedback({
+        status: "error",
+        message: outcome?.error || "暂时无法打开外卖登录页。",
+      });
+    }
+  }
+
+  useEffect(() => {
+    if (!takeoutPluginAvailable()) return undefined;
+    return startTakeoutRunner();
+  }, []);
+
   async function saveScreenGlanceConfig(nextValue = screenGlanceConfig) {
     if (!screenGlancePluginAvailable() || isScreenGlanceBusy) return;
     const next = normalizeScreenGlanceConfig(nextValue);
@@ -7010,6 +7042,34 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 Android 的“使用情况访问”是单独的系统权限；关闭本功能会立即停止附带摘要，撤销系统权限仍需在授权页操作。
               </small>
             </div>
+            {takeoutPluginAvailable() ? (
+              <div className="notification-feature-panel device-activity-panel">
+                <div className="device-activity-heading">
+                  <div>
+                    <strong>外卖点单</strong>
+                    <span>Android · 本机执行</span>
+                  </div>
+                </div>
+                <p>
+                  让 AI 帮你搜店、挑店、加购；付款始终由你在手机页面上人工确认。平台登录态只保存在本机 WebView，不会上传服务器。
+                </p>
+                <p
+                  className={`notification-feature-feedback ${takeoutLoginFeedback.status}`}
+                  role="status"
+                  aria-live="polite"
+                >
+                  {takeoutLoginFeedback.message}
+                </p>
+                <div className="device-activity-actions">
+                  <button type="button" onClick={() => void openTakeoutQrLogin()}>
+                    扫码登录外卖
+                  </button>
+                </div>
+                <small>
+                  登录过的账号后续点单无需再次扫码；AI 只在你主动要求点单时才派发命令。
+                </small>
+              </div>
+            ) : null}
             <div className="notification-feature-panel screen-glance-panel">
               <div className="device-activity-heading">
                 <div>

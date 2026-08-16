@@ -49,6 +49,11 @@
         <receiver
             android:name=".CoWatchReplyReceiver"
             android:exported="false" />
+        <activity
+            android:name=".OrderWebActivity"
+            android:exported="false"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:theme="@style/AppTheme" />
     </application>
 
     <!-- Permissions -->
