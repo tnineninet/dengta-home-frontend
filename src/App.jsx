@@ -4730,6 +4730,52 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     return startTakeoutRunner();
   }, []);
 
+  const [funLabsState, setFunLabsState] = useState({
+    status: "idle",
+    dates: [],
+    achievements: [],
+    shots: { today: null, recent: [] },
+  });
+
+  async function refreshFunLabs() {
+    setFunLabsState((previous) => ({ ...previous, status: "busy" }));
+    try {
+      const [datesData, achievementsData, shotsData] = await Promise.all([
+        apiRequest("/api/v2/special-dates", { timeoutMs: 12_000 }),
+        apiRequest("/api/v2/fun-labs/achievements", { timeoutMs: 12_000 }),
+        apiRequest("/api/v2/fun-labs/daily-shots", { timeoutMs: 12_000 }),
+      ]);
+      setFunLabsState({
+        status: "success",
+        dates: Array.isArray(datesData?.dates) ? datesData.dates : [],
+        achievements: Array.isArray(achievementsData?.achievements)
+          ? achievementsData.achievements
+          : [],
+        shots: shotsData || { today: null, recent: [] },
+      });
+    } catch {
+      setFunLabsState((previous) => ({ ...previous, status: "error" }));
+    }
+  }
+
+  async function removeSpecialDate(id) {
+    try {
+      await apiRequest(`/api/v2/special-dates/${id}`, {
+        method: "DELETE",
+        timeoutMs: 12_000,
+      });
+      await refreshFunLabs();
+    } catch {
+      // 删除失败不阻塞。
+    }
+  }
+
+  useEffect(() => {
+    void refreshFunLabs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+
   async function saveScreenGlanceConfig(nextValue = screenGlanceConfig) {
     if (!screenGlancePluginAvailable() || isScreenGlanceBusy) return;
     const next = normalizeScreenGlanceConfig(nextValue);
@@ -7070,6 +7116,82 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 </small>
               </div>
             ) : null}
+
+            <div className="notification-feature-panel device-activity-panel">
+              <div className="device-activity-heading">
+                <div>
+                  <strong>纪念日 · 追番 · 成就 · 每日一拍</strong>
+                  <span>聊天中管理，这里查看</span>
+                </div>
+                <div className="device-activity-actions">
+                  <button type="button" onClick={() => void refreshFunLabs()}>
+                    刷新
+                  </button>
+                </div>
+              </div>
+              <p>
+                跟 AI 说“记住我们的纪念日”“追番鬼灭之刃”就能管理；成就与每日一拍自动记录。
+              </p>
+              {funLabsState.status === "busy" ? (
+                <p className="notification-feature-feedback busy" role="status">
+                  加载中…
+                </p>
+              ) : funLabsState.status === "error" ? (
+                <p className="notification-feature-feedback error" role="status">
+                  暂时加载失败，请稍后再试。
+                </p>
+              ) : null}
+              {funLabsState.achievements.length > 0 ? (
+                <p className="fun-labs-line">
+                  成就：
+                  {
+                    funLabsState.achievements.filter((item) => item.unlocked)
+                      .length
+                  }
+                  /{funLabsState.achievements.length} 已解锁
+                  {funLabsState.achievements
+                    .filter((item) => item.unlocked)
+                    .slice(0, 4)
+                    .map((item) => item.title)
+                    .join("、") && " · "}
+                  {funLabsState.achievements
+                    .filter((item) => item.unlocked)
+                    .slice(0, 4)
+                    .map((item) => item.title)
+                    .join("、")}
+                </p>
+              ) : null}
+              {funLabsState.dates.length > 0 ? (
+                <div className="fun-labs-list">
+                  {funLabsState.dates.slice(0, 10).map((date) => (
+                    <div key={date.id} className="fun-labs-row">
+                      <span>
+                        {date.kind === "show" ? "📺" : "💝"} {date.title}
+                      </span>
+                      <small>
+                        {date.event_date}
+                        {date.next_episode ? " " + date.next_episode : ""}
+                      </small>
+                      <button
+                        type="button"
+                        onClick={() => void removeSpecialDate(date.id)}
+                      >
+                        删除
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+              {funLabsState.shots?.today ? (
+                <p className="fun-labs-line">
+                  今天已拍每日一拍
+                  {funLabsState.shots.today.note
+                    ? `：${funLabsState.shots.today.note}`
+                    : ""}
+                </p>
+              ) : null}
+              <small>在聊天里直接说“看看我的纪念日/成就”也能查。</small>
+            </div>
             <div className="notification-feature-panel screen-glance-panel">
               <div className="device-activity-heading">
                 <div>

@@ -5141,6 +5141,50 @@ button:disabled {
   opacity: 0.42;
 }
 
+.fun-labs-line {
+  margin: 6px 0;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.fun-labs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.fun-labs-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid rgba(112, 89, 99, 0.14);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+}
+
+.fun-labs-row small {
+  margin-left: auto;
+  color: #a08d95;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.fun-labs-row button {
+  min-height: 26px;
+  padding: 4px 8px;
+  border: 1px solid rgba(112, 89, 99, 0.18);
+  border-radius: 7px;
+  color: #a0555f;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+}
+
 .dialog-backdrop {
   position: fixed;
   z-index: 60;
