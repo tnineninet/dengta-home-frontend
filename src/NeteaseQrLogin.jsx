@@ -100,6 +100,8 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
       pollTimerRef.current = window.setInterval(() => {
         void (async () => {
           if (!session.key) return;
+          // 扫码时用户会切到网易云 App,WebView 被系统节流;回到前台立刻补查一次。
+          if (document.hidden) return;
           if (Date.now() - startedAtRef.current > QR_EXPIRY_WARNING_MS) {
             setFeedback("二维码即将过期，若仍未登录请点击“重新生成”。");
           }

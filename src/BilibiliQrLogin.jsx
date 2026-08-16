@@ -87,6 +87,8 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
       const key = session.key;
       pollTimerRef.current = window.setInterval(() => {
         void (async () => {
+          // 扫码时用户切到哔哩 App,WebView 被节流;回到前台后下个周期立即补查。
+          if (document.hidden) return;
           try {
             const result = await checkBilibiliQrLogin(key);
             if (result?.status === "confirmed") {
