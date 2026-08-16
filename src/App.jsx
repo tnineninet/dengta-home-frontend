@@ -153,11 +153,22 @@ import {
   DEVICE_ACTIVITY_WINDOW_MINUTES,
   DeviceActivity,
   deviceActivityPluginAvailable,
+  mergeCurrentAppContext,
   mergeDeviceActivityContext,
   normalizeDeviceActivityState,
   normalizeDeviceActivitySummary,
+  readCurrentApp,
   readDeviceActivityState,
 } from "./device-activity";
+import {
+  DEVICE_SIGNALS_REPORT_MS,
+  ackDeviceInjects,
+  deviceSignalsPluginAvailable,
+  mergeDeviceSignalsContext,
+  readDeviceSignals,
+  readPendingDeviceInjects,
+  reportDeviceState,
+} from "./device-signals.js";
 import {
   SCREEN_GLANCE_DEFAULT_CONFIG,
   ScreenGlance,
@@ -1057,6 +1068,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             ambientContextRef.current,
             summary,
           );
+          const currentApp = await readCurrentApp();
+          environmentContextRef.current = mergeCurrentAppContext(
+            environmentContextRef.current,
+            currentApp,
+          );
           if (!silent) {
             setDeviceActivityFeedback({
               status: "success",
@@ -1847,6 +1863,59 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
   }, [refreshDeviceActivityContext]);
+
+  useEffect(() => {
+    if (!deviceSignalsPluginAvailable()) return undefined;
+
+    const consumeInjects = async () => {
+      const injects = await readPendingDeviceInjects();
+      if (!injects.length) return;
+      const lines = injects
+        .map((inject) => `【设备事件·${inject.tag}】${inject.text}`)
+        .join("\n");
+      environmentContextRef.current = {
+        ...environmentContextRef.current,
+        pending_device_injects: lines,
+      };
+      await ackDeviceInjects(injects.map((inject) => inject.id));
+    };
+
+    const tick = async (trigger) => {
+      const signals = await readDeviceSignals();
+      environmentContextRef.current = mergeDeviceSignalsContext(
+        environmentContextRef.current,
+        signals,
+      );
+      const powerEvent = signals.powerEvent;
+      const payload = {
+        battery_pct: signals.batteryPct,
+        charging: signals.charging,
+        low_power: false,
+        app_state: signals.appState,
+        trigger,
+        emulator: signals.emulator,
+      };
+      await reportDeviceState(payload);
+      if (powerEvent) {
+        await reportDeviceState({ ...payload, trigger: "charging" });
+      }
+    };
+
+    void consumeInjects();
+    void tick("launch");
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void tick("probe");
+    }, DEVICE_SIGNALS_REPORT_MS);
+    const onVisibility = () => {
+      void tick(document.visibilityState === "visible" ? "scene_change" : "scene_change");
+      if (document.visibilityState === "visible") void consumeInjects();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
 
   useEffect(() => {
     if (!screenGlancePluginAvailable()) {
