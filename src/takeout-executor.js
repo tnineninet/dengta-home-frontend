@@ -11,12 +11,18 @@ export function takeoutPluginAvailable(capacitor = Capacitor) {
   );
 }
 
-export async function openTakeoutLogin({ plugin = OrderBrowser } = {}) {
+export const TAKEOUT_PLATFORMS = [
+  { id: "eleme", label: "饿了么", url: "https://h5.ele.me/msite/" },
+  { id: "meituan", label: "美团", url: "https://i.meituan.com/" },
+  { id: "jd", label: "京东到家", url: "https://daojia.jd.com/" },
+];
+
+export async function openTakeoutLogin({ plugin = OrderBrowser, url = "" } = {}) {
   if (!takeoutPluginAvailable()) {
     return { ok: false, error: "外卖执行器仅在 Android App 中可用。" };
   }
   try {
-    const value = await plugin.openLogin({});
+    const value = await plugin.openLogin({ url });
     return { ok: true, ...(value || {}) };
   } catch (error) {
     return { ok: false, error: String(error?.message || "打开登录页失败。") };

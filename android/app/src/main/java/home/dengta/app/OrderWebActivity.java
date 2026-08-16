@@ -3,8 +3,6 @@ package home.dengta.app;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
-import android.location.Location;
-import android.location.LocationManager;
 import android.os.Bundle;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
@@ -37,6 +35,16 @@ public class OrderWebActivity extends Activity {
     }
 
     private void onCreateGuarded(Bundle savedInstanceState) {
+        // 定位权限:外卖页面需要真实位置,先申请系统授权。
+        if (android.os.Build.VERSION.SDK_INT >= 23) {
+            requestPermissions(
+                new String[]{
+                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION
+                },
+                1001
+            );
+        }
         String url = getIntent().getStringExtra("url");
         mode = getIntent().getStringExtra("mode");
         configJson = getIntent().getStringExtra("config");
@@ -44,6 +52,11 @@ public class OrderWebActivity extends Activity {
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
+        // 修复显示不全:根容器必须显式 MATCH_PARENT,否则 WebView 会被压扁。
+        root.setLayoutParams(new ViewGroup.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.MATCH_PARENT
+        ));
         TextView header = new TextView(this);
         header.setText(title + "（付款请在此页面人工确认）");
         header.setPadding(24, 24, 24, 12);
@@ -54,10 +67,25 @@ public class OrderWebActivity extends Activity {
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
-        settings.setUserAgentString(settings.getUserAgentString() + " DengTaOrder/1.0");
+        settings.setGeolocationEnabled(true);
+        // 移动端 UA + 视口适配,避免桌面版页面挤在一角。
+        settings.setUserAgentString(
+            "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36 DengTaOrder/1.0"
+        );
+        settings.setUseWideViewPort(true);
+        settings.setLoadWithOverviewMode(true);
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
-        webView.setWebChromeClient(new WebChromeClient());
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onGeolocationPermissionsShowPrompt(
+                String origin,
+                android.webkit.GeolocationPermissions.Callback callback
+            ) {
+                // 用户已在应用内主动发起点餐,授权页面读取定位。
+                callback.invoke(origin, true, false);
+            }
+        });
         webView.addJavascriptInterface(new OrderBridge(this), "DengTaOrderBridge");
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -70,7 +98,6 @@ public class OrderWebActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String finishedUrl) {
                 super.onPageFinished(view, finishedUrl);
-                injectGeolocation(view);
                 if ("search".equals(mode)) {
                     view.postDelayed(() -> runSearchStep(view), 2500);
                 } else if ("order".equals(mode)) {
@@ -94,27 +121,6 @@ public class OrderWebActivity extends Activity {
 
         setContentView(root);
         webView.loadUrl(url);
-    }
-
-    private void injectGeolocation(WebView view) {
-        try {
-            LocationManager manager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-            Location last = null;
-            for (String provider : new String[]{LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER}) {
-                try {
-                    Location candidate = manager.getLastKnownLocation(provider);
-                    if (candidate != null) { last = candidate; break; }
-                } catch (Exception ignored) {}
-            }
-            if (last == null) return;
-            double lat = last.getLatitude();
-            double lng = last.getLongitude();
-            double acc = last.hasAccuracy() ? last.getAccuracy() : 60;
-            String js = "try{window.__dengtaGeo={lat:" + lat + ",lng:" + lng + ",acc:" + acc + "};"
-                + "navigator.geolocation.getCurrentPosition=function(s,e){s({coords:{latitude:" + lat + ",longitude:" + lng + ",accuracy:" + acc + "},timestamp:Date.now()});};"
-                + "navigator.geolocation.watchPosition=function(s,e){s({coords:{latitude:" + lat + ",longitude:" + lng + ",accuracy:" + acc + "},timestamp:Date.now()});return 1;};}catch(err){}";
-            view.evaluateJavascript(js, null);
-        } catch (Exception ignored) {}
     }
 
     private void runSearchStep(WebView view) {

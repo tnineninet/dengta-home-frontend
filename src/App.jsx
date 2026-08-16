@@ -171,6 +171,7 @@ import {
   reportDeviceState,
 } from "./device-signals.js";
 import {
+  TAKEOUT_PLATFORMS,
   openTakeoutLogin,
   startTakeoutRunner,
   takeoutPluginAvailable,
@@ -4751,6 +4752,23 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     feedback: "",
   });
   const xhsPollTimerRef = useRef(null);
+
+  async function openTakeoutQrLogin(platformId = "eleme") {
+    setTakeoutLoginFeedback({ status: "busy", message: "正在打开外卖登录页…" });
+    const platform = TAKEOUT_PLATFORMS.find((item) => item.id === platformId) || TAKEOUT_PLATFORMS[0];
+    const outcome = await openTakeoutLogin({ url: platform.url });
+    if (outcome?.ok) {
+      setTakeoutLoginFeedback({
+        status: "success",
+        message: `已打开${platform.label}登录页。登录成功后即可让 AI 帮你点单(登录态只保存在本机)。`,
+      });
+    } else {
+      setTakeoutLoginFeedback({
+        status: "error",
+        message: outcome?.error || "暂时无法打开外卖登录页。",
+      });
+    }
+  }
 
   async function startXhsQrLogin() {
     clearInterval(xhsPollTimerRef.current);
