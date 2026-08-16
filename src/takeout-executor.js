@@ -125,6 +125,16 @@ export function startTakeoutRunner({
   }
   let stopped = false;
   let running = false;
+  // 崩溃护栏:执行前写入本地标记。若上次执行时应用崩溃,
+  // 下次启动会看到同一命令的标记,直接上报失败,不再触发原生页面。
+  const markerKey = "dengta_takeout_attempted_v1";
+  const readMarker = () => {
+    try {
+      return JSON.parse(window.localStorage.getItem(markerKey) || "{}");
+    } catch {
+      return {};
+    }
+  };
   const tick = async () => {
     if (stopped || running) return;
     const commands = await readPendingTakeoutCommands({ client });
@@ -132,7 +142,32 @@ export function startTakeoutRunner({
     running = true;
     try {
       const command = commands[0];
+      const marker = readMarker();
+      if (marker.id === command.id) {
+        window.localStorage.removeItem(markerKey);
+        try {
+          await client(`/api/v2/takeout/${command.id}/failure`, {
+            method: "POST",
+            timeoutMs: 12_000,
+            body: JSON.stringify({ message: "上次执行时应用异常退出，已自动取消。" }),
+          });
+        } catch {
+          // 上报失败不阻塞。
+        }
+        onCommandDone(command);
+        return;
+      }
+      try {
+        window.localStorage.setItem(markerKey, JSON.stringify({ id: command.id }));
+      } catch {
+        // 存储不可用时仍然继续,由服务端 pending 状态兜底。
+      }
       await executeTakeoutCommand(command, { client, plugin });
+      try {
+        window.localStorage.removeItem(markerKey);
+      } catch {
+        // 忽略。
+      }
       onCommandDone(command);
     } finally {
       running = false;
@@ -141,9 +176,13 @@ export function startTakeoutRunner({
   const timer = setInterval(() => {
     void tick();
   }, pollMs);
-  void tick();
+  // 延迟启动:避免 App 一打开就弹出外卖页面,留给启动流程喘息空间。
+  const firstTimer = setTimeout(() => {
+    void tick();
+  }, 10_000);
   return () => {
     stopped = true;
     clearInterval(timer);
+    clearTimeout(firstTimer);
   };
 }

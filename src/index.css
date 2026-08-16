@@ -5207,6 +5207,39 @@ button:disabled {
 }
 
 
+
+.fun-view {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  max-width: 860px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.fun-view-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fun-view-header h2 {
+  margin: 0;
+  font-size: 19px;
+  color: #644f58;
+}
+
+.fun-view-header p {
+  margin: 0;
+  font-size: 12.5px;
+  color: #a08d95;
+}
+
+.fun-view .notification-feature-panel {
+  margin: 0;
+}
+
 .fun-achievements-wrap { margin: 8px 0; }
 
 .fun-achievements-grid {

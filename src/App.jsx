@@ -464,6 +464,8 @@ const navItems = [
   { id: "together", icon: "▻", label: "Together" },
   { id: "duel", icon: "⚔", label: "Duel" },
   { id: "memories", icon: "◇", label: "Memory" },
+  { id: "takeout", icon: "🛵", label: "外卖" },
+  { id: "achievements", icon: "🏆", label: "成就" },
 ];
 
 function formatDateTime(value) {
@@ -6404,6 +6406,227 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     );
   }
 
+  function renderTakeout() {
+    const available = takeoutPluginAvailable();
+    return (
+      <div className="fun-view">
+        <header className="fun-view-header">
+          <h2>🛵 外卖点单</h2>
+          <p>让 AI 帮你搜店、挑店、加购；付款永远由你在页面里亲自确认。</p>
+        </header>
+        <div className="notification-feature-panel device-activity-panel">
+          <div className="device-activity-heading">
+            <div>
+              <strong>登录外卖平台</strong>
+              <span>{available ? "Android · 本机执行" : "仅 Android App 可用"}</span>
+            </div>
+          </div>
+          <p>
+            登录后，AI 可以在聊天里帮你找吃的（例如“帮我找家附近的烧烤，预算 30”）。平台登录态只保存在本机
+            WebView，不会上传服务器。
+          </p>
+          <p
+            className={`notification-feature-feedback ${takeoutLoginFeedback.status}`}
+            role="status"
+            aria-live="polite"
+          >
+            {takeoutLoginFeedback.message}
+          </p>
+          <div className="device-activity-actions">
+            <button
+              type="button"
+              disabled={!available}
+              onClick={() => void openTakeoutQrLogin()}
+            >
+              扫码登录外卖
+            </button>
+          </div>
+          <small>
+            已登录过的账号后续点单无需再次扫码；AI 只在你主动要求点单时才派发命令。
+          </small>
+        </div>
+        <div className="notification-feature-panel device-activity-panel">
+          <p>
+            <strong>怎么用：</strong>
+            回到聊天页直接说“帮我点个吃的”，AI 会先搜索店铺挑出最合适的一家，再把商品加进购物车并停在结算页，由你人工确认付款。
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  function renderAchievements() {
+    const unlockedCount = funLabsState.achievements.filter(
+      (item) => item.unlocked,
+    ).length;
+    return (
+      <div className="fun-view">
+        <header className="fun-view-header">
+          <h2>🏆 成就</h2>
+          <p>
+            {funLabsState.achievements.length > 0
+              ? `${unlockedCount}/${funLabsState.achievements.length} 已解锁 · 你和 AI 一起完成的目标`
+              : "加载中…"}
+          </p>
+        </header>
+        <div className="notification-feature-panel device-activity-panel">
+          <div className="device-activity-heading">
+            <div>
+              <strong>成就墙</strong>
+              <span>系统成就自动解锁 · 自定义成就一起完成</span>
+            </div>
+            <div className="device-activity-actions">
+              <button type="button" onClick={() => void refreshFunLabs()}>
+                刷新
+              </button>
+              <button
+                type="button"
+                className="fun-onboarding-button"
+                onClick={() => setOnboarding({ open: true, step: 0 })}
+              >
+                🎓 新手引导
+              </button>
+            </div>
+          </div>
+          {funLabsState.status === "busy" ? (
+            <p className="notification-feature-feedback busy" role="status">
+              加载中…
+            </p>
+          ) : funLabsState.status === "error" ? (
+            <p className="notification-feature-feedback error" role="status">
+              暂时加载失败，请稍后再试。
+            </p>
+          ) : null}
+          {funLabsState.achievements.length > 0 ? (
+            <div className="fun-achievements-wrap">
+              <div className="fun-achievements-grid">
+                {funLabsState.achievements.map((item) => (
+                  <div
+                    key={item.code || item.id}
+                    className={`fun-achievement-card${
+                      item.unlocked ? " is-unlocked" : ""
+                    }`}
+                  >
+                    <span className="fun-achievement-emoji" aria-hidden="true">
+                      {item.unlocked ? item.emoji : "🔒"}
+                    </span>
+                    <strong>{item.title}</strong>
+                    <small>{item.description}</small>
+                    {item.custom && !item.unlocked ? (
+                      <div className="fun-achievement-card-actions">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void unlockCustomAchievement(item.code)
+                          }
+                        >
+                          完成
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void removeCustomAchievement(item.id)
+                          }
+                        >
+                          删除
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+              <div className="fun-achievement-form">
+                <input
+                  value={customAchievement.emoji}
+                  onChange={(event) =>
+                    setCustomAchievement((previous) => ({
+                      ...previous,
+                      emoji: event.target.value,
+                    }))
+                  }
+                  placeholder="🎯"
+                  aria-label="成就图标"
+                  className="fun-achievement-emoji-input"
+                />
+                <input
+                  value={customAchievement.title}
+                  onChange={(event) =>
+                    setCustomAchievement((previous) => ({
+                      ...previous,
+                      title: event.target.value,
+                    }))
+                  }
+                  placeholder="自定义成就名，如：一起看 100 部电影"
+                  aria-label="成就名称"
+                />
+                <input
+                  value={customAchievement.description}
+                  onChange={(event) =>
+                    setCustomAchievement((previous) => ({
+                      ...previous,
+                      description: event.target.value,
+                    }))
+                  }
+                  placeholder="完成条件（可选）"
+                  aria-label="完成条件"
+                />
+                <button
+                  type="button"
+                  disabled={!customAchievement.title.trim()}
+                  onClick={() => void addCustomAchievement()}
+                >
+                  ＋ 添加自定义成就
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+        <div className="notification-feature-panel device-activity-panel">
+          <div className="device-activity-heading">
+            <div>
+              <strong>纪念日 · 追番 · 每日一拍</strong>
+              <span>聊天中管理，这里查看</span>
+            </div>
+          </div>
+          {funLabsState.dates.length > 0 ? (
+            <div className="fun-labs-list">
+              {funLabsState.dates.slice(0, 10).map((date) => (
+                <div key={date.id} className="fun-labs-row">
+                  <span>
+                    {date.kind === "show" ? "📺" : "💝"} {date.title}
+                  </span>
+                  <small>
+                    {date.event_date}
+                    {date.next_episode ? " " + date.next_episode : ""}
+                  </small>
+                  <button
+                    type="button"
+                    onClick={() => void removeSpecialDate(date.id)}
+                  >
+                    删除
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="fun-labs-line">
+              还没有保存的日子。在聊天里说“记住我们的纪念日”“追番鬼灭之刃”即可添加。
+            </p>
+          )}
+          {funLabsState.shots?.today ? (
+            <p className="fun-labs-line">
+              今天已拍每日一拍
+              {funLabsState.shots.today.note
+                ? `：${funLabsState.shots.today.note}`
+                : ""}
+            </p>
+          ) : null}
+          <small>在聊天里直接说“看看我的纪念日/成就”也能查。</small>
+        </div>
+      </div>
+    );
+  }
+
   function renderMemories() {
     async function saveMemory(item) {
       const summary = String(memoryDrafts[item.id] || "").trim();
@@ -7555,191 +7778,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
             {settingsCategory === "fun" && (
               <>
-            {takeoutPluginAvailable() ? (
-              <div className="notification-feature-panel device-activity-panel">
-                <div className="device-activity-heading">
-                  <div>
-                    <strong>外卖点单</strong>
-                    <span>Android · 本机执行</span>
-                  </div>
-                </div>
-                <p>
-                  让 AI 帮你搜店、挑店、加购；付款始终由你在手机页面上人工确认。平台登录态只保存在本机 WebView，不会上传服务器。
-                </p>
-                <p
-                  className={`notification-feature-feedback ${takeoutLoginFeedback.status}`}
-                  role="status"
-                  aria-live="polite"
-                >
-                  {takeoutLoginFeedback.message}
-                </p>
-                <div className="device-activity-actions">
-                  <button type="button" onClick={() => void openTakeoutQrLogin()}>
-                    扫码登录外卖
-                  </button>
-                </div>
-                <small>
-                  登录过的账号后续点单无需再次扫码；AI 只在你主动要求点单时才派发命令。
-                </small>
-              </div>
-            ) : null}
-
             <div className="notification-feature-panel device-activity-panel">
               <div className="device-activity-heading">
                 <div>
-                  <strong>纪念日 · 追番 · 成就 · 每日一拍</strong>
-                  <span>聊天中管理，这里查看</span>
-                </div>
-                <div className="device-activity-actions">
-                  <button type="button" onClick={() => void refreshFunLabs()}>
-                    刷新
-                  </button>
+                  <strong>外卖点单与成就系统</strong>
+                  <span>已移到左侧边栏</span>
                 </div>
               </div>
-              <p>
-                跟 AI 说“记住我们的纪念日”“追番鬼灭之刃”就能管理；成就与每日一拍自动记录。
-              </p>
-              {funLabsState.status === "busy" ? (
-                <p className="notification-feature-feedback busy" role="status">
-                  加载中…
-                </p>
-              ) : funLabsState.status === "error" ? (
-                <p className="notification-feature-feedback error" role="status">
-                  暂时加载失败，请稍后再试。
-                </p>
-              ) : null}
-              {funLabsState.achievements.length > 0 ? (
-                <div className="fun-achievements-wrap">
-                  <p className="fun-labs-line">
-                    <strong>
-                      成就：
-                      {
-                        funLabsState.achievements.filter((item) => item.unlocked)
-                          .length
-                      }
-                      /{funLabsState.achievements.length} 已解锁
-                    </strong>
-                    <button
-                      type="button"
-                      className="fun-onboarding-button"
-                      onClick={() => setOnboarding({ open: true, step: 0 })}
-                    >
-                      🎓 新手引导
-                    </button>
-                  </p>
-                  <div className="fun-achievements-grid">
-                    {funLabsState.achievements.map((item) => (
-                      <div
-                        key={item.code || item.id}
-                        className={`fun-achievement-card${
-                          item.unlocked ? " is-unlocked" : ""
-                        }`}
-                      >
-                        <span className="fun-achievement-emoji" aria-hidden="true">
-                          {item.unlocked ? item.emoji : "🔒"}
-                        </span>
-                        <strong>{item.title}</strong>
-                        <small>{item.description}</small>
-                        {item.custom && !item.unlocked ? (
-                          <div className="fun-achievement-card-actions">
-                            <button
-                              type="button"
-                              onClick={() =>
-                                void unlockCustomAchievement(item.code)
-                              }
-                            >
-                              完成
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                void removeCustomAchievement(item.id)
-                              }
-                            >
-                              删除
-                            </button>
-                          </div>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="fun-achievement-form">
-                    <input
-                      value={customAchievement.emoji}
-                      onChange={(event) =>
-                        setCustomAchievement((previous) => ({
-                          ...previous,
-                          emoji: event.target.value,
-                        }))
-                      }
-                      placeholder="🎯"
-                      aria-label="成就图标"
-                      className="fun-achievement-emoji-input"
-                    />
-                    <input
-                      value={customAchievement.title}
-                      onChange={(event) =>
-                        setCustomAchievement((previous) => ({
-                          ...previous,
-                          title: event.target.value,
-                        }))
-                      }
-                      placeholder="自定义成就名，如：一起看 100 部电影"
-                      aria-label="成就名称"
-                    />
-                    <input
-                      value={customAchievement.description}
-                      onChange={(event) =>
-                        setCustomAchievement((previous) => ({
-                          ...previous,
-                          description: event.target.value,
-                        }))
-                      }
-                      placeholder="完成条件（可选）"
-                      aria-label="完成条件"
-                    />
-                    <button
-                      type="button"
-                      disabled={!customAchievement.title.trim()}
-                      onClick={() => void addCustomAchievement()}
-                    >
-                      ＋ 添加自定义成就
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-              {funLabsState.dates.length > 0 ? (
-                <div className="fun-labs-list">
-                  {funLabsState.dates.slice(0, 10).map((date) => (
-                    <div key={date.id} className="fun-labs-row">
-                      <span>
-                        {date.kind === "show" ? "📺" : "💝"} {date.title}
-                      </span>
-                      <small>
-                        {date.event_date}
-                        {date.next_episode ? " " + date.next_episode : ""}
-                      </small>
-                      <button
-                        type="button"
-                        onClick={() => void removeSpecialDate(date.id)}
-                      >
-                        删除
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-              {funLabsState.shots?.today ? (
-                <p className="fun-labs-line">
-                  今天已拍每日一拍
-                  {funLabsState.shots.today.note
-                    ? `：${funLabsState.shots.today.note}`
-                    : ""}
-                </p>
-              ) : null}
-              <small>在聊天里直接说“看看我的纪念日/成就”也能查。</small>
+              <p>点左侧的「🛵 外卖」和「🏆 成就」即可使用；这里保留小红书登录。</p>
             </div>
-
             <div className="notification-feature-panel device-activity-panel">
               <div className="device-activity-heading">
                 <div>
@@ -8371,6 +8418,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           {activeView === "together" && renderTogether()}
           {activeView === "duel" && renderIntimateDuel()}
           {activeView === "memories" && renderMemories()}
+          {activeView === "takeout" && renderTakeout()}
+          {activeView === "achievements" && renderAchievements()}
         </div>
       </main>
 

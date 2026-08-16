@@ -108,13 +108,22 @@ public final class OrderBrowserPlugin extends Plugin {
     }
 
     private void startOrderActivity(String url, String mode, String config, String title) {
-        Intent intent = new Intent(getContext(), OrderWebActivity.class);
-        intent.putExtra("url", url);
-        intent.putExtra("mode", mode);
-        intent.putExtra("config", config);
-        intent.putExtra("title", title);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        getContext().startActivity(intent);
+        try {
+            Intent intent = new Intent(getContext(), OrderWebActivity.class);
+            intent.putExtra("url", url);
+            intent.putExtra("mode", mode);
+            intent.putExtra("config", config);
+            intent.putExtra("title", title);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+        } catch (Exception error) {
+            // 页面打不开时不要崩掉整个 App,直接按失败回给调用方。
+            if (pendingCall != null) {
+                PluginCall call = pendingCall;
+                pendingCall = null;
+                call.reject("外卖页面暂时无法打开。");
+            }
+        }
     }
 
     @Override
@@ -150,6 +159,15 @@ class OrderWebActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        try {
+            onCreateGuarded(savedInstanceState);
+        } catch (Throwable error) {
+            // 页面创建失败时优雅结束,不让整个 App 进程崩溃。
+            finish();
+        }
+    }
+
+    private void onCreateGuarded(Bundle savedInstanceState) {
         String url = getIntent().getStringExtra("url");
         mode = getIntent().getStringExtra("mode");
         configJson = getIntent().getStringExtra("config");
@@ -173,6 +191,13 @@ class OrderWebActivity extends Activity {
         webView.setWebChromeClient(new WebChromeClient());
         webView.addJavascriptInterface(new OrderBridge(this), "DengTaOrderBridge");
         webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
+                // 渲染进程崩溃时结束本页面,避免整个 App 进程被杀。
+                finish();
+                return true;
+            }
+
             @Override
             public void onPageFinished(WebView view, String finishedUrl) {
                 super.onPageFinished(view, finishedUrl);
