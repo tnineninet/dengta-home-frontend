@@ -276,6 +276,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
         audio.removeAttribute("src");
         audio.load();
         setPlaying(false);
+        setExternalPlaying(false);
         setPosition(0);
         setDuration(item.durationSeconds || 0);
         if (externalSession) setStatus("只进入 Together 元数据队列，不进入 App audio；切歌后请点击在网易云播放");
@@ -416,6 +417,9 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
         requestExternalMusicPlayback(playback.resourceType, playback.resourceId),
         openNeteasePlayback(playback.resourceType, playback.resourceId),
       ]);
+      setPosition(0);
+      setDuration(item?.durationSeconds || 0);
+      setExternalPlaying(true);
       setStatus("已交给网易云打开；普通歌曲、VIP 歌曲和版权可用性由网易云判断。");
     } catch (caught) { setError(caught?.message || "无法打开网易云播放。"); }
   };
@@ -480,6 +484,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
     setCookieStatus({ checking: false, connected: false, account_name: "" });
   };
   // ---------- 网易云音乐操作面板（Cookie 登录后可用） ----------
+  const [externalPlaying, setExternalPlaying] = useState(false);
   const [cookiePanel, setCookiePanel] = useState("closed"); // closed | search | playlists | daily | history
   const [cookieSearchQuery, setCookieSearchQuery] = useState("");
   const [cookieSearchResults, setCookieSearchResults] = useState([]);
@@ -715,6 +720,24 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
       } catch { /* Media position can race metadata changes. */ }
     }
   }, [duration, playing, position]);
+
+  // 外部播放（跳到网易云 App）时，App 内没有真实音频流：
+  // 用计时器模拟进度推进，让进度条和播报感知“正在播放”。切歌/暂停会重置。
+  useEffect(() => {
+    if (!externalSession || !externalPlaying || !item) {
+      setExternalPlaying(false);
+      return undefined;
+    }
+    const timer = window.setInterval(() => {
+      setPosition((current) => {
+        const next = Math.min(current + 1, item?.durationSeconds || 0);
+        if (next >= (item?.durationSeconds || 0)) setExternalPlaying(false);
+        return next;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [externalSession, externalPlaying, item]);
 
   const currentQueueIndex = queue?.items.findIndex((entry) => entry.id === queue.currentQueueItemId) ?? -1;
   const localCanGoBack = !active && localIndex > 0;
