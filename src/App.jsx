@@ -5081,25 +5081,22 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   async function refreshFunLabs() {
     setFunLabsState((previous) => ({ ...previous, status: "busy" }));
-    try {
-      const [datesData, achievementsData, shotsData] = await Promise.all([
-        apiRequest("/api/v2/special-dates", { timeoutMs: 12_000 }),
-        apiRequest("/api/v2/fun-labs/achievements", { timeoutMs: 12_000 }),
-        apiRequest("/api/v2/fun-labs/daily-shots", { timeoutMs: 12_000 }),
-      ]);
-      const achievements = Array.isArray(achievementsData?.achievements)
-        ? achievementsData.achievements
-        : [];
-      setFunLabsState({
-        status: "success",
-        dates: Array.isArray(datesData?.dates) ? datesData.dates : [],
-        achievements,
-        shots: shotsData || { today: null, recent: [] },
-      });
-      detectAchievementUnlocks(achievements);
-    } catch {
-      setFunLabsState((previous) => ({ ...previous, status: "error" }));
-    }
+    // 三个数据各自独立请求与容错：任何一个失败都不再拖垮整页（避免“等 5 秒后变加载失败”）。
+    const [datesData, achievementsData, shotsData] = await Promise.all([
+      apiRequest("/api/v2/special-dates", { timeoutMs: 12_000 }).catch(() => ({ dates: [] })),
+      apiRequest("/api/v2/fun-labs/achievements", { timeoutMs: 20_000 }).catch(() => ({ achievements: [] })),
+      apiRequest("/api/v2/fun-labs/daily-shots", { timeoutMs: 12_000 }).catch(() => ({ today: null, recent: [] })),
+    ]);
+    const achievements = Array.isArray(achievementsData?.achievements)
+      ? achievementsData.achievements
+      : [];
+    setFunLabsState((previous) => ({
+      status: "success",
+      dates: Array.isArray(datesData?.dates) ? datesData.dates : previous.dates,
+      achievements: achievements.length > 0 ? achievements : previous.achievements,
+      shots: shotsData || previous.shots,
+    }));
+    detectAchievementUnlocks(achievements);
   }
 
   async function addCustomAchievement() {
@@ -6672,15 +6669,22 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           <div className="discover-grid">
             {discoverState.recommend.videos.map((video) => (
               <article key={video.bvid} className="discover-card">
-                {video.cover ? (
-                  <img
-                    src={video.cover.startsWith("//") ? "https:" + video.cover : video.cover}
-                    alt=""
-                    loading="lazy"
-                  />
-                ) : (
+                <div className="discover-card-cover">
+                  {video.cover ? (
+                    <img
+                      src={video.cover.startsWith("//") ? "https:" + video.cover : video.cover.replace(/^http:\/\//, "https://")}
+                      alt=""
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      onError={(event) => {
+                        event.currentTarget.style.display = "none";
+                        const fallback = event.currentTarget.parentElement?.querySelector(".discover-card-cover-fallback");
+                        if (fallback) fallback.style.display = "grid";
+                      }}
+                    />
+                  ) : null}
                   <div className="discover-card-cover-fallback">📺</div>
-                )}
+                </div>
                 <div className="discover-card-body">
                   <strong>{video.title}</strong>
                   <small>
