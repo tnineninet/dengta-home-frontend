@@ -797,7 +797,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
                       <span className="music-cookie-track-title">{track.title}<em>{track.artist}</em></span>
                       <span className="music-cookie-track-actions">
                         <button type="button" disabled={cookieOpBusy} onClick={() => void cookieLikeTrack(track.providerTrackId, true)}>♥ 红心</button>
-                        <button type="button" disabled={cookieOpBusy} onClick={() => { setCookieSearchQuery(track.title); void runCookieSearch(); }}>再搜</button>
+                        <button type="button" disabled={cookieOpBusy} onClick={() => { setCookieOpStatus("正在交给网易云播放…"); void Promise.all([requestExternalMusicPlayback("song", track.providerTrackId), openNeteasePlayback("song", track.providerTrackId)]).then(() => setCookieOpStatus("已交给网易云播放这首。")).catch((caught) => setCookieOpStatus(caught?.message || "无法打开网易云播放。")); }}><Play aria-hidden="true" />播放</button>
                       </span>
                     </li>
                   ))}

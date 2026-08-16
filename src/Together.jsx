@@ -229,9 +229,21 @@ export default function Together({
     session?.status === "active" &&
     session?.sourceApp === WEB_PAGE_SOURCE_APP;
   const musicActive = session?.status === "active" && session?.sessionMode === "listening";
-  const selectedMode = viewKind === "music" ? "music" : musicActive ? "music" : pageActive ? "web" : directActive ? "direct" : active ? "external" : mode;
+  // viewKind 优先：用户明确选了"一起听歌"才进 music；"一起看"页面即使有
+  // 残留的 music 会话也不能抢占，避免点"一起看"却跳到听歌界面。
+  const selectedMode = viewKind === "music"
+    ? "music"
+    : musicActive && viewKind !== "together"
+      ? "music"
+      : pageActive && viewKind !== "music"
+        ? "web"
+        : directActive && viewKind !== "music"
+          ? "direct"
+          : active && viewKind !== "music"
+            ? "external"
+            : mode;
   const selectedActive = selectedMode === "music" ? musicActive : selectedMode === "web" ? pageActive : selectedMode === "direct" ? directActive : active;
-  const modeLocked = active || directActive || musicActive || pageActive;
+  const modeLocked = viewKind === "music" ? musicActive : active || directActive || pageActive;
 
   const fallbackDialog = useMemo(() => {
     const text = String(screenState.lastReaction || "").trim();
