@@ -6542,16 +6542,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             {takeoutLoginFeedback.message}
           </p>
           <div className="device-activity-actions">
-            <button
-              type="button"
-              disabled={!available}
-              onClick={() => void openTakeoutQrLogin()}
-            >
+            <button type="button" onClick={() => void openTakeoutQrLogin()}>
               扫码登录外卖
             </button>
           </div>
           <small>
-            已登录过的账号后续点单无需再次扫码；AI 只在你主动要求点单时才派发命令。
+            {available
+              ? "已登录过的账号后续点单无需再次扫码；AI 只在你主动要求点单时才派发命令。"
+              : "外卖扫码登录与点单由手机本地执行，仅 Android App 可用；网页版请使用聊天里的其它玩法。"}
           </small>
         </div>
         <div className="notification-feature-panel device-activity-panel">
