@@ -7389,6 +7389,20 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 playbackPositionSeconds ?? coWatchSession.mediaPositionSeconds,
               );
               if (result.session) setCoWatchSession(result.session);
+              // 把 AI 的本场回应加入对话气泡（之前只刷新会话，回复没显示出来）
+              const reactionText = String(result?.reaction || result?.assistant_message?.content || "").trim();
+              if (reactionText) {
+                setCoWatchDialog((current) => [
+                  ...current.filter((item) => item.key !== pendingId),
+                  {
+                    key: "reply-" + (result?.request_id || Date.now()),
+                    id: "reply-" + (result?.request_id || Date.now()),
+                    role: "assistant",
+                    text: reactionText,
+                    at: new Date().toISOString(),
+                  },
+                ]);
+              }
               if (Array.isArray(result?.danmaku) && result.danmaku.length) {
                 setCoWatchDanmaku((current) => [
                   ...current,

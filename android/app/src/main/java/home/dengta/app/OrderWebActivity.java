@@ -119,6 +119,7 @@ public class OrderWebActivity extends Activity {
         root.addView(done, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
+        currentUrl = url;
         setContentView(root);
         webView.loadUrl(url);
     }
