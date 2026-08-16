@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { LogIn, RefreshCw, Smartphone } from "lucide-react";
 import {
   beginBilibiliQrLogin,
@@ -18,6 +19,10 @@ function pickError(caught) {
 export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
   const canvasRef = useRef(null);
   const pollTimerRef = useRef(null);
+  const countdownTimerRef = useRef(null);
+  const expiresAtRef = useRef(0);
+  const autoRefreshCountRef = useRef(0);
+  const [countdownSeconds, setCountdownSeconds] = useState(0);
   const [qrContent, setQrContent] = useState("");
   const [qrStatus, setQrStatus] = useState("idle"); // idle | waiting | scanned | confirmed | expired | risk_blocked | error
   const [connection, setConnection] = useState(null);
@@ -36,6 +41,10 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
     if (pollTimerRef.current) {
       window.clearInterval(pollTimerRef.current);
       pollTimerRef.current = null;
+    }
+    if (countdownTimerRef.current) {
+      window.clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
     }
   }, []);
 
@@ -71,16 +80,22 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
   }, []);
 
   const startLogin = useCallback(async () => {
+    autoRefreshCountRef.current = 0;
     setBusy(true);
     setError("");
     setFeedback("");
     try {
       const session = await beginBilibiliQrLogin();
       if (!session?.key || !session.qr_content) throw new Error("没有拿到登录二维码。");
+      expiresAtRef.current = Date.now() + (Number(session.expires_in_seconds) || 180) * 1000;
       setQrStatus("waiting");
       setQrOpen(true);
       await drawQr(session.qr_content);
       stopPolling();
+      setCountdownSeconds(Math.max(0, Math.round((expiresAtRef.current - Date.now()) / 1000)));
+      countdownTimerRef.current = window.setInterval(() => {
+        setCountdownSeconds(Math.max(0, Math.round((expiresAtRef.current - Date.now()) / 1000)));
+      }, 1000);
       const key = session.key;
       pollTimerRef.current = window.setInterval(() => {
         void (async () => {
@@ -101,8 +116,14 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
               setFeedback("已扫码，请在手机上点击确认登录。");
             } else if (result?.status === "expired") {
               stopPolling();
-              setQrStatus("expired");
-              setFeedback("二维码已过期，请点击“重新生成”。");
+              if (autoRefreshCountRef.current < 3) {
+                autoRefreshCountRef.current += 1;
+                setFeedback("二维码已过期，正在为你自动刷新…");
+                void startLogin();
+              } else {
+                setQrStatus("expired");
+                setFeedback("二维码多次过期，请手动点击“重新生成”。");
+              }
             } else if (result?.status === "risk_blocked") {
               stopPolling();
               setQrStatus("risk_blocked");
@@ -204,18 +225,18 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
         <p>用手机哔哩哔哩 App 扫码登录后，DengTa 可以读取你的收藏夹，并把收藏的视频一键载入网页一起看。密码不会经过 DengTa，登录凭据加密保存在你的账号下。</p>
         <button type="button" className="together-primary" disabled={busy} onClick={() => void startLogin()}><LogIn aria-hidden="true" />{busy ? "正在生成…" : "扫码登录哔哩哔哩"}</button>
       </div>}
-      {qrOpen && <div className="netease-qr-modal" role="dialog" aria-label="哔哩哔哩扫码登录">
+      {qrOpen && createPortal(<div className="netease-qr-modal" role="dialog" aria-label="哔哩哔哩扫码登录">
         <div className="netease-qr-card">
           <strong>用手机哔哩哔哩 App 扫码</strong>
           <canvas ref={canvasRef} aria-label="登录二维码" />
-          <p>{qrStatusText}</p>
+          <p>{qrStatusText}{countdownSeconds > 0 ? `（${countdownSeconds} 秒后自动刷新）` : ""}</p>
           <div className="netease-qr-actions">
             <button type="button" disabled={busy} onClick={() => void startLogin()}><RefreshCw aria-hidden="true" />重新生成</button>
             <button type="button" onClick={cancelLogin}>取消</button>
           </div>
           {qrContent && <a className="netease-qr-fallback" href={qrContent} target="_blank" rel="noopener noreferrer">二维码显示不出来？点这里打开哔哩哔哩登录页</a>}
         </div>
-      </div>}
+      </div>, document.body)}
       {folders.length > 0 && <div className="netease-qr-playlists">
         <strong>我的收藏夹（点击查看视频）</strong>
         <ul>{folders.map((folder) => <li key={folder.media_id}>

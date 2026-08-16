@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { LogIn, RefreshCw, Smartphone } from "lucide-react";
 import {
   beginNeteaseQrLogin,
@@ -19,7 +20,11 @@ function pickError(caught) {
 export default function NeteaseQrLogin({ onImported = () => {} }) {
   const canvasRef = useRef(null);
   const pollTimerRef = useRef(null);
+  const countdownTimerRef = useRef(null);
   const startedAtRef = useRef(0);
+  const expiresAtRef = useRef(0);
+  const autoRefreshCountRef = useRef(0);
+  const [countdownSeconds, setCountdownSeconds] = useState(0);
   const [qrContent, setQrContent] = useState("");
   const [qrStatus, setQrStatus] = useState("idle"); // idle | waiting | scanned | confirmed | expired | risk_blocked | error
   const [connection, setConnection] = useState(null);
@@ -36,6 +41,10 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
     if (pollTimerRef.current) {
       window.clearInterval(pollTimerRef.current);
       pollTimerRef.current = null;
+    }
+    if (countdownTimerRef.current) {
+      window.clearInterval(countdownTimerRef.current);
+      countdownTimerRef.current = null;
     }
   }, []);
 
@@ -83,6 +92,7 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
   }, []);
 
   const startLogin = useCallback(async () => {
+    autoRefreshCountRef.current = 0;
     setBusy(true);
     setError("");
     setFeedback("");
@@ -90,10 +100,15 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
       const session = await beginNeteaseQrLogin();
       if (!session?.key || !session.qr_content) throw new Error("没有拿到登录二维码。");
       startedAtRef.current = Date.now();
+      expiresAtRef.current = Date.now() + (Number(session.expires_in_seconds) || 240) * 1000;
       setQrStatus("waiting");
       setQrOpen(true);
       await drawQr(session.qr_content);
       stopPolling();
+      setCountdownSeconds(Math.max(0, Math.round((expiresAtRef.current - Date.now()) / 1000)));
+      countdownTimerRef.current = window.setInterval(() => {
+        setCountdownSeconds(Math.max(0, Math.round((expiresAtRef.current - Date.now()) / 1000)));
+      }, 1000);
       pollTimerRef.current = window.setInterval(() => {
         void (async () => {
           if (!session.key) return;
@@ -117,8 +132,14 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
               setFeedback("已扫码，请在手机上确认登录。");
             } else if (result?.status === "expired") {
               stopPolling();
-              setQrStatus("expired");
-              setFeedback("二维码已过期，请点击“重新生成”。");
+              if (autoRefreshCountRef.current < 3) {
+                autoRefreshCountRef.current += 1;
+                setFeedback("二维码已过期，正在为你自动刷新…");
+                void startLogin();
+              } else {
+                setQrStatus("expired");
+                setFeedback("二维码多次过期，请手动点击“重新生成”。");
+              }
             } else if (result?.status === "risk_blocked") {
               stopPolling();
               setQrStatus("risk_blocked");
@@ -220,18 +241,18 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
         <p>不需要自己搭 MCP：用手机网易云音乐 App 扫码登录后，DengTa 只读取你的歌单并解析可播放直链。密码不会经过 DengTa，登录凭据加密保存在你的账号下。</p>
         <button type="button" className="together-primary" disabled={busy} onClick={() => void startLogin()}><LogIn aria-hidden="true" />{busy ? "正在生成…" : "扫码登录网易云"}</button>
       </div>}
-      {qrOpen && <div className="netease-qr-modal" role="dialog" aria-label="网易云扫码登录">
+      {qrOpen && createPortal(<div className="netease-qr-modal" role="dialog" aria-label="网易云扫码登录">
         <div className="netease-qr-card">
           <strong>用手机网易云音乐 App 扫码</strong>
           <canvas ref={canvasRef} aria-label="登录二维码" />
-          <p>{qrStatusText}</p>
+          <p>{qrStatusText}{countdownSeconds > 0 ? `（${countdownSeconds} 秒后自动刷新）` : ""}</p>
           <div className="netease-qr-actions">
             <button type="button" disabled={busy} onClick={() => void startLogin()}><RefreshCw aria-hidden="true" />重新生成</button>
             <button type="button" onClick={cancelLogin}>取消</button>
           </div>
           {qrContent && <a className="netease-qr-fallback" href={qrContent.replace(/^http:/, "https:")} target="_blank" rel="noopener noreferrer">二维码显示不出来？点这里打开网易云登录页</a>}
         </div>
-      </div>}
+      </div>, document.body)}
       {remotePlaylists.length > 0 && <div className="netease-qr-playlists">
         <strong>我的网易云歌单（点击导入）</strong>
         <ul>{remotePlaylists.map((row) => <li key={row.provider_playlist_id}>
