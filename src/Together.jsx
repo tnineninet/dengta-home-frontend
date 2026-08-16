@@ -12,6 +12,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { formatMediaTime, resolveCoWatchPage } from "./co-watch";
+import { API_BASE_URL } from "./api.js";
 import { detectPlannedCastProviders } from "./receiver-playback.js";
 import {
   clearDirectMediaSession,
@@ -475,14 +476,23 @@ export default function Together({
           ) : selectedMode === "web" ? (
             webPage ? (
               <div className="together-web-stage">
-                <iframe
-                  src={webPage.embedUrl}
-                  title={webPage.title || "网页一起看"}
-                  allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-                  referrerPolicy="no-referrer"
-                  allowFullScreen
-                />
-                {webPage.embedLikelyBlocked && (
+                {webPage.provider === "bilibili" && webPage.bvid ? (
+                  <video
+                    controls
+                    playsInline
+                    poster={webPage.poster || ""}
+                    src={`${API_BASE_URL}/api/v2/co-watch/bilibili-stream?bvid=${encodeURIComponent(webPage.bvid)}`}
+                  />
+                ) : (
+                  <iframe
+                    src={webPage.embedUrl}
+                    title={webPage.title || "网页一起看"}
+                    allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+                    referrerPolicy="no-referrer"
+                    allowFullScreen
+                  />
+                )}
+                {webPage.embedLikelyBlocked && webPage.provider !== "bilibili" && (
                   <p className="together-device-note">
                     若上方画面空白，说明该网站禁止内嵌播放；请改用视频直链或哔哩哔哩链接。
                   </p>
