@@ -33,6 +33,8 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
   const [qrOpen, setQrOpen] = useState(false);
+  const [deviceLine, setDeviceLine] = useState("");
+  const [lastPollLine, setLastPollLine] = useState("");
 
   const stopPolling = useCallback(() => {
     if (pollTimerRef.current) {
@@ -95,11 +97,12 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
       startedAtRef.current = Date.now();
       setQrStatus("waiting");
       setQrOpen(true);
-      setFeedback(
+      setDeviceLine(
         session.device_used === true
-          ? "已上报本机真实设备信息 ✓"
-          : "未上报设备信息(网页版无设备,或旧版本 App)。"
+          ? "✅ 已上报本机真实设备信息"
+          : "⚠️ 未上报设备信息(网页版无设备,或 App 版本过旧)"
       );
+      setLastPollLine("正在等待服务器响应…");
       await drawQr(session.qr_content);
       stopPolling();
       pollTimerRef.current = window.setInterval(() => {
@@ -112,6 +115,21 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
           }
           try {
             const result = await checkNeteaseQrLogin(session.key);
+            const statusNames = {
+              waiting: "等待扫码",
+              scanned: "已扫码待确认",
+              confirmed: "登录成功",
+              expired: "已过期",
+              risk_blocked: "被风控拦截",
+            };
+            setLastPollLine(
+              "服务器最近返回:" +
+                (statusNames[result?.status] || result?.status || "未知") +
+                (result?.raw_code !== undefined
+                  ? " (code " + result.raw_code + ")"
+                  : "") +
+                (result?.message ? " " + result.message : "")
+            );
             if (result?.status === "confirmed") {
               stopPolling();
               setQrStatus("confirmed");
@@ -241,6 +259,8 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
           <strong>用手机网易云音乐 App 扫码</strong>
           <canvas ref={canvasRef} aria-label="登录二维码" />
           <p>{qrStatusText}</p>
+          <p className="netease-qr-diag">{deviceLine}</p>
+          <p className="netease-qr-diag">{lastPollLine}</p>
           <small className="netease-qr-hint">二维码过期后会自动刷新，无需手动操作。</small>
           <div className="netease-qr-actions">
             <button type="button" disabled={busy} onClick={() => void startLogin()}><RefreshCw aria-hidden="true" />重新生成</button>

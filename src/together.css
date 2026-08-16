@@ -240,6 +240,14 @@
 .netease-qr-actions { display: flex; gap: 0.6rem; }
 .netease-qr-fallback { font-size: 0.82rem; word-break: break-all; }
 .netease-qr-hint { font-size: 0.78rem; opacity: 0.68; }
+
+.netease-qr-diag {
+  margin: 2px 0;
+  font-size: 0.78rem;
+  color: #6a7bd8;
+  word-break: break-all;
+}
+
 .netease-qr-fallback-button {
   display: inline-block;
   margin-top: 2px;
