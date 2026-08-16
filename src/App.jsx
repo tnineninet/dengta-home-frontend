@@ -182,6 +182,7 @@ import {
 import {
   clearDirectMediaSession,
   DIRECT_MEDIA_SOURCE_APP,
+  WEB_PAGE_SOURCE_APP,
 } from "./direct-media.js";
 import { installInnerHeightViewportFallback } from "./mobile-viewport";
 import { toggleMomentLikeOptimistically } from "./moment-like";
@@ -1136,7 +1137,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           if (!remote) return null;
           if (
             current?.id === remote.id &&
-            current.sourceApp === DIRECT_MEDIA_SOURCE_APP
+            (current.sourceApp === DIRECT_MEDIA_SOURCE_APP ||
+              current.sourceApp === WEB_PAGE_SOURCE_APP)
           ) {
             return Object.freeze({
               ...remote,
@@ -4747,18 +4749,24 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     try {
       let nextSession =
         coWatchSession?.status === "active" ? coWatchSession : null;
-      if (nextSession && nextSession.sourceApp !== DIRECT_MEDIA_SOURCE_APP) {
+      const pageMode = options.sessionMode === "web_page";
+      const sourceApp = pageMode ? WEB_PAGE_SOURCE_APP : DIRECT_MEDIA_SOURCE_APP;
+      if (
+        nextSession &&
+        nextSession.sourceApp !== DIRECT_MEDIA_SOURCE_APP &&
+        nextSession.sourceApp !== WEB_PAGE_SOURCE_APP
+      ) {
         return {
           ok: false,
-          message: "已有一场外部 App 屏幕共看，请先结束后再载入视频直链。",
+          message: "已有一场其它方式的共看，请先结束后再开始。",
         };
       }
       if (!nextSession) {
         nextSession = await createCoWatchSession({
           title: options.title,
-          sessionMode: "direct_media",
+          sessionMode: pageMode ? "web_page" : "direct_media",
           mediaUrl: options.mediaUrl,
-          sourceApp: DIRECT_MEDIA_SOURCE_APP,
+          sourceApp,
           mediaDurationSeconds: options.mediaDurationSeconds,
           mediaPositionSeconds: options.mediaPositionSeconds,
           cadenceSeconds: 90,
@@ -4769,8 +4777,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       setCoWatchDialog([]);
       return {
         ok: true,
-        message:
-          "直链共看已经开始。媒体地址用于本场接收端播放，不会显示在投屏控制界面。",
+        message: pageMode
+          ? "网页一起看已经开始。网页地址仅用于本场会话，不会在投屏控制界面公开显示。"
+          : "直链共看已经开始。媒体地址用于本场接收端播放，不会显示在投屏控制界面。",
       };
     } catch (error) {
       return {
@@ -4883,7 +4892,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     const current = coWatchSession;
     if (
       !current?.id ||
-      current.sourceApp !== DIRECT_MEDIA_SOURCE_APP ||
+      (current.sourceApp !== DIRECT_MEDIA_SOURCE_APP &&
+        current.sourceApp !== WEB_PAGE_SOURCE_APP) ||
       (snapshot.sessionId && snapshot.sessionId !== current.id)
     ) return;
     const target = Object.freeze({
@@ -4895,7 +4905,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     setCoWatchSession((current) => {
       if (
         !current?.id ||
-        current.sourceApp !== DIRECT_MEDIA_SOURCE_APP ||
+        (current.sourceApp !== DIRECT_MEDIA_SOURCE_APP &&
+          current.sourceApp !== WEB_PAGE_SOURCE_APP) ||
         (snapshot.sessionId && snapshot.sessionId !== current.id)
       ) {
         return current;

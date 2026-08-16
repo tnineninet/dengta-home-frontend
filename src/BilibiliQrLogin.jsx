@@ -1,0 +1,240 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { LogIn, RefreshCw, Smartphone } from "lucide-react";
+import {
+  beginBilibiliQrLogin,
+  checkBilibiliQrLogin,
+  disconnectBilibiliQrLogin,
+  getBilibiliQrStatus,
+  listBilibiliFavoriteFolders,
+  listBilibiliFavoriteVideos,
+} from "./bilibili-qr-login.js";
+
+const POLL_INTERVAL_MS = 2_000;
+
+function pickError(caught) {
+  return caught?.message || "哔哩哔哩扫码登录暂时失败。";
+}
+
+export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
+  const canvasRef = useRef(null);
+  const pollTimerRef = useRef(null);
+  const [qrContent, setQrContent] = useState("");
+  const [qrStatus, setQrStatus] = useState("idle"); // idle | waiting | scanned | confirmed | expired | risk_blocked | error
+  const [connection, setConnection] = useState(null);
+  const [nickname, setNickname] = useState("");
+  const [faceUrl, setFaceUrl] = useState("");
+  const [folders, setFolders] = useState([]);
+  const [folderVideos, setFolderVideos] = useState([]);
+  const [folderTitle, setFolderTitle] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [videoBusy, setVideoBusy] = useState("");
+  const [error, setError] = useState("");
+  const [feedback, setFeedback] = useState("");
+  const [qrOpen, setQrOpen] = useState(false);
+
+  const stopPolling = useCallback(() => {
+    if (pollTimerRef.current) {
+      window.clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => stopPolling(), [stopPolling]);
+
+  const drawQr = useCallback(async (content) => {
+    setQrContent(content);
+    const canvas = canvasRef.current;
+    if (!canvas || !content) return;
+    try {
+      const QRCode = (await import("qrcode")).default;
+      await QRCode.toCanvas(canvas, content, {
+        width: 220,
+        margin: 1,
+        errorCorrectionLevel: "M",
+      });
+    } catch {
+      setError("二维码渲染失败，请点击“重新生成”再试。");
+    }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    getBilibiliQrStatus()
+      .then((next) => {
+        if (cancelled) return;
+        setConnection(next?.connected === true ? next : null);
+        setNickname(next?.nickname || "");
+        setFaceUrl(next?.face_url || "");
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const startLogin = useCallback(async () => {
+    setBusy(true);
+    setError("");
+    setFeedback("");
+    try {
+      const session = await beginBilibiliQrLogin();
+      if (!session?.key || !session.qr_content) throw new Error("没有拿到登录二维码。");
+      setQrStatus("waiting");
+      setQrOpen(true);
+      await drawQr(session.qr_content);
+      stopPolling();
+      const key = session.key;
+      pollTimerRef.current = window.setInterval(() => {
+        void (async () => {
+          try {
+            const result = await checkBilibiliQrLogin(key);
+            if (result?.status === "confirmed") {
+              stopPolling();
+              setQrStatus("confirmed");
+              setQrOpen(false);
+              setQrContent("");
+              const next = result.connection;
+              setConnection(next?.connected === true ? next : null);
+              setNickname(next?.nickname || "");
+              setFaceUrl(next?.face_url || "");
+              setFeedback("扫码登录成功，可以读取你的收藏夹了。");
+            } else if (result?.status === "scanned") {
+              setQrStatus("scanned");
+              setFeedback("已扫码，请在手机上点击确认登录。");
+            } else if (result?.status === "expired") {
+              stopPolling();
+              setQrStatus("expired");
+              setFeedback("二维码已过期，请点击“重新生成”。");
+            } else if (result?.status === "risk_blocked") {
+              stopPolling();
+              setQrStatus("risk_blocked");
+              setFeedback(result.message || "登录被哔哩哔哩风控拦截，请稍后再试。");
+            } else if (result?.status === "waiting") {
+              setQrStatus("waiting");
+            }
+          } catch (caught) {
+            if (caught?.code === "bilibili_qr_session_expired") {
+              stopPolling();
+              setQrStatus("expired");
+            } else {
+              setError(pickError(caught));
+            }
+          }
+        })();
+      }, POLL_INTERVAL_MS);
+    } catch (caught) {
+      setError(pickError(caught));
+    } finally {
+      setBusy(false);
+    }
+  }, [drawQr, stopPolling]);
+
+  const cancelLogin = useCallback(() => {
+    stopPolling();
+    setQrOpen(false);
+    setQrContent("");
+    setQrStatus("idle");
+    setFeedback("");
+  }, [stopPolling]);
+
+  const logout = useCallback(async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await disconnectBilibiliQrLogin();
+      setConnection(null);
+      setNickname("");
+      setFaceUrl("");
+      setFolders([]);
+      setFolderVideos([]);
+      setFolderTitle("");
+      setFeedback("已退出哔哩哔哩登录。");
+    } catch (caught) {
+      setError(pickError(caught));
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  const loadFolders = useCallback(async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const rows = await listBilibiliFavoriteFolders();
+      setFolders(rows);
+      setFeedback(rows.length ? `共读取到 ${rows.length} 个收藏夹。` : "没有读取到收藏夹。");
+    } catch (caught) {
+      setError(pickError(caught));
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  const loadFolderVideos = useCallback(async (folder) => {
+    setVideoBusy(folder.media_id);
+    setError("");
+    try {
+      const rows = await listBilibiliFavoriteVideos(folder.media_id, 1);
+      setFolderVideos(rows);
+      setFolderTitle(folder.title);
+      setFeedback(rows.length ? `“${folder.title}”前 20 个视频已载入。` : "这个收藏夹没有可读取的视频。");
+    } catch (caught) {
+      setError(pickError(caught));
+    } finally {
+      setVideoBusy("");
+    }
+  }, []);
+
+  const qrStatusText = {
+    idle: "点击“扫码登录”开始。",
+    waiting: "请用手机哔哩哔哩 App 扫描二维码。",
+    scanned: "已扫码，请在手机上点击确认登录。",
+    confirmed: "登录成功。",
+    expired: "二维码已过期，请重新生成。",
+    risk_blocked: "登录被风控拦截，请稍后再试。",
+    error: "登录失败，请重试。",
+  }[qrStatus] || "";
+
+  return <div className="bilibili-qr-login">
+    <div className="music-provider-connect-body">
+      {connection ? <div className="netease-qr-connected" role="status">
+        {faceUrl ? <img className="bilibili-avatar" src={faceUrl} alt="" /> : <Smartphone aria-hidden="true" />}
+        <span>已登录哔哩哔哩：<strong>{nickname || "哔哩用户"}</strong></span>
+        <button type="button" disabled={busy} onClick={() => void loadFolders()}>读取收藏夹</button>
+        <button type="button" disabled={busy} onClick={() => void logout()}>{busy ? "处理中…" : "退出登录"}</button>
+      </div> : <div className="netease-qr-disconnected">
+        <p>用手机哔哩哔哩 App 扫码登录后，DengTa 可以读取你的收藏夹，并把收藏的视频一键载入网页一起看。密码不会经过 DengTa，登录凭据加密保存在你的账号下。</p>
+        <button type="button" className="together-primary" disabled={busy} onClick={() => void startLogin()}><LogIn aria-hidden="true" />{busy ? "正在生成…" : "扫码登录哔哩哔哩"}</button>
+      </div>}
+      {qrOpen && <div className="netease-qr-modal" role="dialog" aria-label="哔哩哔哩扫码登录">
+        <div className="netease-qr-card">
+          <strong>用手机哔哩哔哩 App 扫码</strong>
+          <canvas ref={canvasRef} aria-label="登录二维码" />
+          <p>{qrStatusText}</p>
+          <div className="netease-qr-actions">
+            <button type="button" disabled={busy} onClick={() => void startLogin()}><RefreshCw aria-hidden="true" />重新生成</button>
+            <button type="button" onClick={cancelLogin}>取消</button>
+          </div>
+          {qrContent && <a className="netease-qr-fallback" href={qrContent} target="_blank" rel="noopener noreferrer">二维码显示不出来？点这里打开哔哩哔哩登录页</a>}
+        </div>
+      </div>}
+      {folders.length > 0 && <div className="netease-qr-playlists">
+        <strong>我的收藏夹（点击查看视频）</strong>
+        <ul>{folders.map((folder) => <li key={folder.media_id}>
+          <button type="button" disabled={videoBusy === folder.media_id} onClick={() => void loadFolderVideos(folder)}>
+            {folder.title} · {folder.media_count} 个
+            {videoBusy === folder.media_id ? " 正在读取…" : ""}
+          </button>
+        </li>)}</ul>
+      </div>}
+      {folderVideos.length > 0 && <div className="netease-qr-playlists">
+        <strong>{folderTitle || "收藏视频"}（点击载入一起看）</strong>
+        <ul>{folderVideos.map((video) => <li key={video.bvid}>
+          <button type="button" onClick={() => void onPickVideo(video.page_url, video.title)}>
+            {video.title || video.bvid}
+          </button>
+        </li>)}</ul>
+      </div>}
+      {feedback && <p className="music-provider-feedback" role="status">{feedback}</p>}
+      {error && <p className="music-provider-feedback music-provider-error" role="alert">{error}</p>}
+    </div>
+  </div>;
+}

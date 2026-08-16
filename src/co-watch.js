@@ -130,8 +130,8 @@ export async function createCoWatchSession(input = {}) {
     timeoutMs: 15_000,
     body: JSON.stringify({
       title: cleanText(input.title),
-      session_mode: ["screen", "direct_media", "listening"].includes(input.sessionMode) ? input.sessionMode : "screen",
-      media_url: input.sessionMode === "direct_media" ? cleanText(input.mediaUrl, 4096) : "",
+      session_mode: ["screen", "direct_media", "listening", "web_page"].includes(input.sessionMode) ? input.sessionMode : "screen",
+      media_url: ["direct_media", "web_page"].includes(input.sessionMode) ? cleanText(input.mediaUrl, 4096) : "",
       source_app: cleanText(input.sourceApp, 100),
       media_duration_seconds: cleanNumber(input.mediaDurationSeconds),
       media_position_seconds: cleanNumber(input.mediaPositionSeconds),
@@ -271,6 +271,14 @@ export async function sendCoWatchReply(sessionId, text, positionSeconds = 0) {
     assistantMessage: data?.assistant_message || null,
     session: normalizeCoWatchSession(data?.session),
   });
+}
+
+export async function resolveCoWatchPage(pageUrl) {
+  const query = new URLSearchParams({ url: cleanText(pageUrl, 4096) });
+  const data = await apiRequest(`/api/v2/co-watch/page-resolve?${query}`, {
+    timeoutMs: 15_000,
+  });
+  return data?.page || null;
 }
 
 export function formatMediaTime(value) {

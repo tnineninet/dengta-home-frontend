@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import {
   CircleStop,
   Clock3,
+  Globe,
   Link2,
   MessageCircleMore,
   Music2,
@@ -10,17 +11,19 @@ import {
   Play,
   RefreshCw,
 } from "lucide-react";
-import { formatMediaTime } from "./co-watch";
+import { formatMediaTime, resolveCoWatchPage } from "./co-watch";
 import { detectPlannedCastProviders } from "./receiver-playback.js";
 import {
   clearDirectMediaSession,
   DIRECT_MEDIA_SOURCE_APP,
+  WEB_PAGE_SOURCE_APP,
   readDirectMediaSession,
   storeDirectMediaSession,
   validateDirectMediaUrl,
 } from "./direct-media.js";
 import "./together.css";
 import TogetherMusic from "./TogetherMusic.jsx";
+import BilibiliQrLogin from "./BilibiliQrLogin.jsx";
 
 function formatMoment(value, fallback = "等待画面") {
   if (!value) return fallback;
@@ -68,6 +71,8 @@ export default function Together({
   const [mode, setMode] = useState(() =>
     session?.sessionMode === "listening"
       ? "music"
+      : session?.sourceApp === WEB_PAGE_SOURCE_APP
+      ? "web"
       : session?.sourceApp === DIRECT_MEDIA_SOURCE_APP || restoredDirectMedia?.url
       ? "direct"
       : initialMode === "music" ? "music" : "external",
@@ -105,6 +110,12 @@ export default function Together({
     status: "idle",
     message: "视频链接只用于本场直链播放与已配对的浏览器接收端，不会在投屏界面公开显示。",
   });
+  const [webUrlInput, setWebUrlInput] = useState("");
+  const [webPage, setWebPage] = useState(null);
+  const [webFeedback, setWebFeedback] = useState({
+    status: "idle",
+    message: "粘贴哔哩哔哩、爱奇艺等官方网页链接，先解析再开始一起看。",
+  });
   const videoRef = useRef(null);
   const resumedUrlRef = useRef("");
   const restoredResumeRef = useRef(
@@ -126,10 +137,13 @@ export default function Together({
   const directActive =
     session?.status === "active" &&
     session?.sourceApp === DIRECT_MEDIA_SOURCE_APP;
+  const pageActive =
+    session?.status === "active" &&
+    session?.sourceApp === WEB_PAGE_SOURCE_APP;
   const musicActive = session?.status === "active" && session?.sessionMode === "listening";
-  const selectedMode = musicActive ? "music" : directActive ? "direct" : active ? "external" : mode;
-  const selectedActive = selectedMode === "music" ? musicActive : selectedMode === "direct" ? directActive : active;
-  const modeLocked = active || directActive || musicActive;
+  const selectedMode = musicActive ? "music" : pageActive ? "web" : directActive ? "direct" : active ? "external" : mode;
+  const selectedActive = selectedMode === "music" ? musicActive : selectedMode === "web" ? pageActive : selectedMode === "direct" ? directActive : active;
+  const modeLocked = active || directActive || musicActive || pageActive;
 
   const fallbackDialog = useMemo(() => {
     const text = String(screenState.lastReaction || "").trim();
@@ -291,6 +305,73 @@ export default function Together({
     }
   };
 
+  const loadWebPage = async (explicitUrl = "") => {
+    const input = explicitUrl || webUrlInput;
+    if (!input.trim()) {
+      setWebFeedback({ status: "error", message: "请先粘贴网页链接。" });
+      return;
+    }
+    if (explicitUrl) setWebUrlInput(explicitUrl);
+    setWebFeedback({ status: "checking", message: "正在解析网页链接…" });
+    try {
+      const page = await resolveCoWatchPage(input);
+      if (!page?.embed_url) throw new Error("没有拿到可用的内嵌地址。");
+      setWebPage(page);
+      if (page.title) setTitle(page.title);
+      setWebFeedback({ status: "success", message: page.message || "网页已解析，可以开始一起看了。" });
+    } catch (error) {
+      setWebFeedback({ status: "error", message: error?.message || "网页链接解析失败。" });
+    }
+  };
+
+  const pickBilibiliVideo = (pageUrl, videoTitle) => {
+    setMode("web");
+    if (videoTitle) setTitle(videoTitle);
+    void loadWebPage(pageUrl);
+  };
+
+  const startWebPage = async () => {
+    if (!webPage?.page_url) {
+      setWebFeedback({ status: "error", message: "请先解析网页链接。" });
+      return;
+    }
+    setWebFeedback({ status: "checking", message: "正在建立网页共看会话…" });
+    try {
+      const result = await onStartDirect?.({
+        title: webPage.title || title,
+        sessionMode: "web_page",
+        mediaUrl: webPage.page_url,
+        mediaDurationSeconds: 0,
+        mediaPositionSeconds: 0,
+      });
+      if (!result) return;
+      setWebFeedback({
+        status: result.ok === false ? "error" : "success",
+        message: result.message || "网页一起看已经开始。",
+      });
+    } catch (error) {
+      setWebFeedback({ status: "error", message: error?.message || "暂时无法开始网页一起看。" });
+    }
+  };
+
+  const stopWebPage = async () => {
+    setWebFeedback({ status: "checking", message: "正在结束这场共看…" });
+    try {
+      const result = await onStopDirect?.({ title, mediaPositionSeconds: 0 });
+      if (!result) return;
+      setWebFeedback({
+        status: result.ok === false ? "error" : "idle",
+        message: result.message || "这场网页一起看已经结束。",
+      });
+      if (result.ok !== false) {
+        setWebPage(null);
+        setWebUrlInput("");
+      }
+    } catch (error) {
+      setWebFeedback({ status: "error", message: error?.message || "暂时无法结束网页一起看。" });
+    }
+  };
+
   const submitReply = (event) => {
     event.preventDefault();
     const text = reply.trim();
@@ -307,7 +388,7 @@ export default function Together({
 
   const stageTitle = session?.title || title || "还没有填写片名";
   const currentFeedback =
-    selectedMode === "direct" ? directFeedback : feedback;
+    selectedMode === "web" ? webFeedback : selectedMode === "direct" ? directFeedback : feedback;
 
   return (
     <section className="feature-page together-page" aria-label="一起看">
@@ -318,6 +399,8 @@ export default function Together({
           <p>
             {selectedMode === "music"
               ? "在前台用浏览器音频播放器，和伴侣同步听同一份歌单。"
+              : selectedMode === "web"
+              ? "在 DengTa 内打开哔哩哔哩、爱奇艺等官方网页一起看；AI 依据标题和你的消息陪聊。"
               : selectedMode === "direct"
               ? "在 DengTa 内播放 HTTPS 视频直链；AI 不会抓取或自动观看视频。"
               : "切到任意视频 App，DengTa 会在画面有变化时陪你聊。"}
@@ -326,7 +409,9 @@ export default function Together({
         <span className={`together-live${selectedActive ? " is-live" : ""}`}>
           <i aria-hidden="true" />
           {selectedActive
-            ? selectedMode === "direct"
+            ? selectedMode === "web"
+              ? "网页共看中"
+              : selectedMode === "direct"
               ? directPlaying
                 ? "播放共看中"
                 : "播放器已暂停"
@@ -360,12 +445,46 @@ export default function Together({
           <Link2 aria-hidden="true" />
           DengTa 视频直链
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={selectedMode === "web"}
+          className={selectedMode === "web" ? "is-selected" : ""}
+          disabled={modeLocked && selectedMode !== "web"}
+          onClick={() => setMode("web")}
+        >
+          <Globe aria-hidden="true" />
+          网页一起看
+        </button>
       </div>}
 
       <div className="together-layout">
         <div className="together-stage">
           {selectedMode === "music" ? (
             <div className="together-stage-empty together-music-stage"><Music2 aria-hidden="true" /><strong>一起听歌</strong><span>播放器保持在前台运行，歌单与进度会同步到本场会话。</span></div>
+          ) : selectedMode === "web" ? (
+            webPage ? (
+              <div className="together-web-stage">
+                <iframe
+                  src={webPage.embedUrl}
+                  title={webPage.title || "网页一起看"}
+                  allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+                  referrerPolicy="no-referrer"
+                  allowFullScreen
+                />
+                {webPage.embedLikelyBlocked && (
+                  <p className="together-device-note">
+                    若上方画面空白，说明该网站禁止内嵌播放；请改用视频直链或哔哩哔哩链接。
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="together-stage-empty">
+                <Globe aria-hidden="true" />
+                <strong>等待网页链接</strong>
+                <span>在右侧粘贴哔哩哔哩、爱奇艺等官方链接并解析。</span>
+              </div>
+            )
           ) : selectedMode === "direct" ? (
             directMediaUrl ? (
               <video
@@ -454,6 +573,57 @@ export default function Together({
               onPlaybackChange={onMusicPlaybackChange}
               onPositionChange={setMusicPositionSeconds}
             />
+          ) : selectedMode === "web" ? (
+            <div className="together-setup together-web-setup">
+              {!pageActive && (
+                <>
+                  <label>
+                    <span>网页链接</span>
+                    <input
+                      type="url"
+                      inputMode="url"
+                      autoCapitalize="off"
+                      autoCorrect="off"
+                      spellCheck="false"
+                      value={webUrlInput}
+                      onChange={(event) => setWebUrlInput(event.target.value)}
+                      placeholder="https://www.bilibili.com/video/BV…"
+                      aria-describedby="web-page-guidance"
+                    />
+                  </label>
+                  <div className="together-direct-actions">
+                    <button type="button" disabled={busy} onClick={() => void loadWebPage()}>
+                      <Globe aria-hidden="true" />
+                      解析并载入
+                    </button>
+                    <button
+                      type="button"
+                      className="together-primary"
+                      disabled={busy || !webPage}
+                      onClick={() => void startWebPage()}
+                    >
+                      <Play aria-hidden="true" />
+                      {busy ? "正在准备…" : "开始网页一起看"}
+                    </button>
+                  </div>
+                  <p id="web-page-guidance" className="together-device-note">
+                    支持哔哩哔哩官方链接（自动切换内嵌播放器）与其它 HTTPS 网页；爱奇艺等站点可能禁止内嵌。网页画面不会发送给 AI，AI 依据标题与你发送的文字陪聊。
+                  </p>
+                  <details className="music-provider-connect bilibili-provider">
+                    <summary>扫码登录哔哩哔哩，从收藏夹挑视频</summary>
+                    <BilibiliQrLogin onPickVideo={pickBilibiliVideo} />
+                  </details>
+                </>
+              )}
+              {pageActive && (
+                <div className="together-session-actions">
+                  <button type="button" disabled={busy} onClick={() => void stopWebPage()}>
+                    <CircleStop aria-hidden="true" />
+                    结束本场
+                  </button>
+                </div>
+              )}
+            </div>
           ) : selectedMode === "direct" ? (
             <div className="together-setup together-direct-setup">
               {!directActive && (
@@ -678,6 +848,8 @@ export default function Together({
           <p className="together-dialog-empty">
             {selectedMode === "music"
               ? "开始后可在这里复用本场回复区聊歌曲；曲名和歌词不会在前端过滤。"
+              : selectedMode === "web"
+              ? "开始后，可以按网页标题与内容手动聊天；网页地址不会随消息发送，AI 不会自动读取网页画面。"
               : selectedMode === "direct"
               ? "开始后，可以按标题和当前进度手动聊天；AI 不会自动读取视频画面，视频地址也不会随消息发送。"
               : "开始后，主动回应会出现在这里，也会以声音和振动提醒你。"}

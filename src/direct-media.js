@@ -5,6 +5,7 @@ import {
 } from "./account-storage.js";
 
 export const DIRECT_MEDIA_SOURCE_APP = "dengta-direct-media";
+export const WEB_PAGE_SOURCE_APP = "dengta-web-page";
 export const DIRECT_MEDIA_SESSION_KEY = "dengta.together.direct-media.v1";
 
 const MAX_MEDIA_URL_LENGTH = 4096;

@@ -76,6 +76,7 @@
     "@capacitor/local-notifications": "^8.0.0",
     "@supabase/auth-js": "^2.110.8",
     "lucide-react": "^0.468.0",
+    "qrcode": "^1.5.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },

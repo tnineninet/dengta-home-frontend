@@ -34,6 +34,8 @@ import {
 } from "./music-listening.js";
 import { MUSIC_PLAYBACK_MODES, musicPlaybackIsInternal, resolveMusicPlayback } from "./music-playback.js";
 import { openNeteasePlayback } from "./netease-playback.js";
+import { narrateMusicUnderstanding } from "./netease-qr-login.js";
+import NeteaseQrLogin from "./NeteaseQrLogin.jsx";
 import MusicSettings from "./MusicSettings.jsx";
 
 const ERROR_MESSAGE = "音频无法播放。链接可能已过期、需要登录、受到防盗链限制，或使用了 DRM。DengTa 不会绕过这些限制。";
@@ -75,6 +77,9 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   const [providerBusy, setProviderBusy] = useState(false);
   const [providerStatus, setProviderStatus] = useState("");
   const [importOpen, setImportOpen] = useState(false);
+  const [understandingTier, setUnderstandingTier] = useState("casual");
+  const [understandingText, setUnderstandingText] = useState("");
+  const [understandingBusy, setUnderstandingBusy] = useState(false);
 
   const active = session?.status === "active" && session?.sessionMode === "listening";
   const sessionPlaylist = active ? loadedPlaylists[session?.musicPlaylistId] || null : null;
@@ -290,6 +295,27 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
         musicPlaylistItemId: itemId,
         revision: session.revision,
       });
+    }
+  };
+
+  const requestUnderstanding = async () => {
+    if (!item?.providerTrackId || understandingBusy) return;
+    setUnderstandingBusy(true);
+    setError("");
+    setUnderstandingText("");
+    try {
+      const result = await narrateMusicUnderstanding({
+        providerTrackId: item.providerTrackId,
+        title: item.title,
+        artist: item.artist,
+        tier: understandingTier,
+      });
+      setUnderstandingText(result?.narration || "这次没有拿到解读，请稍后再试。");
+      setStatus(understandingTier === "expert" ? "专家级解读已生成。" : "听歌解读已生成。");
+    } catch (caught) {
+      setError(caught?.message || "听歌解读暂时失败。");
+    } finally {
+      setUnderstandingBusy(false);
     }
   };
 
@@ -538,6 +564,10 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   return <div className="together-setup together-music-setup" aria-busy={loading || queueBusy}>
     {!active && <section className="music-import-entry"><div><strong>把想听的歌带进来</strong><p>支持安全的文本歌单、本机音频与网易云分享链接。</p></div><button type="button" className="together-primary" aria-expanded={importOpen} aria-controls="together-music-import" onClick={() => setImportOpen((current) => !current)}><ListPlus aria-hidden="true" />{importOpen ? "收起导入" : "导入歌单"}</button></section>}
     {!active && importOpen && <div id="together-music-import"><MusicSettings /></div>}
+    {!active && <details className="music-provider-connect music-provider-qr">
+      <summary>扫码登录网易云（推荐，不需要 MCP）</summary>
+      <NeteaseQrLogin onImported={() => { void refreshLibrary(); setImportOpen(false); }} />
+    </details>}
     {!active && <details className="music-provider-connect">
       <summary>高级用户：连接自己的网易云接口</summary>
       <div className="music-provider-connect-body">
@@ -605,6 +635,14 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
     </>}
     {active && <button type="button" disabled={busy} onClick={() => void onEnd?.({ title: item?.title, mediaPositionSeconds: position, musicPlaylistId: itemPlaylistId, musicPlaylistItemId: itemId })}><CircleStop aria-hidden="true" />结束本场</button>}
     <p className="together-device-note">{formatMediaTime(position)} / {duration ? formatMediaTime(duration) : "等待媒体信息"}。{playback.mode === MUSIC_PLAYBACK_MODES.external ? "只进入 Together 元数据队列，不进入 App audio；切歌后请点击在网易云播放" : "队列不保存音频 URL，播放地址仅从本机已加载歌单解析；不代理、不下载、不绕过 DRM。"}</p>
+    {item?.providerTrackId && <details className="music-understanding">
+      <summary>听歌解读：AI 对这首歌的理解</summary>
+      <div className="music-understanding-body">
+        <label>解读档位<select value={understandingTier} onChange={(event) => setUnderstandingTier(event.target.value)}><option value="casual">普通听歌爱好者</option><option value="expert">专家级乐评</option></select></label>
+        <button type="button" className="together-primary" disabled={understandingBusy} onClick={() => void requestUnderstanding()}>{understandingBusy ? "正在分析…（专家级需要先解析音频）" : "让 AI 说说这首歌"}</button>
+        {understandingText && <p className="music-understanding-text" role="status">{understandingText}</p>}
+      </div>
+    </details>}
     {status && <p className="together-feedback" role="status">{loading || queueBusy ? "正在处理 · " : ""}{status}</p>}
     {error && <p className="together-feedback is-error" role="alert">{error}</p>}
   </div>;
