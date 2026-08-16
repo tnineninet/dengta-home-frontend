@@ -1,7 +1,10 @@
 package home.dengta.app;
 
 import android.app.AppOpsManager;
+import android.app.Notification;
 import android.app.usage.UsageEvents;
+import android.os.Bundle;
+import android.graphics.drawable.Icon;
 import android.app.usage.UsageStats;
 import android.app.usage.UsageStatsManager;
 import android.content.Context;
@@ -422,8 +425,12 @@ public final class DeviceActivityPlugin extends Plugin {
     private String iconToDataUrl(Icon icon) {
         try {
             if (icon == null) return "";
-            Bitmap bitmap = icon.getBitmap();
-            return bitmapToDataUrl(bitmap);
+            android.graphics.drawable.Drawable drawable = icon.loadDrawable(getContext());
+            if (drawable instanceof android.graphics.drawable.BitmapDrawable) {
+                Bitmap bitmap = ((android.graphics.drawable.BitmapDrawable) drawable).getBitmap();
+                return bitmapToDataUrl(bitmap);
+            }
+            return "";
         } catch (Exception ignored) {
             return "";
         }
