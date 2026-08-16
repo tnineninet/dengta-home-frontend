@@ -800,6 +800,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       if (song?.title) {
         nowPlayingDismissedRef.current = false;
         setNowPlaying(song);
+        // 切歌感知：系统播放的歌曲变化时，同步到一起听会话（AI 就能记住最新歌曲）
+        const previous = lastNowPlayingRef.current;
+        const changed =
+          !previous ||
+          previous.title !== song.title ||
+          previous.artist !== song.artist;
+        lastNowPlayingRef.current = song;
+        if (changed) {
+          void syncNowPlayingToSession(song);
+        }
       } else if (!nowPlayingDismissedRef.current) {
         setNowPlaying(null);
       }
@@ -865,6 +875,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   });
   const [isScreenGlanceBusy, setIsScreenGlanceBusy] = useState(false);
   const [coWatchSession, setCoWatchSession] = useState(null);
+  const coWatchSessionRef = useRef(null);
+  useEffect(() => {
+    coWatchSessionRef.current = coWatchSession;
+  }, [coWatchSession]);
   const [coWatchReceipt, setCoWatchReceipt] = useState(null);
   const [coWatchPreview, setCoWatchPreview] = useState(null);
   const [coWatchDialog, setCoWatchDialog] = useState([]);
@@ -5508,6 +5522,70 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       return false;
     } finally { setIsScreenGlanceBusy(false); }
   }
+
+  // 切歌感知：系统正在播放的歌曲变化时，把它同步到当前一起听会话。
+  // 这样 AI 的记忆、本场回应和音乐理解都会跟随最新歌曲（类似一起看切视频）。
+  const syncNowPlayingToSession = useCallback(async (song) => {
+    if (!song?.title) return;
+    const active = coWatchSessionRef.current;
+    if (!active || active.status !== "active" || active.sessionMode !== "listening") return;
+    const currentTitle = String(active.title || "").trim();
+    if (currentTitle && (currentTitle === song.title || currentTitle.includes(song.title) || song.title.includes(currentTitle))) {
+      return; // 没切歌
+    }
+    try {
+      // 尝试匹配本地歌单（按标题+歌手），拿到 item_id 上报；匹配不到则导入单曲
+      const playlistsData = await apiRequest("/api/v2/music/playlists", { timeoutMs: 12000 }).catch(() => ({ playlists: [] }));
+      const playlists = Array.isArray(playlistsData?.playlists) ? playlistsData.playlists : [];
+      let matchedPlaylistId = "";
+      let matchedItemId = "";
+      for (const playlist of playlists) {
+        const rawItems = playlist.items || playlist.playlist_items || [];
+        const match = rawItems.find(
+          (item) =>
+            String(item.title || item.name || "").toLowerCase() === song.title.toLowerCase() &&
+            (!song.artist || String(item.artist || "").toLowerCase().includes(song.artist.toLowerCase()))
+        );
+        if (match) {
+          matchedPlaylistId = playlist.id || playlist.playlist_id;
+          matchedItemId = match.id || match.item_id;
+          break;
+        }
+      }
+      if (!matchedItemId) {
+        // 没有匹配：把当前播放的歌曲导入为单曲歌单（用网易云分享链接）
+        const shareUrl = "https://music.163.com/#/song?id=" + encodeURIComponent(song.title);
+        const imported = await apiRequest("/api/v2/music/providers/netease/imports/share", {
+          method: "POST",
+          timeoutMs: 20000,
+          body: JSON.stringify({ connection_id: "", share_url: shareUrl }),
+        }).catch(() => null);
+        const importedPlaylist = imported?.playlist || imported;
+        if (importedPlaylist?.id) {
+          const importedItems = importedPlaylist.items || [];
+          matchedPlaylistId = importedPlaylist.id;
+          matchedItemId = importedItems[0]?.id || "";
+        }
+      }
+      if (matchedItemId) {
+        await patchCoWatchPlayback(active.id, {
+          playbackState: "playing",
+          mediaPositionSeconds: song.positionSeconds || 0,
+          mediaDurationSeconds: song.durationSeconds || 0,
+          musicPlaylistId: matchedPlaylistId,
+          musicPlaylistItemId: matchedItemId,
+          revision: active.playbackRevision || 0,
+        }).catch(() => {});
+        setCoWatchSession((current) =>
+          current
+            ? { ...current, title: song.title, playlistId: matchedPlaylistId, playlistItemId: matchedItemId }
+            : current
+        );
+      }
+    } catch {
+      // 同步失败不影响主流程
+    }
+  }, []);
 
   async function updateMusicCoWatchPlayback(snapshot = {}) {
     if (!snapshot.sessionId) return;
