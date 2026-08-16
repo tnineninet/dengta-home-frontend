@@ -5185,6 +5185,28 @@ button:disabled {
   font-size: 11px;
 }
 
+.xhs-qr-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.xhs-qr-wrap img {
+  width: 208px;
+  height: 208px;
+  border-radius: 14px;
+  border: 1px solid rgba(112, 89, 99, 0.16);
+  background: #fff;
+}
+
+.xhs-qr-wrap small {
+  color: #a08d95;
+  font-size: 11px;
+}
+
+
 .fun-achievements-wrap { margin: 8px 0; }
 
 .fun-achievements-grid {

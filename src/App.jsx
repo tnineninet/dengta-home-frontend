@@ -175,6 +175,12 @@ import {
   takeoutPluginAvailable,
 } from "./takeout-executor.js";
 import {
+  logoutXhs,
+  readXhsLoginStatus,
+  readXhsMe,
+  startXhsLogin,
+} from "./xhs-login.js";
+import {
   SCREEN_GLANCE_DEFAULT_CONFIG,
   ScreenGlance,
   buildScreenGlanceTurn,
@@ -4729,6 +4735,116 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     if (!takeoutPluginAvailable()) return undefined;
     return startTakeoutRunner();
   }, []);
+  const [xhsState, setXhsState] = useState({
+    status: "idle",
+    qr: "",
+    session: "",
+    feedback: "",
+  });
+  const xhsPollTimerRef = useRef(null);
+
+  async function startXhsQrLogin() {
+    clearInterval(xhsPollTimerRef.current);
+    setXhsState({
+      status: "busy",
+      qr: "",
+      session: "",
+      feedback: "正在生成登录二维码…",
+    });
+    try {
+      const data = await startXhsLogin();
+      const session = data?.login?.session || "";
+      const qr = data?.login?.qr || "";
+      if (!qr) {
+        setXhsState({
+          status: "error",
+          qr: "",
+          session: "",
+          feedback:
+            data?.login?.note || "小红书服务还没有部署，暂时无法登录。",
+        });
+        return;
+      }
+      setXhsState({
+        status: "pending",
+        qr,
+        session,
+        feedback: "请用小红书 App 扫码并确认登录",
+      });
+      xhsPollTimerRef.current = setInterval(async () => {
+        try {
+          const result = await readXhsLoginStatus(session);
+          const loginStatus = result?.status?.status;
+          if (loginStatus === "done") {
+            clearInterval(xhsPollTimerRef.current);
+            setXhsState((previous) => ({
+              ...previous,
+              status: "logged_in",
+              qr: "",
+              feedback: "小红书登录成功！AI 可以帮你刷帖、搜笔记了。",
+            }));
+          } else if (loginStatus === "expired") {
+            clearInterval(xhsPollTimerRef.current);
+            setXhsState((previous) => ({
+              ...previous,
+              status: "error",
+              qr: "",
+              feedback: "二维码已过期，请重新发起登录。",
+            }));
+          }
+        } catch {
+          // 轮询失败继续。
+        }
+      }, 3000);
+    } catch (error) {
+      setXhsState({
+        status: "error",
+        qr: "",
+        session: "",
+        feedback: error?.message || "无法发起小红书登录。",
+      });
+    }
+  }
+
+  async function logoutXhsAccount() {
+    try {
+      await logoutXhs();
+      setXhsState({
+        status: "idle",
+        qr: "",
+        session: "",
+        feedback: "已退出小红书登录。",
+      });
+    } catch {
+      setXhsState((previous) => ({
+        ...previous,
+        feedback: "退出失败，请稍后再试。",
+      }));
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    void readXhsMe()
+      .then(() => {
+        if (!cancelled) {
+          setXhsState((previous) => ({
+            ...previous,
+            status: "logged_in",
+            feedback: "小红书已登录。",
+          }));
+        }
+      })
+      .catch(() => {
+        // 未登录或服务未部署，保持默认。
+      });
+    return () => {
+      cancelled = true;
+      clearInterval(xhsPollTimerRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
 
   const [funLabsState, setFunLabsState] = useState({
     status: "idle",
@@ -7395,6 +7511,49 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 </p>
               ) : null}
               <small>在聊天里直接说“看看我的纪念日/成就”也能查。</small>
+            </div>
+
+            <div className="notification-feature-panel device-activity-panel">
+              <div className="device-activity-heading">
+                <div>
+                  <strong>小红书</strong>
+                  <span>
+                    {xhsState.status === "logged_in"
+                      ? "已登录 · AI 可帮你刷帖搜索"
+                      : "写操作前会先征求你的同意"}
+                  </span>
+                </div>
+                <div className="device-activity-actions">
+                  <button type="button" onClick={() => void startXhsQrLogin()}>
+                    扫码登录
+                  </button>
+                  <button type="button" onClick={() => void logoutXhsAccount()}>
+                    退出登录
+                  </button>
+                </div>
+              </div>
+              <p>
+                登录后 AI 可以用你的小红书账号搜索笔记、读评论、一起吐槽；点赞、发评论、关注属于写操作，AI
+                必须先征得你同意才会执行。
+              </p>
+              {xhsState.feedback ? (
+                <p
+                  className={`notification-feature-feedback ${
+                    xhsState.status === "error" ? "error" : "busy"
+                  }`}
+                  role="status"
+                  aria-live="polite"
+                >
+                  {xhsState.feedback}
+                </p>
+              ) : null}
+              {xhsState.qr ? (
+                <div className="xhs-qr-wrap">
+                  <img src={xhsState.qr} alt="小红书登录二维码" />
+                  <small>打开小红书 App → 扫一扫 → 确认登录</small>
+                </div>
+              ) : null}
+              <small>登录态只存在服务端，随时可在这里退出。</small>
             </div>
             <div className="notification-feature-panel screen-glance-panel">
               <div className="device-activity-heading">
