@@ -5012,6 +5012,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   useEffect(() => {
     void refreshFunLabs();
+    const timer = setInterval(() => {
+      void refreshFunLabs();
+    }, 90_000);
+    return () => clearInterval(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
