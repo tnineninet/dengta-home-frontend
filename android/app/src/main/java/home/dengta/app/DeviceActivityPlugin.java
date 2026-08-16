@@ -9,6 +9,11 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.media.MediaMetadata;
+import android.media.session.MediaController;
+import android.media.session.MediaSessionManager;
+import android.media.session.PlaybackState;
 import android.net.Uri;
 import android.os.Build;
 import android.provider.Settings;
@@ -32,6 +37,7 @@ import java.util.Map;
 @CapacitorPlugin(name = "DeviceActivity")
 public final class DeviceActivityPlugin extends Plugin {
     private static final String PREFERENCES = "dengta_device_activity";
+    private MediaController cachedNowPlayingController = null;
     private static final String ENABLED_KEY = "enabled";
     private static final int DEFAULT_WINDOW_MINUTES = 30;
     private static final int MAX_APPS = 6;
@@ -279,6 +285,154 @@ public final class DeviceActivityPlugin extends Plugin {
             call.resolve(result);
         } catch (Exception error) {
             call.reject("读取当前应用失败：" + truncate(String.valueOf(error.getMessage()), 120));
+        }
+    }
+
+
+    /**
+     * 当前正在播放的歌曲（活动感知-音乐识别）：读取系统 MediaSessionManager
+     * 的活动媒体会话，返回标题/歌手/专辑/时长/进度/播放状态/封面（缩略图）。
+     * 无论用户在网易云、QQ 音乐、系统播放器还是本 App 内放歌都能识别，
+     * 不依赖"使用情况访问"授权（系统媒体会话是只读公开信息）。
+     */
+    @PluginMethod
+    public void getNowPlaying(PluginCall call) {
+        try {
+            MediaSessionManager manager = (MediaSessionManager) getContext()
+                .getSystemService(Context.MEDIA_SESSION_SERVICE);
+            if (manager == null) {
+                call.resolve(buildNowPlaying(null));
+                return;
+            }
+            java.util.List<MediaController> controllers = manager.getActiveSessions(null);
+            MediaController best = null;
+            long bestActive = -1L;
+            for (MediaController controller : controllers) {
+                if (controller == null) continue;
+                PlaybackState state = controller.getPlaybackState();
+                if (state == null) continue;
+                long lastActive = state.getLastPositionUpdateTime();
+                boolean playing = state.getState() == PlaybackState.STATE_PLAYING;
+                boolean buffering = state.getState() == PlaybackState.STATE_BUFFERING;
+                // 优先正在播放的；都没有播放状态时取最近活跃的
+                if (playing || buffering) {
+                    best = controller;
+                    break;
+                }
+                if (lastActive > bestActive) {
+                    bestActive = lastActive;
+                    best = controller;
+                }
+            }
+            cachedNowPlayingController = best;
+            call.resolve(buildNowPlaying(best));
+        } catch (Exception error) {
+            call.resolve(buildNowPlaying(null));
+        }
+    }
+
+    private JSObject buildNowPlaying(MediaController controller) {
+        JSObject result = new JSObject();
+        if (controller == null) {
+            result.put("nowPlaying", JSONObject.NULL);
+            return result;
+        }
+        MediaMetadata metadata = controller.getMetadata();
+        PlaybackState state = controller.getPlaybackState();
+        JSObject song = new JSObject();
+        String title = metadata == null ? null : metadata.getString(MediaMetadata.METADATA_KEY_TITLE);
+        String artist = metadata == null ? null : metadata.getString(MediaMetadata.METADATA_KEY_ARTIST);
+        String album = metadata == null ? null : metadata.getString(MediaMetadata.METADATA_KEY_ALBUM);
+        song.put("title", truncate(title == null ? "" : title, 120));
+        song.put("artist", truncate(artist == null ? "" : artist, 120));
+        song.put("album", truncate(album == null ? "" : album, 120));
+        song.put("packageName", truncate(controller.getPackageName() == null ? "" : controller.getPackageName(), 80));
+        song.put("isPlaying", state != null && state.getState() == PlaybackState.STATE_PLAYING);
+        song.put("duration", state == null ? 0L : Math.max(0L, state.getDuration()));
+        song.put("position", state == null ? 0L : Math.max(0L, state.getPosition()));
+        // 封面缩略图（base64 PNG，控制在 ~96px 内）
+        String cover = "";
+        try {
+            Bitmap artwork = metadata == null ? null : metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
+            if (artwork == null && metadata != null) {
+                artwork = metadata.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON);
+            }
+            if (artwork != null) {
+                int width = artwork.getWidth();
+                int height = artwork.getHeight();
+                if (width > 96 || height > 96) {
+                    float scale = Math.min(96f / width, 96f / height);
+                    int newWidth = Math.max(1, Math.round(width * scale));
+                    int newHeight = Math.max(1, Math.round(height * scale));
+                    Bitmap scaled = Bitmap.createScaledBitmap(artwork, newWidth, newHeight, true);
+                    if (scaled != artwork) artwork.recycle();
+                    artwork = scaled;
+                }
+                java.io.ByteArrayOutputStream stream = new java.io.ByteArrayOutputStream();
+                artwork.compress(Bitmap.CompressFormat.PNG, 100, stream);
+                cover = "data:image/png;base64," +
+                    android.util.Base64.encodeToString(stream.toByteArray(), android.util.Base64.NO_WRAP);
+                stream.close();
+                artwork.recycle();
+            }
+        } catch (Exception ignored) {
+            cover = "";
+        }
+        song.put("cover", cover);
+        result.put("nowPlaying", song);
+        return result;
+    }
+
+
+    /**
+     * 控制当前播放（播放/暂停/下一首）：通过缓存的系统 MediaController 下发
+     * transportControls 指令。部分第三方 App 可能拒绝外部控制，失败时返回 false，
+     * 前端保持乐观 UI 即可。
+     */
+    @PluginMethod
+    public void controlNowPlaying(PluginCall call) {
+        String action = call.getString("action", "toggle");
+        try {
+            if (cachedNowPlayingController == null) {
+                // 重新探测一次，避免轮询间隙 controller 丢失
+                MediaSessionManager manager = (MediaSessionManager) getContext()
+                    .getSystemService(Context.MEDIA_SESSION_SERVICE);
+                if (manager != null) {
+                    java.util.List<MediaController> controllers = manager.getActiveSessions(null);
+                    if (!controllers.isEmpty()) {
+                        cachedNowPlayingController = controllers.get(0);
+                    }
+                }
+            }
+            if (cachedNowPlayingController == null) {
+                call.resolve(new JSObject().put("controlled", false));
+                return;
+            }
+            MediaController.TransportControls controls = cachedNowPlayingController.getTransportControls();
+            if (controls == null) {
+                call.resolve(new JSObject().put("controlled", false));
+                return;
+            }
+            boolean controlled = true;
+            if ("play".equals(action)) {
+                controls.play();
+            } else if ("pause".equals(action)) {
+                controls.pause();
+            } else if ("toggle".equals(action)) {
+                PlaybackState state = cachedNowPlayingController.getPlaybackState();
+                if (state != null && state.getState() == PlaybackState.STATE_PLAYING) {
+                    controls.pause();
+                } else {
+                    controls.play();
+                }
+            } else if ("next".equals(action)) {
+                controls.skipToNext();
+            } else {
+                controlled = false;
+            }
+            call.resolve(new JSObject().put("controlled", controlled));
+        } catch (Exception error) {
+            call.resolve(new JSObject().put("controlled", false));
         }
     }
 

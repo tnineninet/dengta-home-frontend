@@ -97,6 +97,48 @@ export async function readCurrentApp({
   }
 }
 
+
+export function normalizeNowPlaying(value) {
+  const song = value?.nowPlaying;
+  if (!song || !song.title) return null;
+  return Object.freeze({
+    title: String(song.title || "").slice(0, 120),
+    artist: String(song.artist || "").slice(0, 120),
+    album: String(song.album || "").slice(0, 120),
+    packageName: String(song.packageName || "").slice(0, 80),
+    isPlaying: song.isPlaying === true,
+    durationSeconds: Number(song.duration) > 0 ? Math.round(Number(song.duration) / 1000) : 0,
+    positionSeconds: Number(song.position) > 0 ? Math.round(Number(song.position) / 1000) : 0,
+    cover: typeof song.cover === "string" && song.cover.startsWith("data:image") ? song.cover : "",
+  });
+}
+
+export async function readNowPlaying({
+  capacitor = Capacitor,
+  plugin = DeviceActivity,
+} = {}) {
+  if (!deviceActivityPluginAvailable(capacitor)) return null;
+  try {
+    return normalizeNowPlaying(await plugin.getNowPlaying());
+  } catch {
+    return null;
+  }
+}
+
+
+export async function controlNowPlaying(action, {
+  capacitor = Capacitor,
+  plugin = DeviceActivity,
+} = {}) {
+  if (!deviceActivityPluginAvailable(capacitor)) return false;
+  try {
+    const result = await plugin.controlNowPlaying({ action: String(action || "toggle") });
+    return result?.controlled === true;
+  } catch {
+    return false;
+  }
+}
+
 export function mergeCurrentAppContext(environmentContext, currentApp) {
   const source =
     environmentContext &&

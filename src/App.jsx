@@ -158,8 +158,10 @@ import {
   mergeDeviceActivityContext,
   normalizeDeviceActivityState,
   normalizeDeviceActivitySummary,
+  controlNowPlaying,
   readCurrentApp,
   readDeviceActivityState,
+  readNowPlaying,
 } from "./device-activity";
 import {
   DEVICE_SIGNALS_REPORT_MS,
@@ -772,6 +774,50 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [deviceActivityState, setDeviceActivityState] = useState(() =>
     normalizeDeviceActivityState({}),
   );
+  const [nowPlaying, setNowPlaying] = useState(null);
+  const nowPlayingDismissedRef = useRef(false);
+  const nowPlayingPollRef = useRef(null);
+
+  // 活动感知-音乐识别：轮询系统 MediaSession（网易云/后台/本 App 播放都能感知）。
+  useEffect(() => {
+    if (!deviceActivityPluginAvailable()) {
+      setNowPlaying(null);
+      return undefined;
+    }
+    const poll = async () => {
+      const song = await readNowPlaying().catch(() => null);
+      if (song?.title) {
+        nowPlayingDismissedRef.current = false;
+        setNowPlaying(song);
+      } else if (!nowPlayingDismissedRef.current) {
+        setNowPlaying(null);
+      }
+    };
+    void poll();
+    nowPlayingPollRef.current = window.setInterval(() => void poll(), 5000);
+    return () => window.clearInterval(nowPlayingPollRef.current ?? undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleNowPlayingPlayPause = useCallback(() => {
+    setNowPlaying((current) => {
+      const nextPlaying = !(current?.isPlaying ?? true);
+      void controlNowPlaying(nextPlaying ? "play" : "pause");
+      return current ? { ...current, isPlaying: nextPlaying } : current;
+    });
+  }, []);
+
+  const handleNowPlayingNext = useCallback(() => {
+    void controlNowPlaying("next");
+    setNowPlaying(null);
+    nowPlayingDismissedRef.current = true;
+    setNotice("已发送下一首指令。");
+  }, [setNotice]);
+
+  const handleDismissNowPlaying = useCallback(() => {
+    nowPlayingDismissedRef.current = true;
+    setNowPlaying(null);
+  }, []);
   const [deviceActivityFeedback, setDeviceActivityFeedback] = useState({
     status: "idle",
     message: "默认关闭。开启后只提供最近使用过的 App 名称和粗略时长。",
@@ -8849,6 +8895,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             onWatchTogether={() => { setTogetherEntryMode("external"); changeView("together"); }}
             onOpenNavigation={() => setIsSidebarOpen(true)}
             onOpenSettings={openSettingsPanel}
+            nowPlaying={nowPlaying}
+            onNowPlayingPlayPause={handleNowPlayingPlayPause}
+            onNowPlayingNext={handleNowPlayingNext}
+            onDismissNowPlaying={handleDismissNowPlaying}
           />
           <AmbientContextBadge
             accountScope={accountStorageScope}
