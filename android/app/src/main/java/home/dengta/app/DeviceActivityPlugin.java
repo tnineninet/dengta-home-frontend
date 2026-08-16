@@ -15,6 +15,8 @@ import android.provider.Settings;
 
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
+
+import org.json.JSONObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
@@ -218,6 +220,66 @@ public final class DeviceActivityPlugin extends Plugin {
         state.put("enabled", preferences().getBoolean(ENABLED_KEY, false));
         state.put("permissionGranted", hasUsageAccess());
         return state;
+    }
+
+    /**
+     * 当前前台应用（活动感知增强）：读取最近 5 分钟使用记录里最后一条
+     * ACTIVITY_RESUMED 事件，返回正在使用的应用名与开始时间。
+     */
+    @PluginMethod
+    public void getCurrentApp(PluginCall call) {
+        JSObject state = buildState();
+        if (!state.getBoolean("supported", false)) {
+            call.reject("当前 Android 版本不支持活动感知。");
+            return;
+        }
+        if (!state.getBoolean("enabled", false)) {
+            call.reject("活动感知尚未开启。");
+            return;
+        }
+        if (!state.getBoolean("permissionGranted", false)) {
+            call.reject("尚未授予使用情况访问权限。");
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+        long startTime = now - 5 * 60_000L;
+        try {
+            UsageStatsManager manager = (UsageStatsManager) getContext()
+                .getSystemService(Context.USAGE_STATS_SERVICE);
+            if (manager == null) {
+                call.reject("系统没有提供活动统计服务。");
+                return;
+            }
+            long latestTime = -1L;
+            String latestPackage = "";
+            UsageEvents events = manager.queryEvents(startTime, now);
+            UsageEvents.Event event = new UsageEvents.Event();
+            while (events != null && events.hasNextEvent()) {
+                events.getNextEvent(event);
+                if (event.getEventType() != UsageEvents.Event.ACTIVITY_RESUMED) continue;
+                String packageName = cleanPackageName(event.getPackageName());
+                if (packageName.isEmpty() || isAlwaysExcluded(packageName)) continue;
+                if (event.getTimeStamp() > latestTime) {
+                    latestTime = event.getTimeStamp();
+                    latestPackage = packageName;
+                }
+            }
+            JSObject result = new JSObject();
+            if (latestPackage.isEmpty() || isPrivateApp(latestPackage, applicationName(latestPackage))) {
+                result.put("currentApp", JSONObject.NULL);
+                call.resolve(result);
+                return;
+            }
+            JSObject currentApp = new JSObject();
+            currentApp.put("packageName", latestPackage);
+            currentApp.put("name", applicationName(latestPackage));
+            currentApp.put("sinceSeconds", Math.min(300L, Math.max(0L, (now - latestTime) / 1000L)));
+            result.put("currentApp", currentApp);
+            call.resolve(result);
+        } catch (Exception error) {
+            call.reject("读取当前应用失败：" + truncate(String.valueOf(error.getMessage()), 120));
+        }
     }
 
     private SharedPreferences preferences() {

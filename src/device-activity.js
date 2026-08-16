@@ -75,6 +75,41 @@ export function normalizeDeviceActivitySummary(value) {
   });
 }
 
+export function normalizeCurrentApp(value) {
+  const app = value?.currentApp;
+  if (!app?.name) return null;
+  return Object.freeze({
+    name: safeAppName(app.name),
+    packageName: safeAppName(app.packageName) || "",
+    sinceSeconds: boundedInteger(app.sinceSeconds, 0, 300, 0),
+  });
+}
+
+export async function readCurrentApp({
+  capacitor = Capacitor,
+  plugin = DeviceActivity,
+} = {}) {
+  if (!deviceActivityPluginAvailable(capacitor)) return null;
+  try {
+    return normalizeCurrentApp(await plugin.getCurrentApp());
+  } catch {
+    return null;
+  }
+}
+
+export function mergeCurrentAppContext(environmentContext, currentApp) {
+  const source =
+    environmentContext &&
+    typeof environmentContext === "object" &&
+    !Array.isArray(environmentContext)
+      ? environmentContext
+      : {};
+  const next = { ...source };
+  delete next.current_app;
+  delete next.currentApp;
+  return currentApp ? { ...next, currentApp } : next;
+}
+
 export function mergeDeviceActivityContext(environmentContext, summary) {
   const source =
     environmentContext &&
