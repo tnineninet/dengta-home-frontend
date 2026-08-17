@@ -206,3 +206,73 @@
   font-size: 12px;
   color: #4a7a55;
 }
+/* ===== 错误日志面板（设置-错误日志）=====
+.error-logs-card { display: flex; flex-direction: column; gap: 10px; }
+.error-logs-actions { display: flex; gap: 8px; align-items: center; }
+.error-logs-actions button {
+  padding: 6px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--accent-border, rgba(120,120,120,.35));
+  background: var(--accent-bg, rgba(120,120,120,.12));
+  color: var(--accent, #6a8fb5);
+  cursor: pointer;
+  font-size: 13px;
+}
+.error-logs-actions button:disabled { opacity: .5; cursor: default; }
+.error-logs-load-error { color: #d05656; font-size: 13px; padding: 8px 0; }
+.error-logs-empty { color: var(--text-2, #888); font-size: 14px; padding: 16px 0; }
+.error-logs-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.error-log-item {
+  border: 1px solid rgba(120,120,120,.25);
+  border-radius: 12px;
+  overflow: hidden;
+  background: rgba(120,120,120,.06);
+}
+.error-log-summary {
+  display: flex; gap: 10px; align-items: center;
+  width: 100%;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 13px;
+  text-align: start;
+}
+.error-log-time { color: var(--text-2, #888); flex: 0 0 auto; font-size: 12px; }
+.error-log-code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: #d05656;
+  background: rgba(208,86,86,.1);
+  border-radius: 6px;
+  padding: 2px 6px;
+  flex: 0 0 auto;
+}
+.error-log-path {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--text-2, #888);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+}
+.error-log-detail { padding: 4px 12px 12px; border-top: 1px dashed rgba(120,120,120,.2); }
+.error-log-message { margin: 8px 0 6px; font-size: 13px; line-height: 1.5; }
+.error-log-meta { margin: 0 0 8px; font-size: 12px; color: var(--text-2, #888); line-height: 1.6; }
+.error-log-stack {
+  margin: 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(0,0,0,.35);
+  color: #c8c8c8;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  line-height: 1.5;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 260px;
+  overflow-y: auto;
+}

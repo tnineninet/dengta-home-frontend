@@ -17,10 +17,11 @@ import {
   MonitorSmartphone,
   Music,
   Palette,
+  ScrollText,
   ServerCog,
   Trophy,
 } from "lucide-react";
-import { API_BASE_URL, apiRequest, streamChat } from "./api";
+import { API_BASE_URL, apiRequest, fetchErrorLogs, streamChat } from "./api";
 import WebInstallButton from "./WebInstallButton.jsx";
 import {
   BackgroundNotifications,
@@ -370,7 +371,97 @@ const SETTINGS_CATEGORIES = [
     description: "网易云歌单导入与搜索",
     Icon: Music,
   },
+  {
+    id: "logs",
+    label: "错误日志",
+    description: "最近错误代码、位置与排查记录",
+    Icon: ScrollText,
+  },
 ];
+
+function ErrorLogsPanel() {
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [expandedId, setExpandedId] = useState(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const items = await fetchErrorLogs(50);
+      setLogs(items);
+    } catch (error) {
+      setLoadError(error?.message || "读取错误日志失败，请稍后重试。");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  function formatTime(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString("zh-CN", { hour12: false });
+  }
+
+  return (
+    <div className="settings-card error-logs-card">
+      <h3>错误日志（最近 {logs.length} 条）</h3>
+      <p className="card-hint">
+        每条记录包含错误代码、来源、位置（文件:行:列）与上游状态；点击可展开完整堆栈。
+      </p>
+      <div className="error-logs-actions">
+        <button type="button" onClick={() => void refresh()} disabled={loading}>
+          {loading ? "刷新中…" : "刷新"}
+        </button>
+      </div>
+      {loadError && <div className="error-logs-load-error">{loadError}</div>}
+      {!loadError && logs.length === 0 && !loading && (
+        <div className="error-logs-empty">暂无错误记录 🎉</div>
+      )}
+      <ul className="error-logs-list">
+        {logs.map((log) => {
+          const expanded = expandedId === log.id;
+          return (
+            <li
+              key={log.id}
+              className={"error-log-item" + (expanded ? " expanded" : "")}
+            >
+              <button
+                type="button"
+                className="error-log-summary"
+                onClick={() => setExpandedId(expanded ? null : log.id)}
+              >
+                <span className="error-log-time">{formatTime(log.created_at)}</span>
+                <span className="error-log-code">{log.error_code || "unknown"}</span>
+                <span className="error-log-path">{log.method} {log.path}</span>
+              </button>
+              {expanded && (
+                <div className="error-log-detail">
+                  <p className="error-log-message">{log.message || ""}</p>
+                  <p className="error-log-meta">
+                    来源 / Source: {log.error_source || "dengta"} · 阶段 / Phase:{" "}
+                    {log.provider_phase || "-"} · 上游 / Upstream:{" "}
+                    {log.provider_code || "-"} · HTTP: {log.upstream_status ?? "-"}{" "}
+                    · 会话: {log.conversation_id || "-"}
+                  </p>
+                  {log.stack_trace && (
+                    <pre className="error-log-stack">{log.stack_trace}</pre>
+                  )}
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
 
 function shanghaiClientTime(value = new Date()) {
   return value.toLocaleString("zh-CN", {
@@ -8359,6 +8450,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             </div>
               </>
             )}
+            {settingsCategory === "logs" && (
+              <ErrorLogsPanel />
+            )}
+
             {settingsCategory === "devices" && (
               <>
             <div className="notification-feature-panel device-activity-panel">

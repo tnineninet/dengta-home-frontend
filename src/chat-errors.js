@@ -57,14 +57,21 @@ function publicDiagnosticSource(source) {
   return PUBLIC_ERROR_SOURCES.has(value) ? value : "";
 }
 
+function publicErrorLocation(source) {
+  const location = String(source?.error_location || "").trim();
+  return /^[A-Za-z0-9_./-]+:\d+:\d+$/.test(location) ? location : "";
+}
+
 function withDiagnostic(message, source) {
   const providerCode = publicDiagnosticCode(source);
   const errorSource = publicDiagnosticSource(source);
+  const location = publicErrorLocation(source);
   const hasMetadata = Boolean(
     providerCode ||
       errorSource ||
       source?.provider_phase ||
-      source?.upstream_status !== undefined,
+      source?.upstream_status !== undefined ||
+      location,
   );
   if (!hasMetadata) return message;
   const visibleCode = providerCode || String(source?.code || "").trim();
@@ -72,7 +79,8 @@ function withDiagnostic(message, source) {
   const statusText = Number.isInteger(status) && status >= 100 && status <= 599
     ? `；HTTP / HTTP: ${status}`
     : "";
-  return `${message}（错误代码 / Code: ${visibleCode || "unknown"}；来源 / Source: ${errorSource || "dengta"}${statusText}）`;
+  const locationText = location ? `；位置 / At: ${location}` : "";
+  return `${message}（错误代码 / Code: ${visibleCode || "unknown"}；来源 / Source: ${errorSource || "dengta"}${statusText}${locationText}；日志已记录 / Logged）`;
 }
 
 export function isProviderErrorDocument(value) {

@@ -140,6 +140,11 @@ export async function apiFetch(path, options = {}) {
   return response;
 }
 
+export async function fetchErrorLogs(limit = 50) {
+  const data = await apiRequest(`/api/errors?limit=${limit}`, { retry: false });
+  return Array.isArray(data?.logs) ? data.logs : [];
+}
+
 export async function apiRequest(path, options = {}) {
   const response = await apiFetch(path, {
     ...options,
