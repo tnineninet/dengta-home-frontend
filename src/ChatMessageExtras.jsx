@@ -167,6 +167,9 @@ export function MessageAttachments({ value, apiBaseUrl, onPreview }) {
   );
 }
 
+// 心声功能排查期临时关闭（恢复：改为 true）
+const VISIBLE_MONOLOGUE_UI_ENABLED = false;
+
 export function ThinkingPanel({
   message,
   aiName = "伴侣",
@@ -176,6 +179,7 @@ export function ThinkingPanel({
   innerMonologueError = "",
   onRequestInnerMonologue,
 }) {
+  if (!VISIBLE_MONOLOGUE_UI_ENABLED) return null;
   const completed = thinkingPanelCompleted(message);
   const synchronizedMonologue =
     isSynchronizedVisibleMonologue(innerMonologue);

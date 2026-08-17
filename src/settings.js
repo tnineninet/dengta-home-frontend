@@ -9,7 +9,7 @@ export const emptySettings = {
   prompt_mode: "unified",
   unified_system_prompt: "",
   user_details: "",
-  intimate_expression_enabled: false,
+  intimate_expression_enabled: true,
   provider: "custom",
   api_url: "",
   model: "",
