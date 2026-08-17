@@ -60,6 +60,12 @@
             android:name=".NeteaseCookieActivity"
             android:exported="false"
             android:theme="@style/AppTheme" />
+        <activity
+            android:name=".PersistentBrowserActivity"
+            android:exported="false"
+            android:hardwareAccelerated="true"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:theme="@style/AppTheme" />
         <service
             android:name=".NowPlayingListenerService"
             android:exported="false"
