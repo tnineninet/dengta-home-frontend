@@ -542,7 +542,7 @@ export default function Together({
           aria-selected={selectedMode === "external"}
           className={selectedMode === "external" ? "is-selected" : ""}
           disabled={modeLocked && selectedMode !== "external"}
-          onClick={() => setMode("external")}
+          onClick={() => { setMode("external"); onRefresh?.("external"); }}
         >
           <MonitorPlay aria-hidden="true" />
           外部 App 屏幕共看
@@ -553,7 +553,7 @@ export default function Together({
           aria-selected={selectedMode === "direct"}
           className={selectedMode === "direct" ? "is-selected" : ""}
           disabled={modeLocked && selectedMode !== "direct"}
-          onClick={() => setMode("direct")}
+          onClick={() => { setMode("direct"); onRefresh?.("direct"); }}
         >
           <Link2 aria-hidden="true" />
           DengTa 视频直链
@@ -564,7 +564,7 @@ export default function Together({
           aria-selected={selectedMode === "web"}
           className={selectedMode === "web" ? "is-selected" : ""}
           disabled={modeLocked && selectedMode !== "web"}
-          onClick={() => setMode("web")}
+          onClick={() => { setMode("web"); onRefresh?.("web"); }}
         >
           <Globe aria-hidden="true" />
           网页一起看
@@ -988,7 +988,7 @@ export default function Together({
         <header>
           <MessageCircleMore aria-hidden="true" />
           <div><strong>本场回应</strong><span>{selectedMode === "music" ? `和${aiName}围绕当前歌曲聊聊` : `${aiName} 看到有意思的地方会主动说话`}</span></div>
-          <button type="button" onClick={onRefresh} disabled={busy} aria-label="刷新本场状态">
+          <button type="button" onClick={() => onRefresh?.(selectedMode)} disabled={busy} aria-label="刷新本场状态">
             <RefreshCw aria-hidden="true" />
           </button>
         </header>

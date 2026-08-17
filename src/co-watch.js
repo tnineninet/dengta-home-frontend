@@ -117,10 +117,14 @@ export function normalizeCoWatchSession(value) {
   });
 }
 
-export async function readActiveCoWatchSession() {
-  const data = await apiRequest("/api/v2/co-watch/sessions/active", {
-    timeoutMs: 12_000,
-  });
+export async function readActiveCoWatchSession({ sessionMode = "" } = {}) {
+  const query = sessionMode
+    ? `?mode=${encodeURIComponent(sessionMode)}`
+    : "";
+  const data = await apiRequest(
+    `/api/v2/co-watch/sessions/active${query}`,
+    { timeoutMs: 12_000 },
+  );
   return normalizeCoWatchSession(data?.session);
 }
 

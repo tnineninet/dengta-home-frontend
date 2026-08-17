@@ -1309,10 +1309,20 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
   }, [applyScreenGlanceState]);
 
+  // 一起看模式 -> 会话模式：听歌只认 listening，一起看只认各自视频模式，
+  // 避免把残留的听歌会话标题（如 Fever Pitch）显示在视频播放器下方。
+  const resolveCoWatchSessionMode = (entryMode) => {
+    if (entryMode === "music") return "listening";
+    if (entryMode === "web") return "web_page";
+    if (entryMode === "direct") return "direct_media";
+    return "screen";
+  };
+
   const refreshCoWatchExperience = useCallback(
-    async ({ silent = false } = {}) => {
+    async ({ silent = false, mode = "" } = {}) => {
+      const sessionMode = mode || resolveCoWatchSessionMode(togetherEntryMode);
       const [sessionResult, previewResult, stateResult] = await Promise.allSettled([
-        readActiveCoWatchSession(),
+        readActiveCoWatchSession({ sessionMode }),
         readCoWatchPreview(),
         refreshScreenGlanceState(),
       ]);
@@ -1359,7 +1369,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         state: stateResult.status === "fulfilled" ? stateResult.value : null,
       };
     },
-    [refreshScreenGlanceState],
+    [refreshScreenGlanceState, togetherEntryMode],
   );
 
   const flushPendingScreenGlanceTurn = useCallback(() => {
@@ -7422,7 +7432,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           castPairing={castPairing}
           castReceiver={coWatchSession?.castReceiver}
           onGenerateCastPairing={generateCastPairingCode}
-          onRefresh={() => void refreshCoWatchExperience()}
+          onRefresh={(mode) =>
+            void refreshCoWatchExperience({ mode: resolveCoWatchSessionMode(mode) })
+          }
           onReply={async (text, playbackPositionSeconds) => {
             if (!coWatchSession?.id || isScreenGlanceBusy) return false;
             const pendingId = `pending-${Date.now()}`;
