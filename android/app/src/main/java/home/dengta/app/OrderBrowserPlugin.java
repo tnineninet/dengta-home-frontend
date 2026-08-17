@@ -39,10 +39,22 @@ public final class OrderBrowserPlugin extends Plugin {
     @PluginMethod
     public void openLogin(PluginCall call) {
         String url = call.getString("url", "https://h5.ele.me/msite/");
-        startOrderActivity(null, url, "login", "{}", "扫码登录外卖平台");
-        JSObject out = new JSObject();
-        out.put("opened", true);
-        call.resolve(out);
+        // 改用登录态长住的内置浏览器：扫码登录一次后 Cookie 持久化，
+        // 之后的搜索/点单页自动带登录态（同一个 WebView CookieStore）。
+        try {
+            Intent browser = new Intent(getContext(), PersistentBrowserActivity.class);
+            browser.putExtra("url", url);
+            browser.putExtra("title", "外卖登录（登录态长期有效）");
+            browser.putExtra("site", "eleme");
+            browser.putExtra("desktop", false);
+            browser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(browser);
+            JSObject out = new JSObject();
+            out.put("opened", true);
+            call.resolve(out);
+        } catch (Exception error) {
+            call.reject("无法打开外卖登录页。");
+        }
     }
 
     @PluginMethod

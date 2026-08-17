@@ -215,12 +215,12 @@ public final class PersistentBrowserActivity extends Activity {
     private void runSearchExtract(WebView view) {
         String js = "(function(){"
             + "function txt(e){return (e.innerText||'').replace(/\n+/g,' | ').replace(/\s+/g,' ').trim();}"
-            + "var cards=[].slice.call(document.querySelectorAll('[class*="card" i],[class*="item" i]'))"
+            + "var cards=[].slice.call(document.querySelectorAll('[class*=\"card\" i],[class*=\"item\" i]'))"
             + ".map(function(e){return {t:txt(e),e:e};})"
             + ".filter(function(x){return /起送¥/.test(x.t)&&x.t.length<300;});"
             + "if(!cards.length){return JSON.stringify({shops:[],loading:true});}"
             + "return JSON.stringify({shops:cards.slice(0,20).map(function(x){"
-            + "var m=x.t.match(/([^|]{2,40})\s*\|\s*([\d.]+)\s*\|\s*分/);"
+            + "var m=x.t.match(/([^|]{2,40})\\s*\\|\\s*([\\d.]+)\\s*\\|\\s*分/);"
             + "return {name:m?m[1].trim():x.t.slice(0,40),meta:x.t.slice(0,200)};}),loading:false});"
             + "})();";
         view.evaluateJavascript(js, value -> {
@@ -238,7 +238,7 @@ public final class PersistentBrowserActivity extends Activity {
 
     private void finishWithShops() {
         SharedPreferences prefs = prefs(this);
-        String shops = prefs.getString("last_shops", "{"shops":[],"loading":false}");
+        String shops = prefs.getString("last_shops", "{\"shops\":[],\"loading\":false}");
         Intent data = new Intent();
         data.putExtra("result", shops);
         setResult(Activity.RESULT_OK, data);
