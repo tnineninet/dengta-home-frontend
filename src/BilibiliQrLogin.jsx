@@ -109,9 +109,11 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
               setNickname(next?.nickname || "");
               setFaceUrl(next?.face_url || "");
               setFeedback("扫码登录成功，可以读取你的收藏夹了。");
+              return; // 已成功：不再执行下面的 75 秒换新逻辑
             } else if (result?.status === "scanned") {
               setQrStatus("scanned");
               setFeedback("已扫码，请在手机上点击确认登录。");
+              return; // 已扫码待确认：不要换新二维码
             } else if (result?.status === "expired") {
               stopPolling();
               if (autoRefreshCountRef.current < 6) {
@@ -126,6 +128,7 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
               stopPolling();
               setQrStatus("risk_blocked");
               setFeedback(result.message || "登录被哔哩哔哩风控拦截，请稍后再试。");
+              return;
             } else if (result?.status === "waiting") {
               setQrStatus("waiting");
             }
