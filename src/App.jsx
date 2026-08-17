@@ -312,7 +312,7 @@ function DeferredFeature({ label }) {
 
 const PUSH_CURSOR_KEY = "dengta_push_cursor";
 const PUSH_SEEN_IDS_KEY = "dengta_push_seen_ids";
-const PUSH_POLL_INTERVAL_MS = 2 * 60 * 1000;
+const PUSH_POLL_INTERVAL_MS = 30 * 1000;
 const MOMENTS_POLL_INTERVAL_MS = 15 * 1000;
 const EMOTION_UNDERSTANDING_KEY = "dengta_emotion_understanding_enabled";
 const COMPANION_INTERACTION_DEBOUNCE_MS = 220;
@@ -2410,7 +2410,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       });
     };
     refreshAndConsume();
-    const timer = window.setInterval(refreshAndConsume, 30_000);
+    const timer = window.setInterval(refreshAndConsume, 10_000);
     document.addEventListener("visibilitychange", refreshAndConsume);
     window.addEventListener("focus", refreshAndConsume);
     return () => {
@@ -2427,7 +2427,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       if (document.visibilityState === "visible") {
         void refreshCoWatchExperience({ silent: true });
       }
-    }, 15_000);
+    }, 10_000);
     return () => window.clearInterval(timer);
   }, [activeView, refreshCoWatchExperience]);
 
@@ -2696,8 +2696,34 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           }
         }
 
-        // 前台只同步聊天记录；Android 原生 WorkManager 负责后台通知，
-        // 避免 WebView 和原生后台任务对同一条消息重复弹窗。
+        // 主动消息通知栏弹出（声音+震动由系统通知渠道提供）：
+        // app 可见时由前端弹本地通知（每 30 秒轮询一次），
+        // app 被杀后由 Android 原生 WorkManager 兜底（15 分钟周期）。
+        const isForeground = document.visibilityState === "visible";
+        if (isForeground && Capacitor.isPluginAvailable("LocalNotifications")) {
+          const notifiable = incoming.filter((item) => {
+            const text = String(item.content || "").trim();
+            return text.length >= 2 && text.length <= 500;
+          });
+          for (const item of notifiable.slice(-3)) {
+            try {
+              await LocalNotifications.schedule({
+                notifications: [
+                  {
+                    id: Number(String(item.id).replace(/\D/g, "").slice(0, 8) || 0) % 100000 + 50000,
+                    title: `${settings.ai_name || "DengTa"} 主动想对你说`,
+                    body: String(item.content || "").slice(0, 500),
+                    smallIcon: "ic_launcher",
+                    channelId: LOCAL_NOTIFICATION_CHANNEL_ID,
+                    extra: item.conversation_id ? { sessionId: item.conversation_id } : undefined,
+                  },
+                ],
+              });
+            } catch {
+              // 通知失败不影响聊天同步。
+            }
+          }
+        }
       } catch (error) {
         console.warn("主动消息检查失败：", error.message);
       } finally {
@@ -5931,7 +5957,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           sourceApp,
           mediaDurationSeconds: options.mediaDurationSeconds,
           mediaPositionSeconds: options.mediaPositionSeconds,
-          cadenceSeconds: 90,
+          cadenceSeconds: 60,
         });
       }
       setCoWatchSession(nextSession);
