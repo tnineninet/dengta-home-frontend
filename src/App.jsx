@@ -1985,6 +1985,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     const timer = window.setTimeout(async () => {
       if (cancelled) return;
       try {
+        // 避免叠歌：手机上有其他音乐正在播放（网易云等）时，不自动随机播放。
+        if (deviceActivityPluginAvailable()) {
+          const nowPlaying = await readNowPlaying().catch(() => null);
+          if (cancelled) return;
+          if (nowPlaying?.title && nowPlaying?.isPlaying !== false) {
+            try {
+              console.log("random-play:skip (already playing)", nowPlaying.title);
+            } catch { /* ignore */ }
+            return;
+          }
+        }
         const data = await apiRequest("/api/v2/music/providers/netease/random-playable", {
           timeoutMs: 15000,
         }).catch(() => null);
