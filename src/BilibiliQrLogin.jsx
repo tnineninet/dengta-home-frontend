@@ -35,6 +35,8 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
   const [feedback, setFeedback] = useState("");
   const [qrOpen, setQrOpen] = useState(false);
 
+    const settledRef = useRef(false);
+
   const stopPolling = useCallback(() => {
     if (pollTimerRef.current) {
       window.clearInterval(pollTimerRef.current);
@@ -76,6 +78,7 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
   }, []);
 
   const startLogin = useCallback(async () => {
+    if (settledRef.current) return; // 已登录成功后不再重开二维码
     autoRefreshCountRef.current = 0;
     setBusy(true);
     setError("");
@@ -96,6 +99,7 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
           try {
             const result = await checkBilibiliQrLogin(key);
             if (result?.status === "confirmed") {
+              settledRef.current = true;
               stopPolling();
               setQrStatus("confirmed");
               setQrOpen(false);
@@ -161,6 +165,7 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
     setError("");
     try {
       await disconnectBilibiliQrLogin();
+      settledRef.current = false;
       setConnection(null);
       setNickname("");
       setFaceUrl("");
