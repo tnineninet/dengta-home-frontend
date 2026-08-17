@@ -57,6 +57,14 @@ public final class PersistentBrowserActivity extends Activity {
     private void onCreateGuarded(Bundle savedInstanceState) {
         Intent intent = getIntent();
         String url = String.valueOf(intent.getStringExtra("url") == null ? "" : intent.getStringExtra("url"));
+        // 支持 dengta://browser?url=...&site=... 外部 scheme 启动。
+        Uri dataUri = intent.getData();
+        if (dataUri != null && "dengta".equalsIgnoreCase(dataUri.getScheme()) && "browser".equalsIgnoreCase(dataUri.getHost())) {
+            String queryUrl = dataUri.getQueryParameter("url");
+            if (queryUrl != null && !queryUrl.isEmpty()) url = queryUrl;
+            String querySite = dataUri.getQueryParameter("site");
+            if (querySite != null && !querySite.isEmpty()) site = querySite;
+        }
         if (url.isEmpty()) url = "https://www.bilibili.com/";
         site = String.valueOf(intent.getStringExtra("site") == null ? "" : intent.getStringExtra("site"));
         String title = String.valueOf(intent.getStringExtra("title") == null ? "" : intent.getStringExtra("title"));
