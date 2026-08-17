@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "./api";
+import TypewriterText from "./TypewriterText";
 import {
   DUEL_SKILLS,
   beginDuelRound,
@@ -24,29 +25,6 @@ function readStoredDuel(names, accountScope) {
   } catch {
     return createDuelState(names);
   }
-}
-
-// 打字机组件：把文本按字逐字显示（约 28ms/字），用于本轮 duel 输出。
-function TypewriterText({ text, onDone, stepMs = 28 }) {
-  const [shown, setShown] = useState(() => String(text || "").slice(0, 0));
-  useEffect(() => {
-    const full = String(text || "");
-    let index = 0;
-    if (!full) {
-      onDone?.();
-      return undefined;
-    }
-    const timer = setInterval(() => {
-      index += 1;
-      setShown(full.slice(0, index));
-      if (index >= full.length) {
-        clearInterval(timer);
-        onDone?.();
-      }
-    }, stepMs);
-    return () => clearInterval(timer);
-  }, [text, stepMs, onDone]);
-  return <>{shown}</>;
 }
 
 function FighterCard({ fighter, tone }) {

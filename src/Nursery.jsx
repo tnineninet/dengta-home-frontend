@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "./api";
+import TypewriterText from "./TypewriterText";
 
 const SPEECH_ACTIONS = [
   { id: "talk", label: "说话" },
@@ -252,7 +253,15 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
         <div>
           <small>{child.stage.label} · 第 {child.stage.age_days.toFixed(1)} 天</small>
           <h2>{child.display_name}</h2>
-          <p>{latestUtterance ? `“${latestUtterance.text}”` : "“咿呀……”"}</p>
+          <p>
+            {latestUtterance ? (
+              <>
+                “<TypewriterText text={latestUtterance.text} stepMs={24} />”
+              </>
+            ) : (
+              "“咿呀……”"
+            )}
+          </p>
         </div>
         <span className="nursery-local-badge">LOCAL</span>
       </header>

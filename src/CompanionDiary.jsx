@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiRequest } from "./api";
 import FeatureAtmosphere from "./FeatureAtmosphere";
+import TypewriterText from "./TypewriterText";
 
 function formatDiaryDate(value) {
   if (!value) return "刚刚";
@@ -113,7 +114,13 @@ export default function CompanionDiary({ aiName = "伴侣", onNotice }) {
                 </div>
                 {entry.mood && <span>{entry.mood}</span>}
               </header>
-              <p>{entry.content}</p>
+              <p>
+                {index === 0 ? (
+                  <TypewriterText text={entry.content} stepMs={16} />
+                ) : (
+                  entry.content
+                )}
+              </p>
               <footer>
                 <span>
                   依据 {entry.source_message_count || 0} 条真实消息

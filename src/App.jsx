@@ -29,6 +29,7 @@ import {
   streamChat,
 } from "./api";
 import WebInstallButton from "./WebInstallButton.jsx";
+import TypewriterText from "./TypewriterText.jsx";
 import {
   BackgroundNotifications,
   openReminderNotificationSettings,
@@ -7136,7 +7137,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                     <time>{formatDateTime(item.created_at)}</time>
                   </div>
                 </header>
-                {item.content && <p>{item.content}</p>}
+                {item.content && (
+                  <p>
+                    {item.author === "assistant" ? (
+                      <TypewriterText text={item.content} stepMs={18} />
+                    ) : (
+                      item.content
+                    )}
+                  </p>
+                )}
                 {Array.isArray(item.images) && item.images.length > 0 && (
                   <div className={`moment-image-grid count-${item.images.length}`}>
                     {item.images.map((url, index) => (
@@ -7690,7 +7699,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               暂时没有长期记忆。达到设置中的 token 阈值后会自动整理。
             </div>
           ) : (
-            memories.map((item) => (
+            memories.map((item, memoryIndex) => (
               <article className="memory-card" key={item.id}>
                 <span>{formatDateTime(item.updated_at || item.created_at)}</span>
                 {Object.hasOwn(memoryDrafts, item.id) ? (
@@ -7709,7 +7718,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                     aria-label="修改长期记忆"
                   />
                 ) : (
-                  <p>{item.summary}</p>
+                  <p>
+                    {memoryIndex === 0 ? (
+                      <TypewriterText text={item.summary} stepMs={16} />
+                    ) : (
+                      item.summary
+                    )}
+                  </p>
                 )}
                 <div className="memory-card-actions">
                   {Object.hasOwn(memoryDrafts, item.id) ? (
