@@ -5218,9 +5218,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   async function loadDiscover() {
     setDiscoverState((previous) => ({ ...previous, busy: true, error: "" }));
     try {
+      // 换一批：把当前已展示的 bvid 传过去，后端排除并随机轮换，保证真的会换。
+      const currentBvids = Array.isArray(discoverState.recommend?.videos)
+        ? discoverState.recommend.videos.map((video) => video.bvid || "").filter(Boolean)
+        : [];
+      const excludeQuery = currentBvids.length
+        ? `&exclude=${encodeURIComponent(currentBvids.join(","))}`
+        : "";
       const [interestsData, recommendData] = await Promise.all([
         apiRequest("/api/v2/fun-labs/interests", { timeoutMs: 15_000 }),
-        apiRequest("/api/v2/fun-labs/recommend", { timeoutMs: 30_000 }),
+        apiRequest(`/api/v2/fun-labs/recommend?limit=4${excludeQuery}`, { timeoutMs: 30_000 }),
       ]);
       setDiscoverState({
         busy: false,
