@@ -36,6 +36,23 @@ import org.json.JSONObject;
 @CapacitorPlugin(name = "OrderBrowser")
 public final class OrderBrowserPlugin extends Plugin {
 
+    // 外卖平台登录状态：读 WebView CookieStore 里的饿了么登录 Cookie。
+    @PluginMethod
+    public void getLoginState(PluginCall call) {
+        try {
+            String cookie = CookieManager.getInstance().getCookie("https://h5.ele.me");
+            boolean hasCookie = cookie != null && !cookie.isEmpty();
+            boolean loggedIn = hasCookie
+                && (cookie.contains("SID=") || cookie.contains("USERID=") || cookie.contains("TOKEN="));
+            JSObject out = new JSObject();
+            out.put("loggedIn", loggedIn);
+            out.put("hasCookie", hasCookie);
+            call.resolve(out);
+        } catch (Exception error) {
+            call.reject("无法读取外卖登录状态。");
+        }
+    }
+
     @PluginMethod
     public void openLogin(PluginCall call) {
         String url = call.getString("url", "https://h5.ele.me/msite/");

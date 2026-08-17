@@ -25,6 +25,7 @@ public class OrderWebActivity extends Activity {
     private boolean reloadAttempted = false;
     private boolean backHintShown = false;
     private String currentUrl = "";
+    private int searchRetries = 0;
 
     private static final String TAG = "OrderWebActivity";
 
@@ -92,6 +93,8 @@ public class OrderWebActivity extends Activity {
                 callback.invoke(origin, true, false);
             }
         });
+        // 无 GMS 手机 WebView 定位必失败：document-start 注入 mock geolocation（真实坐标）。
+        LocationFix.apply(webView);
         webView.addJavascriptInterface(new OrderBridge(this), "DengTaOrderBridge");
         webView.setWebViewClient(new WebViewClient() {
             @Override
@@ -144,17 +147,35 @@ public class OrderWebActivity extends Activity {
     }
 
     private void runSearchStep(WebView view) {
+        // 等真数据：骨架先到、店铺卡后到（坑二），轮询直到出现"起送"标记。
+        String waitJs = "(function(){var t=document.body.innerText||'';return /起送/.test(t)||t.indexOf('起送')>=0;})();";
         String js = "(function(){"
             + "function txt(e){return (e.innerText||'').replace(/\\n+/g,' | ').replace(/\\s+/g,' ').trim();}"
             + "var cards=[].slice.call(document.querySelectorAll('[class*=\"card\" i],[class*=\"item\" i]'))"
-            + ".map(function(e){return {t:txt(e),e:e};}).filter(function(x){return /起送¥/.test(x.t)&&x.t.length<300;})"
-            + ".slice(0,20).map(function(x){var m=x.t.match(/([^|]{2,40})\\s*\\|\\s*([\\d.]+)\\s*\\|\\s*分/);"
-            + "return {name:m?m[1].trim():x.t.slice(0,40),meta:x.t.slice(0,200)};});"
-            + "return {shops:cards};"
+            + ".map(function(e){return {t:txt(e),e:e};}).filter(function(x){return /起送/.test(x.t)&&x.t.length<300;});"
+            + "if(!cards.length){return JSON.stringify({shops:[],loading:true});}"
+            + "function shopName(t){"
+            + "var parts=t.split('|').map(function(s){return s.trim();}).filter(Boolean);"
+            + "var bad=/(起送|月售|配送|分钟|km|分|¥|\\+|商家自配送|本店|近期|人好评|好评|支持预订|预订|营业|休息|免配送费|到店|距离|评分|满\\d)/;"
+            + "for(var i=0;i<parts.length;i++){if(parts[i].length>=2&&parts[i].length<=40&&!bad.test(parts[i])){return parts[i];}}"
+            + "return t.slice(0,40);}"
+            + "return JSON.stringify({shops:cards.slice(0,20).map(function(x){"
+            + "return {name:shopName(x.t),meta:x.t.slice(0,240)};}),loading:false});"
             + "})();";
-        view.evaluateJavascript(js, value -> finishWithResult(value));
+        view.evaluateJavascript(waitJs, waited -> {
+            boolean ready = "true".equals(String(waited).replace(/\"/g, "").trim());
+            if (!ready) {
+                if (searchRetries < 10) {
+                    searchRetries += 1;
+                    view.postDelayed(() -> runSearchStep(view), 2500);
+                } else {
+                    view.evaluateJavascript(js, value -> finishWithResult(value));
+                }
+                return;
+            }
+            view.evaluateJavascript(js, value -> finishWithResult(value));
+        });
     }
-
     private void runOrderStep(WebView view) {
         try {
             JSONObject config = new JSONObject(configJson);

@@ -29,6 +29,22 @@ export async function openTakeoutLogin({ plugin = OrderBrowser, url = "" } = {})
   }
 }
 
+// 外卖平台登录状态（读 WebView 持久化的登录 Cookie）。
+export async function readTakeoutLoginState({ plugin = OrderBrowser } = {}) {
+  if (!takeoutPluginAvailable()) {
+    return { loggedIn: false, hasCookie: false };
+  }
+  try {
+    const value = await plugin.getLoginState();
+    return {
+      loggedIn: value?.loggedIn === true,
+      hasCookie: value?.hasCookie === true,
+    };
+  } catch {
+    return { loggedIn: false, hasCookie: false };
+  }
+}
+
 export async function readPendingTakeoutCommands({ client = apiRequest } = {}) {
   try {
     const data = await client("/api/v2/takeout/pending", { timeoutMs: 12_000 });

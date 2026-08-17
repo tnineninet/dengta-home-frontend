@@ -180,6 +180,7 @@ import {
 import {
   TAKEOUT_PLATFORMS,
   openTakeoutLogin,
+  readTakeoutLoginState,
   startTakeoutRunner,
   takeoutPluginAvailable,
 } from "./takeout-executor.js";
@@ -4982,15 +4983,41 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     status: "idle",
     message: "",
   });
+  const [takeoutLoginState, setTakeoutLoginState] = useState({
+    checked: false,
+    loggedIn: false,
+    hasCookie: false,
+  });
+
+  // 读取本机外卖登录态（WebView CookieStore），登录成功后显示"已登录"。
+  async function refreshTakeoutLoginState() {
+    const state = await readTakeoutLoginState().catch(() => ({
+      loggedIn: false,
+      hasCookie: false,
+    }));
+    setTakeoutLoginState({ checked: true, ...state });
+    return state;
+  }
+
+  useEffect(() => {
+    void refreshTakeoutLoginState();
+    // 从内置浏览器返回后（可能刚登录完）自动刷新登录状态。
+    const onResume = () => void refreshTakeoutLoginState();
+    window.addEventListener("focus", onResume);
+    return () => window.removeEventListener("focus", onResume);
+  }, []);
 
   async function openTakeoutQrLogin() {
     setTakeoutLoginFeedback({ status: "busy", message: "正在打开外卖登录页…" });
     const outcome = await openTakeoutLogin();
     if (outcome?.ok) {
+      await refreshTakeoutLoginState();
+      const loggedIn = takeoutLoginState.loggedIn;
       setTakeoutLoginFeedback({
         status: "success",
-        message:
-          "已打开登录页。扫码登录后即可让 AI 帮你点单；登录态只保存在本机，不会上传服务器。",
+        message: loggedIn
+          ? "外卖平台已登录，AI 可以直接帮你搜店点单了。"
+          : "已打开登录页。扫码登录后即可让 AI 帮你点单；登录态只保存在本机，不会上传服务器。",
       });
     } else {
       setTakeoutLoginFeedback({
@@ -7121,6 +7148,23 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             <div>
               <strong>登录外卖平台</strong>
               <span>{available ? "Android · 本机执行" : "仅 Android App 可用"}</span>
+            </div>
+            <div className="device-activity-actions">
+              {takeoutLoginState.checked && (
+                <em
+                  className={
+                    takeoutLoginState.loggedIn
+                      ? "takeout-login-state is-logged-in"
+                      : "takeout-login-state"
+                  }
+                >
+                  {takeoutLoginState.loggedIn
+                    ? "✅ 已登录（登录态长期有效）"
+                    : takeoutLoginState.hasCookie
+                      ? "⚠️ 有 Cookie 但未登录"
+                      : "未登录"}
+                </em>
+              )}
             </div>
           </div>
           <p>

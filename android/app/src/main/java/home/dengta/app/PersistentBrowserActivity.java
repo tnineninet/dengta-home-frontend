@@ -122,6 +122,8 @@ public final class PersistentBrowserActivity extends Activity {
         applyUa(desktopUa);
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
+        // 无 GMS 手机 WebView 定位必失败：注入 mock geolocation（真实坐标），外卖等页面才能正常按附近展示。
+        LocationFix.apply(webView);
         webView.setWebChromeClient(new WebChromeClient());
         webView.setWebViewClient(new WebViewClient() {
             @Override
