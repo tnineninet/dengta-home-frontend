@@ -41,20 +41,25 @@ public final class OrderBrowserPlugin extends Plugin {
         String url = call.getString("url", "https://h5.ele.me/msite/");
         // 改用登录态长住的内置浏览器：扫码登录一次后 Cookie 持久化，
         // 之后的搜索/点单页自动带登录态（同一个 WebView CookieStore）。
+        // 注意：必须同任务内启动（startActivityForResult），
+        // NEW_TASK + context.startActivity 在新任务中会被 vivo 秒杀（"跳转1秒被取消"）。
         try {
             Intent browser = new Intent(getContext(), PersistentBrowserActivity.class);
             browser.putExtra("url", url);
             browser.putExtra("title", "外卖登录（登录态长期有效）");
             browser.putExtra("site", "eleme");
             browser.putExtra("desktop", false);
-            browser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            getContext().startActivity(browser);
-            JSObject out = new JSObject();
-            out.put("opened", true);
-            call.resolve(out);
+            startActivityForResult(call, browser, "browserLoginResult");
         } catch (Exception error) {
             call.reject("无法打开外卖登录页。");
         }
+    }
+
+    @ActivityCallback
+    private void browserLoginResult(PluginCall call, ActivityResult result) {
+        JSObject out = new JSObject();
+        out.put("opened", true);
+        call.resolve(out);
     }
 
     @PluginMethod

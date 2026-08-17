@@ -26,13 +26,16 @@ public class OrderWebActivity extends Activity {
     private boolean backHintShown = false;
     private String currentUrl = "";
 
+    private static final String TAG = "OrderWebActivity";
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         try {
             onCreateGuarded(savedInstanceState);
         } catch (Throwable error) {
-            // 页面创建失败时优雅结束,不让整个 App 进程崩溃。
+            // 页面创建失败时优雅结束,不让整个 App 进程崩溃；记录原因便于排查。
+            android.util.Log.e(TAG, "onCreate failed", error);
             finish();
         }
     }
