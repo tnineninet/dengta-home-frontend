@@ -333,7 +333,14 @@ export function ThinkingPanel({
               {innerMonologuePending ? "正在写下此刻的心声…" : "听听她此刻的心声"}
             </button>
             {innerMonologueError && (
-              <small className="inner-monologue-error">{innerMonologueError}</small>
+              <small className="inner-monologue-error">
+                {String(innerMonologueError).split("\n").map((line, index) => (
+                  <span key={index}>
+                    {line}
+                    {index < String(innerMonologueError).split("\n").length - 1 && <br />}
+                  </span>
+                ))}
+              </small>
             )}
           </div>
         ) : (

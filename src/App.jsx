@@ -3822,9 +3822,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       );
       setInnerMonologues(next);
     } catch (error) {
+      const codeText = error?.code ? '[' + error.code + '] ' : '';
+      const locationText = error?.error_location
+        ? '\n位置: ' + error.error_location
+        : '';
       setInnerMonologueErrors((current) => ({
         ...current,
-        [messageId]: error?.message || "这次心声没有生成成功，请稍后再试。",
+        [messageId]:
+          codeText +
+          (error?.message || "这次心声没有生成成功，请稍后再试。") +
+          locationText,
       }));
     } finally {
       setInnerMonologuePending((current) => ({
