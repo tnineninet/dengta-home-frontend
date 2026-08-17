@@ -62,10 +62,17 @@
             android:theme="@style/AppTheme" />
         <activity
             android:name=".PersistentBrowserActivity"
-            android:exported="false"
+            android:exported="true"
             android:hardwareAccelerated="true"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
-            android:theme="@style/AppTheme" />
+            android:theme="@style/AppTheme">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="dengta" android:host="browser" />
+            </intent-filter>
+        </activity>
         <service
             android:name=".NowPlayingListenerService"
             android:exported="false"
