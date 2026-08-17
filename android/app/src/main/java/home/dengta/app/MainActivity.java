@@ -22,6 +22,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ScreenGlancePlugin.class);
         registerPlugin(NeteasePlaybackPlugin.class);
         registerPlugin(OrderBrowserPlugin.class);
+        registerPlugin(BrowserLauncherPlugin.class);
         super.onCreate(savedInstanceState);
         configureStableWebView();
         PushNotificationWorker.ensureNotificationChannel(this);

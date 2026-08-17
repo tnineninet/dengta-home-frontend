@@ -9,6 +9,8 @@ import {
   listBilibiliFavoriteFolders,
   listBilibiliFavoriteVideos,
 } from "./bilibili-qr-login.js";
+import { apiRequest } from "./api.js";
+import { openBuiltInBrowser, readBrowserCookie } from "./browser-launcher.js";
 
 const POLL_INTERVAL_MS = 2_000;
 
@@ -163,6 +165,48 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
     setFeedback("");
   }, [stopPolling]);
 
+  // 内置浏览器登录：扫码不方便或二维码无反应时，用内置浏览器打开 B 站网页，
+  // 登录一次后点"提取登录态"，Cookie 直接保存给 AI 使用。
+  const connectWithBrowser = useCallback(async () => {
+    setBusy(true);
+    setError("");
+    setFeedback("");
+    try {
+      const opened = await openBuiltInBrowser({
+        url: "https://www.bilibili.com/",
+        title: "哔哩哔哩（内置浏览器）",
+        site: "bilibili",
+      });
+      if (!opened.ok) {
+        setError(opened.error || "无法打开内置浏览器。");
+        return;
+      }
+      const saved = await readBrowserCookie("bilibili");
+      if (!saved.cookie) {
+        setFeedback("内置浏览器已关闭，但没有提取到登录态。请重新打开、登录后在页面点「提取登录态」再返回。");
+        return;
+      }
+      const imported = await apiRequest("/api/v2/co-watch/bilibili-qr/cookie", {
+        method: "POST",
+        timeoutMs: 20000,
+        body: JSON.stringify({ cookie: saved.cookie }),
+      }).catch(() => null);
+      if (imported?.connection?.connected === true || imported?.connected === true) {
+        settledRef.current = true;
+        setConnection(imported.connection || null);
+        setNickname(imported.connection?.nickname || "");
+        setFaceUrl(imported.connection?.face_url || "");
+        setFeedback("内置浏览器登录成功，登录态已保存，可以读取收藏夹了。");
+      } else {
+        setError(imported?.message || "登录态已提取，但保存失败，请重试。");
+      }
+    } catch (caught) {
+      setError(pickError(caught));
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
   const logout = useCallback(async () => {
     setBusy(true);
     setError("");
@@ -232,6 +276,9 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
       </div> : <div className="netease-qr-disconnected">
         <p>用手机哔哩哔哩 App 扫码登录后，DengTa 可以读取你的收藏夹，并把收藏的视频一键载入网页一起看。密码不会经过 DengTa，登录凭据加密保存在你的账号下。</p>
         <button type="button" className="together-primary" disabled={busy} onClick={() => void startLogin()}><LogIn aria-hidden="true" />{busy ? "正在生成…" : "扫码登录哔哩哔哩"}</button>
+        <button type="button" disabled={busy} onClick={() => void connectWithBrowser()} title="用内置浏览器打开 B 站网页登录，登录后点页面上的「提取登录态」">
+          内置浏览器登录（登录态长期有效）
+        </button>
       </div>}
       {qrOpen && createPortal(<div className="netease-qr-modal" role="dialog" aria-label="哔哩哔哩扫码登录">
         <div className="netease-qr-card">
