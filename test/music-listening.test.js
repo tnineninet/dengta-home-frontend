@@ -44,7 +44,7 @@ await assert.rejects(() => readPlaylistTextFile({ name: "huge.txt", type: "text/
 assert.equal(await readPlaylistTextFile(playlistBlob("safe.m3u8", "application/vnd.apple.mpegurl", Array.from(new TextEncoder().encode("#EXTM3U\nhttps://media.example.com/a.mp3")))), "#EXTM3U\nhttps://media.example.com/a.mp3");
 assert.deepEqual(normalizeMusicPlaylist({ id: "p1", title: "夜航", tracks: [{ id: "1", name: "星海", author: "桃桃", duration: 188 }] }), {
   id: "p1", name: "夜航", provider: "local_playlist", providerPlaylistId: "", externalUrl: "", sourceFormat: "", itemCount: 1,
-  items: [{ id: "1", title: "星海", artist: "桃桃", album: "", url: "", providerTrackId: "", externalUrl: "", playbackMode: "", durationSeconds: 188, lyrics: "" }],
+  items: [{ id: "1", title: "星海", artist: "桃桃", album: "", url: "", providerTrackId: "", externalUrl: "", playbackMode: "", coverUrl: "", durationSeconds: 188, lyrics: "" }],
   createdAt: "",
 });
 assert.equal(normalizeMusicPlaylist({ playlist: { items: ["https://media.example.com/raw.mp3"] } }).items[0].url, "https://media.example.com/raw.mp3");
@@ -72,7 +72,7 @@ assert.match(player, /自动识别、保存并启用/);
 assert.match(player, /接口 Token（可选）/);
 assert.match(player, /connectNeteaseMcp\(\{ name: connectionName, endpoint: connectionEndpoint, token: connectionToken \}\)/);
 assert.match(player, /setConnectionToken\(""\)/);
-assert.match(player, /importNeteaseShare\(connectionId, shareUrl\)/);
+assert.match(player, /importNeteaseShare\(connectionId \|\| "", shareUrl\)/);
 const settings = source("../src/MusicSettings.jsx");
 assert.match(settings, /读取剪贴板/);
 assert.match(settings, /URL\.createObjectURL\(file\)/);
@@ -89,7 +89,7 @@ assert.match(together, /屏幕共看/);
 assert.match(together, /视频直链/);
 assert.match(together, /一起听歌/);
 assert.doesNotMatch(together, /role="tab"[\s\S]{0,220}一起听歌/);
-assert.match(together, /modeLocked = active \|\| directActive \|\| musicActive/);
+assert.match(together, /modeLocked = viewKind === "music" \? musicActive : active \|\| directActive \|\| pageActive/);
 const companionStatus = source("../src/CompanionStatus.jsx");
 assert.match(companionStatus, /action\.id === "music"\) onListenTogether/);
 

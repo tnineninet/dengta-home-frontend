@@ -151,7 +151,11 @@ test("chat and settings integration retain fallbacks, custom stickers, and chat-
 
   assert.match(message, /custom_sticker_id/);
   assert.match(message, /fallback=\{/);
-  assert.match(message, /isUser \? "桃" : "D"/);
+  assert.match(
+    message,
+    /isUser\s*\?\s*Array\.from\(userName \|\| "我"\)\[0\] \|\| "我"\s*:\s*Array\.from\(aiName \|\| "伴"\)\[0\] \|\| "伴"/,
+    "avatar letter must use the personalized user/companion name first char",
+  );
   assert.match(message, /tool_calls\?\.sticker_id/, "内置表情支持必须保留");
   assert.match(app, /function renderChat\(\)[\s\S]*?<ChatBackground src=\{chatBackground\}/);
   assert.doesNotMatch(app, /renderSettings\(\)[\s\S]{0,500}<ChatBackground/);

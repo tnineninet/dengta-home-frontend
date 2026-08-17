@@ -155,7 +155,7 @@ test("receiver route, SW bypass, Vercel rewrite and controller contract are wire
   assert.match(together, /会话编号：\{castPairing\.sessionId\}/);
   assert.match(together, /不会显示媒体 URL 或接收端凭据/);
   assert.match(together, /成人|曲名和歌词不会在前端过滤/);
-  assert.match(app, /sessionMode: "direct_media"[\s\S]*mediaUrl: options\.mediaUrl/);
+  assert.match(app, /sessionMode: pageMode \? "web_page" : "direct_media"[\s\S]*mediaUrl: options\.mediaUrl/);
   assert.match(app, /await patchCoWatchPlayback\(target\.id/);
   assert.match(coWatch, /playback_revision \?\? value\.revision/);
   assert.match(coWatch, /playlist_id \?\? value\.music_playlist_id/);

@@ -98,9 +98,11 @@ class AppStartupBoundaryTest {
       loggedFailure = { message, detail };
     };
     boundary.componentDidCatch({ name: "ChunkLoadError" });
-    assert.deepEqual(loggedFailure, {
-      message: "DengTa 应用界面载入失败",
-      detail: { name: "ChunkLoadError", diagnosticCode: "DT-START-CH-01" },
+    assert.equal(loggedFailure.message, "DengTa 应用界面载入失败");
+    assert.deepEqual(JSON.parse(loggedFailure.detail), {
+      name: "ChunkLoadError",
+      diagnosticCode: "DT-START-CH-01",
+      message: "",
     });
 
     assert.equal(

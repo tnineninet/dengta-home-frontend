@@ -95,12 +95,16 @@ test("the settings flow stays GPU-backed and freezes its visible frame while scr
   assert.doesNotMatch(flowStyles, /filter:\s*blur\(/);
   assert.doesNotMatch(flowStyles, /mix-blend-mode:\s*(?:multiply|screen|soft-light)/);
   assert.match(flowSource, /powerPreference:\s*"high-performance"/);
-  assert.match(flowSource, /const ACTIVE_FRAME_MS = 1000 \/ 24/);
+  assert.match(flowSource, /const ACTIVE_FRAME_MS = 1000 \/ 15/);
   assert.match(flowSource, /classList\.contains\("is-scrolling"\)/);
   assert.match(flowSource, /preserveDrawingBuffer:\s*true/);
   assert.match(flowSource, /if \(disposed \|\| scrolling\) return/);
   assert.match(flowSource, /cancelAnimationFrame\(animationFrame\)/);
-  assert.match(flowSource, /\? 0\.64\s*:\s*0\.82/);
+  assert.match(
+    flowSource,
+    /reducedMotion\.matches \? 0\.64 : \(elapsed % LOOP_SECONDS\) \/ LOOP_SECONDS/,
+    "reduced motion must freeze the visible frame while scrolling",
+  );
   assert.match(flowSource, /760 \/ Math\.max\(longestSide, 1\)/);
   assert.match(
     styles,

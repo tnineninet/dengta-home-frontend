@@ -60,7 +60,7 @@ assert.equal(
     error_source: "upstream_provider_or_gateway",
     message: "raw upstream message must not be displayed",
   }),
-  "输入内容未通过模型接口的内容检查 / The input did not pass the model provider's content inspection.（错误代码 / Code: data_inspection_failed；来源 / Source: upstream_provider_or_gateway）",
+  "输入内容未通过模型接口的内容检查 / The input did not pass the model provider's content inspection.（错误代码 / Code: data_inspection_failed；来源 / Source: upstream_provider_or_gateway；日志已记录 / Logged）",
 );
 assert.equal(
   sanitizeChatErrorEvent({

@@ -165,8 +165,12 @@ const directStart = app.slice(
   app.indexOf("async function startDirectMediaCoWatchSession"),
   app.indexOf("function updateDirectMediaCoWatchPlayback"),
 );
-assert.match(directStart, /sourceApp:\s*DIRECT_MEDIA_SOURCE_APP/);
-assert.match(directStart, /sessionMode:\s*"direct_media"/);
+assert.match(
+  directStart,
+  /const sourceApp = pageMode \? WEB_PAGE_SOURCE_APP : DIRECT_MEDIA_SOURCE_APP;[\s\S]*?sourceApp,/,
+  "the direct/web media session must pass the right source app constant",
+);
+assert.match(directStart, /sessionMode: pageMode \? "web_page" : "direct_media"/);
 assert.match(directStart, /mediaUrl:\s*options\.mediaUrl/);
 assert.match(app, /clearDirectMediaSession\(globalThis\.sessionStorage, accountStorageScope\)/);
 assert.match(
@@ -181,6 +185,10 @@ const createRequest = coWatch.slice(
   coWatch.indexOf("export async function endCoWatchSession"),
 );
 assert.match(createRequest, /session_mode:[\s\S]*?"direct_media"/);
-assert.match(createRequest, /media_url:\s*input\.sessionMode === "direct_media"/);
+assert.match(
+  createRequest,
+  /media_url: \["direct_media", "web_page"\]\.includes\(input\.sessionMode\) \? cleanText\(input\.mediaUrl, 4096\) : ""/,
+  "the direct/web session must carry its media URL",
+);
 
 console.log("Together direct HTTPS media URL safety and playback tests passed");
