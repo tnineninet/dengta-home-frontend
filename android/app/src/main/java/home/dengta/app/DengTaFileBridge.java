@@ -31,7 +31,7 @@ public final class DengTaFileBridge {
             toast("导出失败：缺少文件内容或文件名。");
             return;
         }
-        String safeName = filename.trim().replaceAll("[^A-Za-z0-9._\-\u4e00-\u9fa5]", "_");
+        String safeName = filename.trim().replaceAll("[^A-Za-z0-9._\\-\u4e00-\u9fa5]", "_");
         if (safeName.length() > 120) safeName = safeName.substring(safeName.length() - 120);
         try {
             String base64 = dataUrl;

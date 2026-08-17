@@ -33,7 +33,7 @@ export default function AccountExport({ api = apiRequest } = {}) {
     setError("");
     setFeedback("");
     try {
-      const data = await api("/api/v2/account/export", {
+      const data = await api("/api/account/export", {
         method: "POST",
         timeoutMs: 180000,
         body: JSON.stringify({ format }),
