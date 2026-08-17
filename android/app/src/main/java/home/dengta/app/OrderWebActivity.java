@@ -139,6 +139,7 @@ public class OrderWebActivity extends Activity {
 
         currentUrl = url;
         setContentView(root);
+        SafeWindow.apply(this, root);
         webView.loadUrl(url);
     }
 

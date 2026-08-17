@@ -163,6 +163,7 @@ public final class PersistentBrowserActivity extends Activity {
         }
 
         setContentView(root);
+        SafeWindow.apply(this, root);
         webView.loadUrl(url);
     }
 

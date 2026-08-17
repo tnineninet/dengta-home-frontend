@@ -129,6 +129,7 @@ public class NeteaseCookieActivity extends Activity {
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         setContentView(root);
+        SafeWindow.apply(this, root);
         webView.loadUrl(desktopMode ? "https://music.163.com/" : H5_HOME);
     }
 
