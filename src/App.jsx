@@ -167,6 +167,7 @@ import {
   readNowPlaying,
 } from "./device-activity";
 import { playNeteaseSilent } from "./netease-playback";
+import { openBuiltInBrowser, readBrowserCookie } from "./browser-launcher.js";
 import {
   DEVICE_SIGNALS_REPORT_MS,
   ackDeviceInjects,
@@ -5002,6 +5003,73 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
   }
 
+  // 内置浏览器登录小红书：登录态长住，登录后点「提取登录态」返回即可。
+  async function connectXhsWithBrowser() {
+    setXhsState({
+      status: "busy",
+      qr: "",
+      session: "",
+      feedback: "正在打开内置浏览器…",
+    });
+    try {
+      const opened = await openBuiltInBrowser({
+        url: "https://www.xiaohongshu.com/",
+        title: "小红书（内置浏览器）",
+        site: "xhs",
+      });
+      if (!opened.ok) {
+        setXhsState({
+          status: "error",
+          qr: "",
+          session: "",
+          feedback: opened.error || "无法打开内置浏览器。",
+        });
+        return;
+      }
+      const saved = await readBrowserCookie("xhs");
+      if (!saved.cookie) {
+        setXhsState({
+          status: "error",
+          qr: "",
+          session: "",
+          feedback:
+            "没有提取到登录态。请重新打开，在页面里登录后点「提取登录态」，再返回。",
+        });
+        return;
+      }
+      const imported = await apiRequest("/api/v2/xhs/login/cookie", {
+        method: "POST",
+        timeoutMs: 20000,
+        body: JSON.stringify({ cookie: saved.cookie }),
+      }).catch(() => null);
+      if (imported?.ok) {
+        setXhsState({
+          status: "logged_in",
+          qr: "",
+          session: "",
+          feedback:
+            imported.mode === "local"
+              ? "小红书登录态已保存到账号（服务部署后就绪即可使用）。"
+              : "小红书登录成功！AI 可以帮你刷帖、搜笔记了。",
+        });
+      } else {
+        setXhsState({
+          status: "error",
+          qr: "",
+          session: "",
+          feedback: imported?.message || "登录态已提取，但保存失败，请重试。",
+        });
+      }
+    } catch (error) {
+      setXhsState({
+        status: "error",
+        qr: "",
+        session: "",
+        feedback: error?.message || "无法发起小红书登录。",
+      });
+    }
+  }
+
   async function logoutXhsAccount() {
     try {
       await logoutXhs();
@@ -8502,6 +8570,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   </span>
                 </div>
                 <div className="device-activity-actions">
+                  <button type="button" onClick={() => void connectXhsWithBrowser()}>
+                    内置浏览器登录
+                  </button>
                   <button type="button" onClick={() => void startXhsQrLogin()}>
                     扫码登录
                   </button>
