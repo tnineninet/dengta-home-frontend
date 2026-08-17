@@ -238,22 +238,21 @@ public final class PersistentBrowserActivity extends Activity {
         return url;
     }
 
-    // 外卖搜索：注入 JS 提取店铺卡片（认元素不认文本；等"起送¥"真数据）。
     private void runSearchExtract(WebView view) {
         String js = "(function(){"
-            + "function txt(e){return (e.innerText||'').replace(/\n+/g,' | ').replace(/\s+/g,' ').trim();}"
+            + "function txt(e){return (e.innerText||'').replace(/\\n+/g,' | ').replace(/\\s+/g,' ').trim();}"
             + "var cards=[].slice.call(document.querySelectorAll('[class*=\"card\" i],[class*=\"item\" i]'))"
             + ".map(function(e){return {t:txt(e),e:e};})"
             + ".filter(function(x){return /起送¥/.test(x.t)&&x.t.length<300;});"
-            + "if(!cards.length){return JSON.stringify({shops:[],loading:true});}"
+            + "if(!cards.length){return {shops:[],loading:true};}"
             + "function shopName(t){"
             + "var parts=t.split('|').map(function(s){return s.trim();}).filter(Boolean);"
             + "var bad=/(起送|月售|配送|分钟|km|\\d+分|¥|\\+|商家自配送|本店|近期|人好评|好评|支持预订|预订|营业|休息|免配送费|到店|距离|评分|满\\d)/;"
             + "for(var i=0;i<parts.length;i++){if(parts[i].length>=2&&parts[i].length<=40&&!bad.test(parts[i])){return parts[i];}}"
             + "var m=t.match(/([^|]{2,40})\\s*\\|\\s*[\\d.]+\\s*\\|\\s*分/);"
             + "return m?m[1].trim():t.slice(0,40);}"
-            + "return JSON.stringify({shops:cards.slice(0,20).map(function(x){"
-            + "return {name:shopName(x.t),meta:x.t.slice(0,240)};}),loading:false});"
+            + "return {shops:cards.slice(0,20).map(function(x){"
+            + "return {name:shopName(x.t),meta:x.t.slice(0,240)};}),loading:false};"
             + "})();";
         view.evaluateJavascript(js, value -> {
             if (value == null || value.equals("null")) return;

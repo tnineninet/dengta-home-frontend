@@ -160,14 +160,14 @@ public class OrderWebActivity extends Activity {
             + "function txt(e){return (e.innerText||'').replace(/\\n+/g,' | ').replace(/\\s+/g,' ').trim();}"
             + "var cards=[].slice.call(document.querySelectorAll('[class*=\"card\" i],[class*=\"item\" i]'))"
             + ".map(function(e){return {t:txt(e),e:e};}).filter(function(x){return /起送/.test(x.t)&&x.t.length<300;});"
-            + "if(!cards.length){return JSON.stringify({shops:[],loading:true});}"
+            + "if(!cards.length){return {shops:[],loading:true};}"
             + "function shopName(t){"
             + "var parts=t.split('|').map(function(s){return s.trim();}).filter(Boolean);"
             + "var bad=/(起送|月售|配送|分钟|km|分|¥|\\+|商家自配送|本店|近期|人好评|好评|支持预订|预订|营业|休息|免配送费|到店|距离|评分|满\\d)/;"
             + "for(var i=0;i<parts.length;i++){if(parts[i].length>=2&&parts[i].length<=40&&!bad.test(parts[i])){return parts[i];}}"
             + "return t.slice(0,40);}"
-            + "return JSON.stringify({shops:cards.slice(0,20).map(function(x){"
-            + "return {name:shopName(x.t),meta:x.t.slice(0,240)};}),loading:false});"
+            + "return {shops:cards.slice(0,20).map(function(x){"
+            + "return {name:shopName(x.t),meta:x.t.slice(0,240)};}),loading:false};"
             + "})();";
         view.evaluateJavascript(waitJs, waited -> {
             boolean ready = "true".equals(String.valueOf(waited).replace("\"", "").trim());
