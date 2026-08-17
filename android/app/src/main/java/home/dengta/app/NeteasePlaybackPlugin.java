@@ -45,6 +45,20 @@ public final class NeteasePlaybackPlugin extends Plugin {
             .show());
     }
 
+    // AI 放歌：无确认弹窗，直接静默调起网易云播放（用户已明确要求 AI 放歌）。
+    @PluginMethod
+    public void playSilent(PluginCall call) {
+        String resourceType = call.getString("resourceType", "");
+        String resourceId = call.getString("resourceId", "");
+        if (!"song".equals(resourceType) || !RESOURCE_ID.matcher(resourceId).matches()) {
+            call.reject("网易云歌曲编号无效。");
+            return;
+        }
+        Uri appUri = Uri.parse("orpheus://song/" + resourceId);
+        Uri webUri = Uri.parse("https://music.163.com/#/song?id=" + resourceId);
+        openConfirmed(call, appUri, webUri);
+    }
+
     private void openConfirmed(PluginCall call, Uri appUri, Uri webUri) {
         Uri target = new Intent(Intent.ACTION_VIEW, appUri).resolveActivity(getContext().getPackageManager()) != null ? appUri : webUri;
         try {

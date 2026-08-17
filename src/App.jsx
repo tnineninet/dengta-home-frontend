@@ -165,6 +165,7 @@ import {
   readNotificationAccessState,
   readNowPlaying,
 } from "./device-activity";
+import { playNeteaseSilent } from "./netease-playback";
 import {
   DEVICE_SIGNALS_REPORT_MS,
   ackDeviceInjects,
@@ -779,6 +780,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [nowPlaying, setNowPlaying] = useState(null);
   const nowPlayingDismissedRef = useRef(false);
   const nowPlayingPollRef = useRef(null);
+  const lastNowPlayingRef = useRef(null);
 
   const [notificationAccess, setNotificationAccess] = useState({ granted: false, checking: true });
 
@@ -794,6 +796,36 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       const state = await readNotificationAccessState().catch(() => ({ granted: false }));
       setNotificationAccess({ granted: state?.granted === true, checking: false });
       return state?.granted === true;
+    };
+    // AI 放歌：消费待播放请求，静默调起网易云播放并回报结果。
+    const drainAiPlayRequests = async (nowSong) => {
+      try {
+        const data = await apiRequest("/api/v2/music/providers/netease/ai-play-requests", { timeoutMs: 10000 }).catch(() => null);
+        const requests = Array.isArray(data?.requests) ? data.requests : [];
+        for (const request of requests.slice(0, 3)) {
+          const id = String(request?.id || "");
+          const songId = String(request?.song_id || "");
+          if (!id || !/^\d{1,20}$/.test(songId)) continue;
+          const alreadyPlaying =
+            nowSong?.title &&
+            String(request?.title || "") &&
+            (nowSong.title === request.title || nowSong.title.includes(request.title) || request.title.includes(nowSong.title));
+          let opened = null;
+          if (!alreadyPlaying) {
+            opened = await playNeteaseSilent("song", songId).catch(() => null);
+          }
+          await apiRequest(`/api/v2/music/providers/netease/ai-play-requests/${encodeURIComponent(id)}/result`, {
+            method: "POST",
+            timeoutMs: 10000,
+            body: JSON.stringify({
+              status: alreadyPlaying || opened?.opened === true ? "played" : "failed",
+              error: alreadyPlaying || opened?.opened === true ? "" : "打开网易云播放失败",
+            }),
+          }).catch(() => {});
+        }
+      } catch {
+        // 播放请求消费失败不影响主流程
+      }
     };
     const poll = async () => {
       const song = await readNowPlaying().catch(() => null);
@@ -812,6 +844,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         }
       } else if (!nowPlayingDismissedRef.current) {
         setNowPlaying(null);
+      }
+      if (Capacitor.isNativePlatform()) {
+        void drainAiPlayRequests(song);
       }
     };
     void (async () => {

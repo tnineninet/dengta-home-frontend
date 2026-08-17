@@ -19,3 +19,15 @@ export async function openNeteasePlayback(resourceType, resourceId) {
   window.open(url, "_blank", "noopener,noreferrer");
   return { opened: true, target: "web" };
 }
+
+// AI 放歌：无确认弹窗，静默调起网易云播放（仅单曲）。
+export async function playNeteaseSilent(resourceType, resourceId) {
+  const resource = validateNeteaseResource(resourceType, resourceId);
+  if (resource.resourceType !== "song") {
+    throw new Error("AI 放歌只支持单曲。");
+  }
+  if (Capacitor.isNativePlatform()) return NeteasePlayback.playSilent(resource);
+  const url = `https://music.163.com/#/song?id=${resource.resourceId}`;
+  window.open(url, "_blank", "noopener,noreferrer");
+  return { opened: true, target: "web" };
+}

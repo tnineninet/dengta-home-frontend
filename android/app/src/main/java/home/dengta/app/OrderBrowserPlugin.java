@@ -110,10 +110,13 @@ public final class OrderBrowserPlugin extends Plugin {
             intent.putExtra("mode", mode);
             intent.putExtra("config", config);
             intent.putExtra("title", title);
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             if (call != null) {
+                // 必须同任务内启动：带 FLAG_ACTIVITY_NEW_TASK 时
+                // startActivityForResult 会立即返回 RESULT_CANCELED，
+                // 导致"外卖搜索被取消"的假失败（页面其实还开着）。
                 startActivityForResult(call, intent, "orderResult");
             } else {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 getContext().startActivity(intent);
             }
         } catch (Exception error) {
