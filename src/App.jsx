@@ -405,7 +405,8 @@ function ErrorLogsPanel() {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    const timer = window.setTimeout(() => void refresh(), 0);
+    return () => window.clearTimeout(timer);
   }, [refresh]);
 
   function formatTime(value) {
@@ -1117,7 +1118,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     // 放依赖数组会让压缩构建在渲染时访问未初始化变量（TDZ）。
     // setNotice 是稳定 setter，闭包内直接调用即可。
     setNotice("已发送下一首指令。");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   const handleDismissNowPlaying = useCallback(() => {
@@ -2184,7 +2185,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   useEffect(() => {
     let cancelled = false;
     if (!hasLoadedSettings) return undefined;
-    let randomPlayEnabled = false;
+    let randomPlayEnabled;
     try {
       randomPlayEnabled = window.localStorage.getItem("dengta_random_play_enabled") === "1";
     } catch {
@@ -2233,7 +2234,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         } catch { /* ignore */ }
         const audio = new Audio(song.url);
         randomPlayAudioRef.current = audio;
-        const played = await audio.play().catch((error) => {
+        await audio.play().catch((error) => {
           try {
             console.log("random-play:rejected", String(error?.name || error?.message || error));
           } catch { /* ignore */ }
@@ -2739,7 +2740,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       scope: accountStorageScope,
       hidden: document.hidden,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [messages, settings.push_enabled, effectiveAiName, hasLoadedSettings, accountStorageScope]);
 
   useEffect(() => {
@@ -5227,26 +5228,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     return () => window.removeEventListener("focus", onResume);
   }, []);
 
-  async function openTakeoutQrLogin() {
-    setTakeoutLoginFeedback({ status: "busy", message: "正在打开外卖登录页…" });
-    const outcome = await openTakeoutLogin();
-    if (outcome?.ok) {
-      await refreshTakeoutLoginState();
-      const loggedIn = takeoutLoginState.loggedIn;
-      setTakeoutLoginFeedback({
-        status: "success",
-        message: loggedIn
-          ? "外卖平台已登录，AI 可以直接帮你搜店点单了。"
-          : "已打开登录页。扫码登录后即可让 AI 帮你点单；登录态只保存在本机，不会上传服务器。",
-      });
-    } else {
-      setTakeoutLoginFeedback({
-        status: "error",
-        message: outcome?.error || "暂时无法打开外卖登录页。",
-      });
-    }
-  }
-
   useEffect(() => {
     if (!takeoutPluginAvailable()) return undefined;
     return startTakeoutRunner();
@@ -5437,7 +5418,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       cancelled = true;
       clearInterval(xhsPollTimerRef.current);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
 
@@ -5757,7 +5738,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       cancelled = true;
       clearInterval(timer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [onboarding.open, onboarding.step]);
 
   const onboardingAutoShownRef = useRef(false);
@@ -5784,7 +5765,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     } catch {
       // 本地存储不可用时仅跳过自动弹出。
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [funLabsState.achievements]);
 
   async function removeSpecialDate(id) {
@@ -7919,8 +7900,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           }}
           viewKind={viewKind}
           danmaku={coWatchDanmaku}
-          initialMode={togetherEntryMode}
-          externalPageUrl={pendingCoWatchPage}
+            externalPageUrl={pendingCoWatchPage}
         />
       </Suspense>
     );

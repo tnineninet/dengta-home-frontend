@@ -79,7 +79,7 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
     return () => { cancelled = true; };
   }, []);
 
-  const startLogin = useCallback(async () => {
+  async function startLogin() {
     if (settledRef.current) return; // 已登录成功后不再重开二维码
     autoRefreshCountRef.current = 0;
     setBusy(true);
@@ -155,7 +155,7 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
     } finally {
       setBusy(false);
     }
-  }, [stopPolling]);
+  }
 
   const cancelLogin = useCallback(() => {
     stopPolling();

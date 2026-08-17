@@ -179,7 +179,6 @@ export function ThinkingPanel({
   innerMonologueError = "",
   onRequestInnerMonologue,
 }) {
-  if (!VISIBLE_MONOLOGUE_UI_ENABLED) return null;
   const completed = thinkingPanelCompleted(message);
   const synchronizedMonologue =
     isSynchronizedVisibleMonologue(innerMonologue);
@@ -208,7 +207,7 @@ export function ThinkingPanel({
     return () => document.removeEventListener("keydown", closeFromEscape);
   }, [monologueDialogOpen]);
 
-  if (!visible) return null;
+  if (!VISIBLE_MONOLOGUE_UI_ENABLED || !visible) return null;
 
   const statuses = Array.isArray(message.thinkingStatuses)
     ? message.thinkingStatuses

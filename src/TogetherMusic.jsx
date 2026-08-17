@@ -23,14 +23,11 @@ import {
 } from "./co-watch.js";
 import {
   connectNeteaseMcp,
-  cookieAddToPlaylist,
-  cookieCreatePlaylist,
   cookieGetDailyRecommend,
   cookieGetMyPlaylists,
   cookieGetPlayHistory,
   cookieGetPlaylistTracks,
   cookieLikeSong,
-  cookieRemoveFromPlaylist,
   cookieSearchNetease,
   deleteMusicFavorite,
   getMusicPlaylist,
@@ -46,7 +43,6 @@ import {
 } from "./music-listening.js";
 import { MUSIC_PLAYBACK_MODES, musicPlaybackIsInternal, resolveMusicPlayback } from "./music-playback.js";
 import { openNeteasePlayback } from "./netease-playback.js";
-import { neteaseCookiePluginAvailable } from "./netease-cookie.js";
 import { browserLauncherAvailable, openBuiltInBrowser, readBrowserCookie } from "./browser-launcher.js";
 
 import MusicSettings from "./MusicSettings.jsx";
@@ -256,6 +252,8 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
     });
     return () => { cancelled = true; };
   }, [active, session?.musicPlaylistId]);
+
+  const [externalPlaying, setExternalPlaying] = useState(false);
 
   useEffect(() => {
     if (!active || !session.id) {
@@ -514,7 +512,6 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
     setCookieStatus({ checking: false, connected: false, account_name: "" });
   };
   // ---------- 网易云音乐操作面板（Cookie 登录后可用） ----------
-  const [externalPlaying, setExternalPlaying] = useState(false);
   const [cookiePanel, setCookiePanel] = useState("closed"); // closed | search | playlists | daily | history
   const [cookieSearchQuery, setCookieSearchQuery] = useState("");
   const [cookieSearchResults, setCookieSearchResults] = useState([]);
@@ -755,8 +752,8 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   // 用计时器模拟进度推进，让进度条和播报感知“正在播放”。切歌/暂停会重置。
   useEffect(() => {
     if (!externalSession || !externalPlaying || !item) {
-      setExternalPlaying(false);
-      return undefined;
+      const resetTimer = window.setTimeout(() => setExternalPlaying(false), 0);
+      return () => window.clearTimeout(resetTimer);
     }
     const timer = window.setInterval(() => {
       setPosition((current) => {
@@ -766,7 +763,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
       });
     }, 1000);
     return () => window.clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [externalSession, externalPlaying, item]);
 
   const currentQueueIndex = queue?.items.findIndex((entry) => entry.id === queue.currentQueueItemId) ?? -1;

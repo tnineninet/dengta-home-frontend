@@ -95,7 +95,6 @@ export default function Together({
   onGenerateCastPairing,
   dialog = [],
   onReply,
-  initialMode = "external",
   viewKind = "together",
   externalPageUrl = "",
   danmaku = [],
@@ -408,15 +407,6 @@ export default function Together({
     }
   };
 
-  // 从发现页传入链接时,自动切到网页模式并解析,用户点"开始网页一起看"即可。
-  useEffect(() => {
-    if (!externalPageUrl) return;
-    setMode("web");
-    setWebUrlInput(externalPageUrl);
-    void loadWebPage(externalPageUrl);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [externalPageUrl]);
-
   const loadWebPage = async (explicitUrl = "") => {
     const input = explicitUrl || webUrlInput;
     if (!input.trim()) {
@@ -436,6 +426,18 @@ export default function Together({
       setWebFeedback({ status: "error", message: error?.message || "网页链接解析失败。" });
     }
   };
+
+  // 从发现页传入链接时,自动切到网页模式并解析,用户点"开始网页一起看"即可。
+  useEffect(() => {
+    if (!externalPageUrl) return;
+    const timer = window.setTimeout(() => {
+      setMode("web");
+      setWebUrlInput(externalPageUrl);
+      void loadWebPage(externalPageUrl);
+    }, 0);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [externalPageUrl]);
 
   const pickBilibiliVideo = (pageUrl, videoTitle) => {
     setMode("web");

@@ -11,7 +11,6 @@ import {
 } from "./netease-qr-login.js";
 
 const POLL_INTERVAL_MS = 4_000; // 降低轮询频率,避免触发网易云频率风控
-const QR_EXPIRY_WARNING_MS = 240_000;
 
 function pickError(caught) {
   return caught?.message || "网易云扫码登录暂时失败。";
@@ -89,7 +88,7 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
     return () => { cancelled = true; };
   }, [qrOpen, qrContent]);
 
-  const startLogin = useCallback(async () => {
+  async function startLogin() {
     autoRefreshCountRef.current = 0;
     setBusy(true);
     setError("");
@@ -185,7 +184,7 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
     } finally {
       setBusy(false);
     }
-  }, [refreshStatus, stopPolling]);
+  }
 
   const cancelLogin = useCallback(() => {
     stopPolling();
