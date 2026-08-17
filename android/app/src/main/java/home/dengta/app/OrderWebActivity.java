@@ -23,6 +23,7 @@ public class OrderWebActivity extends Activity {
     private String configJson;
     private int orderStep = 0;
     private boolean reloadAttempted = false;
+    private boolean backHintShown = false;
     private String currentUrl = "";
 
     @Override
@@ -92,8 +93,20 @@ public class OrderWebActivity extends Activity {
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
-                // 渲染进程崩溃时结束本页面,避免整个 App 进程被杀。
-                finish();
+                // 渲染进程崩溃：先尝试重新加载一次（页面可能只是短暂内存压力），
+                // 仍失败才结束页面并返回结果（带原因），避免用户看到"搜索被取消"。
+                if (!reloadAttempted) {
+                    reloadAttempted = true;
+                    view.post(() -> {
+                        try {
+                            if (currentUrl != null && !currentUrl.isEmpty()) view.loadUrl(currentUrl);
+                        } catch (Exception ignored) {
+                            finishWithResult("{\"status\":\"error\",\"error\":\"外卖页面渲染异常，请重试\"}");
+                        }
+                    });
+                    return true;
+                }
+                finishWithResult("{\"status\":\"error\",\"error\":\"外卖页面多次渲染异常，请稍后重试\"}");
                 return true;
             }
 
@@ -219,6 +232,21 @@ public class OrderWebActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        // 第一次返回键不直接取消：点餐页还开着，提示用户用页面内“完成后点这里返回”。
+        // 避免误触返回导致“外卖搜索被取消、页面关闭”。
+        if (!backHintShown) {
+            backHintShown = true;
+            if (webView != null) {
+                webView.post(() -> {
+                    android.widget.Toast.makeText(
+                        this,
+                        "点餐页还开着：完成后点页面底部的「完成后点这里返回」即可，不要按返回键。",
+                        android.widget.Toast.LENGTH_LONG
+                    ).show();
+                });
+            }
+            return;
+        }
         Intent data = new Intent();
         data.putExtra("message", "用户关闭了点餐页面。");
         setResult(Activity.RESULT_CANCELED, data);

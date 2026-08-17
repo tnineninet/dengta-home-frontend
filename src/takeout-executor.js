@@ -168,11 +168,16 @@ export function startTakeoutRunner({
       } catch {
         // 存储不可用时仍然继续,由服务端 pending 状态兜底。
       }
-      await executeTakeoutCommand(command, { client, plugin });
       try {
-        window.localStorage.removeItem(markerKey);
-      } catch {
-        // 忽略。
+        await executeTakeoutCommand(command, { client, plugin });
+      } finally {
+        // 无论成功失败都清除崩溃护栏标记，
+        // 否则页面被取消/异常退出后下次会误报“自动取消”。
+        try {
+          window.localStorage.removeItem(markerKey);
+        } catch {
+          // 忽略。
+        }
       }
       onCommandDone(command);
     } finally {
