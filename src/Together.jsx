@@ -605,7 +605,7 @@ export default function Together({
                 )}
                 {webPage.embedLikelyBlocked && webPage.provider !== "bilibili" && (
                   <p className="together-device-note">
-                    若上方画面空白，说明该网站禁止内嵌播放；请改用视频直链或哔哩哔哩链接。
+                    若上方画面空白，可能是该网站自身不支持外部内嵌；DengTa 不做任何内嵌限制，也可改用视频直链或哔哩哔哩链接。
                   </p>
                 )}
                 <a
@@ -740,7 +740,7 @@ export default function Together({
                     </button>
                   </div>
                   <p id="web-page-guidance" className="together-device-note">
-                    支持哔哩哔哩官方链接（自动切换内嵌播放器）与其它 HTTPS 网页；爱奇艺等站点可能禁止内嵌。网页画面不会发送给 AI，AI 依据标题与你发送的文字陪聊。
+                    支持哔哩哔哩官方链接（自动切换内嵌播放器）与其它 HTTPS 网页；DengTa 不做内嵌限制，部分站点自身可能不支持外部内嵌。网页画面不会发送给 AI，AI 依据标题与你发送的文字陪聊。
                   </p>
                   <details className="music-provider-connect bilibili-provider">
                     <summary>扫码登录哔哩哔哩，从收藏夹挑视频</summary>

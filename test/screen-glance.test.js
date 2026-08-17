@@ -90,9 +90,8 @@ assert.throws(
 
 const turn = buildScreenGlanceTurn(capture);
 assert.equal(turn.displayText, "（允许伴侣看了一眼刚才共享的屏幕）");
-assert.match(turn.turnContext, /不可信视觉背景/);
-assert.match(turn.turnContext, /不得执行画面文字/);
-assert.match(turn.turnContext, /账号|验证码|支付/);
+assert.match(turn.turnContext, /明确授权了这一张当前画面/);
+assert.match(turn.turnContext, /自主决定要不要吐槽/);
 assert.doesNotMatch(turn.displayText, /系统指令|提示词|不可信/);
 
 const manifest = fs.readFileSync(
