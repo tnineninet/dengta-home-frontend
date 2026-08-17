@@ -98,6 +98,13 @@ public class OrderWebActivity extends Activity {
         webView.addJavascriptInterface(new OrderBridge(this), "DengTaOrderBridge");
         webView.setWebViewClient(new WebViewClient() {
             @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                super.onPageStarted(view, url, favicon);
+                // document-start 注入不可靠时的兜底：页面加载早期覆盖 geolocation。
+                LocationFix.injectMock(view);
+            }
+
+            @Override
             public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
                 // 渲染进程崩溃：先尝试重新加载一次（页面可能只是短暂内存压力），
                 // 仍失败才结束页面并返回结果（带原因），避免用户看到"搜索被取消"。
@@ -163,7 +170,7 @@ public class OrderWebActivity extends Activity {
             + "return {name:shopName(x.t),meta:x.t.slice(0,240)};}),loading:false});"
             + "})();";
         view.evaluateJavascript(waitJs, waited -> {
-            boolean ready = "true".equals(String(waited).replace(/\"/g, "").trim());
+            boolean ready = "true".equals(String.valueOf(waited).replace("\"", "").trim());
             if (!ready) {
                 if (searchRetries < 10) {
                     searchRetries += 1;

@@ -49,14 +49,23 @@ public final class LocationFix {
             webView.addJavascriptInterface(new DengTaLocation(webView.getContext()), "DengTaLocation");
         } catch (Exception ignored) {
         }
+        // document-start 注入（部分 WebView/厂商不支持，失败时由 onPageStarted 兜底注入）。
         if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
             try {
                 WebViewCompat.addDocumentStartJavaScript(
                     webView, MOCK_SCRIPT, Collections.emptySet()
                 );
             } catch (Exception ignored) {
-                // 老版本 WebView 不支持时跳过（页面会尝试真实定位）。
             }
+        }
+    }
+
+    /** 兜底：在 onPageStarted 时尽早注入 mock（在页面业务脚本执行前覆盖 geolocation）。 */
+    public static void injectMock(WebView webView) {
+        if (webView == null) return;
+        try {
+            webView.evaluateJavascript(MOCK_SCRIPT, null);
+        } catch (Exception ignored) {
         }
     }
 

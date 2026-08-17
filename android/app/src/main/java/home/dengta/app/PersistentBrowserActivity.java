@@ -124,8 +124,24 @@ public final class PersistentBrowserActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
         // 无 GMS 手机 WebView 定位必失败：注入 mock geolocation（真实坐标），外卖等页面才能正常按附近展示。
         LocationFix.apply(webView);
-        webView.setWebChromeClient(new WebChromeClient());
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public void onGeolocationPermissionsShowPrompt(
+                String origin,
+                android.webkit.GeolocationPermissions.Callback callback
+            ) {
+                // 用户已在应用内主动打开页面，允许页面读取定位（配合 mock 保证可用）。
+                callback.invoke(origin, true, false);
+            }
+        });
         webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                super.onPageStarted(view, url, favicon);
+                // document-start 注入不可靠时的兜底：页面加载早期覆盖 geolocation。
+                LocationFix.injectMock(view);
+            }
+
             @Override
             public boolean shouldOverrideUrlLoading(WebView view, String url) {
                 if (url == null) return false;
