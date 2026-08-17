@@ -177,13 +177,16 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
         title: "哔哩哔哩（内置浏览器）",
         site: "bilibili",
       });
-      if (!opened.ok) {
-        setError(opened.error || "无法打开内置浏览器。");
-        return;
-      }
+      // 用系统返回键关闭也会走到这里：只要在页面里点过「提取登录态」，
+      // 登录态已经保存在本机，这里必须继续读取，不能因为返回方式而丢失。
       const saved = await readBrowserCookie("bilibili");
       if (!saved.cookie) {
-        setFeedback("内置浏览器已关闭，但没有提取到登录态。请重新打开、登录后在页面点「提取登录态」再返回。");
+        setError(
+          opened.ok
+            ? "没有提取到登录态。请重新打开，在页面里登录后点「提取登录态」，再返回。"
+            : (opened.error || "无法打开内置浏览器。") +
+                " 且没有提取到登录态，请重试。"
+        );
         return;
       }
       const imported = await apiRequest("/api/v2/co-watch/bilibili-qr/cookie", {

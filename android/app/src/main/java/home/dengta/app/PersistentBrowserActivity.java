@@ -266,8 +266,17 @@ public final class PersistentBrowserActivity extends Activity {
             return;
         }
         Intent data = new Intent();
-        data.putExtra("message", "用户关闭了内置浏览器。");
-        setResult(Activity.RESULT_CANCELED, data);
+        // 已提取过登录态：按正常结果返回，避免误报"用户关闭了内置浏览器"，
+        // 前端拿到后继续读取已保存的登录态。
+        String key = site.isEmpty() ? "custom" : site;
+        boolean extracted = !prefs(this).getString(key, "").isEmpty();
+        if (extracted) {
+            data.putExtra("result", "{\"opened\":true,\"extracted\":true}");
+            setResult(Activity.RESULT_OK, data);
+        } else {
+            data.putExtra("message", "用户关闭了内置浏览器。");
+            setResult(Activity.RESULT_CANCELED, data);
+        }
         super.onBackPressed();
     }
 

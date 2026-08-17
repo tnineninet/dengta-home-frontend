@@ -317,6 +317,10 @@ public final class DeviceActivityPlugin extends Plugin {
                 if (controllers != null) {
                     for (MediaController controller : controllers) {
                         if (controller == null) continue;
+                        // 只认音乐播放器：跳过视频类 App（B站/腾讯视频/抖音等）的媒体会话
+                        String sessionPkg = controller.getPackageName() == null
+                            ? "" : controller.getPackageName().toLowerCase();
+                        if (isVideoPackage(sessionPkg)) continue;
                         PlaybackState state = controller.getPlaybackState();
                         if (state == null) continue;
                         long lastActive = state.getLastPositionUpdateTime();
@@ -342,6 +346,20 @@ public final class DeviceActivityPlugin extends Plugin {
             // 回退失败则返回空
         }
         call.resolve(buildNowPlaying(null));
+    }
+
+    private static final String[] VIDEO_PACKAGE_MARKERS = {
+        "bilibili", "youku", "iqiyi", "qiyi", "tencent.video", "qqvideo",
+        "douyin", "kuaishou", "huya", "douyu", "mgtv", "sohu.video",
+        "weishi", "quanmin", "soul", "youtube", "twitch", "video"
+    };
+
+    private boolean isVideoPackage(String pkg) {
+        if (pkg == null || pkg.isEmpty()) return false;
+        for (String marker : VIDEO_PACKAGE_MARKERS) {
+            if (pkg.contains(marker)) return true;
+        }
+        return false;
     }
 
     /** 从通知监听缓存构建 nowPlaying（标题/歌手/封面/播放状态）。 */

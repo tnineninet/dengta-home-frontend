@@ -464,13 +464,13 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
         site: "netease",
         desktop: options?.desktop === true,
       });
-      if (!outcome.ok) {
-        setError(outcome.error || "没有拿到登录状态。");
-        return;
-      }
+      // 用系统返回键关闭也会走到这里：只要点过「提取登录态」，
+      // 登录态已保存在本机，必须继续读取，不能因为返回方式而丢失。
       const saved = await readBrowserCookie("netease");
       if (!saved.cookie) {
-        setError("没有提取到登录态。请重新打开，在页面里登录后点「提取登录态」，再返回。");
+        setError(outcome.ok
+          ? "没有提取到登录态。请重新打开，在页面里登录后点「提取登录态」，再返回。"
+          : (outcome.error || "没有拿到登录状态。") + " 且没有提取到登录态，请重试。");
         return;
       }
       const savedSession = await saveNeteaseCookieSession(saved.cookie);

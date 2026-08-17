@@ -31,11 +31,12 @@ public final class NowPlayingListenerService extends NotificationListenerService
     private static volatile StatusBarNotification cachedMediaNotification = null;
     private static volatile long cachedAt = 0L;
 
-    // 媒体通知的包名黑名单（明显不是音乐的）
-    private static final String[] NON_MEDIA_MARKERS = {
-        "weixin", "wechat", "qq.", "taobao", "jd.", "meituan", "ele.me",
-        "dianping", "zhihu", "douyin", "kuaishou", "dingtalk", "telegram",
-        "whatsapp", "facebook", "instagram", "youtube"
+    // 视频类 App：即使发媒体通知也是视频不是音乐，排除掉。
+    private static final String[] VIDEO_PACKAGE_MARKERS = {
+        "bilibili", "youku", "iqiyi", "qiyi", "tencent.video", "qqvideo",
+        "douyin", "kuaishou", "huya", "douyu", "mgtv", "sohu.video",
+        "video", "vod", "zuiyou", "weishi", "quanmin", "kuaishou",
+        "soul", "youtube", "twitch"
     };
 
     public static StatusBarNotification getCachedMediaNotification() {
@@ -68,23 +69,37 @@ public final class NowPlayingListenerService extends NotificationListenerService
     }
 
     private boolean isMediaNotification(StatusBarNotification sbn, Notification notification) {
-        // 1) 有媒体样式（MediaStyle）的通知
+        // 硬性条件：必须是系统"媒体播放"通知——广告、外卖、工具类推送
+        // 即使带标题和文本也一律不收。
+        boolean mediaStyle = false;
         if (notification.extras != null) {
             String template = String.valueOf(notification.extras.getString(Notification.EXTRA_TEMPLATE));
-            if (template != null && template.contains("MediaStyle")) return true;
-        }
-        // 2) 有标题 + 文本，且包名不是明显非媒体应用
-        String pkg = sbn.getPackageName() == null ? "" : sbn.getPackageName().toLowerCase();
-        for (String marker : NON_MEDIA_MARKERS) {
-            if (pkg.contains(marker)) return false;
-        }
-        if (notification.extras != null) {
-            CharSequence title = notification.extras.getCharSequence(Notification.EXTRA_TITLE);
-            CharSequence text = notification.extras.getCharSequence(Notification.EXTRA_TEXT);
-            if (title != null && title.length() > 0 && text != null && text.length() > 0) {
-                return true;
+            if (template != null && template.contains("MediaStyle")) mediaStyle = true;
+            if (notification.extras.containsKey(Notification.EXTRA_MEDIA_SESSION)
+                || notification.extras.containsKey("android.mediaSession")) {
+                mediaStyle = true;
             }
         }
-        return false;
+        // 兜底：包名像知名音乐 App 且带媒体按钮动作的也算（个别播放器不用 MediaStyle）
+        if (!mediaStyle) {
+            String pkg = sbn.getPackageName() == null ? "" : sbn.getPackageName().toLowerCase();
+            boolean musicApp = pkg.contains("netease") || pkg.contains("cloudmusic")
+                || pkg.contains("qqmusic") || pkg.contains("kugou") || pkg.contains("kuwo")
+                || pkg.contains("xiami") || pkg.contains("spotify") || pkg.contains("pandora")
+                || pkg.contains("imusic") || pkg.contains("music");
+            if (musicApp) {
+                if (notification.extras != null) {
+                    CharSequence title = notification.extras.getCharSequence(Notification.EXTRA_TITLE);
+                    if (title != null && title.length() > 0) mediaStyle = true;
+                }
+            }
+        }
+        if (!mediaStyle) return false;
+        // 排除视频类 App（B站/腾讯视频/抖音等即使发媒体通知也不是音乐）。
+        String pkg = sbn.getPackageName() == null ? "" : sbn.getPackageName().toLowerCase();
+        for (String marker : VIDEO_PACKAGE_MARKERS) {
+            if (pkg.contains(marker)) return false;
+        }
+        return true;
     }
 }
