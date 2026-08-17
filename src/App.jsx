@@ -827,6 +827,18 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   const requestNotificationAccess = useCallback(async () => {
     setNotificationAccess((previous) => ({ ...previous, checking: true }));
+    // 1) 请求 App 通知权限（Android 13+ 媒体通知监听需要它）
+    try {
+      if (Capacitor.isPluginAvailable("LocalNotifications")) {
+        const permission = await LocalNotifications.checkPermissions();
+        if (permission?.display !== "granted") {
+          await LocalNotifications.requestPermissions().catch(() => {});
+        }
+      }
+    } catch {
+      // 通知权限请求失败不阻塞
+    }
+    // 2) 打开系统"通知使用权"设置页
     await openNotificationAccessSettings().catch(() => false);
     // 用户从系统设置返回后重新检查
     window.setTimeout(async () => {
