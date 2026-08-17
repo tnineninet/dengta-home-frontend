@@ -167,8 +167,8 @@ export function MessageAttachments({ value, apiBaseUrl, onPreview }) {
   );
 }
 
-// 心声功能排查期临时关闭（恢复：改为 true）
-const VISIBLE_MONOLOGUE_UI_ENABLED = false;
+// 心声功能已恢复（设置 false 可再次临时关闭）
+const VISIBLE_MONOLOGUE_UI_ENABLED = true;
 
 export function ThinkingPanel({
   message,
