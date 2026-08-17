@@ -4685,6 +4685,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                     "连接暂时中断了，请检查后端后再试一次。",
                   isStreaming: false,
                   chatError: true,
+                  error_code: error?.code || 'CHAT_REQUEST_FAILED',
+                  error_location: error?.error_location || '',
+                  error_log_id: error?.error_log_id || '',
+                  error_source: error?.error_source || '',
+                  error_time: new Date().toISOString(),
                   generationInProgress: generationStillInProgress,
                   retryAvailable: restoreDraft,
                   visibleMonologue: reduceVisibleMonologueEvent(

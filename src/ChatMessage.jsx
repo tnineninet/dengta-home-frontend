@@ -11,6 +11,7 @@ import { getStickerById } from "./sticker-catalog";
 import { formatVoiceConfidence } from "./voice";
 import ChatSkinOrnament from "./ChatSkinOrnament";
 import { privateMediaAsset, privateMediaContentPath } from "./private-media";
+import { fetchErrorLogById } from "./api";
 
 function formatMessageTime(value) {
   if (!value) return "刚刚";
@@ -58,6 +59,36 @@ function ChatMessage({
       )
     : null;
   const avatar = isUser ? userAvatar : companionAvatar;
+
+  // 错误日志详情（聊天页"查看日志"）
+  const [logExpanded, setLogExpanded] = useState(false);
+  const [logDetail, setLogDetail] = useState(null);
+  const [logLoading, setLogLoading] = useState(false);
+
+  const toggleErrorLog = useCallback(async () => {
+    if (logExpanded) {
+      setLogExpanded(false);
+      return;
+    }
+    setLogExpanded(true);
+    if (logDetail || !item.error_log_id) return;
+    setLogLoading(true);
+    try {
+      const log = await fetchErrorLogById(item.error_log_id);
+      setLogDetail(log);
+    } catch {
+      setLogDetail({ fetch_failed: true });
+    } finally {
+      setLogLoading(false);
+    }
+  }, [logExpanded, logDetail, item.error_log_id]);
+
+  function formatErrorTime(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return date.toLocaleString("zh-CN", { hour12: false });
+  }
   const avatarLetter = isUser
     ? Array.from(userName || "我")[0] || "我"
     : Array.from(aiName || "伴")[0] || "伴";
@@ -277,6 +308,71 @@ function ChatMessage({
               )}
               <DeviceActionReceipts actions={item.tool_calls?.mcp_actions} />
             </>
+          )}
+          {item.chatError === true && (
+            <div className="chat-error-panel">
+              <div className="chat-error-meta-row">
+                <span className="chat-error-code-badge">
+                  ⚠ {item.error_code || 'ERROR'}{' '}
+                  {item.error_source ? `· ${item.error_source}` : ''}
+                </span>
+                {item.error_location && (
+                  <span className="chat-error-location" title={item.error_location}>
+                    位置: {item.error_location}
+                  </span>
+                )}
+                <time className="chat-error-time">
+                  {formatErrorTime(item.error_time || item.created_at)}
+                </time>
+              </div>
+              {item.error_log_id ? (
+                <button
+                  type="button"
+                  className="chat-error-log-toggle"
+                  onClick={() => void toggleErrorLog()}
+                >
+                  {logExpanded ? '收起日志' : '查看日志'}
+                </button>
+              ) : (
+                <span className="chat-error-no-log">未生成日志记录</span>
+              )}
+              {logExpanded && (
+                <div className="chat-error-log-detail">
+                  {logLoading && <span className="chat-error-log-loading">读取中…</span>}
+                  {!logLoading && logDetail?.fetch_failed && (
+                    <span className="chat-error-log-failed">日志读取失败</span>
+                  )}
+                  {!logLoading && logDetail && !logDetail.fetch_failed && (
+                    <>
+                      <p className="chat-error-log-line">
+                        <strong>时间</strong>: {formatErrorTime(logDetail.created_at)}
+                      </p>
+                      <p className="chat-error-log-line">
+                        <strong>路径</strong>: {logDetail.method} {logDetail.path}
+                      </p>
+                      <p className="chat-error-log-line">
+                        <strong>错误码</strong>: {logDetail.error_code || 'unknown'}
+                      </p>
+                      <p className="chat-error-log-line">
+                        <strong>消息</strong>: {logDetail.message || ''}
+                      </p>
+                      <p className="chat-error-log-line">
+                        <strong>来源/阶段</strong>: {logDetail.error_source || 'dengta'}
+                        {logDetail.provider_phase ? ` / ${logDetail.provider_phase}` : ''}
+                        {logDetail.provider_code ? ` / ${logDetail.provider_code}` : ''}
+                        {logDetail.upstream_status ? ` / HTTP ${logDetail.upstream_status}` : ''}
+                      </p>
+                      <p className="chat-error-log-line">
+                        <strong>会话</strong>: {logDetail.conversation_id || '-'}
+                      </p>
+                      {logDetail.stack_trace && (
+                        <pre className="chat-error-log-stack">{logDetail.stack_trace}</pre>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
           )}
           {item.voiceAnalysis && (
             <div className="voice-message-meta">

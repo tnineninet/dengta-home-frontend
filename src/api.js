@@ -145,6 +145,14 @@ export async function fetchErrorLogs(limit = 50) {
   return Array.isArray(data?.logs) ? data.logs : [];
 }
 
+export async function fetchErrorLogById(logId) {
+  const data = await apiRequest(
+    `/api/errors/${encodeURIComponent(logId)}`,
+    { retry: false },
+  );
+  return data?.log || null;
+}
+
 export async function apiRequest(path, options = {}) {
   const response = await apiFetch(path, {
     ...options,
@@ -177,6 +185,8 @@ export async function apiRequest(path, options = {}) {
     if (data.error_source) error.error_source = data.error_source;
     if (data.provider_phase) error.provider_phase = data.provider_phase;
     if (data.upstream_status) error.upstream_status = data.upstream_status;
+    if (data.error_location) error.error_location = data.error_location;
+    if (data.error_log_id) error.error_log_id = data.error_log_id;
     throw error;
   }
 
