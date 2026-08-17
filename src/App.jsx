@@ -21,7 +21,13 @@ import {
   ServerCog,
   Trophy,
 } from "lucide-react";
-import { API_BASE_URL, apiRequest, fetchErrorLogs, streamChat } from "./api";
+import {
+  API_BASE_URL,
+  apiFetch,
+  apiRequest,
+  fetchErrorLogs,
+  streamChat,
+} from "./api";
 import WebInstallButton from "./WebInstallButton.jsx";
 import {
   BackgroundNotifications,
@@ -463,6 +469,85 @@ function ErrorLogsPanel() {
   );
 }
 
+function MemoryImportCard() {
+  const [file, setFile] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState('');
+
+  async function runImport() {
+    if (!file || busy) return;
+    setBusy(true);
+    setError('');
+    setResult(null);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const response = await apiFetch('/api/v2/memory/import-file', {
+        method: 'POST',
+        body: form,
+        retry: false,
+        timeoutMs: 90000,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw Object.assign(new Error(data?.message || '导入失败，请稍后重试。'), { status: response.status, code: data?.code });
+      }
+      setResult(data);
+    } catch (importError) {
+      setError(importError?.message || '导入失败，请稍后重试。');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="settings-card memory-import-card">
+      <h3>导入旧记忆（可选）</h3>
+      <p className="card-hint">
+        把你以前和 AI 聊过的内容导入到这个账号自己的长期记忆库（与其他用户隔离）。
+        支持 txt / md / json / csv / pdf / docx / xlsx / zip 文件；
+        服务器会自动提取文字并整理成记忆（AI 可用时智能提炼，否则按段落保存）。
+      </p>
+      <div className="memory-import-actions">
+        <input
+          type="file"
+          accept=".txt,.md,.json,.csv,.pdf,.docx,.xlsx,.zip"
+          disabled={busy}
+          onChange={(event) => {
+            setFile(event.target.files?.[0] || null);
+            setResult(null);
+            setError('');
+          }}
+        />
+        <button
+          type="button"
+          className="memory-import-run"
+          disabled={!file || busy}
+          onClick={() => void runImport()}
+        >
+          {busy ? '导入中…' : '开始导入'}
+        </button>
+      </div>
+      {error && <p className="memory-import-error">{error}</p>}
+      {result && result.ok === true && (
+        <div className="memory-import-result">
+          <strong>导入完成</strong>
+          <span>
+            成功 {result.imported || 0} 条，跳过 {result.skipped || 0} 条，
+            记忆库现有 {result.total ?? '?'} 条
+            {result.mode === 'ai' ? '（AI 智能整理）' : '（按段落保存）'}
+          </span>
+        </div>
+      )}
+      {result && result.ok !== true && !error && (
+        <p className="memory-import-error">
+          {result?.message || result?.error || '导入失败'}
+        </p>
+      )}
+    </div>
+  );
+}
 function shanghaiClientTime(value = new Date()) {
   return value.toLocaleString("zh-CN", {
     timeZone: SHANGHAI_TIME_ZONE,
@@ -8453,6 +8538,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 </small>
               )}
             </div>
+            <MemoryImportCard />
               </>
             )}
             {settingsCategory === "logs" && (
