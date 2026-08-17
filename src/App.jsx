@@ -186,6 +186,10 @@ import {
   reportDeviceState,
 } from "./device-signals.js";
 import {
+  requestWhereaboutsPermissions,
+  startWhereaboutsScheduler,
+} from "./whereabouts.js";
+import {
   TAKEOUT_PLATFORMS,
   openTakeoutLogin,
   readTakeoutLoginState,
@@ -2395,6 +2399,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisibility);
     };
+  }, []);
+
+  useEffect(() => {
+    const stopWhereabouts = startWhereaboutsScheduler({
+      apiRequest,
+    });
+    void requestWhereaboutsPermissions();
+    return stopWhereabouts;
   }, []);
 
   useEffect(() => {
