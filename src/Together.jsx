@@ -117,7 +117,6 @@ export default function Together({
   );
   const webVideoRef = useRef(null);
   const [activeDanmaku, setActiveDanmaku] = useState([]);
-  const [webPositionSeconds, setWebPositionSeconds] = useState(0);
   const danmakuCursorRef = useRef(0);
   const danmakuSpawnedRef = useRef(new Set());
 
@@ -128,10 +127,6 @@ export default function Together({
         video && Number.isFinite(video.currentTime) ? video.currentTime : -1;
       const now = Date.now();
       if (current < 0) return;
-      if (webVideoRef.current) {
-        const rounded = Math.floor(current);
-        setWebPositionSeconds((prev) => (prev === rounded ? prev : rounded));
-      }
       setActiveDanmaku((prev) =>
         prev.filter((item) => now - item.spawnedAt < 9000),
       );
@@ -501,7 +496,6 @@ export default function Together({
     });
   };
 
-  const stageTitle = session?.title || title || "还没有填写片名";
   const currentFeedback =
     selectedMode === "web" ? webFeedback : selectedMode === "direct" ? directFeedback : feedback;
 
@@ -692,24 +686,7 @@ export default function Together({
               <span>回到 DengTa 后，这里只保留最近一次临时预览。</span>
             </div>
           )}
-          <div className="together-stage-caption">
-            <span>{stageTitle}</span>
-            <time>
-              {selectedMode === "music"
-                ? `${formatMediaTime(musicPositionSeconds)} · 前台播放器`
-                : selectedMode === "direct"
-                ? `${formatMediaTime(directPositionSeconds)} / ${
-                    directDurationSeconds
-                      ? formatMediaTime(directDurationSeconds)
-                      : "等待媒体信息"
-                  }`
-                : selectedMode === "web"
-                ? webPositionSeconds > 0
-                  ? formatMediaTime(webPositionSeconds)
-                  : "等待播放"
-                : formatMoment(preview?.capturedAt)}
-            </time>
-          </div>
+
         </div>
 
         {lastAssistantLine ? (
