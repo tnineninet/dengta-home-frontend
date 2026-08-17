@@ -365,6 +365,15 @@ function ChatMessage({
                       <p className="chat-error-log-line">
                         <strong>会话</strong>: {logDetail.conversation_id || '-'}
                       </p>
+                      {logDetail.request_summary && (
+                        <p className="chat-error-log-line">
+                          <strong>请求</strong>: 模型 {logDetail.request_summary.model || '-'}
+                          {' · '}流式 {logDetail.request_summary.stream ? '是' : '否'}
+                          {Array.isArray(logDetail.request_summary.body_keys) && logDetail.request_summary.body_keys.length > 0
+                            ? ` · 字段 ${logDetail.request_summary.body_keys.join(', ')}`
+                            : ''}
+                        </p>
+                      )}
                       {logDetail.stack_trace && (
                         <pre className="chat-error-log-stack">{logDetail.stack_trace}</pre>
                       )}
