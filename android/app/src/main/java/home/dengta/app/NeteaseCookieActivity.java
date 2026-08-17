@@ -33,12 +33,13 @@ public class NeteaseCookieActivity extends Activity {
     }
 
     private void onCreateGuarded(Bundle savedInstanceState) {
+        boolean desktopMode = getIntent().getBooleanExtra("desktop", false);
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setLayoutParams(new ViewGroup.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
         TextView header = new TextView(this);
-        header.setText("网易云登录（登录后点下方保存）");
+        header.setText(desktopMode ? "网易云电脑版登录（双指可放大扫码，登录后点下方保存）" : "网易云登录（登录后点下方保存）");
         header.setPadding(24, 20, 24, 10);
         root.addView(header, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -49,10 +50,22 @@ public class NeteaseCookieActivity extends Activity {
         settings.setDomStorageEnabled(true);
         settings.setJavaScriptCanOpenWindowsAutomatically(true);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        settings.setUserAgentString(
-            "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36");
-        settings.setUseWideViewPort(true);
-        settings.setLoadWithOverviewMode(true);
+        if (desktopMode) {
+            // 电脑桌面版：桌面 UA 加载 music.163.com，页面带扫码登录；
+            // 二维码区域支持双指缩放放大后方便用另一台手机扫。
+            settings.setUserAgentString(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
+            settings.setSupportZoom(true);
+            settings.setBuiltInZoomControls(true);
+            settings.setDisplayZoomControls(false);
+            settings.setUseWideViewPort(true);
+            settings.setLoadWithOverviewMode(true);
+        } else {
+            settings.setUserAgentString(
+                "Mozilla/5.0 (Linux; Android 13; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36");
+            settings.setUseWideViewPort(true);
+            settings.setLoadWithOverviewMode(true);
+        }
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
         webView.setWebViewClient(new WebViewClient() {
@@ -116,7 +129,7 @@ public class NeteaseCookieActivity extends Activity {
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         setContentView(root);
-        webView.loadUrl(H5_HOME);
+        webView.loadUrl(desktopMode ? "https://music.163.com/" : H5_HOME);
     }
 
     private void markCancelled() {

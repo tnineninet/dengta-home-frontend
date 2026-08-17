@@ -12,6 +12,7 @@ import {
   ArrowLeft,
   BrainCircuit,
   DatabaseZap,
+  FileDown,
   Mic2,
   MonitorSmartphone,
   Music,
@@ -274,6 +275,7 @@ const CompanionCreativeSettings = lazy(
 const CompanionDiary = lazy(() => import("./CompanionDiary"));
 const CompanionProfile = lazy(() => import("./CompanionProfile"));
 const ContentImport = lazy(() => import("./ContentImport"));
+const AccountExport = lazy(() => import("./AccountExport"));
 const MusicSettings = lazy(() => import("./MusicSettings"));
 const ExternalMemoryConnections = lazy(
   () => import("./ExternalMemoryConnections"),
@@ -353,6 +355,12 @@ const SETTINGS_CATEGORIES = [
     label: "数据导入",
     description: "世界书与聊天记录",
     Icon: DatabaseZap,
+  },
+  {
+    id: "data-export",
+    label: "数据导出",
+    description: "全量备份：聊天、人设、记忆与创作",
+    Icon: FileDown,
   },
   {
     id: "music-import",
@@ -7583,13 +7591,19 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               </Suspense>
             )}
 
+            {settingsCategory === "data-export" && (
+              <Suspense fallback={<DeferredFeature label="正在打开数据导出…" />}>
+                <AccountExport />
+              </Suspense>
+            )}
+
             {settingsCategory === "music-import" && (
               <Suspense fallback={<DeferredFeature label="正在打开音乐导入…" />}>
                 <MusicSettings />
               </Suspense>
             )}
 
-            {settingsCategory !== "data-import" && settingsCategory !== "music-import" && (
+            {settingsCategory !== "data-import" && settingsCategory !== "music-import" && settingsCategory !== "data-export" && (
             <form className="settings-form" onSubmit={saveSettings}>
           {settingsCategory === "services" && (
             <div className="settings-card service-manager-card">

@@ -36,6 +36,7 @@ public class MainActivity extends BridgeActivity {
 
         WebView webView = getBridge().getWebView();
         webView.setLayerType(View.LAYER_TYPE_NONE, null);
+        webView.addJavascriptInterface(new DengTaFileBridge(this), "DengTaFileBridge");
         getBridge().addWebViewListener(new WebViewListener() {
             @Override
             public boolean onRenderProcessGone(WebView crashedView, RenderProcessGoneDetail detail) {

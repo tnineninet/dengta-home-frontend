@@ -446,7 +446,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   };
 
 
-  const connectNeteaseCookie = async () => {
+  const connectNeteaseCookie = async (options = {}) => {
     if (cookieBusy) return;
     if (!neteaseCookiePluginAvailable()) {
       setError("一键连接仅 Android App 可用。");
@@ -455,7 +455,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
     setCookieBusy(true);
     setError("");
     try {
-      const outcome = await openNeteaseCookieLogin();
+      const outcome = await openNeteaseCookieLogin(options);
       if (!outcome.ok || !outcome.cookie) {
         setError(outcome.error || "没有拿到登录状态。");
         return;
@@ -756,21 +756,31 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
                   ? "正在检查登录状态…"
                   : cookieStatus.connected
                   ? `已连接：${cookieStatus.account_name || "网易云账号"}`
-                  : "在 App 内打开网易云登录页，登录后自动保存登录状态，AI 就能搜歌、导入歌单与你一起听。"}
+                  : "在 App 内打开网易云登录页，登录后自动保存登录状态，AI 就能搜歌、导入歌单与你一起听。手机版登录页偶尔点不动时，可以改用下面的“电脑桌面版登录”。"}
               </span>
             </div>
-            <div>
+            <div className="music-cookie-connect-actions">
               {cookieStatus.connected ? (
                 <button type="button" disabled={cookieBusy} onClick={() => void disconnectNeteaseCookie()}>
                   断开
                 </button>
               ) : (
-                <button type="button" disabled={cookieBusy} onClick={() => void connectNeteaseCookie()}>
-                  {cookieBusy ? "处理中…" : "一键获取网易云"}
-                </button>
+                <>
+                  <button type="button" className="music-cookie-connect-primary" disabled={cookieBusy} onClick={() => void connectNeteaseCookie()}>
+                    {cookieBusy ? "处理中…" : "一键获取网易云"}
+                  </button>
+                  <button type="button" disabled={cookieBusy} onClick={() => void connectNeteaseCookie({ desktop: true })}>
+                    电脑桌面版网页登录
+                  </button>
+                </>
               )}
             </div>
           </div>
+          {!cookieStatus.connected && (
+            <p className="music-cookie-desktop-hint">
+              桌面版登录：打开电脑版网页（支持扫码登录，双指可放大二维码），登录后同样自动保存，适合手机版登录页无法操作的情况。
+            </p>
+          )}
         </section>
       )}
       {!active && cookieStatus.connected && (

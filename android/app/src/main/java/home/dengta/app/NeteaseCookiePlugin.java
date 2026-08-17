@@ -23,6 +23,7 @@ public final class NeteaseCookiePlugin extends Plugin {
     public void openLogin(PluginCall call) {
         try {
             Intent intent = new Intent(getContext(), NeteaseCookieActivity.class);
+            intent.putExtra("desktop", call.getBoolean("desktop", false));
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             getContext().startActivity(intent);
         } catch (Exception error) {
