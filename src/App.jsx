@@ -472,6 +472,7 @@ function ErrorLogsPanel() {
 function MemoryImportCard() {
   const [file, setFile] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [historyBusy, setHistoryBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
 
@@ -501,6 +502,29 @@ function MemoryImportCard() {
     }
   }
 
+  async function runHistoryImport() {
+    if (historyBusy) return;
+    setHistoryBusy(true);
+    setError('');
+    setResult(null);
+    try {
+      const response = await apiFetch('/api/v2/memory/import-history', {
+        method: 'POST',
+        retry: false,
+        timeoutMs: 300000,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw Object.assign(new Error(data?.message || '导入历史失败，请稍后重试。'), { status: response.status, code: data?.code });
+      }
+      setResult(data);
+    } catch (importError) {
+      setError(importError?.message || '导入历史失败，请稍后重试。');
+    } finally {
+      setHistoryBusy(false);
+    }
+  }
+
   return (
     <div className="settings-card memory-import-card">
       <h3>导入旧记忆（可选）</h3>
@@ -527,6 +551,14 @@ function MemoryImportCard() {
           onClick={() => void runImport()}
         >
           {busy ? '导入中…' : '开始导入'}
+        </button>
+        <button
+          type="button"
+          className="memory-import-history"
+          disabled={historyBusy}
+          onClick={() => void runHistoryImport()}
+        >
+          {historyBusy ? '整理中…' : '从灯塔历史导入（注册至今全部对话）'}
         </button>
       </div>
       {error && <p className="memory-import-error">{error}</p>}
