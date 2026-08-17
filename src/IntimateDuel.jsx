@@ -26,6 +26,29 @@ function readStoredDuel(names, accountScope) {
   }
 }
 
+// 打字机组件：把文本按字逐字显示（约 28ms/字），用于本轮 duel 输出。
+function TypewriterText({ text, onDone, stepMs = 28 }) {
+  const [shown, setShown] = useState(() => String(text || "").slice(0, 0));
+  useEffect(() => {
+    const full = String(text || "");
+    let index = 0;
+    if (!full) {
+      onDone?.();
+      return undefined;
+    }
+    const timer = setInterval(() => {
+      index += 1;
+      setShown(full.slice(0, index));
+      if (index >= full.length) {
+        clearInterval(timer);
+        onDone?.();
+      }
+    }, stepMs);
+    return () => clearInterval(timer);
+  }, [text, stepMs, onDone]);
+  return <>{shown}</>;
+}
+
 function FighterCard({ fighter, tone }) {
   return (
     <article className={`duel-fighter-card ${tone}`}>
@@ -72,6 +95,7 @@ export default function IntimateDuel({
   const [duel, setDuel] = useState(() => readStoredDuel(names, accountScope));
   const [isNarrating, setIsNarrating] = useState(false);
   const [notice, setNotice] = useState("");
+  const [typingEntryId, setTypingEntryId] = useState(null);
   const logRef = useRef(null);
 
   useEffect(() => {
@@ -90,6 +114,7 @@ export default function IntimateDuel({
     setDuel(createDuelState(names));
     setIsNarrating(false);
     setNotice("");
+    setTypingEntryId(null);
   }
 
   async function handleSkill(skill) {
@@ -125,12 +150,20 @@ export default function IntimateDuel({
           winner: turn.winner,
         }),
       });
+      if (data?.refused === true) {
+        // 上游/模型拒绝了成人内容：不显示空白回合，提示用户原因。
+        setNotice(
+          `${names.companionName}没有完成这一招（上游模型拒绝输出成人内容）。`,
+        );
+        return;
+      }
       const result = completeDuelRound(pending, {
         companionSkillId: data?.companion_skill || null,
         reaction: data?.reaction || "",
         narration: data?.narration || "",
       });
       setDuel(result.state);
+      setTypingEntryId(result.state.logs.at(-1)?.id || null);
     } catch (error) {
       if (pending) {
         const fallback = completeDuelRound(pending);
@@ -165,18 +198,37 @@ export default function IntimateDuel({
       </div>
 
       <section ref={logRef} className="duel-log" aria-live="polite">
-        {duel.logs.map((entry) => (
-          <article key={entry.id} className={entry.kind}>
-            <small>{entry.title}</small>
-            {entry.reaction && (
-              <div className="duel-visible-reaction">
-                <small>{duel.companion.name}此刻的反应</small>
-                <span>{entry.reaction}</span>
-              </div>
-            )}
-            <p>{entry.text}</p>
-          </article>
-        ))}
+        {duel.logs.map((entry) => {
+          const typewriter = entry.id === typingEntryId;
+          return (
+            <article key={entry.id} className={entry.kind}>
+              <small>{entry.title}</small>
+              {entry.reaction && (
+                <div className="duel-visible-reaction">
+                  <small>{duel.companion.name}此刻的反应</small>
+                  <span>
+                    {typewriter ? (
+                      <TypewriterText
+                        text={entry.reaction}
+                        stepMs={22}
+                        onDone={() => setTypingEntryId(null)}
+                      />
+                    ) : (
+                      entry.reaction
+                    )}
+                  </span>
+                </div>
+              )}
+              <p>
+                {typewriter ? (
+                  <TypewriterText text={entry.text} stepMs={24} />
+                ) : (
+                  entry.text
+                )}
+              </p>
+            </article>
+          );
+        })}
         {isNarrating && (
           <div className="duel-narrating" role="status">
             <span aria-hidden="true" />
