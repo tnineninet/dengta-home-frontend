@@ -37,6 +37,8 @@ public class MainActivity extends BridgeActivity {
 
         WebView webView = getBridge().getWebView();
         webView.setLayerType(View.LAYER_TYPE_NONE, null);
+        // 启动随机播放等场景允许无手势自动播放（内置播放器/后台音乐）。
+        webView.getSettings().setMediaPlaybackRequiresUserGesture(false);
         webView.addJavascriptInterface(new DengTaFileBridge(this), "DengTaFileBridge");
         getBridge().addWebViewListener(new WebViewListener() {
             @Override

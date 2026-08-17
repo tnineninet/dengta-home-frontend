@@ -790,6 +790,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const nowPlayingDismissedRef = useRef(false);
   const nowPlayingPollRef = useRef(null);
   const lastNowPlayingRef = useRef(null);
+  const randomPlayAudioRef = useRef(null);
 
   const [notificationAccess, setNotificationAccess] = useState({ granted: false, checking: true });
 
@@ -1966,6 +1967,71 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     scheduleSettingsAutosave(draftSettingsRef.current, { immediate: true });
     // This migration is intentionally armed only by the initial settings load.
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasLoadedSettings]);
+
+  // 启动随机播放：勾选"打开软件后随机播放一首歌"后，
+  // 每次进入 App（登录态就绪）随机播一首 DengTa 里已有、不跳转网易云的内置歌曲；
+  // 没有可播的歌时尝试抓取一首下载导入，遇到网易云加密格式如实提示。
+  useEffect(() => {
+    let cancelled = false;
+    if (!hasLoadedSettings) return undefined;
+    let randomPlayEnabled = false;
+    try {
+      randomPlayEnabled = window.localStorage.getItem("dengta_random_play_enabled") === "1";
+    } catch {
+      randomPlayEnabled = false;
+    }
+    if (!randomPlayEnabled) return undefined;
+    const timer = window.setTimeout(async () => {
+      if (cancelled) return;
+      try {
+        const data = await apiRequest("/api/v2/music/providers/netease/random-playable", {
+          timeoutMs: 15000,
+        }).catch(() => null);
+        if (cancelled) return;
+        let song = data?.playable === true ? data.song : null;
+        if (!song?.url) {
+          const fetched = await apiRequest("/api/v2/music/providers/netease/random-fetch", {
+            method: "POST",
+            timeoutMs: 90000,
+            body: JSON.stringify({}),
+          }).catch(() => null);
+          if (cancelled) return;
+          if (fetched?.ok && fetched?.song?.url) {
+            song = fetched.song;
+          } else {
+            setScreenGlanceFeedback({
+              status: "error",
+              message: fetched?.message || "随机播放暂时不可用。",
+            });
+            return;
+          }
+        }
+        if (!song?.url || cancelled) return;
+        const audio = new Audio(song.url);
+        randomPlayAudioRef.current = audio;
+        await audio.play().catch(() => {});
+        if (!cancelled && song?.title) {
+          setScreenGlanceFeedback({
+            status: "success",
+            message: `正在播放：${song.title}${song.artist ? " - " + song.artist : ""}（DengTa 内置播放，不跳转网易云）`,
+          });
+          window.setTimeout(() => {
+            if (!cancelled) setScreenGlanceFeedback(null);
+          }, 6000);
+        }
+      } catch {
+        // 启动随机播放失败不打扰用户
+      }
+    }, 2500);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      if (randomPlayAudioRef.current) {
+        randomPlayAudioRef.current.pause();
+        randomPlayAudioRef.current = null;
+      }
+    };
   }, [hasLoadedSettings]);
 
   useEffect(() => {

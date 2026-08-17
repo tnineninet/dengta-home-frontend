@@ -89,6 +89,23 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   const [shareUrl, setShareUrl] = useState("");
   const [providerBusy, setProviderBusy] = useState(false);
   const [providerStatus, setProviderStatus] = useState("");
+  const RANDOM_PLAY_KEY = "dengta_random_play_enabled";
+  const [randomPlayEnabled, setRandomPlayEnabled] = useState(() => {
+    try {
+      return window.localStorage.getItem(RANDOM_PLAY_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleRandomPlay = useCallback((enabled) => {
+    setRandomPlayEnabled(enabled);
+    try {
+      window.localStorage.setItem(RANDOM_PLAY_KEY, enabled ? "1" : "0");
+    } catch {
+      // 存储不可用时忽略
+    }
+  }, []);
+
   const [cookieStatus, setCookieStatus] = useState({
     checking: true,
     connected: false,
@@ -793,6 +810,19 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
             <p className="music-cookie-desktop-hint">
               手机版和桌面版都走内置浏览器：登录态保存在 App 里长期有效；桌面版页面支持扫码登录，二维码可双指放大。
             </p>
+          )}
+          {cookieStatus.connected && (
+            <label className="music-random-play-toggle">
+              <input
+                type="checkbox"
+                checked={randomPlayEnabled}
+                onChange={(event) => toggleRandomPlay(event.target.checked)}
+              />
+              <span>
+                <strong>打开软件后随机播放一首歌</strong>
+                <small>在 DengTa 里已有的歌里随机挑一首内置播放（不跳转网易云）；没有可播的歌时会尝试抓取一首下载进来。勾选后每次打开 App 都会自动播放。</small>
+              </span>
+            </label>
           )}
         </section>
       )}
