@@ -348,7 +348,7 @@ public final class ScreenGlanceService extends Service {
         );
         state.put(
             "watchIntervalSeconds",
-            prefs.getInt(WATCH_INTERVAL_SECONDS_KEY, 90)
+            prefs.getInt(WATCH_INTERVAL_SECONDS_KEY, 30)
         );
         state.put(
             "coWatchSessionId",
@@ -1043,7 +1043,7 @@ public final class ScreenGlanceService extends Service {
 
     private void scheduleWatchCapture(long delayMs) {
         mainHandler.removeCallbacks(watchCaptureRunnable);
-        long boundedDelay = Math.max(30_000L, delayMs);
+        long boundedDelay = Math.max(15_000L, delayMs);
         nextWatchCaptureAt = System.currentTimeMillis() + boundedDelay;
         mainHandler.postDelayed(watchCaptureRunnable, boundedDelay);
     }
