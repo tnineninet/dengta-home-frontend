@@ -2008,9 +2008,21 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           }
         }
         if (!song?.url || cancelled) return;
+        try {
+          console.log("random-play:start", song.title, song.url.slice(0, 60));
+        } catch { /* ignore */ }
         const audio = new Audio(song.url);
         randomPlayAudioRef.current = audio;
-        await audio.play().catch(() => {});
+        const played = await audio.play().catch((error) => {
+          try {
+            console.log("random-play:rejected", String(error?.name || error?.message || error));
+          } catch { /* ignore */ }
+          setScreenGlanceFeedback({
+            status: "error",
+            message: `自动播放被浏览器拦截（${error?.name || "NotAllowedError"}）。点一下屏幕后我会继续播放。`,
+          });
+          return null;
+        });
         if (!cancelled && song?.title) {
           setScreenGlanceFeedback({
             status: "success",

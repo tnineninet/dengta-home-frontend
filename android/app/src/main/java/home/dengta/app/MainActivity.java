@@ -65,6 +65,13 @@ public class MainActivity extends BridgeActivity {
     public void onResume() {
         super.onResume();
         PushNotificationWorker.markAppVisible(this);
+        // 启动随机播放等场景需要无手势自动播放；Capacitor 可能在初始化时重设设置，这里再强调一次。
+        try {
+            if (getBridge() != null && getBridge().getWebView() != null) {
+                getBridge().getWebView().getSettings().setMediaPlaybackRequiresUserGesture(false);
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     @Override
