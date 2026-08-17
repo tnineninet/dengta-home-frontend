@@ -46,7 +46,8 @@ import {
 } from "./music-listening.js";
 import { MUSIC_PLAYBACK_MODES, musicPlaybackIsInternal, resolveMusicPlayback } from "./music-playback.js";
 import { openNeteasePlayback } from "./netease-playback.js";
-import { neteaseCookiePluginAvailable, openNeteaseCookieLogin } from "./netease-cookie.js";
+import { neteaseCookiePluginAvailable } from "./netease-cookie.js";
+import { browserLauncherAvailable, openBuiltInBrowser, readBrowserCookie } from "./browser-launcher.js";
 
 import MusicSettings from "./MusicSettings.jsx";
 
@@ -448,23 +449,35 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
 
   const connectNeteaseCookie = async (options = {}) => {
     if (cookieBusy) return;
-    if (!neteaseCookiePluginAvailable()) {
-      setError("一键连接仅 Android App 可用。");
+    if (!browserLauncherAvailable()) {
+      setError("内置浏览器登录仅 Android App 可用。");
       return;
     }
     setCookieBusy(true);
     setError("");
     try {
-      const outcome = await openNeteaseCookieLogin(options);
-      if (!outcome.ok || !outcome.cookie) {
+      // 登录态长住的内置浏览器：打开网易云网页，登录后点「提取登录态」再返回，
+      // Cookie 自动保存给 AI 使用（可复用手机版/桌面版两种网页）。
+      const outcome = await openBuiltInBrowser({
+        url: "https://music.163.com/",
+        title: "网易云登录（内置浏览器）",
+        site: "netease",
+        desktop: options?.desktop === true,
+      });
+      if (!outcome.ok) {
         setError(outcome.error || "没有拿到登录状态。");
         return;
       }
-      const saved = await saveNeteaseCookieSession(outcome.cookie);
+      const saved = await readBrowserCookie("netease");
+      if (!saved.cookie) {
+        setError("没有提取到登录态。请重新打开，在页面里登录后点「提取登录态」，再返回。");
+        return;
+      }
+      const savedSession = await saveNeteaseCookieSession(saved.cookie);
       setCookieStatus({
         checking: false,
         connected: true,
-        account_name: saved?.session?.account_name || "",
+        account_name: savedSession?.session?.account_name || "",
       });
       setStatus("网易云账号已连接，可以搜歌和导入歌单了。");
       void refreshLibrary();
@@ -750,13 +763,13 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
         <section className="music-provider-connect music-provider-cookie">
           <div className="music-provider-connect-heading">
             <div>
-              <strong>一键连接网易云</strong>
+              <strong>内置浏览器登录网易云</strong>
               <span>
                 {cookieStatus.checking
                   ? "正在检查登录状态…"
                   : cookieStatus.connected
                   ? `已连接：${cookieStatus.account_name || "网易云账号"}`
-                  : "在 App 内打开网易云登录页，登录后自动保存登录状态，AI 就能搜歌、导入歌单与你一起听。手机版登录页偶尔点不动时，可以改用下面的“电脑桌面版登录”。"}
+                  : "用内置浏览器打开网易云网页（登录态长期有效），登录后点「提取登录态」再返回，Cookie 自动保存给 AI 使用。手机版点不动时用桌面版（双指可放大扫码）。"}
               </span>
             </div>
             <div className="music-cookie-connect-actions">
@@ -767,10 +780,10 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
               ) : (
                 <>
                   <button type="button" className="music-cookie-connect-primary" disabled={cookieBusy} onClick={() => void connectNeteaseCookie()}>
-                    {cookieBusy ? "处理中…" : "一键获取网易云"}
+                    {cookieBusy ? "处理中…" : "内置浏览器登录"}
                   </button>
                   <button type="button" disabled={cookieBusy} onClick={() => void connectNeteaseCookie({ desktop: true })}>
-                    电脑桌面版网页登录
+                    桌面版网页登录
                   </button>
                 </>
               )}
@@ -778,7 +791,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
           </div>
           {!cookieStatus.connected && (
             <p className="music-cookie-desktop-hint">
-              桌面版登录：打开电脑版网页（支持扫码登录，双指可放大二维码），登录后同样自动保存，适合手机版登录页无法操作的情况。
+              手机版和桌面版都走内置浏览器：登录态保存在 App 里长期有效；桌面版页面支持扫码登录，二维码可双指放大。
             </p>
           )}
         </section>
