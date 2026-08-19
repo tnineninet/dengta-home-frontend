@@ -742,13 +742,38 @@ public final class DlnaReceiverService extends Service {
 
     private String findTag(String xml, String tagName) {
         try {
-            int start = xml.indexOf("<" + tagName);
+            // 搜索带 namespace 前缀的标签（如 <u:SetAVTransportURI>）和不带前缀的（如 <CurrentURI>）
+            int start = xml.indexOf(":" + tagName + ">");
+            if (start < 0) start = xml.indexOf("<" + tagName + ">");
+            if (start < 0) start = xml.indexOf("<" + tagName + " ");
+            if (start < 0) {
+                // 也搜带 namespace 前缀的开启标签（如 <u:SetAVTransportURI ...>）
+                int nsPos = xml.indexOf(":" + tagName + " ");
+                if (nsPos >= 0) {
+                    int tagStart = xml.lastIndexOf("<", nsPos);
+                    if (tagStart >= 0) start = tagStart;
+                }
+            }
             if (start < 0) return "";
             int gt = xml.indexOf(">", start);
             if (gt < 0) return "";
-            int end = xml.indexOf("</" + tagName + ">", gt);
+            // 闭合标签同样处理 namespace 前缀
+            String endTag = "</" + tagName + ">";
+            int end = xml.indexOf(endTag, gt);
+            if (end < 0) {
+                // 可能带 namespace 前缀的闭合标签（如 </u:SetAVTransportURI>）
+                int nsEnd = xml.indexOf("</" + ":" + tagName + ">", gt);
+                if (nsEnd >= 0) {
+                    // 找到 namespace 前缀前的 <
+                    int closeTag = xml.lastIndexOf("</", nsEnd);
+                    if (closeTag >= 0) end = closeTag + endTag.length();
+                }
+            }
             if (end < 0) return "";
-            return xml.substring(gt + 1, end).trim();
+            int contentStart = gt + 1;
+            int contentEnd = end;
+            if (contentEnd <= contentStart) return "";
+            return xml.substring(contentStart, contentEnd).trim();
         } catch (Exception ignored) {
             return "";
         }
@@ -811,8 +836,21 @@ public final class DlnaReceiverService extends Service {
 
     private String extractTitleFromMeta(String meta) {
         if (meta == null || meta.isEmpty()) return "";
+        // 尝试 DIDL-Lite 格式（B站/腾讯/爱奇艺标准格式）
         String like = findTag(meta, "dc:title");
         if (like.isEmpty()) like = findTag(meta, "title");
+        // 再试 item 标签内的 title 属性
+        if (like.isEmpty()) {
+            int titleStart = meta.indexOf("dc:title");
+            if (titleStart < 0) titleStart = meta.indexOf("<title>");
+            if (titleStart >= 0) {
+                int gt = meta.indexOf(">", titleStart);
+                if (gt >= 0) {
+                    int end = meta.indexOf("<", gt);
+                    if (end > gt) like = meta.substring(gt + 1, end).trim();
+                }
+            }
+        }
         return like;
     }
 
