@@ -1,9 +1,13 @@
 package home.dengta.app;
 
 import android.app.Activity;
-import android.content.Context;
 import android.content.Intent;
+import android.graphics.Bitmap;
 import android.os.Bundle;
+import android.os.SystemClock;
+import android.util.Base64;
+import android.view.MotionEvent;
+import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
@@ -17,6 +21,27 @@ import android.widget.TextView;
 
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
+import java.util.Random;
+
+/**
+ * 外卖 H5 执行页 — 按《让 AI 替你点外卖》53 坑实录 1:1 复刻：
+ *
+ * 核心变更（对照各坑）：
+ *  - 坑 8 / 30：真正能点的按钮用「真触摸打坐标」（MotionEvent 注入），
+ *    不再用 element.click() 合成点击 —— 移动端 H5 按钮监听 touch 事件，
+ *    JS 合成 click 页面收不到（"在收银台等于没发生"）。
+ *  - 坑 40：筛店卡认「分」（评分），不再只认「起送¥」——免起送店从此不再隐身。
+ *  - 坑 50：进店后检测是否「猜你喜欢」小柜台（ITEM_STICKY_CATEGORY_SCHEME），
+ *    撞上就用 shopId 重建 SHOP_SCHEME 正门再进，避免进了只有六道菜的小柜台。
+ *  - 坑 13：步骤间随机真人节奏 1.5s–4.2s，不当连点器。
+ *  - 坑 14 / 24：正文 / DOM / 可见壳 三路认人机验证，撞上就收手交回给人。
+ *  - 坑 45：click 前 elementFromPoint 验身，被压住就九宫格换落点。
+ *  - 坑 46：卡身 → 卡图 → 「选规格」小钮，三重门铃。
+ *  - 坑 48：掉登录认 URL（/login）与备案页脚，当场收手提示重新扫码。
+ *
+ * 付款永远由人在页面里亲自确认（DengTa 既有设计，与帖子"撞上就交回给人"一致）。
+ */
 public class OrderWebActivity extends Activity {
     private WebView webView;
     private String mode;
@@ -26,8 +51,134 @@ public class OrderWebActivity extends Activity {
     private boolean backHintShown = false;
     private String currentUrl = "";
     private int searchRetries = 0;
+    private boolean enterTickPending = false;
+    // 帖子 11 节「钱的闸」+ 14 节「截图」：
+    // maxAmount<=0 表示未设上限（不拦）；quiet 表示加购完自动收手（不等人点「完成后点这里返回」）。
+    private double maxAmount = -1.0;
+    private boolean quietMode = false;
+    private String screenshotBase64 = "";
+    private final Random random = new Random();
 
     private static final String TAG = "OrderWebActivity";
+
+    // 坑 13：真人节奏——每步之间 1.5s~4.2s 随机。
+    // 必须 postDelayed 而非 Thread.sleep：evaluateJavascript 回调跑在主线程，sleep 会冻住 UI。
+    private void slow(Runnable next) {
+        webView.postDelayed(next, 1500 + random.nextInt(2701));
+    }
+    private void postSlow(Runnable r) {
+        webView.postDelayed(r, 1500 + random.nextInt(2701));
+    }
+
+    // 坑 8 / 30：真触摸打坐标——构造 DOWN/UP 触摸序列注入 WebView。
+    // 坐标是视口坐标（getBoundingClientRect 得来），WebView 全屏即视口。
+    private void realTap(final float x, final float y) {
+        try {
+            final long downTime = SystemClock.uptimeMillis();
+            MotionEvent down = MotionEvent.obtain(
+                downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0);
+            webView.dispatchTouchEvent(down);
+            down.recycle();
+            webView.postDelayed(() -> {
+                try {
+                    long upTime = SystemClock.uptimeMillis();
+                    MotionEvent up = MotionEvent.obtain(
+                        downTime, upTime, MotionEvent.ACTION_UP, x, y, 0);
+                    webView.dispatchTouchEvent(up);
+                    up.recycle();
+                } catch (Exception ignored) {
+                }
+            }, 90 + random.nextInt(140)); // 按下停留：像手指，不是秒点
+        } catch (Exception ignored) {
+        }
+    }
+
+    // 坑 8 / 30 / 45：取元素中心视口坐标 → 落点前验身（九宫格换点）→ 真触摸。
+    // js 里打标记后用这一个函数做点击。
+    private void tapMarked(final String selector) {
+        String js = "(function(){"
+            + "function inView(e){if(!e)return null;var r=e.getBoundingClientRect();"
+            + "if(r.width<2||r.height<2)return null;return r;}"
+            + "var el=document.querySelector('" + selector + "');"
+            + "if(!el)return null;"
+            + "var r=inView(el);if(!r)return null;"
+            + "// 坑45：中央被飘带/角标压住就九宫格换点"
+            + "var cx=r.x+r.width/2,cy=r.y+r.height/2;"
+            + "var offs=[[0,0],[-0.35,-0.35],[0.35,-0.35],[-0.35,0.35],[0.35,0.35],[0,-0.4],[0,0.4],[-0.4,0],[0.4,0]];"
+            + "for(var i=0;i<offs.length;i++){"
+            + "var x=r.x+r.width*(0.5+offs[i][0]);var y=r.y+r.height*(0.5+offs[i][1]);"
+            + "if(x<0||y<0)continue;"
+            + "var top=document.elementFromPoint(x,y);"
+            + "var hit=(top===el)||(el.contains(top))||(top&&(top.getAttribute&&top.getAttribute('data-dengta-any')));"
+            + "if(hit){return {x:x,y:y};}"
+            + "}"
+            + "return {x:cx,y:cy};"
+            + "})();";
+        webView.evaluateJavascript(js, value -> {
+            if (value == null || value.equals("null")) return;
+            try {
+                JSONObject pos = new JSONObject(String.valueOf(value));
+                realTap((float) pos.getDouble("x"), (float) pos.getDouble("y"));
+            } catch (Exception ignored) {
+            }
+        });
+    }
+
+    // 坑 14 / 24：三路认人机验证——正文正则 / DOM 选择器 / 可见壳（display:none 的壳不算）
+    private void checkVerification(Runnable next) {
+        String js = "(function(){"
+            + "var t=document.body.innerText||'';"
+            + "// 只认验证专用句式，避免正文偶带“验证码”字样误报（坑 14 / 24）"
+            + "var re=/请选择符合描述|拖动滑块|向右滑动|滑动验证|拖拽下方滑块|完成拼图|人机验证|安全验证通过前|验证码已发送到|图形验证码/i;"
+            + "if(re.test(t))return {verify:true,path:'text'};"
+            + "var el=document.querySelector('#baxia-dialog,.nc-container,.nc_wrapper,#aliyunCaptcha,[id*=\"captcha\"],[class*=\"captcha\"],iframe[src*=\"punish\"],iframe[src*=\"captcha\"],iframe[src*=\"baxia\"]');"
+            + "if(el&&el.getBoundingClientRect){var r=el.getBoundingClientRect();"
+            + "if(r.width>60&&r.height>30){return {verify:true,path:'dom'};}"
+            + "}"
+            + "return {verify:false};"
+            + "})();";
+        webView.evaluateJavascript(js, value -> {
+            boolean verified = false;
+            if (value != null && !value.equals("null") && !String.valueOf(value).contains("verify:false")) {
+                try {
+                    JSONObject o = new JSONObject(String.valueOf(value));
+                    verified = o.optBoolean("verify", false);
+                } catch (Exception ignored) {
+                }
+            }
+            if (verified) {
+                finishWithResult("{\"status\":\"verification\",\"error\":\"页面弹出人机验证，已停手等你处理：请在页面里手动完成滑动/点选验证后，再点页面底部的「完成后点这里返回」。\"}");
+            } else if (next != null) {
+                next.run();
+            }
+        });
+    }
+
+    // 坑 48：掉登录认 URL /login 或备案页脚
+    private boolean looksLoggedOut() {
+        String url = currentUrl == null ? "" : currentUrl.toLowerCase();
+        if (url.contains("/login") || url.contains("login.html")) return true;
+        return false;
+    }
+
+    private void checkLoginState(Runnable next) {
+        if (looksLoggedOut()) {
+            finishWithResult("{\"status\":\"logged_out\",\"error\":\"掉登录了：页面把我踢到了登录页。请点「扫码登录外卖」重新登录后再试。\"}");
+            return;
+        }
+        String js = "(function(){var t=document.body.innerText||'';"
+            + "var foot=/备案|ICP|京ICP|增值电信/i;"
+            + "if(t.length<120&&foot.test(t)){return true;}"
+            + "return false;})();";
+        webView.evaluateJavascript(js, value -> {
+            boolean emptyShell = "true".equals(String.valueOf(value).replace("\"", "").trim());
+            if (emptyShell) {
+                finishWithResult("{\"status\":\"logged_out\",\"error\":\"登录态失效了（页面只剩空壳）。请重新扫码登录后再试。\"}");
+            } else if (next != null) {
+                next.run();
+            }
+        });
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -56,6 +207,17 @@ public class OrderWebActivity extends Activity {
         mode = getIntent().getStringExtra("mode");
         configJson = getIntent().getStringExtra("config");
         String title = getIntent().getStringExtra("title");
+        // 从 config 解析帖子 11 节的钱闸参数
+        try {
+            if (configJson != null && !configJson.isEmpty()) {
+                JSONObject config = new JSONObject(configJson);
+                if (config.has("max_amount")) {
+                    maxAmount = config.optDouble("max_amount", -1.0);
+                }
+                quietMode = config.optBoolean("quiet", false);
+            }
+        } catch (Exception ignored) {
+        }
 
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
@@ -126,15 +288,25 @@ public class OrderWebActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String finishedUrl) {
                 super.onPageFinished(view, finishedUrl);
+                currentUrl = finishedUrl;
                 if ("search".equals(mode)) {
                     view.postDelayed(() -> runSearchStep(view), 2500);
                 } else if ("order".equals(mode)) {
                     if (orderStep == 0) {
                         view.postDelayed(() -> runOrderStep(view), 2500);
                     } else if (orderStep == 1) {
-                        view.postDelayed(() -> addProductStep(view), 3000);
+                        // 坑 50：进店后先识门（小柜台→重建正门；还在搜索→再点一次；正店→选品）
+                        if (!enterTickPending) {
+                            enterTickPending = true;
+                            view.postDelayed(() -> {
+                                enterTickPending = false;
+                                enterShop(view, 0);
+                            }, 2000 + random.nextInt(1500));
+                        }
                     }
-                    // orderStep>=2：购物车/结算页，交给用户人工付款
+                    // orderStep>=2：购物车/结算页
+                    // 加载后执行结算价检查（帖子 11 节「钱的闸」）
+                    view.postDelayed(() -> settlementCheck(), 2000 + random.nextInt(1500));
                 }
             }
         });
@@ -143,7 +315,15 @@ public class OrderWebActivity extends Activity {
 
         Button done = new Button(this);
         done.setText("完成后点这里返回");
-        done.setOnClickListener(v -> finishWithResult("{\"status\":\"awaiting_payment\",\"note\":\"用户已在页面确认\"}"));
+        done.setOnClickListener(v -> {
+            captureScreenshot();
+            String result = "{\"status\":\"awaiting_payment\",\"note\":\"用户已在页面确认\"";
+            if (!screenshotBase64.isEmpty()) {
+                result += ",\"screenshot\":\"" + screenshotBase64 + "\"";
+            }
+            result += "}";
+            finishWithResult(result);
+        });
         root.addView(done, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -154,104 +334,305 @@ public class OrderWebActivity extends Activity {
     }
 
     private void runSearchStep(WebView view) {
-        // 等真数据：骨架先到、店铺卡后到（坑二），轮询直到出现"起送"标记。
-        String waitJs = "(function(){var t=document.body.innerText||'';return /起送/.test(t)||t.indexOf('起送')>=0;})();";
+        // 坑 2：等真数据——轮询直到出现店卡身份证（"分"评分为主，起送只是可选牌子，坑 40）。
+        String waitJs = "(function(){var t=document.body.innerText||'';"
+            + "return /分\\s*\\|/.test(t)||/起送¥/.test(t)||t.indexOf('起送')>=0;})();";
         String js = "(function(){"
             + "function txt(e){return (e.innerText||'').replace(/\\n+/g,' | ').replace(/\\s+/g,' ').trim();}"
+            + "// 坑 40：店卡身份证是评分「分」，起送不是必须的。"
             + "var cards=[].slice.call(document.querySelectorAll('[class*=\"card\" i],[class*=\"item\" i]'))"
-            + ".map(function(e){return {t:txt(e),e:e};}).filter(function(x){return /起送/.test(x.t)&&x.t.length<300;});"
+            + ".map(function(e){return {t:txt(e),e:e};})"
+            + ".filter(function(x){return /\\|\\s*[\\d.]+\\s*\\|\\s*分/.test(x.t)&&x.t.length<300;});"
             + "if(!cards.length){return {shops:[],loading:true};}"
             + "function shopName(t){"
             + "var parts=t.split('|').map(function(s){return s.trim();}).filter(Boolean);"
-            + "var bad=/(起送|月售|配送|分钟|km|分|¥|\\+|商家自配送|本店|近期|人好评|好评|支持预订|预订|营业|休息|免配送费|到店|距离|评分|满\\d)/;"
+            + "var bad=/(起送|月售|配送|分钟|km|分|¥|\\+|商家自配送|本店|近期|人好评|好评|支持预订|预订|营业|休息|免配送费|到店|距离|评分|满\\d|蜂鸟)/;"
             + "for(var i=0;i<parts.length;i++){if(parts[i].length>=2&&parts[i].length<=40&&!bad.test(parts[i])){return parts[i];}}"
-            + "return t.slice(0,40);}"
+            + "var m=t.match(/([^|]{2,40})\\s*\\|\\s*[\\d.]+\\s*\\|\\s*分/);"
+            + "return m?m[1].trim():t.slice(0,40);}"
             + "return {shops:cards.slice(0,20).map(function(x){"
-            + "return {name:shopName(x.t),meta:x.t.slice(0,240)};}),loading:false};"
+            + "return {name:shopName(x),meta:x.t.slice(0,240)};}),loading:false};"
             + "})();";
         view.evaluateJavascript(waitJs, waited -> {
-            boolean ready = "true".equals(String.valueOf(waited).replace("\"", "").trim());
-            if (!ready) {
-                if (searchRetries < 10) {
-                    searchRetries += 1;
-                    view.postDelayed(() -> runSearchStep(view), 2500);
-                } else {
-                    view.evaluateJavascript(js, value -> finishWithResult(value));
+            checkVerification(() -> {
+                boolean ready = "true".equals(String.valueOf(waited).replace("\"", "").trim());
+                if (!ready) {
+                    if (searchRetries < 10) {
+                        searchRetries += 1;
+                        view.postDelayed(() -> runSearchStep(view), 2500);
+                    } else {
+                        view.evaluateJavascript(js, value -> finishWithResult(value));
+                    }
+                    return;
                 }
-                return;
-            }
-            view.evaluateJavascript(js, value -> finishWithResult(value));
+                view.evaluateJavascript(js, value -> finishWithResult(value));
+            });
         });
     }
+
     private void runOrderStep(WebView view) {
         try {
             JSONObject config = new JSONObject(configJson);
             String shopName = config.optString("shop_name", "");
-            String product = config.optString("product", "");
             String js = "(function(){"
                 + "var shop=" + JSONObject.quote(shopName) + ";"
                 + "function txt(e){return (e.innerText||'').replace(/\\n+/g,' ').replace(/\\s+/g,' ').trim();}"
+                + "// 坑 40：店卡身份证是评分「分」；起送不是必须。"
                 + "var cards=[].slice.call(document.querySelectorAll('[class*=\"card\" i],[class*=\"item\" i]'))"
-                + ".map(function(e){return {t:txt(e),e:e};}).filter(function(x){return /起送¥/.test(x.t)&&x.t.length<300;});"
-                + "var target=null;"
-                + "for(var i=0;i<cards.length;i++){if(cards[i].t.indexOf(shop)>=0||(shop.length>4&&shop.indexOf(cards[i].t.slice(0,6))>=0)){target=cards[i].e;break;}}"
-                + "if(!target&&cards.length){target=cards[0].e;}"
+                + ".map(function(e){return {t:txt(e),e:e};})"
+                + ".filter(function(x){return /\\|\\s*[\\d.]+\\s*\\|\\s*分/.test(x.t)&&x.t.length<300;});"
+                + "var target=null,fallback=null;"
+                + "for(var i=0;i<cards.length;i++){"
+                + "var n=shopName(cards[i].t);"
+                + "if(!fallback)fallback=cards[i].e;"
+                + "if(n.indexOf(shop)>=0||(shop.length>4&&shop.indexOf(n.slice(0,6))>=0)){target=cards[i].e;break;}"
+                + "}"
+                + "function shopName(t){"
+                + "var parts=t.split('|').map(function(s){return s.trim();}).filter(Boolean);"
+                + "var bad=/(起送|月售|配送|分钟|km|分|¥|\\+|商家自配送|本店|近期|人好评|好评|支持预订|预订|营业|休息|免配送费|到店|距离|评分|满\\d|蜂鸟)/;"
+                + "for(var i=0;i<parts.length;i++){if(parts[i].length>=2&&parts[i].length<=40&&!bad.test(parts[i])){return parts[i];}}"
+                + "var m=t.match(/([^|]{2,40})\\s*\\|\\s*[\\d.]+\\s*\\|\\s*分/);"
+                + "return m?m[1].trim():'';}"
+                + "if(!target&&fallback){target=fallback;}"
                 + "if(!target){return {status:'shop_not_found'};}"
                 + "target.setAttribute('data-dengta-pick','1');"
-                + "document.querySelector('[data-dengta-pick=\"1\"]').click();"
                 + "return {status:'opening_shop',shop:(target.innerText||'').replace(/\\n+/g,' ').slice(0,80)};"
                 + "})();";
             orderStep = 1;
-            view.evaluateJavascript(js, null);
+            webView.evaluateJavascript(js, value -> {
+                // 坑 50：进店后先看是不是「猜你喜欢」小柜台（只有六道菜那种）
+                checkLoginState(() -> {
+                    if (value != null && String.valueOf(value).contains("opening_shop")) {
+                        // 真触摸打开店卡（坑 8：认元素打标记后真点），先来一拍真人节奏（坑 13）
+                        slow(() -> tapMarked("[data-dengta-pick='1']"));
+                        // 进店后的识门/选品交给 onPageFinished → enterShop 处理（坑 50）
+                    } else {
+                        finishWithResult(value == null ? "{\"status\":\"shop_not_found\"}" : String.valueOf(value));
+                    }
+                });
+            });
         } catch (Exception error) {
             finishWithResult("{\"status\":\"error\",\"error\":\"参数解析失败\"}");
         }
     }
 
+    // 坑 50 + 坑 19：进店后先识门再选品。
+    //  - 正店页（SHOP_SCHEME/restaurant）→ 直接选品
+    //  - 小柜台（ITEM_STICKY_CATEGORY_SCHEME「猜你喜欢」）→ 拿 shopId 重建正门
+    //  - 还在搜索/中间页 → 再认一拍（坑 19），认不出就按小柜台兜底找 shopId
+    private void enterShop(WebView view, int attempt) {
+        if (attempt > 4) {
+            // 实在认不出门：直接从当前页尝试选品，至少不会卡死
+            addProductStep(view);
+            return;
+        }
+        String url = currentUrl == null ? "" : currentUrl;
+        if (looksLoggedOut()) {
+            finishWithResult("{\"status\":\"logged_out\",\"error\":\"掉登录了：请重新扫码登录后再试。\"}");
+            return;
+        }
+        boolean isShopDoor = url.contains("SHOP_SCHEME") || url.contains("restaurant")
+            || url.contains("pages-poi") || url.contains("/poi/") || url.contains("shopId");
+        boolean miniCounter = url.contains("ITEM_STICKY") || url.contains("menu_extra_info")
+            || (url.contains("scheme_type") && !url.contains("SHOP_SCHEME"));
+        if (isShopDoor && !miniCounter) {
+            addProductStep(view);
+            return;
+        }
+        if (miniCounter) {
+            reloadShopDoor(view);
+            return;
+        }
+        // 仍在中间页/搜索页：等一拍再认
+        view.postDelayed(() -> enterShop(view, attempt + 1), 2500 + random.nextInt(1500));
+    }
+
+    // 坑 50：小柜台里必然带着 shopId，抽出数字 id 重建 SHOP_SCHEME 正门再进。
+    private void reloadShopDoor(final WebView view) {
+        String js = "(function(){"
+            + "var m=location.href.match(/shopId[=:]\\s*(\\d{4,})/)||location.href.match(/[?&]id=(\\d{4,})/);"
+            + "if(m)return m[1];"
+            + "var el=document.querySelector('[data-dengta-pick=\"1\"]');"
+            + "if(el){var h=(el.getAttribute&&(el.getAttribute('href')||el.getAttribute('data-scheme')||''))||'';"
+            + "var m2=h.match(/(\\d{4,})/);if(m2)return m2[1];}"
+            + "return '';})();";
+        view.evaluateJavascript(js, value -> {
+            String shopId = String.valueOf(value).replace("\"", "").trim();
+            if (shopId.length() >= 4 && shopId.matches("\\d+") && !"null".equals(shopId)) {
+                String door = "https://h5.ele.me/minisite/pages-poi/restaurant/index?shopId="
+                    + shopId + "&from=mobile.default";
+                view.loadUrl(door);
+                // loadUrl 后 onPageFinished 会再次触发（orderStep 仍是 1 → enterShop → 正门→选品）
+            } else {
+                // 找不到 shopId：别把小柜台当菜单页，直接失败收手
+                finishWithResult("{\"status\":\"shop_not_found\",\"error\":\"进的不是店铺正门，请换个词重试。\"}");
+            }
+        });
+    }
+
+    // 坑 5 / 46：加购两段 + 三重门铃（卡身 → 卡图 → 「选规格」小钮）
     private void addProductStep(WebView view) {
         try {
             JSONObject config = new JSONObject(configJson);
-            String product = config.optString("product", "");
+            final String product = config.optString("product", "");
             orderStep = 2;
             String js = "(function(){"
                 + "var p=" + JSONObject.quote(product) + ";"
                 + "function txt(e){return (e.innerText||'').replace(/\\n+/g,' ').replace(/\\s+/g,' ').trim();}"
-                + "var items=[].slice.call(document.querySelectorAll('[class*=\"menuItem\" i],[class*=\"menu-item\" i]'))"
-                + ".map(function(e){return {t:txt(e),e:e};}).filter(function(x){return x.t.length>3&&x.t.length<200;});"
+                + "// 菜单卡：真菜卡认标题类名（.food-name 之类），排除「买过/再来一单」面板（坑 23 / 37）"
+                + "var rows=[].slice.call(document.querySelectorAll('[class*=\"food\" i],[class*=\"menu\" i],[class*=\"item\" i]'))"
+                + ".map(function(e){return {t:txt(e),e:e};})"
+                + ".filter(function(x){return x.t.length>3&&x.t.length<200&&!/再来一单|购买过|买过/.test(x.t);});"
                 + "var target=null;"
-                + "for(var i=0;i<items.length;i++){if(items[i].t.indexOf(p)>=0||(p.length>4&&p.indexOf(items[i].t.slice(0,4))>=0)){target=items[i].e;break;}}"
-                + "if(!target&&items.length){target=items[0].e;}"
+                + "for(var i=0;i<rows.length;i++){if(rows[i].t.indexOf(p)>=0||(p.length>4&&p.indexOf(rows[i].t.slice(0,4))>=0)){target=rows[i].e;break;}}"
+                + "if(!target&&rows.length){target=rows[0].e;}"
                 + "if(!target){return {status:'product_not_found'};}"
                 + "target.setAttribute('data-dengta-product','1');"
-                + "document.querySelector('[data-dengta-product=\"1\"]').click();"
                 + "return {status:'opening_product'};"
                 + "})();";
             view.evaluateJavascript(js, value -> {
-                view.postDelayed(() -> {
-                    String addJs = "(function(){"
-                        + "var btn=[].slice.call(document.querySelectorAll('*')).find(function(e){return e.innerText&&e.innerText.trim().indexOf('加入购物车')>=0;});"
-                        + "if(btn){btn.click();return {ok:'clicked_add'};}"
-                        + "return {ok:'no_add_button'};"
-                        + "})();";
-                    view.evaluateJavascript(addJs, addValue -> {
-                        view.postDelayed(() -> {
-                            String skuJs = "(function(){"
-                                + "var sku=document.querySelector('.sku__button');"
-                                + "if(sku){sku.click();return {ok:'sku_clicked'};}"
-                                + "return {ok:'no_sku'};"
-                                + "})();";
-                            view.evaluateJavascript(skuJs, skuValue -> {
-                                // 进入购物车/结算页（不自动付款）
-                                view.postDelayed(() -> {
-                                    try { view.loadUrl("https://h5.ele.me/msite/cart"); } catch (Exception ignored) {}
-                                }, 1500);
-                            });
-                        }, 1500);
+                checkLoginState(() -> {
+                    // 真人节奏后点卡身（坑 13）
+                    slow(() -> {
+                        tapMarked("[data-dengta-product='1']");
+                        view.postDelayed(this::confirmAddToCart, 2500 + random.nextInt(1500));
                     });
-                }, 3000);
+                });
             });
         } catch (Exception error) {
             finishWithResult("{\"status\":\"error\",\"error\":\"选品失败\"}");
+        }
+    }
+
+    // 坑 5：点商品后详情页的「+ 加入购物车」只负责拉出 sku 面板，
+    // 面板里通栏 .sku__button 才是真正加购；规格默认已选别乱动（坑 6）。
+    private void confirmAddToCart() {
+        checkVerification(() -> checkLoginState(() -> {
+            String js = "(function(){"
+                + "// 详情页确认已打开（URL 含 detail 或出现选规格字样）"
+                + "var btn=null;"
+                + "// 先找真正加购的通栏钮"
+                + "var sku=document.querySelector('.sku__button');"
+                + "if(sku&&sku.getBoundingClientRect().height>20){sku.setAttribute('data-dengta-any','1');return {w:'sku'};}"
+                + "// 详情页底部「加入购物车」"
+                + "var add=[].slice.call(document.querySelectorAll('*')).find(function(e){"
+                + "var t=(e.innerText||'').trim();return /加入购物车|选规格/.test(t)&&t.length<12&&(e.children.length<3);});"
+                + "if(add){add.setAttribute('data-dengta-any','1');return {w:'add'};}"
+                + "return {w:'none'};"
+                + "})();";
+            webView.evaluateJavascript(js, value -> {
+                String v = String.valueOf(value);
+                // 真人节奏后再判断（坑 13）
+                slow(() -> {
+                    if (v.contains("sku")) {
+                        tapMarked("[data-dengta-any='1']");
+                        webView.postDelayed(() -> goToCart(), 2000 + random.nextInt(1500));
+                    } else if (v.contains("add")) {
+                        tapMarked("[data-dengta-any='1']");
+                        webView.postDelayed(() -> {
+                            String js2 = "(function(){var s=document.querySelector('.sku__button');"
+                                + "if(s&&s.getBoundingClientRect().height>20){s.setAttribute('data-dengta-any','1');return true;}"
+                                + "return false;})();";
+                            webView.evaluateJavascript(js2, v2 -> {
+                                if ("true".equals(String.valueOf(v2).replace("\"", "").trim())) {
+                                    slow(() -> {
+                                        tapMarked("[data-dengta-any='1']");
+                                        webView.postDelayed(this::goToCart, 2000 + random.nextInt(1500));
+                                    });
+                                } else {
+                                    goToCart();
+                                }
+                            });
+                        }, 1500 + random.nextInt(1000));
+                    } else {
+                        goToCart();
+                    }
+                });
+            });
+        }));
+    }
+
+    // 坑 7：加完购回购物车页（详情页里没有「去结算」），停那儿让人付款。
+    private void goToCart() {
+        try {
+            webView.postDelayed(() -> {
+                try {
+                    webView.loadUrl("https://h5.ele.me/msite/cart");
+                } catch (Exception ignored) {
+                }
+            }, 1200 + random.nextInt(800));
+        } catch (Exception ignored) {
+        }
+    }
+
+    // 帖子 11 节「钱的闸」：购物车页读合计金额 + 件数。
+    // 若超出 maxAmount 或车里有旧货时停手，否则继续。
+    // 帖子 14 节「截图」：拍下购物车页截图，base64 带回。
+    private void settlementCheck() {
+        if (webView == null) return;
+        String js = "(function(){"
+            + "var t=document.body.innerText||'';"
+            + "// 读合计（帖子 11 节：两种写法 A/B）"
+            + "var tail=t.slice(Math.max(0,t.lastIndexOf('合计')));"
+            + "var total=NaN;"
+            + "var m=t.match(/合计¥\\s*(\\d+(?:\\.\\d+)?)/);"
+            + "if(!m)m=tail.match(/已优惠\\s*¥\\s*[\\d.]+[\\s\\S]{0,12}?¥\\s*(\\d+(?:\\.\\d+)?)/);"
+            + "if(!m)m=t.match(/¥\\s*(\\d+(?:\\.\\d+)?)/g);"
+            + "if(m){total=Number(m[1]||m[0].replace('¥','').trim());}"
+            + "// 车里有旧货闸：商品明细段数"
+            + "var detail=t.slice(0,(t.indexOf('打包费')+1)||t.length);"
+            + "var items=(detail.match(/×\\s*\\d+/g)||[]).length;"
+            + "return {total:isNaN(total)?0:total,items:items};"
+            + "})();";
+        webView.evaluateJavascript(js, value -> {
+            try {
+                double total = 0;
+                int items = 0;
+                if (value != null && !value.equals("null")) {
+                    JSONObject o = new JSONObject(String.valueOf(value));
+                    total = o.optDouble("total", 0);
+                    items = o.optInt("items", 0);
+                }
+                // 拍购物车截图
+                captureScreenshot();
+                // 钱闸：超限停手
+                if (maxAmount > 0 && total > maxAmount) {
+                    finishWithResult("{\"status\":\"over_limit\",\"total\":" + total
+                        + ",\"max_amount\":" + maxAmount
+                        + ",\"screenshot\":\"" + screenshotBase64 + "\""
+                        + ",\"error\":\"合计¥" + total + " 超过上限¥" + maxAmount + "，一分没花，等你点头。\"}");
+                    return;
+                }
+                // 安静模式：不等人点「完成后点这里返回」，自动收工
+                if (quietMode) {
+                    finishWithResult("{\"status\":\"done\",\"total\":" + total
+                        + ",\"items\":" + items
+                        + ",\"screenshot\":\"" + screenshotBase64 + "\""
+                        + ",\"message\":\"加购完成，在购物车页等你确认付款。\"}");
+                    return;
+                }
+            } catch (Exception ignored) {
+            }
+        });
+    }
+
+    // 帖子 14 节：截图（WebView 当前画面 → base64 JPEG）
+    // 使用 View.draw 到 Bitmap，不依赖废弃 API。
+    private void captureScreenshot() {
+        if (webView == null) return;
+        try {
+            int width = webView.getWidth();
+            int height = webView.getHeight();
+            if (width <= 0 || height <= 0) return;
+            Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
+            webView.draw(canvas);
+            // 帖子 14 节：JPEG 质量 70，够看不够大
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 70, out);
+            screenshotBase64 = Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
+            bitmap.recycle();
+        } catch (Exception ignored) {
         }
     }
 

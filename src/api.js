@@ -129,12 +129,17 @@ export async function apiFetch(path, options = {}) {
     response.status === 401 &&
     typeof response.clone === "function"
   ) {
+    // 对任意 401 都触发 session 失效，不限于白名单 code（缺陷 5 修复）
     const data = await response.clone().json().catch(() => ({}));
     if (
       ["invalid_session", "authentication_required"].includes(data.code)
     ) {
       await (options.authSession || defaultAuthSession)
         ?.invalidateSession?.(data.message);
+    } else {
+      // 其他 code 的 401 也触发失效，用默认提示
+      await (options.authSession || defaultAuthSession)
+        ?.invalidateSession?.();
     }
   }
   return response;
@@ -267,12 +272,7 @@ export async function streamChat(
   const contentType = response.headers.get("content-type") || "";
   if (!response.ok || !contentType.includes("text/event-stream")) {
     const data = await response.json().catch(() => ({}));
-    if (
-      response.status === 401 &&
-      ["invalid_session", "authentication_required"].includes(data.code)
-    ) {
-      await authSession?.invalidateSession?.(data.message);
-    }
+    // 401 处理由 apiFetch 统一完成（缺陷 7 修复：移除重复 401 处理）
     const error = new Error(
       publicChatErrorMessage(data, "无法开始流式回复。"),
     );

@@ -74,12 +74,13 @@ export function AuthScreen({
   const [feedback, setFeedback] = useState(initialMessage);
   const [verificationEmail, setVerificationEmail] = useState("");
 
-  function changeMode(nextMode) {
+  function changeMode(nextMode, preserveEmail) {
     setMode(nextMode);
     setPassword("");
     setPasswordConfirmation("");
     setFeedback("");
     setVerificationEmail("");
+    if (preserveEmail) setEmail(preserveEmail);
   }
 
   async function submit(event) {
@@ -182,7 +183,7 @@ export function AuthScreen({
               role="tab"
               aria-selected={mode === "login"}
               className={mode === "login" ? "active" : ""}
-              onClick={() => changeMode("login")}
+              onClick={() => changeMode("login", email)}
             >
               登录
             </button>
@@ -220,7 +221,7 @@ export function AuthScreen({
             <button
               type="button"
               className="auth-text-button"
-              onClick={() => changeMode("login")}
+              onClick={() => changeMode("login", email)}
             >
               返回登录
             </button>
@@ -331,7 +332,7 @@ export function AuthScreen({
               <button
                 type="button"
                 className="auth-text-button"
-                onClick={() => changeMode("login")}
+                onClick={() => changeMode("login", email)}
               >
                 返回登录
               </button>

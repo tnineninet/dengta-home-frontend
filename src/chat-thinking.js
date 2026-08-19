@@ -16,6 +16,10 @@ const STATUS_LABELS = {
   preparing_context: "正在整理对话上下文",
   generating: "正在生成回复",
   calling_model: "正在请求所选模型",
+  model_reasoning: "模型推理中",
+  model_deep_reasoning: "模型深度推理中",
+  model_still_reasoning: "模型深入推理中",
+  model_extended_reasoning: "模型扩展推理中",
   saving: "正在保存本轮对话",
   completed: "本轮处理完成",
 };

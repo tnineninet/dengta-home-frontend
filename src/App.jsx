@@ -214,6 +214,14 @@ import {
   screenGlanceCaptureToFile,
   screenGlancePluginAvailable,
 } from "./screen-glance";
+import {
+  DlnaReceiver,
+  dlnaPluginAvailable,
+  normalizeDlnaState,
+  readDlnaState,
+  startDlnaReceiver,
+  stopDlnaReceiver,
+} from "./dlna-receiver";
 import { maybeNotifyNewCompanionReplies } from "./companion-reply-notifier";
 import {
   createCoWatchSession,
@@ -248,7 +256,6 @@ import {
   formatVoiceConfidence,
   normalizeVoiceAnalysis,
   normalizeVoicePlaybackMode,
-  resolveVoiceCaptureAfterPermission,
   selectRecorderMimeType,
   speakVoiceText,
   stopVoiceSpeech,
@@ -304,6 +311,7 @@ const MediaSettings = lazy(() => import("./MediaSettings"));
 const VoiceProviderSettings = lazy(
   () => import("./VoiceProviderSettings"),
 );
+const WorkspaceManager = lazy(() => import("./WorkspaceManager"));
 
 function DeferredFeature({ label }) {
   return (
@@ -698,6 +706,7 @@ const navItems = [
   { id: "memories", icon: "◇", label: "Memory" },
   { id: "takeout", icon: "🛵", label: "外卖" },
   { id: "achievements", icon: "🏆", label: "成就" },
+  { id: "workspace", icon: "📁", label: "工作区" },
   { id: "discover", icon: "🔭", label: "发现" },
 ];
 
@@ -927,6 +936,7 @@ function hydrateSessionChatHistory(messages, sessionId) {
 }
 
 function App({ accountControl = null, accountScope = "", userName = "" }) {
+  const VOICE_LONG_PRESS_MS = 300;
   const visualPreview = arguments[0]?.visualPreview === true;
   const companionScope = String(arguments[0]?.companionScope || "").trim();
   const accountStorageScope = String(accountScope || "").trim();
@@ -967,6 +977,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     () => readCachedWeather().weather,
   );
   const [weatherPreviewMode, setWeatherPreviewMode] = useState(null);
+  // 输入框草稿持久化（页面刷新后恢复）
+  const draftTimerRef = useRef(null);
   const {
     preferences: themePreferences,
     snapshot: celestialSnapshot,
@@ -1001,6 +1013,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [deviceActivityState, setDeviceActivityState] = useState(() =>
     normalizeDeviceActivityState({}),
   );
+  const [dlnaState, setDlnaState] = useState(() => normalizeDlnaState({}));
+  const [dlnaBusy, setDlnaBusy] = useState(false);
   const [nowPlaying, setNowPlaying] = useState(null);
   const nowPlayingDismissedRef = useRef(false);
   const nowPlayingPollRef = useRef(null);
@@ -1068,7 +1082,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           void syncNowPlayingToSession(song);
         }
       } else if (!nowPlayingDismissedRef.current) {
-        setNowPlaying(null);
+        setNowPlaying((current) => (current?.source === "dengta" ? current : null));
       }
       if (Capacitor.isNativePlatform()) {
         void drainAiPlayRequests(song);
@@ -1298,6 +1312,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const voicePointerHeldRef = useRef(false);
   const voicePointerIdRef = useRef(null);
   const voiceTapToSendRef = useRef(false);
+  const voiceLongPressArmedRef = useRef(false);
+  const voiceLongPressTimerRef = useRef(null);
   const voiceCaptureRunRef = useRef(0);
   const voicePermissionReadyRef = useRef(false);
   const voiceStreamRef = useRef(null);
@@ -1525,6 +1541,38 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       return null;
     }
   }, [applyScreenGlanceState]);
+
+  // DLNA 投屏接收：开关 + 状态刷新（仅原生平台可用）。
+  const refreshDlnaState = useCallback(async () => {
+    if (!dlnaPluginAvailable()) {
+      setDlnaState(normalizeDlnaState({}));
+      return null;
+    }
+    try {
+      const next = await readDlnaState();
+      setDlnaState(next);
+      return next;
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const toggleDlnaReceiver = useCallback(async () => {
+    if (dlnaBusy) return;
+    setDlnaBusy(true);
+    try {
+      if (dlnaState.active) {
+        await stopDlnaReceiver();
+      } else {
+        await startDlnaReceiver();
+      }
+      await refreshDlnaState();
+    } catch {
+      setDlnaState(normalizeDlnaState({}));
+    } finally {
+      setDlnaBusy(false);
+    }
+  }, [dlnaBusy, dlnaState.active, refreshDlnaState]);
 
   // 一起看模式 -> 会话模式：听歌只认 listening，一起看只认各自视频模式，
   // 避免把残留的听歌会话标题（如 Fever Pitch）显示在视频播放器下方。
@@ -2239,6 +2287,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         } catch { /* ignore */ }
         const audio = new Audio(song.url);
         randomPlayAudioRef.current = audio;
+        audio.addEventListener("ended", () => {
+          setNowPlaying((current) => (current?.source === "dengta" ? null : current));
+        }, { once: true });
+        audio.addEventListener("pause", () => {
+          setNowPlaying((current) => (current?.source === "dengta" ? { ...current, isPlaying: false } : current));
+        });
+        audio.addEventListener("play", () => {
+          setNowPlaying((current) => (current?.source === "dengta" ? { ...current, isPlaying: true } : current));
+        });
         await audio.play().catch((error) => {
           try {
             console.log("random-play:rejected", String(error?.name || error?.message || error));
@@ -2250,6 +2307,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           return null;
         });
         if (!cancelled && song?.title) {
+          setNowPlaying({
+            title: song.title,
+            artist: song.artist || "",
+            cover: song.cover || "",
+            isPlaying: true,
+            source: "dengta",
+          });
           setScreenGlanceFeedback({
             status: "success",
             message: `正在播放：${song.title}${song.artist ? " - " + song.artist : ""}（DengTa 内置播放，不跳转网易云）`,
@@ -2269,6 +2333,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         randomPlayAudioRef.current.pause();
         randomPlayAudioRef.current = null;
       }
+      setNowPlaying((current) => (current?.source === "dengta" ? null : current));
     };
   }, [hasLoadedSettings]);
 
@@ -2281,7 +2346,37 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       savedScrollState?.pinnedToBottom ?? true;
     setMessageReference(null);
     void loadComposerHint(activeSessionId);
+    // 从 localStorage 恢复该会话的草稿
+    try {
+      const key = `dengta_chat_draft_${activeSessionId || "__draft__"}`;
+      const saved = globalThis.localStorage?.getItem(key);
+      if (typeof saved === "string" && saved.length > 0) {
+        setMessage(saved);
+      }
+    } catch {
+      // localStorage 不可用时静默降级
+    }
   }, [activeSessionId, loadComposerHint]);
+
+  // 输入框草稿防抖保存到 localStorage
+  useEffect(() => {
+    const key = `dengta_chat_draft_${activeSessionId || "__draft__"}`;
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = setTimeout(() => {
+      try {
+        if (message.length > 0) {
+          globalThis.localStorage?.setItem(key, message);
+        } else {
+          globalThis.localStorage?.removeItem(key);
+        }
+      } catch {
+        // localStorage 不可用时静默降级
+      }
+    }, 500);
+    return () => {
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    };
+  }, [message, activeSessionId]);
 
   useEffect(() => {
     if (!hasLoadedSettingsRef.current) return;
@@ -2606,6 +2701,44 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     return () => {
       localListener?.remove();
       nativeListener?.remove();
+    };
+  }, []);
+
+  // DLNA 投屏接收：视频 App 投屏到灯塔时，自动进入一起看并播放投过来的媒体。
+  useEffect(() => {
+    if (!dlnaPluginAvailable()) return undefined;
+
+    let handle;
+    void DlnaReceiver.addListener("mediaReceived", async (event) => {
+      const uri = String(event?.uri || "").trim();
+      if (!uri) return;
+      const title = String(event?.title || "").trim().slice(0, 180) || "投屏播放";
+      const started = await startDirectMediaCoWatchSession({
+        title,
+        mediaUrl: uri,
+        mediaDurationSeconds: 0,
+        mediaPositionSeconds: 0,
+      }).catch(() => ({ ok: false }));
+      if (started?.ok) {
+        setActiveView("together");
+        setIsSidebarOpen(false);
+        setIsMobileNavOpen(false);
+        setScreenGlanceFeedback({
+          status: "success",
+          message: `已接收投屏：${title}`,
+        });
+      } else {
+        setScreenGlanceFeedback({
+          status: "error",
+          message: started?.message || "投屏接收成功，但暂时无法开始一起看。",
+        });
+      }
+    }).then((listener) => {
+      handle = listener;
+    }).catch(() => {});
+
+    return () => {
+      handle?.remove();
     };
   }, []);
 
@@ -3149,6 +3282,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     voiceCaptureRunRef.current += 1;
     voicePointerHeldRef.current = false;
     voicePointerIdRef.current = null;
+    voiceLongPressArmedRef.current = false;
+    if (voiceLongPressTimerRef.current) {
+      window.clearTimeout(voiceLongPressTimerRef.current);
+      voiceLongPressTimerRef.current = null;
+    }
     setVoiceTapToSendMode(false);
     clearVoiceRecordingTimers();
 
@@ -3461,16 +3599,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     event.preventDefault();
 
-    if (
-      voiceStateRef.current === VOICE_STATES.recording &&
-      voiceTapToSendRef.current
-    ) {
-      voicePointerHeldRef.current = false;
-      voicePointerIdRef.current = null;
-      setVoiceTapToSendMode(false);
-      void finishVoiceCapture({ send: true });
-      return;
-    }
+    // 如果已经在录音中（长按门控后的正常录音），松开即发送 → 这不发生；
+    // 保留安全分支：如果录音中且已松手，finishVoiceCapture 已在 endVoiceCapture 处理。
+    // 此处仅负责门控触发：长按达到阈值后才开始录音。
 
     if (!voiceServiceAvailable) {
       setVoiceFailure(voiceService.message);
@@ -3492,91 +3623,94 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       return;
     }
 
-    const captureRun = voiceCaptureRunRef.current + 1;
-    voiceCaptureRunRef.current = captureRun;
+    // 清除之前的计时器
+    if (voiceLongPressTimerRef.current) {
+      window.clearTimeout(voiceLongPressTimerRef.current);
+      voiceLongPressTimerRef.current = null;
+    }
+    voiceLongPressArmedRef.current = false;
+    voicePointerHeldRef.current = true;
+    voicePointerIdRef.current = event.pointerId;
 
     try {
       event.currentTarget.setPointerCapture?.(event.pointerId);
     } catch {
       // 某些 WebView 不支持显式指针捕获，pointerup 仍会正常工作。
     }
-    voicePointerHeldRef.current = true;
-    voicePointerIdRef.current = event.pointerId;
-    setVoiceTapToSendMode(false);
-    setVoiceError("");
-    setNotice("");
-    setLastVoiceAnalysis(null);
-    setVoiceElapsedMs(0);
 
-    if (voiceStateRef.current === VOICE_STATES.speaking) {
-      await stopVoicePlayback();
-    }
-    if (!voicePointerHeldRef.current) return;
+    // 保留 captureRun 递增，用于权限/超时后校验是否仍是本次操作
+    const captureRun = voiceCaptureRunRef.current + 1;
+    voiceCaptureRunRef.current = captureRun;
 
-    setVoiceMode(VOICE_STATES.requesting);
-    const permissionWasUnconfirmed = !voicePermissionReadyRef.current;
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-        video: false,
-      });
-      if (voiceCaptureRunRef.current !== captureRun) {
-        releaseVoiceStream(stream);
-        return;
+    // 长按门控计时器：达到阈值后才真正开始录音
+    voiceLongPressTimerRef.current = window.setTimeout(async () => {
+      voiceLongPressTimerRef.current = null;
+      voiceLongPressArmedRef.current = true;
+
+      if (!voicePointerHeldRef.current || voiceCaptureRunRef.current !== captureRun) return;
+
+      setVoiceError("");
+      setNotice("");
+      setLastVoiceAnalysis(null);
+      setVoiceElapsedMs(0);
+
+      if (voiceStateRef.current === VOICE_STATES.speaking) {
+        await stopVoicePlayback();
       }
-      voicePermissionReadyRef.current = true;
-      const continuation = resolveVoiceCaptureAfterPermission(
-        voicePointerHeldRef.current,
-        permissionWasUnconfirmed,
-      );
-      if (!continuation.startRecording) {
-        releaseVoiceStream(stream);
-        setVoiceMode(VOICE_STATES.idle);
-        return;
-      }
+      if (!voicePointerHeldRef.current) return;
 
-      voiceStreamRef.current = stream;
-      voiceChunksRef.current = [];
-      const mimeType = selectRecorderMimeType(MediaRecorder);
-      const recorder = new MediaRecorder(
-        stream,
-        mimeType ? { mimeType } : undefined,
-      );
-      voiceRecorderRef.current = recorder;
-      recorder.addEventListener("dataavailable", (chunkEvent) => {
-        if (chunkEvent.data?.size > 0) {
-          voiceChunksRef.current.push(chunkEvent.data);
+      setVoiceMode(VOICE_STATES.requesting);
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+          video: false,
+        });
+        if (voiceCaptureRunRef.current !== captureRun) {
+          releaseVoiceStream(stream);
+          return;
         }
-      });
-      recorder.addEventListener("error", (recorderEvent) => {
-        cancelVoiceCapture({ updateState: false });
-        setVoiceFailure(recorderEvent.error || recorderEvent);
-      });
-      recorder.start(250);
+        voicePermissionReadyRef.current = true;
+        // 长按门控后进入录音，不启用 tapToSend
+        voiceStreamRef.current = stream;
+        voiceChunksRef.current = [];
+        const mimeType = selectRecorderMimeType(MediaRecorder);
+        const recorder = new MediaRecorder(
+          stream,
+          mimeType ? { mimeType } : undefined,
+        );
+        voiceRecorderRef.current = recorder;
+        recorder.addEventListener("dataavailable", (chunkEvent) => {
+          if (chunkEvent.data?.size > 0) {
+            voiceChunksRef.current.push(chunkEvent.data);
+          }
+        });
+        recorder.addEventListener("error", (recorderEvent) => {
+          cancelVoiceCapture({ updateState: false });
+          setVoiceFailure(recorderEvent.error || recorderEvent);
+        });
+        recorder.start(250);
 
-      voiceStartedAtRef.current = Date.now();
-      setVoiceTapToSendMode(continuation.tapToSend);
-      setVoiceMode(VOICE_STATES.recording);
-      if (continuation.tapToSend) {
-        setNotice("麦克风已授权并开始录音。说完后，再点击一次录音按钮发送。");
+        voiceStartedAtRef.current = Date.now();
+        setVoiceTapToSendMode(false);
+        setVoiceMode(VOICE_STATES.recording);
+        voiceElapsedTimerRef.current = window.setInterval(() => {
+          setVoiceElapsedMs(Date.now() - voiceStartedAtRef.current);
+        }, 200);
+        voiceMaxTimerRef.current = window.setTimeout(() => {
+          voicePointerHeldRef.current = false;
+          void finishVoiceCapture({ send: true });
+        }, VOICE_MAX_DURATION_MS);
+        navigator.vibrate?.(18);
+      } catch (error) {
+        if (voiceCaptureRunRef.current !== captureRun) return;
+        cancelVoiceCapture({ updateState: false });
+        setVoiceFailure(error);
       }
-      voiceElapsedTimerRef.current = window.setInterval(() => {
-        setVoiceElapsedMs(Date.now() - voiceStartedAtRef.current);
-      }, 200);
-      voiceMaxTimerRef.current = window.setTimeout(() => {
-        voicePointerHeldRef.current = false;
-        void finishVoiceCapture({ send: true });
-      }, VOICE_MAX_DURATION_MS);
-      navigator.vibrate?.(18);
-    } catch (error) {
-      if (voiceCaptureRunRef.current !== captureRun) return;
-      cancelVoiceCapture({ updateState: false });
-      setVoiceFailure(error);
-    }
+    }, VOICE_LONG_PRESS_MS);
   }
 
   function endVoiceCapture(event) {
@@ -3594,10 +3728,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     } catch {
       // 指针已经被 WebView 释放时无需再处理。
     }
-    if (
-      voiceStateRef.current === VOICE_STATES.recording &&
-      voiceTapToSendRef.current
-    ) {
+    // 未达到长按阈值就松手：取消门控计时器，不录音、不提示。
+    if (!voiceLongPressArmedRef.current) {
+      if (voiceLongPressTimerRef.current) {
+        window.clearTimeout(voiceLongPressTimerRef.current);
+        voiceLongPressTimerRef.current = null;
+      }
+      voiceCaptureRunRef.current += 1;
       return;
     }
     if (voiceStateRef.current === VOICE_STATES.recording) {
@@ -4319,6 +4456,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
     if (!preserveComposer) {
       setMessage("");
+      // 清除 localStorage 草稿
+      try {
+        const key = `dengta_chat_draft_${activeSessionId || "__draft__"}`;
+        globalThis.localStorage?.removeItem(key);
+      } catch { /* 静默降级 */ }
       setMessageReference(null);
       chatAttachmentsRef.current = [];
       setChatAttachments([]);
@@ -6643,13 +6785,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
     return (
       <>
+        {chatBackground && <ChatBackground src={chatBackground} />}
         <section
           ref={messageListRef}
           className="message-list"
           aria-live="polite"
           onScroll={trackMessageScroll}
         >
-          {chatBackground && <ChatBackground src={chatBackground} />}
           {isLoading ? (
             <div className="empty-state">正在加载 DengTa home…</div>
           ) : messages.length === 0 ? (
@@ -6967,9 +7109,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   type="button"
                   aria-label={
                     voiceServiceAvailable
-                      ? voiceTapToSend
-                        ? "录音已开始，点击发送"
-                        : "按住说话，松开发送"
+                      ? "长按说话，松开发送"
                       : "语音服务暂不可用"
                   }
                   aria-pressed={voiceState === VOICE_STATES.recording}
@@ -6993,9 +7133,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                     {!voiceServiceAvailable
                       ? "语音暂不可用"
                       : voiceState === VOICE_STATES.recording
-                        ? voiceTapToSend
-                          ? `点击发送 · ${(voiceElapsedMs / 1000).toFixed(1)} 秒`
-                          : `松开发送 · ${(voiceElapsedMs / 1000).toFixed(1)} 秒`
+                        ? `松开发送 · ${(voiceElapsedMs / 1000).toFixed(1)} 秒`
                         : VOICE_STATE_LABELS[voiceState] || "按住说话"}
                   </span>
                 </button>
@@ -7029,9 +7167,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   aria-live="polite"
                 >
                   {voiceServiceAvailable
-                    ? voiceTapToSend
-                      ? "说完后再次点击即可发送"
-                      : "最长 60 秒，松开后发送"
+                    ? "长按说话，松开发送 · 最长 60 秒"
                     : voiceService.message}
                 </span>
               </div>
@@ -8938,6 +9074,45 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             </div>
               </>
             )}
+            {/* DLNA 投屏接收开关 */}
+            <div className="notification-feature-panel device-activity-panel">
+              <div className="device-activity-heading">
+                <div>
+                  <strong>DLNA 投屏接收</strong>
+                  <span>视频 App 点投屏 → 选择「灯塔 DENGTA」→ 一起看</span>
+                </div>
+                <button
+                  type="button"
+                  className={`privacy-switch${
+                    dlnaState.active ? " is-on" : ""
+                  }`}
+                  role="switch"
+                  aria-checked={dlnaState.active}
+                  aria-label={
+                    dlnaState.active ? "关闭投屏接收" : "开启投屏接收"
+                  }
+                  disabled={dlnaBusy}
+                  onClick={toggleDlnaReceiver}
+                >
+                  <span aria-hidden="true" />
+                </button>
+              </div>
+              <p>
+                开启后，灯塔会在局域网注册为 DLNA 媒体接收器。在同一 Wi-Fi 下打开 B站、腾讯视频、爱奇艺等 App，点「投屏」按钮即可看到「灯塔 DENGTA」，选择后自动在灯塔内置播放器播放并开始一起看。
+              </p>
+              {dlnaState.active && (
+                <small>
+                  端口：{dlnaState.port || "—"}
+                  {dlnaState.wifiName ? ` · Wi-Fi：${dlnaState.wifiName}` : ""}
+                  {dlnaState.transportState !== "STOPPED" && (
+                    <>
+                      {" · "}
+                      状态：{dlnaState.transportState === "PLAYING" ? "播放中" : dlnaState.transportState === "PAUSED_PLAYBACK" ? "已暂停" : "已停止"}
+                    </>
+                  )}
+                </small>
+              )}
+            </div>
           </div>
           )}
 
@@ -9651,6 +9826,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           {activeView === "memories" && renderMemories()}
           {activeView === "takeout" && renderTakeout()}
           {activeView === "achievements" && renderAchievements()}
+          {activeView === "workspace" && (
+            <Suspense fallback={<DeferredFeature label="正在打开工作区…" />}>
+              <WorkspaceManager />
+            </Suspense>
+          )}
           {activeView === "discover" && renderDiscover()}
         </div>
       </main>

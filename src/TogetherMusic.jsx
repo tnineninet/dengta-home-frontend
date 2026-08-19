@@ -773,6 +773,19 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   return <div className="together-setup together-music-setup" aria-busy={loading || queueBusy}>
     {!active && <section className="music-import-entry"><div><strong>把想听的歌带进来</strong><p>支持安全的文本歌单、本机音频与网易云分享链接。</p></div><button type="button" className="together-primary" aria-expanded={importOpen} aria-controls="together-music-import" onClick={() => setImportOpen((current) => !current)}><ListPlus aria-hidden="true" />{importOpen ? "收起导入" : "导入歌单"}</button></section>}
     {!active && importOpen && <div id="together-music-import"><MusicSettings /></div>}
+    {!active && (
+      <label className="music-random-play-toggle">
+        <input
+          type="checkbox"
+          checked={randomPlayEnabled}
+          onChange={(event) => toggleRandomPlay(event.target.checked)}
+        />
+        <span>
+          <strong>打开软件后随机播放一首歌</strong>
+          <small>在 DengTa 里已有的歌里随机挑一首内置播放（不跳转网易云）；没有可播的歌时会尝试抓取一首下载进来。勾选后每次打开 App 都会自动播放。</small>
+        </span>
+      </label>
+    )}
       {!active && (
         <section className="music-provider-connect music-provider-cookie">
           <div className="music-provider-connect-heading">
@@ -808,20 +821,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
               手机版和桌面版都走内置浏览器：登录态保存在 App 里长期有效；桌面版页面支持扫码登录，二维码可双指放大。
             </p>
           )}
-          {cookieStatus.connected && (
-            <label className="music-random-play-toggle">
-              <input
-                type="checkbox"
-                checked={randomPlayEnabled}
-                onChange={(event) => toggleRandomPlay(event.target.checked)}
-              />
-              <span>
-                <strong>打开软件后随机播放一首歌</strong>
-                <small>在 DengTa 里已有的歌里随机挑一首内置播放（不跳转网易云）；没有可播的歌时会尝试抓取一首下载进来。勾选后每次打开 App 都会自动播放。</small>
-              </span>
-            </label>
-          )}
-        </section>
+          </section>
       )}
       {!active && cookieStatus.connected && (
         <section className="music-cookie-operations">

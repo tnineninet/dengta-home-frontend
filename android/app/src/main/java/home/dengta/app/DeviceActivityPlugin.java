@@ -354,10 +354,27 @@ public final class DeviceActivityPlugin extends Plugin {
         "weishi", "quanmin", "soul", "youtube", "twitch", "video"
     };
 
+    // 视频标题/文本关键词：即使包名不是视频 App，但通知内容像视频 URL 也跳过
+    private static final String[] VIDEO_TITLE_MARKERS = {
+        "youtube.com", "youtu.be", "bilibili.com", "b23.tv", "douyin.com",
+        "tiktok.com", "v.qq.com", "v.youku.com", "iqiyi.com", "mgtv.com"
+    };
+
     private boolean isVideoPackage(String pkg) {
         if (pkg == null || pkg.isEmpty()) return false;
         for (String marker : VIDEO_PACKAGE_MARKERS) {
             if (pkg.contains(marker)) return true;
+        }
+        return false;
+    }
+
+    /** 检查通知标题/文本是否包含视频链接特征（WebView 内播放视频时）。 */
+    private boolean isVideoTitle(String title, String text) {
+        String combined = (title == null ? "" : title) + " " + (text == null ? "" : text);
+        if (combined.isEmpty()) return false;
+        combined = combined.toLowerCase(Locale.ROOT);
+        for (String marker : VIDEO_TITLE_MARKERS) {
+            if (combined.contains(marker)) return true;
         }
         return false;
     }
@@ -377,6 +394,8 @@ public final class DeviceActivityPlugin extends Plugin {
             String title = titleCs == null ? "" : String.valueOf(titleCs).trim();
             String text = textCs == null ? "" : String.valueOf(textCs).trim();
             if (title.isEmpty() && text.isEmpty()) return null;
+            // 跳过视频类通知内容（WebView 内播放视频产生的 MediaSession）
+            if (isVideoTitle(title, text)) return null;
 
             JSObject song = new JSObject();
             song.put("title", truncate(title, 120));
@@ -551,13 +570,36 @@ public final class DeviceActivityPlugin extends Plugin {
         String action = call.getString("action", "toggle");
         try {
             if (cachedNowPlayingController == null) {
-                // 重新探测一次，避免轮询间隙 controller 丢失
-                MediaSessionManager manager = (MediaSessionManager) getContext()
-                    .getSystemService(Context.MEDIA_SESSION_SERVICE);
-                if (manager != null) {
-                    java.util.List<MediaController> controllers = manager.getActiveSessions(null);
-                    if (!controllers.isEmpty()) {
-                        cachedNowPlayingController = controllers.get(0);
+                // 通知路径时 cachedNowPlayingController 为空，从通知缓存反查包名重新匹配
+                android.service.notification.StatusBarNotification sbn =
+                    NowPlayingListenerService.getCachedMediaNotification();
+                if (sbn != null) {
+                    String notifyPkg = sbn.getPackageName();
+                    MediaSessionManager manager = (MediaSessionManager) getContext()
+                        .getSystemService(Context.MEDIA_SESSION_SERVICE);
+                    if (manager != null) {
+                        java.util.List<MediaController> controllers = manager.getActiveSessions(null);
+                        if (controllers != null) {
+                            for (MediaController controller : controllers) {
+                                if (controller == null) continue;
+                                if (controller.getPackageName() != null
+                                    && controller.getPackageName().equals(notifyPkg)) {
+                                    cachedNowPlayingController = controller;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                // 仍然没找到，再尝试通用探测
+                if (cachedNowPlayingController == null) {
+                    MediaSessionManager manager = (MediaSessionManager) getContext()
+                        .getSystemService(Context.MEDIA_SESSION_SERVICE);
+                    if (manager != null) {
+                        java.util.List<MediaController> controllers = manager.getActiveSessions(null);
+                        if (!controllers.isEmpty()) {
+                            cachedNowPlayingController = controllers.get(0);
+                        }
                     }
                 }
             }

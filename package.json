@@ -71,9 +71,11 @@
   },
   "dependencies": {
     "@capacitor/android": "^8.4.2",
+    "@capacitor/app": "^8.1.1",
     "@capacitor/clipboard": "^8.0.1",
     "@capacitor/core": "^8.4.2",
     "@capacitor/local-notifications": "^8.0.0",
+    "@capacitor/preferences": "^8.0.1",
     "@supabase/auth-js": "^2.110.8",
     "lucide-react": "^0.468.0",
     "qrcode": "^1.5.4",

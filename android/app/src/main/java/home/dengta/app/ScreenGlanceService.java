@@ -99,6 +99,9 @@ public final class ScreenGlanceService extends Service {
     private static final String LAST_REACTION_KEY = "last_reaction";
     private static final String LAST_WATCH_HASH_KEY = "last_watch_hash";
     private static final String LAST_WATCH_UPLOAD_AT_KEY = "last_watch_upload_at";
+    private static final String LAST_GLANCE_HASH_KEY = "last_glance_hash";
+    private static final String LAST_GLANCE_UPLOAD_AT_KEY = "last_glance_upload_at";
+    private static final String LAST_USER_ACTIVE_AT_KEY = "last_user_active_at";
     private static final String CAPTURED_AT_KEY = "captured_at";
     private static final String CAPTURE_WIDTH_KEY = "capture_width";
     private static final String CAPTURE_HEIGHT_KEY = "capture_height";
@@ -108,10 +111,14 @@ public final class ScreenGlanceService extends Service {
     private static final long RETRY_DELAY_MS = 5L * 60L * 1000L;
     private static final long FOREGROUND_EVENT_LOOKBACK_MS =
         24L * 60L * 60L * 1000L;
-    private static final int MAX_CAPTURE_EDGE = 1280;
-    private static final int MAX_CAPTURE_BYTES = 1_400_000;
+    private static final int MAX_CAPTURE_EDGE = 720;
+    private static final int MAX_CAPTURE_BYTES = 1_000_000;
     private static final long WATCH_FORCE_UPLOAD_MS = 8L * 60L * 1000L;
     private static final int WATCH_HASH_DIFFERENCE = 5;
+    private static final int GLANCE_HASH_DIFFERENCE = 5;
+    private static final long GLANCE_FORCE_UPLOAD_MS = 30L * 60L * 1000L;
+    private static final long ACTIVE_USER_THRESHOLD_MS = 10L * 60L * 1000L;
+    private static final long INACTIVE_SKIP_MS = 60L * 60L * 1000L;
     private static final int WATCH_HTTP_TIMEOUT_MS = 70_000;
     private static final String[] PRIVATE_APP_MARKERS = {
         "bank", "banking", "pay", "payment", "wallet", "finance",
@@ -592,7 +599,7 @@ public final class ScreenGlanceService extends Service {
                     uploadCoWatchFrame(request, encoded, width, height, frameHash);
                 }
             } else if (request.mode == CaptureMode.GLANCE) {
-                uploadGlanceFrame(request, encoded);
+                uploadGlanceFrame(request, encoded, frameHash);
             } else {
                 saveCapture(encoded, width, height);
             }
@@ -686,6 +693,13 @@ public final class ScreenGlanceService extends Service {
     }
 
     private void scheduleAfterCapture(CaptureRequest request, boolean succeeded) {
+        // 记录用户活动：每次成功截图说明屏幕正被使用，刷新活跃时间
+        if (succeeded) {
+            preferences(this)
+                .edit()
+                .putLong(LAST_USER_ACTIVE_AT_KEY, System.currentTimeMillis())
+                .apply();
+        }
         mainHandler.post(() -> {
             if (!isRequestCurrent(request)) return;
             if (request.mode == CaptureMode.WATCH) {
@@ -838,7 +852,7 @@ public final class ScreenGlanceService extends Service {
         int height,
         long frameHash
     ) throws Exception {
-        JSONObject response = uploadFrame(request, image);
+        JSONObject response = uploadFrame(request, image, "");
         if (!isRequestCurrent(request)) return;
         String capturedAt = cleanText(
             response.optString("captured_at", isoTimestamp(System.currentTimeMillis())),
@@ -856,16 +870,39 @@ public final class ScreenGlanceService extends Service {
 
     private void uploadGlanceFrame(
         CaptureRequest request,
-        byte[] image
+        byte[] image,
+        long frameHash
     ) throws Exception {
-        JSONObject response = uploadFrame(request, image);
+        // Glance 哈希跳过：画面没变就不上传
+        SharedPreferences prefs = preferences(this);
+        long previousHash = prefs.getLong(LAST_GLANCE_HASH_KEY, 0L);
+        long previousAt = prefs.getLong(LAST_GLANCE_UPLOAD_AT_KEY, 0L);
+        long now = System.currentTimeMillis();
+        if (previousAt > 0L &&
+            now - previousAt < GLANCE_FORCE_UPLOAD_MS &&
+            Long.bitCount(previousHash ^ frameHash) < GLANCE_HASH_DIFFERENCE) {
+            return;
+        }
+        // 记录当前前台应用名，通过 query 参数传给后端
+        String appName = "";
+        String pkg = foregroundPackage();
+        if (!pkg.isEmpty()) {
+            String label = applicationName(pkg);
+            appName = urlEncode(!label.isEmpty() ? label : pkg);
+        }
+        JSONObject response = uploadFrame(request, image, appName);
         if (!isRequestCurrent(request)) return;
         applyFrameResponse(request, response, null, 0, 0, "");
+        prefs.edit()
+            .putLong(LAST_GLANCE_HASH_KEY, frameHash)
+            .putLong(LAST_GLANCE_UPLOAD_AT_KEY, System.currentTimeMillis())
+            .apply();
     }
 
     private JSONObject uploadFrame(
         CaptureRequest request,
-        byte[] image
+        byte[] image,
+        String appName
     ) throws Exception {
         BackgroundNotificationCredentials.Identity identity = request.identity;
         if (identity == null || identity.isExpired(System.currentTimeMillis())) {
@@ -886,7 +923,8 @@ public final class ScreenGlanceService extends Service {
             intervalQuery +
             "&epoch=" + request.epoch +
             "&sequence=" + request.sequence +
-            "&captured_at=" + urlEncode(capturedAt);
+            "&captured_at=" + urlEncode(capturedAt) +
+            (appName == null || appName.isEmpty() ? "" : "&app_name=" + appName);
         URI uri = URI.create(baseUrl + "/api/v2/co-watch/frame" + query);
         if (!"https".equalsIgnoreCase(uri.getScheme())) {
             throw new IllegalStateException("共看服务必须使用 HTTPS。");
@@ -1067,7 +1105,32 @@ public final class ScreenGlanceService extends Service {
         );
         long spread = maximum - minimum;
         long minutes = minimum + (spread == 0 ? 0 : nextLong(spread + 1));
-        scheduleRandomCapture(minutes * 60_000L);
+        // 频率自适应：检测用户活跃度决定间隔伸缩
+        long delayMs = adjustForActivity(minutes * 60_000L);
+        scheduleRandomCapture(delayMs);
+    }
+
+    // 频率自适应：用户最近有前台 App 活动 → 缩短间隔（更容易被捕捉到）；
+    // 用户长时间没动手机（如锁屏/夜间未使用）→ 延长间隔甚至倍增，避免无效上传。
+    private long adjustForActivity(long requestedMs) {
+        SharedPreferences prefs = preferences(this);
+        long lastActive = prefs.getLong(LAST_USER_ACTIVE_AT_KEY, 0L);
+        long now = System.currentTimeMillis();
+        long idleMs = now - lastActive;
+        if (prefs.getBoolean(WIFI_ONLY_KEY, true) && !isOnWifi()) {
+            return requestedMs;
+        }
+        if (idleMs > INACTIVE_SKIP_MS && lastActive > 0L) {
+            // 长时间无活动：延长 1.5 倍，最多翻倍，避免徒劳抓屏
+            long extended = Math.round(requestedMs * 1.5D);
+            return Math.min(requestedMs * 2L, extended);
+        }
+        if (idleMs < ACTIVE_USER_THRESHOLD_MS && lastActive > 0L) {
+            // 活跃：缩短到 ~70%，让 AI 更快看到你在干什么
+            long shortened = Math.round(requestedMs * 0.7D);
+            return Math.max(60_000L, shortened);
+        }
+        return requestedMs;
     }
 
     private void scheduleRandomCapture(long delayMs) {
@@ -1239,6 +1302,9 @@ public final class ScreenGlanceService extends Service {
             prefs.edit()
                 .remove(LAST_WATCH_HASH_KEY)
                 .remove(LAST_WATCH_UPLOAD_AT_KEY)
+                .remove(LAST_GLANCE_HASH_KEY)
+                .remove(LAST_GLANCE_UPLOAD_AT_KEY)
+                .remove(LAST_USER_ACTIVE_AT_KEY)
                 .remove(LAST_REACTION_AT_KEY)
                 .remove(LAST_REACTION_KEY)
                 .apply();

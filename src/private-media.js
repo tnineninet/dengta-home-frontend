@@ -67,7 +67,7 @@ export function normalizePrivateMediaCatalog(data = {}) {
               .map((tag) => tag.trim())
               .filter(Boolean),
       }))
-      .filter((asset) => privateMediaContentPath(asset.id)),
+      .filter((asset) => privateMediaContentPath(asset.id) && asset.status !== "archived"),
     preferences: root.preferences || source.preferences || {},
   };
 }

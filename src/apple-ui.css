@@ -13,9 +13,11 @@
   --apple-black: #000000;
   --apple-dark: #1c1c1e;
   --apple-dark-raised: #2c2c2e;
-  --apple-radius-card: 8px;
-  --apple-radius-control: 8px;
+  --apple-radius-card: 10px;
+  --apple-radius-control: 9999px;
   --apple-radius-bubble: 18px;
+  --apple-radius-button: 9999px;
+  --apple-radius-input: 10px;
   --apple-font-display:
     -apple-system, BlinkMacSystemFont, "SF Pro Display", "HarmonyOS Sans SC",
     "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
@@ -27,6 +29,44 @@
   background: var(--apple-parchment);
   color-scheme: light;
   font-family: var(--apple-font-text);
+}
+
+/* Apple-style press feedback on all interactive elements */
+button:not(:disabled):active,
+input[type="button"]:not(:disabled):active,
+input[type="submit"]:not(:disabled):active,
+select:not(:disabled):active,
+a:active {
+  transform: scale(0.96);
+  transition: transform 0.12s cubic-bezier(0.32, 0.94, 0.6, 1);
+}
+
+/* Smooth transitions for all interactive elements */
+button,
+input[type="button"],
+input[type="submit"],
+select,
+a,
+.together-primary,
+.music-cookie-connect-actions button,
+.music-cookie-operations-tabs button,
+.music-cookie-playlist-name,
+.music-cookie-track-actions button {
+  transition: all 0.2s cubic-bezier(0.32, 0.94, 0.6, 1);
+}
+
+/* Global scroll containers — smooth native feel */
+.message-list,
+.composer-tool-menu,
+.settings-sheet-scroll,
+.feature-page,
+.moment-list,
+.diary-entry-list,
+.music-cookie-operations-body,
+.music-cookie-track-list,
+.music-cookie-playlist-list {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
 }
 
 html,
@@ -85,6 +125,8 @@ select:focus-visible {
 
 .main-panel {
   isolation: isolate;
+  position: relative;
+  z-index: 1;
 }
 
 /* Global navigation */
@@ -487,6 +529,10 @@ select:focus-visible {
 .message-avatar {
   border: 0;
   border-radius: 50%;
+  width: 42px;
+  height: 42px;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
   color: #ffffff;
   background: var(--apple-dark);
   box-shadow: none;

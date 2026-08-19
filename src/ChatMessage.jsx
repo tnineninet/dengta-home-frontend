@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DeviceActionReceipts from "./DeviceActionReceipts";
 import { MessageAttachments, ThinkingPanel } from "./ChatMessageExtras";
 import { AuthenticatedImage } from "./PrivateMedia";
@@ -100,6 +100,35 @@ function ChatMessage({
     item.tool_calls?.artwork_alt || `${aiName}创作的图片`;
   const isGenerating = item.isStreaming === true || item.generationInProgress === true;
   const [thinkingDetailOpen, setThinkingDetailOpen] = useState(false);
+
+  // 流式进度条：将 thinkingStatuses 映射到 0~100% + 已接收字数
+  const streamProgress = useMemo(() => {
+    if (!isGenerating) return null;
+    const statuses = Array.isArray(item.thinkingStatuses) ? item.thinkingStatuses : [];
+    const last = statuses.length > 0 ? statuses[statuses.length - 1] : "";
+    const chars = Math.max(0, String(item.content || "").length);
+    // 阶段 → 百分比映射
+    const PHASE_WEIGHT = {
+      "正在准备并发送这条消息": 3,
+      "服务器已接收本轮消息": 8,
+      "服务器已识别并复用先前保存的消息": 8,
+      "正在读取附件": 12,
+      "正在安全读取附件": 14,
+      "附件已经读取完成": 16,
+      "正在整理对话上下文": 22,
+      "正在请求所选模型": 30,
+      "模型深度推理中": 38,
+      "模型深入推理中": 42,
+      "模型扩展推理中": 44,
+    };
+    const base = PHASE_WEIGHT[last] || 0;
+    // 收到首字后按字数增长（45% ~ 92%）
+    const textProgress = chars > 0
+      ? Math.min(45 + Math.min(chars, 2000) / 2000 * 47, 92)
+      : base;
+    const pct = Math.max(base, textProgress);
+    return { pct: Math.min(pct, 98), chars };
+  }, [isGenerating, item.thinkingStatuses, item.content]);
 
   const cancelLongPress = useCallback(() => {
     if (longPressRef.current?.timerId) {
@@ -266,6 +295,12 @@ function ChatMessage({
           )}
           {item.content && (
             <div className="message-content">{item.content}</div>
+          )}
+          {!isUser && streamProgress && (
+            <div className="stream-progress-bar" aria-label="回复进度">
+              <i className="stream-progress-track"><b style={{ width: `${streamProgress.pct}%` }} /></i>
+              <span className="stream-progress-chars">{streamProgress.chars}字</span>
+            </div>
           )}
           {sticker && (
             <button

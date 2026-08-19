@@ -533,8 +533,9 @@ body {
   grid-row: 1;
   align-self: start;
   border: 2px solid rgba(255, 250, 240, 0.9);
-  border-radius: 14px;
+  border-radius: 50%;
   object-fit: cover;
+  overflow: hidden;
   box-shadow: 0 6px 16px rgba(73, 46, 54, 0.12);
 }
 
@@ -1497,7 +1498,7 @@ body {
   padding: 12px;
   border: 1px solid rgba(120, 99, 110, 0.16);
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.46);
+  background: rgba(255, 248, 243, 0.86);
 }
 
 .nursery-meter > span {

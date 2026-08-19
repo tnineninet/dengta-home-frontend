@@ -9,6 +9,7 @@ import "./sun-glass-ui.css";
 import "./jelly-motion.css";
 import "./sun-glass-chat.css";
 import "./typography.css";
+import "./apple-high.css";
 import App from "./App.jsx";
 
 function setRangeValue(selector, value) {

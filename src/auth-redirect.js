@@ -43,6 +43,8 @@ function currentAppUrl(location, baseUrl) {
   return callback.toString();
 }
 
+const DEEP_LINK_SCHEME = "dengta://auth";
+
 export function resolveEmailRedirectUrl({
   nativePlatform = false,
   location = globalThis.location,
@@ -52,6 +54,10 @@ export function resolveEmailRedirectUrl({
 } = {}) {
   const configured = cleanHttpUrl(configuredUrl);
   if (configured) return configured;
+
+  // 缺陷 1 修复：原生 App 返回深度链接，用户点击邮箱验证/重置链接后
+  // 回跳到 dengta://auth#access_token=...，由 AppUrlOpen 监听器接收。
+  if (nativePlatform) return DEEP_LINK_SCHEME;
 
   const official = cleanHttpUrl(officialUrl);
   if (nativePlatform) return official;

@@ -215,8 +215,8 @@ public final class WhereaboutsPlugin extends Plugin {
         result.put("timestamp", new java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", java.util.Locale.US)
                 .format(new java.util.Date(location.getTime())));
         JSObject battery = batterySnapshot();
-        result.put("batteryLevel", battery.getInteger("batteryLevel"));
-        result.put("charging", battery.getBoolean("charging"));
+        result.put("batteryLevel", battery.optInt("batteryLevel", 0));
+        result.put("charging", battery.optBoolean("charging", false));
         return result;
     }
 

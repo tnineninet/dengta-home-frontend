@@ -45,7 +45,7 @@ function UploadControl({ purpose, label, busy, onUpload }) {
   );
 }
 
-function StickerEditor({ asset, busy, onSave, onArchive, onPreview }) {
+function StickerEditor({ asset, busy, onSave, onArchive, onDelete, onPreview }) {
   const [draft, setDraft] = useState(() => ({
     display_name: asset.display_name,
     alt_text: asset.alt_text,
@@ -108,6 +108,17 @@ function StickerEditor({ asset, busy, onSave, onArchive, onPreview }) {
         </button>
         <button type="button" className="danger" disabled={busy} onClick={() => void onArchive(asset.id)}>
           归档
+        </button>
+        <button
+          type="button"
+          className="danger"
+          disabled={busy}
+          onClick={() => {
+            if (!window.confirm("确认永久删除这个表情包？删除后不可恢复。")) return;
+            void onDelete(asset.id);
+          }}
+        >
+          删除
         </button>
       </div>
     </article>
@@ -206,19 +217,69 @@ export default function MediaSettings({
                         <span title={asset.display_name || label}>
                           {asset.display_name || label}
                         </span>
-                        <button
-                          type="button"
-                          className="media-choice-enable"
-                          aria-pressed={selectedId === asset.id}
-                          disabled={Boolean(busy) || selectedId === asset.id}
-                          onClick={() => void choose(purpose, asset.id)}
-                        >
-                          {selectedId === asset.id ? "使用中" : "启用"}
-                        </button>
+                        <div className="media-choice-actions">
+                          <button
+                            type="button"
+                            className="media-choice-enable"
+                            aria-pressed={selectedId === asset.id}
+                            disabled={Boolean(busy) || selectedId === asset.id}
+                            onClick={() => void choose(purpose, asset.id)}
+                          >
+                            {selectedId === asset.id ? "使用中" : "启用"}
+                          </button>
+                          <button
+                            type="button"
+                            className="media-choice-edit"
+                            disabled={Boolean(busy)}
+                            onClick={() => {
+                              const nextName = window.prompt("显示名称（可留空）：", asset.display_name || "");
+                              if (nextName === null) return;
+                              const nextAlt = window.prompt("替代文字（可留空）：", asset.alt_text || "");
+                              if (nextAlt === null) return;
+                              void perform(`patch:${asset.id}`, () =>
+                                patchPrivateMediaAsset(asset.id, {
+                                  display_name: nextName.trim(),
+                                  alt_text: nextAlt.trim(),
+                                }),
+                              );
+                            }}
+                          >
+                            修改
+                          </button>
+                          <button
+                            type="button"
+                            className="danger"
+                            disabled={Boolean(busy)}
+                            onClick={() => {
+                              if (!window.confirm(`确认删除此${label}？删除后不可恢复。`)) return;
+                              void perform(`delete:${asset.id}`, async () => {
+                                await archivePrivateMediaAsset(asset.id, true);
+                                // 如果正好是选中项，清除偏好
+                                if (selectedId === asset.id) {
+                                  await updatePrivateMediaPreferences({ [preferenceKey(purpose)]: null });
+                                }
+                              });
+                            }}
+                          >
+                            删除
+                          </button>
+                        </div>
                       </article>
                     );
                   })}
-                  {selectedId && <button type="button" className="media-clear-button" disabled={Boolean(busy)} onClick={() => void choose(purpose, null)}>清除当前{label}</button>}
+                  <div className="media-default-row">
+                    <button
+                      type="button"
+                      className="media-default-button"
+                      disabled={Boolean(busy) || !selectedId}
+                      onClick={() => void choose(purpose, null)}
+                    >
+                      {selectedId ? "回到默认天空" : "默认天空·太阳轨迹·银河"}
+                    </button>
+                    {purpose === "chat_background" && !selectedId && (
+                      <small className="media-default-hint">日出日落、夜晚银河正在显示</small>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <p className="media-empty-state">还没有上传{label}。</p>
@@ -243,6 +304,7 @@ export default function MediaSettings({
                 onPreview={onPreview}
                 onSave={(id, changes) => perform(`patch:${id}`, () => patchPrivateMediaAsset(id, changes))}
                 onArchive={(id) => perform(`archive:${id}`, () => archivePrivateMediaAsset(id))}
+                onDelete={(id) => perform(`delete:${id}`, () => archivePrivateMediaAsset(id, true))}
               />
             ))}
           </div>

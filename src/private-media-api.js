@@ -94,12 +94,13 @@ export function patchPrivateMediaAsset(id, changes, client = { apiRequest }) {
   );
 }
 
-export function archivePrivateMediaAsset(id, client = { apiRequest }) {
+export function archivePrivateMediaAsset(id, permanent = false, client = { apiRequest }) {
   if (!isPrivateMediaAssetId(id)) {
     throw new TypeError("私密媒体资源 ID 无效。");
   }
+  const query = permanent ? `?permanent=true` : "";
   return client.apiRequest(
-    `/api/v2/private-media/assets/${encodeURIComponent(id)}`,
+    `/api/v2/private-media/assets/${encodeURIComponent(id)}${query}`,
     { method: "DELETE" },
   );
 }

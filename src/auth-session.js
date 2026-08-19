@@ -1,4 +1,5 @@
 import { GoTrueClient } from "@supabase/auth-js";
+import { resolveAuthStorage } from "./auth-native-storage.js";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -187,15 +188,17 @@ export function createAuthSessionManager({
     }
   }
 
-  function ensureClient() {
+  async function ensureClient() {
     requireConfiguration();
     if (client) return client;
+    // 缺陷 2 修复：原生端优先使用 @capacitor/preferences 持久化会话
+    const resolvedStorage = await resolveAuthStorage({ storage: persistentStorage });
     client = createClientFn(normalizedUrl, normalizedKey, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
-        storage: persistentStorage,
+        storage: resolvedStorage || persistentStorage,
         storageKey: AUTH_STORAGE_KEY,
       },
     });
@@ -207,7 +210,7 @@ export function createAuthSessionManager({
     if (initialization) return initialization;
 
     initialization = (async () => {
-      const authClient = ensureClient();
+      const authClient = await ensureClient();
       publish({ status: AUTH_STATUS.loading, error: null });
 
       if (!authSubscription) {
@@ -266,7 +269,7 @@ export function createAuthSessionManager({
     if (emailRedirectTo) {
       options.emailRedirectTo = String(emailRedirectTo);
     }
-    const { data, error } = await ensureClient().auth.signUp({
+    const { data, error } = await (await ensureClient()).auth.signUp({
       email: cleanEmail(email),
       password: String(password || ""),
       ...(Object.keys(options).length ? { options } : {}),
@@ -288,7 +291,7 @@ export function createAuthSessionManager({
     requireConfiguration();
     await initialize();
     publish({ status: AUTH_STATUS.authenticating, error: null });
-    const { data, error } = await ensureClient().auth.signInWithPassword({
+    const { data, error } = await (await ensureClient()).auth.signInWithPassword({
       email: cleanEmail(email),
       password: String(password || ""),
     });
@@ -310,7 +313,7 @@ export function createAuthSessionManager({
     const options = emailRedirectTo
       ? { emailRedirectTo: String(emailRedirectTo) }
       : undefined;
-    const { error } = await ensureClient().auth.resend({
+    const { error } = await (await ensureClient()).auth.resend({
       type: "signup",
       email: cleanEmail(email),
       ...(options ? { options } : {}),
@@ -326,7 +329,7 @@ export function createAuthSessionManager({
     const options = redirectTo
       ? { redirectTo: String(redirectTo) }
       : undefined;
-    const { error } = await ensureClient().auth.resetPasswordForEmail(
+    const { error } = await (await ensureClient()).auth.resetPasswordForEmail(
       cleanEmail(email),
       options,
     );
@@ -344,7 +347,7 @@ export function createAuthSessionManager({
         status: 401,
       });
     }
-    const { data, error } = await ensureClient().auth.updateUser({
+    const { data, error } = await (await ensureClient()).auth.updateUser({
       password: String(password || ""),
     });
     if (error) {
@@ -362,7 +365,8 @@ export function createAuthSessionManager({
       return;
     }
     await initialize();
-    const { error } = await ensureClient().auth.signOut({ scope: "local" });
+    // 用户主动退出时通知服务端撤销 refresh token（缺陷 7 修复）
+    const { error } = await (await ensureClient()).auth.signOut();
     if (error) {
       throw authFailure(error, "退出登录失败，请稍后再试。");
     }
@@ -374,6 +378,28 @@ export function createAuthSessionManager({
     if (!configured(normalizedUrl, normalizedKey)) return {};
     await initialize();
     if (!session?.access_token) return {};
+    // 缺陷 5 修复：主动检查 token 是否临近/已过期，避免仅依赖后台定时器刷新。
+    // 后台标签页定时器可能被节流，回前台时携带过期 token 导致 401 强制登出。
+    if (
+      session.expires_at &&
+      client?.auth &&
+      typeof client.auth.refreshSession === "function"
+    ) {
+      const expiresAt = Number(session.expires_at) * 1000;
+      const now = Date.now();
+      // 剩余有效期不足 30 秒时主动刷新一次
+      if (expiresAt - now < 30_000) {
+        try {
+          const refreshed = await client.auth.refreshSession();
+          if (refreshed?.data?.session) {
+            session = refreshed.data.session;
+            publish({ status: AUTH_STATUS.authenticated });
+          }
+        } catch {
+          // 刷新失败保持现状，让请求层的 401 处理兜底
+        }
+      }
+    }
     return {
       accessToken: session.access_token,
       companionId: readCompanionId(
@@ -442,6 +468,46 @@ export function createAuthSessionManager({
     listeners.clear();
   }
 
+  // 缺陷 1 修复：处理 dengta://auth#access_token=... 深度链接回跳。
+  // 用户点击邮箱验证/密码重置链接后回跳到 App，把 fragment 里的 token
+  // 交给 GoTrueClient 换成正式会话。
+  async function handleAuthCallbackUrl(rawUrl) {
+    requireConfiguration();
+    await initialize();
+    try {
+      const parsed = new URL(String(rawUrl || ""));
+      const fragment = parsed.hash?.replace(/^#/, "") || "";
+      const params = new URLSearchParams(fragment);
+      const accessToken = params.get("access_token");
+      const refreshToken = params.get("refresh_token");
+      if (!accessToken || !refreshToken) {
+        return { ok: false, reason: "missing_tokens" };
+      }
+      const { data, error } = await (await ensureClient()).auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
+      if (error) {
+        throw authFailure(error, "回跳登录失败，请重新登录。");
+      }
+      passwordRecovery = params.get("type") === "recovery";
+      applySession(
+        data?.session || null,
+        passwordRecovery ? AUTH_STATUS.recovery : undefined,
+      );
+      return { ok: true };
+    } catch (error) {
+      publish({
+        status: AUTH_STATUS.error,
+        error:
+          error instanceof AuthSessionError
+            ? error
+            : authFailure(error, "回跳登录失败，请重新登录。"),
+      });
+      throw error;
+    }
+  }
+
   return Object.freeze({
     initialize,
     signUp,
@@ -450,6 +516,7 @@ export function createAuthSessionManager({
     resendVerification,
     requestPasswordReset,
     updatePassword,
+    handleAuthCallbackUrl,
     getRequestContext,
     setActiveCompanionId,
     captureCompanionFromResponse,

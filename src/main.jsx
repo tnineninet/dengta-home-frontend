@@ -9,6 +9,7 @@ import "./sun-glass-ui.css";
 import "./jelly-motion.css";
 import "./sun-glass-chat.css";
 import "./typography.css";
+import "./apple-high.css";
 import LoadedApp from "./LoadedApp.jsx";
 import AuthGate from "./AuthGate.jsx";
 import { authSession } from "./auth-session.js";
@@ -30,6 +31,27 @@ if (!isReceiverRoute) {
   installChunkRecovery();
   void prewarmBackend();
   pwaInstallController.start();
+}
+
+// 缺陷 1 修复：接收 dengta://auth... 深度链接回跳（邮箱验证 / 密码重置）。
+// 原生 App 无法通过 WebView URL 感知 fragment，必须监听 @capacitor/app 事件。
+if (!isReceiverRoute) {
+  import("@capacitor/app")
+    .then(({ App }) => {
+      App.addListener("appUrlOpen", (data) => {
+        const rawUrl = String(data?.url || "");
+        if (rawUrl.startsWith("dengta://auth")) {
+          void authSession
+            .handleAuthCallbackUrl(rawUrl)
+            .catch(() => {
+              // 回跳失败会发布 error 快照，由 AuthGate 显示给用户
+            });
+        }
+      });
+    })
+    .catch(() => {
+      // @capacitor/app 在纯 Web 构建中不可用时静默跳过，邮箱验证走 Web URL 回跳
+    });
 }
 
 createRoot(document.getElementById("root")).render(
