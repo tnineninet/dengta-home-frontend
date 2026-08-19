@@ -1282,6 +1282,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const messageInputRef = useRef(null);
   const composerMenuTriggerRef = useRef(null);
   const shouldAutoScrollRef = useRef(true);
+  const chatHadContentRef = useRef(false);
   const chatFileInputRef = useRef(null);
   const chatImageInputRef = useRef(null);
   const chatVideoInputRef = useRef(null);
@@ -3134,6 +3135,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         message: "默认关闭。只有 Android 系统明确显示共享状态时才可能取得画面。",
       });
     }
+    // 打开设置时刷新 DLNA 状态（确保开关显示真实状态）
+    if (isSettingsOpen) {
+      void readDlnaState().then((state) => {
+        setDlnaState(state);
+      }).catch(() => {});
+    }
   }, [isSettingsOpen, screenGlanceFeedback.status]);
 
   function trackMessageScroll(event) {
@@ -3144,6 +3151,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       messageList.classList.remove("is-scrolling");
     }, 140);
     const snapshot = captureChatScrollState(messageList);
+    // 首次加载时消息列表从空变长会触发一次非用户 scroll 事件（scrollTop 仍为 0）。
+    // 这种布局驱动的滚动不应把 shouldAutoScrollRef 置为 false，
+    // 否则会导致每次进入 App 聊天页都停在最上面。
+    const atVeryTop = messageList.scrollTop <= 1;
+    const grewFromEmpty =
+      !chatHadContentRef.current && messageList.scrollHeight > 0;
+    chatHadContentRef.current = messageList.scrollHeight > 0;
+    if (atVeryTop && grewFromEmpty) {
+      return;
+    }
     shouldAutoScrollRef.current = snapshot?.pinnedToBottom ?? true;
     if (snapshot) {
       chatScrollStatesRef.current.set(
@@ -9137,7 +9154,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             <div className="notification-feature-panel device-activity-panel">
               <div className="device-activity-heading">
                 <div>
-                  <strong>DLNA 投屏接收</strong>
+                  <strong>
+                    <svg className="dlna-cast-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M2 16v2a4 4 0 0 1 4 4h2" />
+                      <path d="M2 12v2a8 8 0 0 1 8 8h2" />
+                      <path d="M2 8v2a12 12 0 0 1 12 12h2" />
+                      <path d="M22 2H6a2 2 0 0 0-2 2v6" />
+                      <path d="M22 14h-6l-2 3h-2" />
+                      <path d="M22 22h-2" />
+                    </svg>
+                    DLNA 投屏接收</strong>
                   <span>视频 App 点投屏 → 选择「灯塔 DENGTA」→ 一起看</span>
                 </div>
                 <button
