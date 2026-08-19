@@ -107,19 +107,24 @@ function ChatMessage({
     const statuses = Array.isArray(item.thinkingStatuses) ? item.thinkingStatuses : [];
     const last = statuses.length > 0 ? statuses[statuses.length - 1] : "";
     const chars = Math.max(0, String(item.content || "").length);
-    // 阶段 → 百分比映射
+    // 阶段 → 百分比映射（与 STATUS_LABELS 对齐）
     const PHASE_WEIGHT = {
       "正在准备并发送这条消息": 3,
       "服务器已接收本轮消息": 8,
       "服务器已识别并复用先前保存的消息": 8,
+      "消息已保存，AI 仍在处理中": 10,
       "正在读取附件": 12,
       "正在安全读取附件": 14,
       "附件已经读取完成": 16,
       "正在整理对话上下文": 22,
+      "正在生成回复": 28,
       "正在请求所选模型": 30,
-      "模型深度推理中": 38,
-      "模型深入推理中": 42,
-      "模型扩展推理中": 44,
+      "模型推理中": 36,
+      "模型深度推理中": 40,
+      "模型深入推理中": 44,
+      "模型扩展推理中": 46,
+      "正在保存本轮对话": 94,
+      "本轮处理完成": 98,
     };
     const base = PHASE_WEIGHT[last] || 0;
     // 收到首字后按字数增长（45% ~ 92%）
@@ -127,7 +132,7 @@ function ChatMessage({
       ? Math.min(45 + Math.min(chars, 2000) / 2000 * 47, 92)
       : base;
     const pct = Math.max(base, textProgress);
-    return { pct: Math.min(pct, 98), chars };
+    return { pct: Math.min(pct, 98), chars, phase: last };
   }, [isGenerating, item.thinkingStatuses, item.content]);
 
   const cancelLongPress = useCallback(() => {
@@ -299,6 +304,7 @@ function ChatMessage({
           {!isUser && streamProgress && (
             <div className="stream-progress-bar" aria-label="回复进度">
               <i className="stream-progress-track"><b style={{ width: `${streamProgress.pct}%` }} /></i>
+              <span className="stream-progress-phase">{streamProgress.phase}</span>
               <span className="stream-progress-chars">{streamProgress.chars}字</span>
             </div>
           )}

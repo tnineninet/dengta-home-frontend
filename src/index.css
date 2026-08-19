@@ -9802,7 +9802,7 @@ body,
 .stream-progress-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   margin: 6px 0 2px;
 }
 .stream-progress-track {
@@ -9819,7 +9819,30 @@ body,
   height: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, #d99bb0, #b06a86);
-  transition: width 0.25s ease;
+  transition: width 0.35s ease;
+  position: relative;
+}
+.stream-progress-track > b::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+  animation: stream-progress-shimmer 1.8s ease-in-out infinite;
+}
+@keyframes stream-progress-shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.stream-progress-phase {
+  flex: 0 0 auto;
+  color: #9f5f75;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 80px;
+  opacity: 0.8;
 }
 .stream-progress-chars {
   flex: 0 0 auto;
