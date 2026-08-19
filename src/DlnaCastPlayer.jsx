@@ -21,6 +21,7 @@ export default function DlnaCastPlayer({ info, onClose }) {
   const [duration, setDuration] = useState(0);
   const [failed, setFailed] = useState(false);
   const [ended, setEnded] = useState(false);
+  const [waiting, setWaiting] = useState(false);
   const endedAtRef = useRef(null);
 
   const mediaUrl = info?.uri || info?.mediaUrl || "";
@@ -32,6 +33,7 @@ export default function DlnaCastPlayer({ info, onClose }) {
     setDuration(0);
     setFailed(false);
     setEnded(false);
+    setWaiting(false);
     endedAtRef.current = null;
   }, [mediaUrl]);
 
@@ -57,7 +59,7 @@ export default function DlnaCastPlayer({ info, onClose }) {
     };
   }, [mediaUrl]);
 
-  if (!mediaUrl) {
+  if (!mediaUrl && !waiting) {
     return (
       <div className="dlna-cast-player dlna-cast-empty">
         <p>没有正在播放的投屏内容。</p>
@@ -83,13 +85,24 @@ export default function DlnaCastPlayer({ info, onClose }) {
       </header>
 
       <div className="dlna-cast-stage">
-        {failed ? (
-          <div className="dlna-cast-failed">
-            <p>媒体地址已失效或无法直接播放。</p>
-            <p className="dlna-cast-failed-hint">B站 的直链有时效限制，失效后需要重新投屏。</p>
+        {waiting ? (
+          <div className="dlna-cast-waiting">
+            <p>请在 B站 等视频 App 中重新点击投屏。</p>
+            <p className="dlna-cast-waiting-hint">投屏后会自动播放。</p>
             {onClose && (
               <button type="button" onClick={onClose}>结束投屏</button>
             )}
+          </div>
+        ) : failed ? (
+          <div className="dlna-cast-failed">
+            <p>媒体地址已失效或无法直接播放。</p>
+            <p className="dlna-cast-failed-hint">B站 的直链有时效限制，失效后需要重新投屏。</p>
+            <div className="dlna-cast-failed-actions">
+              <button type="button" onClick={() => setWaiting(true)}>重新投屏</button>
+              {onClose && (
+                <button type="button" onClick={onClose}>结束投屏</button>
+              )}
+            </div>
           </div>
         ) : (
           <>
