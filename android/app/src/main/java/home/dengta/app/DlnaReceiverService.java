@@ -31,6 +31,7 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.MulticastSocket;
 import java.net.NetworkInterface;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -278,27 +279,43 @@ public final class DlnaReceiverService extends Service {
 
     private void startSsdpLoop() {
         ssdpHandler.post(() -> {
-            try {
-                DatagramSocket socket = new DatagramSocket(null);
-                socket.setReuseAddress(true);
-                socket.bind(new InetSocketAddress(SSDP_PORT));
-                socket.setSoTimeout(2000);
-                ssdpSocket = socket;
-                while (running && ssdpSocket != null) {
+            // 1900 端口可能暂时被占用：多次重试，避免一次失败后设备彻底消失
+            for (int attempt = 0; attempt < 5 && running; attempt++) {
+                MulticastSocket socket = null;
+                try {
+                    socket = new MulticastSocket(null);
+                    socket.setReuseAddress(true);
+                    socket.bind(new InetSocketAddress(SSDP_PORT));
+                    socket.setSoTimeout(2000);
+                    // 加入组播组，确保收到来自 239.255.255.250:1900 的 M-SEARCH
                     try {
-                        byte[] buffer = new byte[8192];
-                        DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-                        socket.receive(packet);
-                        handleSsdpPacket(socket, packet);
-                    } catch (SocketTimeoutException ignored) {
-                        // 每 2s 醒来一次：若 running 已停止则退出循环
-                    } catch (IOException loopError) {
-                        if (!running) break;
+                        InetAddress group = InetAddress.getByName(SSDP_ADDR);
+                        socket.joinGroup(group);
+                    } catch (Exception joinError) {
+                        publishDebug("ssdp joinGroup failed: " + joinError.getMessage());
                     }
+                    ssdpSocket = socket;
+                    while (running && ssdpSocket != null) {
+                        try {
+                            byte[] buffer = new byte[8192];
+                            DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                            socket.receive(packet);
+                            handleSsdpPacket(socket, packet);
+                        } catch (SocketTimeoutException ignored) {
+                            // 每 2s 醒来一次：若 running 已停止则退出循环
+                        } catch (IOException loopError) {
+                            if (!running) break;
+                        }
+                    }
+                    return;
+                } catch (Exception socketError) {
+                    publishDebug("ssdp bind failed (attempt " + (attempt + 1) + "): "
+                        + socketError.getMessage());
+                    if (socket != null) {
+                        try { socket.close(); } catch (Exception ignored) {}
+                    }
+                    try { Thread.sleep(3000L * (attempt + 1)); } catch (InterruptedException ignored) {}
                 }
-            } catch (Exception socketError) {
-                // 1900 端口可能被其它 UPnP 程序占用：退化为只读收听失败，不影响 App 本身
-                publishDebug("ssdp bind failed: " + socketError.getMessage());
             }
         });
     }
@@ -307,31 +324,48 @@ public final class DlnaReceiverService extends Service {
         String request = new String(packet.getData(), packet.getOffset(), packet.getLength(),
             StandardCharsets.UTF_8);
         if (!request.contains("M-SEARCH")) return;
-        if (!request.contains("urn:schemas-upnp-org:device:MediaRenderer:1")
-            && !request.contains("ssdp:all")
-            && !request.contains("upnp:rootdevice")
-            && !request.contains(deviceId)) {
-            return;
-        }
+        boolean matchAll = request.contains("ssdp:all");
+        boolean matchRenderer = request.contains("urn:schemas-upnp-org:device:MediaRenderer:1");
+        boolean matchRoot = request.contains("upnp:rootdevice");
+        boolean matchUuid = request.contains(deviceId);
+        if (!matchAll && !matchRenderer && !matchRoot && !matchUuid) return;
         String localIp = localIpAddress();
         if (localIp.isEmpty()) return;
         String location = "http://" + localIp + ":" + HTTP_PORT + "/description.xml";
-        String usn = "uuid:" + deviceId + "::" + DEVICE_TYPE;
-        String response =
-            "HTTP/1.1 200 OK\r\n"
-                + "CACHE-CONTROL: max-age=1800\r\n"
-                + "EXT:\r\n"
-                + "LOCATION: " + location + "\r\n"
-                + "SERVER: DENGTA/2.10 UPnP/1.0 DENGTA-DLNA/1.0\r\n"
-                + "ST: " + DEVICE_TYPE + "\r\n"
-                + "USN: " + usn + "\r\n"
-                + "BOOTID.UPNP.ORG: 1\r\n"
-                + "CONFIGID.UPNP.ORG: 1\r\n"
-                + "\r\n";
-        byte[] payload = response.getBytes(StandardCharsets.UTF_8);
-        DatagramPacket out = new DatagramPacket(
-            payload, payload.length, packet.getAddress(), packet.getPort());
-        socket.send(out);
+        String uuidPrefix = "uuid:" + deviceId;
+        // 构造三条响应（rootdevice / deviceType / uuid），满足 UPnP 规范对 ssdp:all 的要求
+        String[] ntList = {
+            "upnp:rootdevice",
+            DEVICE_TYPE,
+            uuidPrefix
+        };
+        String[] usnList = {
+            uuidPrefix + "::upnp:rootdevice",
+            uuidPrefix + "::" + DEVICE_TYPE,
+            uuidPrefix
+        };
+        for (int i = 0; i < ntList.length; i++) {
+            String st = ntList[i];
+            if (!matchAll && !matchRoot && !st.equals(DEVICE_TYPE) && !st.equals(uuidPrefix)) continue;
+            if (!matchAll && !matchRenderer && st.equals(DEVICE_TYPE) && !matchUuid) continue;
+            if (!matchAll && !matchRoot && st.equals("upnp:rootdevice")) continue;
+            String response =
+                "HTTP/1.1 200 OK\r\n"
+                    + "CACHE-CONTROL: max-age=1800\r\n"
+                    + "EXT:\r\n"
+                    + "LOCATION: " + location + "\r\n"
+                    + "SERVER: DENGTA/2.10 UPnP/1.0 DENGTA-DLNA/1.0\r\n"
+                    + "ST: " + st + "\r\n"
+                    + "USN: " + usnList[i] + "\r\n"
+                    + "BOOTID.UPNP.ORG: 1\r\n"
+                    + "CONFIGID.UPNP.ORG: 1\r\n"
+                    + "SUPPORTS.LV.UPNP.ORG: 1\r\n"
+                    + "\r\n";
+            byte[] payload = response.getBytes(StandardCharsets.UTF_8);
+            DatagramPacket out = new DatagramPacket(
+                payload, payload.length, packet.getAddress(), packet.getPort());
+            socket.send(out);
+        }
     }
 
     private void sendSsdpAlive() {
@@ -440,6 +474,13 @@ public final class DlnaReceiverService extends Service {
                     byte[] body = deviceDescription().getBytes(StandardCharsets.UTF_8);
                     writeHttpResponse(output, "200 OK", "text/xml; charset=\"utf-8\"",
                         body);
+                } else if ("GET".equalsIgnoreCase(method) && path.contains("icon.png")) {
+                    // 1x1 透明 PNG（48x48 缩放后也 OK，避免客户端 icon 404 影响发现）
+                    byte[] png = android.util.Base64.decode(
+                        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk"
+                            + "YPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
+                        android.util.Base64.DEFAULT);
+                    writeHttpResponse(output, "200 OK", "image/png", png);
                 } else if ("POST".equalsIgnoreCase(method)) {
                     byte[] body = readBody(input);
                     String soapAction = "";
@@ -607,7 +648,8 @@ public final class DlnaReceiverService extends Service {
         String base = "http://" + host + ":" + HTTP_PORT;
         String uniq = UUID.randomUUID().toString();
         return "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
-            + "<root xmlns=\"urn:schemas-upnp-org:device-1-0\">"
+            + "<root xmlns=\"urn:schemas-upnp-org:device-1-0\""
+            + " xmlns:dlna=\"urn:schemas-dlna-org:device-1-0\">"
             + "<specVersion><major>1</major><minor>0</minor></specVersion>"
             + "<device>"
             + "<deviceType>" + DEVICE_TYPE + "</deviceType>"
@@ -618,6 +660,14 @@ public final class DlnaReceiverService extends Service {
             + "<modelName>DengTa</modelName>"
             + "<modelNumber>1.0</modelNumber>"
             + "<UDN>uuid:" + uuidDevice() + "</UDN>"
+            + "<dlna:X_DLNADOC xmlns:dlna=\"urn:schemas-dlna-org:device-1-0\">DMR-1.50</dlna:X_DLNADOC>"
+            + "<iconList>"
+            + "<icon>"
+            + "<mimetype>image/png</mimetype>"
+            + "<width>48</width><height>48</height><depth>24</depth>"
+            + "<url>/icon.png</url>"
+            + "</icon>"
+            + "</iconList>"
             + "<serviceList>"
             + serviceEntry("urn:schemas-upnp-org:service:AVTransport:1",
                 "AVTransport", "/avt", "/avt/event", "/avt",
@@ -663,6 +713,7 @@ public final class DlnaReceiverService extends Service {
 
     private String localIpAddress() {
         try {
+            String wifiIp = "";
             Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
             while (interfaces != null && interfaces.hasMoreElements()) {
                 NetworkInterface iface = interfaces.nextElement();
@@ -673,10 +724,17 @@ public final class DlnaReceiverService extends Service {
                     if (address.isLoopbackAddress()) continue;
                     boolean ipv4 = address.getHostAddress() != null
                         && address.getHostAddress().contains(".");
-                    if (ipv4 && !address.isSiteLocalAddress()) continue;
-                    if (ipv4) return address.getHostAddress();
+                    if (!ipv4 || !address.isSiteLocalAddress()) continue;
+                    String ip = address.getHostAddress();
+                    // 优先返回 Wi-Fi 接口（wlan/wifi）的 IP，避免 VPN 干扰
+                    String name = iface.getName().toLowerCase(Locale.ROOT);
+                    if (name.contains("wlan") || name.contains("wifi") || name.contains("eth")) {
+                        return ip;
+                    }
+                    if (wifiIp.isEmpty()) wifiIp = ip;
                 }
             }
+            return wifiIp;
         } catch (Exception ignored) {
         }
         return "";
