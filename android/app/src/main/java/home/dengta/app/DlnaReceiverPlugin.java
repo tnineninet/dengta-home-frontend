@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.util.Log;
 
 import androidx.core.content.ContextCompat;
 
@@ -19,7 +20,8 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  * 方法：
  *   start()          — 启动 DLNA 接收服务（前台服务，在局域网注册为 MediaRenderer）
  *   stop()           — 停止接收
- *   getState()       — 查询状态（active/port/transportState/currentUri）
+ *   getState()       — 查询状态（active/port/transportState/currentUri/pendingUri/pendingTitle）
+ *   clearPending()   — 清空待处理媒体信息
  *
  * 事件：
  *   mediaReceived    — 视频 App 投屏到了一个媒体 URL → { uri, title, metaJson }
@@ -38,6 +40,18 @@ public final class DlnaReceiverPlugin extends Plugin {
     public void load() {
         super.load();
         registerBroadcastReceivers();
+        // 默认开启 DLNA 投屏接收，自动启动前台服务
+        // 用户可以在设置中手动关闭（ENABLED_KEY 会记录关闭状态）
+        try {
+            DlnaReceiverService.ensureEnabledByDefault(getContext());
+            ContextCompat.startForegroundService(
+                getContext(),
+                DlnaReceiverService.startIntent(getContext())
+            );
+            Log.i("DlnaReceiverPlugin", "auto-start: default enabled, foreground service started");
+        } catch (Exception e) {
+            Log.w("DlnaReceiverPlugin", "auto-start failed: " + e.getMessage());
+        }
     }
 
     @Override
@@ -78,6 +92,12 @@ public final class DlnaReceiverPlugin extends Plugin {
             DlnaReceiverService.stopIntent(getContext())
         );
         call.resolve(DlnaReceiverService.buildState(getContext()));
+    }
+
+    @PluginMethod
+    public void clearPending(PluginCall call) {
+        DlnaReceiverService.clearPending(getContext());
+        call.resolve();
     }
 
     // ---------------------------------------------------------------- 广播接收器

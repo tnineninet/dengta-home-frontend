@@ -14,6 +14,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
+import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
@@ -75,6 +76,9 @@ public final class DlnaReceiverService extends Service {
     private static final String PREFS_NAME = "dengta_dlna";
     private static final String DEVICE_ID_KEY = "device_id";
     private static final String ENABLED_KEY = "enabled";
+    private static final String PENDING_URI_KEY = "pending_uri";
+    private static final String PENDING_TITLE_KEY = "pending_title";
+    private static final String PENDING_META_KEY = "pending_meta";
 
     private static final String SSDP_ADDR = "239.255.255.250";
     private static final int SSDP_PORT = 1900;
@@ -146,9 +150,42 @@ public final class DlnaReceiverService extends Service {
             } catch (Exception ignored) {
             }
             state.put("wifiName", wifiName);
+            // 待处理媒体（App 在前台错过事件时，前端可轮询恢复）
+            state.put("pendingUri", prefs(context).getString(PENDING_URI_KEY, ""));
+            state.put("pendingTitle", prefs(context).getString(PENDING_TITLE_KEY, ""));
+            state.put("pendingMetaJson", prefs(context).getString(PENDING_META_KEY, ""));
         } catch (Exception ignored) {
         }
         return state;
+    }
+
+    /** 用户上次是否开启过投屏接收（用于 App 启动后自动恢复服务）。 */
+    public static boolean isEnabled(Context context) {
+        try {
+            return prefs(context).getBoolean(ENABLED_KEY, false);
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    /** 确保每次 App 启动后投屏接收默认开启。 */
+    public static void ensureEnabledByDefault(Context context) {
+        try {
+            prefs(context).edit().putBoolean(ENABLED_KEY, true).apply();
+        } catch (Exception ignored) {
+        }
+    }
+
+    /** 前端确认已处理投屏媒体后调用，清空待处理缓存。 */
+    public static void clearPending(Context context) {
+        try {
+            prefs(context).edit()
+                .remove(PENDING_URI_KEY)
+                .remove(PENDING_TITLE_KEY)
+                .remove(PENDING_META_KEY)
+                .apply();
+        } catch (Exception ignored) {
+        }
     }
 
     public static Intent startIntent(Context context) {
@@ -458,17 +495,29 @@ public final class DlnaReceiverService extends Service {
             try (Socket socket = client;
                  InputStream input = socket.getInputStream();
                  OutputStream output = socket.getOutputStream()) {
-                socket.setSoTimeout(5000);
+                socket.setSoTimeout(10000);
                 String requestLine = readLine(input);
                 if (requestLine == null || requestLine.isEmpty()) return;
                 String[] parts = requestLine.split(" ");
                 if (parts.length < 2) return;
                 String method = parts[0];
                 String path = parts[1];
-                // 消费请求头
+                // 读取请求头并提取 Content-Length（避免 keep-alive 下等 EOF 卡 5 秒）
+                int contentLength = -1;
                 while (true) {
                     String line = readLine(input);
                     if (line == null || line.isEmpty()) break;
+                    int colon = line.indexOf(':');
+                    if (colon > 0) {
+                        String name = line.substring(0, colon).trim();
+                        String value = line.substring(colon + 1).trim();
+                        if ("content-length".equalsIgnoreCase(name)) {
+                            try {
+                                contentLength = Integer.parseInt(value);
+                            } catch (NumberFormatException ignored) {
+                            }
+                        }
+                    }
                 }
                 if ("GET".equalsIgnoreCase(method) && path.contains("description.xml")) {
                     byte[] body = deviceDescription().getBytes(StandardCharsets.UTF_8);
@@ -481,15 +530,40 @@ public final class DlnaReceiverService extends Service {
                             + "YPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==",
                         android.util.Base64.DEFAULT);
                     writeHttpResponse(output, "200 OK", "image/png", png);
+                } else if ("GET".equalsIgnoreCase(method)
+                           && (path.contains("/avt") || path.contains("/cm") || path.contains("/rc"))
+                           && (!path.contains("/event"))) {
+                    // SCPD 动作描述：很多控制点（含 B站）在投屏前先拉 SCPD 确认动作
+                    byte[] scpd = scpdFor(path).getBytes(StandardCharsets.UTF_8);
+                    writeHttpResponse(output, "200 OK", "text/xml; charset=\"utf-8\"",
+                        scpd);
+                } else if ("SUBSCRIBE".equalsIgnoreCase(method)
+                           || "UNSUBSCRIBE".equalsIgnoreCase(method)) {
+                    // 事件订阅：返回 200 + 订阅超时即可（控制点通常忽略内容）
+                    StringBuilder head = new StringBuilder();
+                    head.append("HTTP/1.1 200 OK\r\n");
+                    head.append("Content-Length: 0\r\n");
+                    head.append("SID: uuid:").append(uuidDevice()).append("\r\n");
+                    head.append("TIMEOUT: Second-300\r\n");
+                    head.append("Connection: close\r\n\r\n");
+                    output.write(head.toString().getBytes(StandardCharsets.UTF_8));
+                    output.flush();
+                } else if (("OPTIONS".equalsIgnoreCase(method))) {
+                    StringBuilder head = new StringBuilder();
+                    head.append("HTTP/1.1 200 OK\r\n");
+                    head.append("Content-Length: 0\r\n");
+                    head.append("Connection: close\r\n\r\n");
+                    output.write(head.toString().getBytes(StandardCharsets.UTF_8));
+                    output.flush();
                 } else if ("POST".equalsIgnoreCase(method)) {
-                    byte[] body = readBody(input);
-                    String soapAction = "";
+                    byte[] body = readBody(input, contentLength);
                     handleSoapRequest(path, body, output);
                 } else {
                     writeHttpResponse(output, "404 Not Found", "text/plain",
                         "not found".getBytes(StandardCharsets.UTF_8));
                 }
             } catch (Exception ignored) {
+                Log.w("DlnaReceiverService", "handleHttpClient error: " + ignored.getMessage());
             }
         });
     }
@@ -498,19 +572,20 @@ public final class DlnaReceiverService extends Service {
         throws IOException {
         try {
             String xml = new String(body, StandardCharsets.UTF_8);
-            String action = findTag(xml, "SetAVTransportURI") != null ? "SetAVTransportURI"
-                : findTag(xml, "Play") != null ? "Play"
-                : findTag(xml, "Pause") != null ? "Pause"
-                : findTag(xml, "Stop") != null ? "Stop"
-                : findTag(xml, "Seek") != null ? "Seek"
-                : findTag(xml, "GetTransportInfo") != null ? "GetTransportInfo"
-                : findTag(xml, "GetPositionInfo") != null ? "GetPositionInfo"
-                : findTag(xml, "GetProtocolInfo") != null ? "GetProtocolInfo"
-                : findTag(xml, "GetVolume") != null ? "GetVolume"
-                : findTag(xml, "SetVolume") != null ? "SetVolume"
-                : findTag(xml, "GetCurrentConnectionInfo") != null ? "GetCurrentConnectionInfo"
-                : findTag(xml, "GetDeviceCapabilities") != null ? "GetDeviceCapabilities"
+            String action = !findTag(xml, "SetAVTransportURI").isEmpty() ? "SetAVTransportURI"
+                : !findTag(xml, "Play").isEmpty() ? "Play"
+                : !findTag(xml, "Pause").isEmpty() ? "Pause"
+                : !findTag(xml, "Stop").isEmpty() ? "Stop"
+                : !findTag(xml, "Seek").isEmpty() ? "Seek"
+                : !findTag(xml, "GetTransportInfo").isEmpty() ? "GetTransportInfo"
+                : !findTag(xml, "GetPositionInfo").isEmpty() ? "GetPositionInfo"
+                : !findTag(xml, "GetProtocolInfo").isEmpty() ? "GetProtocolInfo"
+                : !findTag(xml, "GetVolume").isEmpty() ? "GetVolume"
+                : !findTag(xml, "SetVolume").isEmpty() ? "SetVolume"
+                : !findTag(xml, "GetCurrentConnectionInfo").isEmpty() ? "GetCurrentConnectionInfo"
+                : !findTag(xml, "GetDeviceCapabilities").isEmpty() ? "GetDeviceCapabilities"
                 : "";
+            Log.i("DlnaReceiverService", "handleSoapRequest: path=" + path + " action=" + action + " xml=" + (xml.length() > 300 ? xml.substring(0, 300) : xml));
             switch (action) {
                 case "SetAVTransportURI": {
                     String uri = findTag(xml, "CurrentURI");
@@ -625,6 +700,56 @@ public final class DlnaReceiverService extends Service {
             writeHttpResponse(output, "500 Internal Server Error", "text/plain",
                 soapError.getMessage().getBytes(StandardCharsets.UTF_8));
         }
+    }
+
+    private String scpdFor(String path) {
+        String ns = "urn:schemas-upnp-org:service:AVTransport:1";
+        String serviceName = "AVTransport";
+        if (path.contains("/cm")) {
+            ns = "urn:schemas-upnp-org:service:ConnectionManager:1";
+            serviceName = "ConnectionManager";
+        } else if (path.contains("/rc")) {
+            ns = "urn:schemas-upnp-org:service:RenderingControl:1";
+            serviceName = "RenderingControl";
+        }
+        // 声明足够覆盖常见控制点（B站）的动作集合
+        String actions = "SetAVTransportURI,SetNextAVTransportURI,Play,Pause,Stop,Seek,"
+            + "GetTransportInfo,GetPositionInfo,GetTransportSettings,GetMediaInfo,"
+            + "GetProtocolInfo,GetCurrentConnectionInfo,GetDeviceCapabilities,"
+            + "GetVolume,SetVolume";
+        if (path.contains("/cm")) {
+            actions = "GetProtocolInfo,GetCurrentConnectionIDs,GetCurrentConnectionInfo";
+        } else if (path.contains("/rc")) {
+            actions = "GetVolume,SetVolume,GetMute,SetMute";
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("<?xml version=\"1.0\" encoding=\"utf-8\"?>")
+            .append("<scpd xmlns=\"urn:schemas-upnp-org:service-1-0\">")
+            .append("<specVersion><major>1</major><minor>0</minor></specVersion>")
+            .append("<actionList>");
+        for (String a : actions.split(",")) {
+            sb.append("<action><name>").append(a).append("</name><argumentList><argument>")
+                .append("<name>InstanceID</name><direction>in</direction>")
+                .append("<relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>")
+                .append("</argument></argumentList></action>");
+        }
+        sb.append("</actionList><serviceStateTable>")
+            .append("<stateVariable sendEvents=\"no\"><name>A_ARG_TYPE_InstanceID</name>")
+            .append("<dataType>ui4</dataType></stateVariable>")
+            .append("<stateVariable sendEvents=\"yes\"><name>TransportState</name>")
+            .append("<dataType>string</dataType></stateVariable>")
+            .append("<stateVariable sendEvents=\"yes\"><name>CurrentTrackURI</name>")
+            .append("<dataType>string</dataType></stateVariable>")
+            .append("<stateVariable sendEvents=\"no\"><name>SourceProtocolInfo</name>")
+            .append("<dataType>string</dataType></stateVariable>")
+            .append("<stateVariable sendEvents=\"no\"><name>SinkProtocolInfo</name>")
+            .append("<dataType>string</dataType></stateVariable>")
+            .append("<stateVariable sendEvents=\"yes\"><name>Volume</name>")
+            .append("<dataType>ui2</dataType></stateVariable>")
+            .append("<stateVariable sendEvents=\"no\"><name>A_ARG_TYPE_AudioChannel</name>")
+            .append("<dataType>string</dataType></stateVariable>")
+            .append("</serviceStateTable></scpd>");
+        return sb.toString();
     }
 
     private void writeSoapResponse(OutputStream output, String action,
@@ -742,38 +867,20 @@ public final class DlnaReceiverService extends Service {
 
     private String findTag(String xml, String tagName) {
         try {
-            // 搜索带 namespace 前缀的标签（如 <u:SetAVTransportURI>）和不带前缀的（如 <CurrentURI>）
-            int start = xml.indexOf(":" + tagName + ">");
-            if (start < 0) start = xml.indexOf("<" + tagName + ">");
-            if (start < 0) start = xml.indexOf("<" + tagName + " ");
-            if (start < 0) {
-                // 也搜带 namespace 前缀的开启标签（如 <u:SetAVTransportURI ...>）
-                int nsPos = xml.indexOf(":" + tagName + " ");
-                if (nsPos >= 0) {
-                    int tagStart = xml.lastIndexOf("<", nsPos);
-                    if (tagStart >= 0) start = tagStart;
-                }
-            }
+            // 去除 namespace：剥掉标签前缀（<u:SetAVTransportURI> → <SetAVTransportURI>）
+            // 和 xmlns 属性（留着也无妨，但剥掉更干净）
+            String clean = xml
+                .replaceAll("<\\w+:", "<")      // 开始标签前缀：<u:Tag → <Tag
+                .replaceAll("</\\w+:", "</")    // 结束标签前缀：</u:Tag → </Tag
+                .replaceAll("\\s+xmlns:?[\\w-]*=\"[^\"]*\"", ""); // xmlns="..." / xmlns:u="..."
+            int start = clean.indexOf("<" + tagName + ">");
+            if (start < 0) start = clean.indexOf("<" + tagName + " ");
             if (start < 0) return "";
-            int gt = xml.indexOf(">", start);
+            int gt = clean.indexOf(">", start);
             if (gt < 0) return "";
-            // 闭合标签同样处理 namespace 前缀
-            String endTag = "</" + tagName + ">";
-            int end = xml.indexOf(endTag, gt);
-            if (end < 0) {
-                // 可能带 namespace 前缀的闭合标签（如 </u:SetAVTransportURI>）
-                int nsEnd = xml.indexOf("</" + ":" + tagName + ">", gt);
-                if (nsEnd >= 0) {
-                    // 找到 namespace 前缀前的 <
-                    int closeTag = xml.lastIndexOf("</", nsEnd);
-                    if (closeTag >= 0) end = closeTag + endTag.length();
-                }
-            }
+            int end = clean.indexOf("</" + tagName + ">", gt);
             if (end < 0) return "";
-            int contentStart = gt + 1;
-            int contentEnd = end;
-            if (contentEnd <= contentStart) return "";
-            return xml.substring(contentStart, contentEnd).trim();
+            return clean.substring(gt + 1, end).trim();
         } catch (Exception ignored) {
             return "";
         }
@@ -790,8 +897,24 @@ public final class DlnaReceiverService extends Service {
         return line.length() == 0 && value == -1 ? null : line.toString();
     }
 
-    private byte[] readBody(InputStream input) throws IOException {
-        // 简单读取：大部分控制点会带 Content-Length；这里读到流结束即可。
+    private byte[] readBody(InputStream input, int contentLength) throws IOException {
+        // 优先按 Content-Length 精确读取，避免 keep-alive 连接下等 EOF 卡住
+        if (contentLength > 0) {
+            java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
+            byte[] chunk = new byte[Math.min(4096, contentLength)];
+            int remaining = contentLength;
+            try {
+                while (remaining > 0) {
+                    int read = input.read(chunk, 0, Math.min(chunk.length, remaining));
+                    if (read < 0) break;
+                    buffer.write(chunk, 0, read);
+                    remaining -= read;
+                }
+            } catch (SocketTimeoutException ignored) {
+            }
+            return buffer.toByteArray();
+        }
+        // 无 Content-Length 时兜底读到流结束（带超时）
         java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
         byte[] chunk = new byte[2048];
         int read;
@@ -826,21 +949,31 @@ public final class DlnaReceiverService extends Service {
     }
 
     private void publishReceivedMedia(String uri, String meta) {
+        String title = extractTitleFromMeta(meta);
+        // 先持久化待处理媒体，确保即使前端暂时错过广播也能恢复
+        try {
+            prefs(this).edit()
+                .putString(PENDING_URI_KEY, uri == null ? "" : uri)
+                .putString(PENDING_TITLE_KEY, title == null ? "" : title)
+                .putString(PENDING_META_KEY, meta == null ? "" : meta)
+                .apply();
+        } catch (Exception ignored) {
+        }
         Intent intent = new Intent(MEDIA_RECEIVED_ACTION);
         intent.setPackage(getPackageName());
         intent.putExtra(EXTRA_URI, uri);
-        intent.putExtra(EXTRA_TITLE, extractTitleFromMeta(meta));
+        intent.putExtra(EXTRA_TITLE, title);
         intent.putExtra(EXTRA_META_JSON, meta);
         sendBroadcast(intent);
+        Log.i("DlnaReceiverService", "publishReceivedMedia: uri=" + uri + " title=" + title);
     }
 
     private String extractTitleFromMeta(String meta) {
         if (meta == null || meta.isEmpty()) return "";
-        // 尝试 DIDL-Lite 格式（B站/腾讯/爱奇艺标准格式）
-        String like = findTag(meta, "dc:title");
-        if (like.isEmpty()) like = findTag(meta, "title");
-        // 再试 item 标签内的 title 属性
+        // findTag 内部会剥 namespace 前缀，所以 dc:title 剥后就成 <title>，直接搜 title 即可
+        String like = findTag(meta, "title");
         if (like.isEmpty()) {
+            // 兜底：直接在原文里找 dc:title 或 <title> 的内容
             int titleStart = meta.indexOf("dc:title");
             if (titleStart < 0) titleStart = meta.indexOf("<title>");
             if (titleStart >= 0) {

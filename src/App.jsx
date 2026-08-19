@@ -8,6 +8,7 @@ import {
 } from "react";
 import { Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
+import { App as CapacitorApp } from "@capacitor/app";
 import {
   ArrowLeft,
   BrainCircuit,
@@ -30,6 +31,7 @@ import {
 } from "./api";
 import WebInstallButton from "./WebInstallButton.jsx";
 import TypewriterText from "./TypewriterText.jsx";
+import DlnaCastPlayer from "./DlnaCastPlayer.jsx";
 import {
   BackgroundNotifications,
   openReminderNotificationSettings,
@@ -1162,6 +1164,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [isScreenGlanceBusy, setIsScreenGlanceBusy] = useState(false);
   const [coWatchSession, setCoWatchSession] = useState(null);
   const coWatchSessionRef = useRef(null);
+  // DLNA 投屏专用信息（与屏幕共看完全独立）
+  const [dlnaCastInfo, setDlnaCastInfo] = useState(null);
   useEffect(() => {
     coWatchSessionRef.current = coWatchSession;
   }, [coWatchSession]);
@@ -2709,36 +2713,68 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     if (!dlnaPluginAvailable()) return undefined;
 
     let handle;
-    void DlnaReceiver.addListener("mediaReceived", async (event) => {
-      const uri = String(event?.uri || "").trim();
+    let stateHandle;
+    const processMedia = async (payload) => {
+      const uri = String(payload?.uri || payload?.pendingUri || "").trim();
       if (!uri) return;
-      const title = String(event?.title || "").trim().slice(0, 180) || "投屏播放";
-      const started = await startDirectMediaCoWatchSession({
-        title,
-        mediaUrl: uri,
-        mediaDurationSeconds: 0,
-        mediaPositionSeconds: 0,
-      }).catch(() => ({ ok: false }));
-      if (started?.ok) {
-        setActiveView("together");
-        setIsSidebarOpen(false);
-        setIsMobileNavOpen(false);
-        setScreenGlanceFeedback({
-          status: "success",
-          message: `已接收投屏：${title}`,
-        });
-      } else {
-        setScreenGlanceFeedback({
-          status: "error",
-          message: started?.message || "投屏接收成功，但暂时无法开始一起看。",
-        });
-      }
+      const title = String(payload?.title || payload?.pendingTitle || "").trim().slice(0, 180) || "投屏播放";
+      // 独立投屏频道：只用专用播放器播放，不进入屏幕共看/一起看
+      setDlnaCastInfo({ uri, title, receivedAt: Date.now() });
+      setActiveView("cast");
+      setIsSidebarOpen(false);
+      setIsMobileNavOpen(false);
+      setScreenGlanceFeedback({
+        status: "success",
+        message: `已接收投屏：${title}`,
+      });
+      // 清除持久化的待处理媒体
+      DlnaReceiver.clearPending().catch(() => {});
+    };
+
+    void DlnaReceiver.addListener("mediaReceived", async (event) => {
+      await processMedia(event);
     }).then((listener) => {
       handle = listener;
     }).catch(() => {});
 
+    // 启动时检查是否有后台收到的待处理媒体（App 在后台时广播可能未送达 JS）
+    void DlnaReceiver.getState().then((state) => {
+      if (state?.pendingUri) {
+        processMedia(state);
+      }
+    }).catch(() => {});
+
+    // 启动时刷新 DLNA 开关状态（服务可能已经在后台运行，但前端尚未同步）
+    void readDlnaState().then((state) => {
+      setDlnaState(state);
+    }).catch(() => {});
+
+    // 监听 DLNA 服务状态变化，实时刷新开关显示
+    void DlnaReceiver.addListener("stateChanged", async () => {
+      const state = await readDlnaState().catch(() => null);
+      if (state) setDlnaState(state);
+    }).then((listener) => {
+      stateHandle = listener;
+    }).catch(() => {});
+
+    // App 从后台回到前台时，检查是否有投屏期间收到的待处理媒体
+    // （App 在后台时 WebView JS 暂停，mediaReceived 事件到不了前端）
+    let appStateHandle;
+    void CapacitorApp.addListener("appStateChange", ({ isActive }) => {
+      if (!isActive) return;
+      void DlnaReceiver.getState().then((state) => {
+        if (state?.pendingUri) {
+          processMedia(state);
+        }
+      }).catch(() => {});
+    }).then((listener) => {
+      appStateHandle = listener;
+    }).catch(() => {});
+
     return () => {
       handle?.remove();
+      stateHandle?.remove();
+      appStateHandle?.remove();
     };
   }, []);
 
@@ -3089,6 +3125,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       window.clearTimeout(retryTimer);
     };
   }, [isSettingsOpen, settingsCategory, settingsFocusTarget]);
+
+  // 设置页打开时清除屏幕共看残留错误消息（例如旧流程投屏失败留下的 500 错误）
+  useEffect(() => {
+    if (isSettingsOpen && screenGlanceFeedback.status === "error") {
+      setScreenGlanceFeedback({
+        status: "idle",
+        message: "默认关闭。只有 Android 系统明确显示共享状态时才可能取得画面。",
+      });
+    }
+  }, [isSettingsOpen, screenGlanceFeedback.status]);
 
   function trackMessageScroll(event) {
     const messageList = event.currentTarget;
@@ -7997,6 +8043,19 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     );
   }
 
+  function renderDlnaCastPlayer() {
+    return (
+      <DlnaCastPlayer
+        key={dlnaCastInfo?.receivedAt || "cast"}
+        info={dlnaCastInfo}
+        onClose={() => {
+          setDlnaCastInfo(null);
+          setActiveView("chat");
+        }}
+      />
+    );
+  }
+
   function renderTogether(viewKind = "together") {
     return (
       <Suspense fallback={<DeferredFeature label="正在打开一起看…" />}>
@@ -9822,14 +9881,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           {activeView === "nursery" && renderNursery()}
           {activeView === "together" && renderTogether("together")}
           {activeView === "music" && renderTogether("music")}
+          {activeView === "cast" && renderDlnaCastPlayer()}
           {activeView === "duel" && renderIntimateDuel()}
           {activeView === "memories" && renderMemories()}
           {activeView === "takeout" && renderTakeout()}
           {activeView === "achievements" && renderAchievements()}
           {activeView === "workspace" && (
-            <Suspense fallback={<DeferredFeature label="正在打开工作区…" />}>
-              <WorkspaceManager />
-            </Suspense>
+            <div className="workspace-page">
+              <Suspense fallback={<DeferredFeature label="正在打开工作区…" />}>
+                <WorkspaceManager />
+              </Suspense>
+            </div>
           )}
           {activeView === "discover" && renderDiscover()}
         </div>
