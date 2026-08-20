@@ -8,7 +8,8 @@ const PENDING_KEY = "dengta_pending_room_invite";
 export function acceptRoomInviteUrl(rawUrl) {
   try {
     const url = new URL(rawUrl);
-    const code = (url.searchParams.get("code") || "")
+    // 兼容 dengta://room/join?code=XXX 与 https://...room/join?room_code=XXX
+    const code = (url.searchParams.get("code") || url.searchParams.get("room_code") || "")
       .trim()
       .toUpperCase()
       .slice(0, 20);

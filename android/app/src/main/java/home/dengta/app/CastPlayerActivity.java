@@ -174,30 +174,6 @@ public final class CastPlayerActivity extends AppCompatActivity
         }
     };
 
-    /** 如果聊天区最后一个气泡是"正在回复…"，则替换为真实回复。 */
-    private void replacePendingBubble(String sender, String message, String time, boolean isAi) {
-        int lastIdx = chatContainer.getChildCount() - 1;
-        if (lastIdx >= 0) {
-            View lastChild = chatContainer.getChildAt(lastIdx);
-            if (lastChild instanceof LinearLayout) {
-                LinearLayout lastBubble = (LinearLayout) lastChild;
-                if (lastBubble.getChildCount() > 0) {
-                    View firstChild = lastBubble.getChildAt(0);
-                    if (firstChild instanceof LinearLayout) {
-                        View nameView = ((LinearLayout) firstChild).getChildAt(0);
-                        String name = String.valueOf(nameView instanceof TextView ? ((TextView) nameView).getText() : "");
-                        // 只要最后一个气泡是 AI 回复（"正在回复…" 或超时兜底文案），都替换掉
-                        if (sender.equals(name)) {
-                            chatContainer.removeView(lastChild);
-                        }
-                    }
-                }
-            }
-        }
-        addChatBubble(sender, message, time, isAi);
-        chatScroll.post(() -> chatScroll.fullScroll(View.FOCUS_DOWN));
-    }
-
     private final ServiceConnection connection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
@@ -284,6 +260,20 @@ public final class CastPlayerActivity extends AppCompatActivity
         videoContainer.addView(danmakuLayer, new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
+        // ===== B站式控制层：点击视频区域切换显示/隐藏 =====
+        // ⚠️ 必须先于播放结束覆盖层与各按钮添加（后添加的 View 在上层），
+        //    否则它会拦截 fullscreenBtn/exitFullscreenBtn/settingsBtn/replayBtn 的所有点击。
+        videoOverlay = new FrameLayout(this);
+        videoOverlay.setBackgroundColor(Color.TRANSPARENT);
+        videoOverlay.setOnClickListener(v -> toggleVideoControls());
+        videoContainer.addView(videoOverlay, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        // 控制层已添加，但我们要让现有的 controlBar/fullscreenBtn/exitFullscreenBtn 共用一个定时器
+        // 显示时同时显示 controlBar + fullscreenBtn + exitFullscreenBtn；隐藏时全部隐藏
+        // 控制层的显示/隐藏由 videoOverlay 的点击事件和定时器管理
+        // 初始状态：非全屏时控制层可见，全屏时隐藏
+
         // 全屏按钮
         fullscreenBtn = new ImageView(this);
         fullscreenBtn.setImageResource(android.R.drawable.ic_menu_zoom);
@@ -325,19 +315,7 @@ public final class CastPlayerActivity extends AppCompatActivity
         stLp.topMargin = dp(10);
         videoContainer.addView(settingsBtn, stLp);
 
-        // ===== B站式控制层：点击视频区域切换显示/隐藏 =====
-        videoOverlay = new FrameLayout(this);
-        videoOverlay.setBackgroundColor(Color.TRANSPARENT);
-        videoOverlay.setOnClickListener(v -> toggleVideoControls());
-        videoContainer.addView(videoOverlay, new FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-
-        // 控制层已添加，但我们要让现有的 controlBar/fullscreenBtn/exitFullscreenBtn 共用一个定时器
-        // 显示时同时显示 controlBar + fullscreenBtn + exitFullscreenBtn；隐藏时全部隐藏
-        // 控制层的显示/隐藏由 videoOverlay 的点击事件和定时器管理
-        // 初始状态：非全屏时控制层可见，全屏时隐藏
-
-        // 错误文字
+        // 错误文字（最上层，仅错误时可见，不拦截点击）
         errorText = new TextView(this);
         errorText.setTextColor(Color.parseColor("#FFD9A8"));
         errorText.setTextSize(14);
@@ -575,8 +553,10 @@ public final class CastPlayerActivity extends AppCompatActivity
     private void showDanmaku(String text, int color) {
         if (!danmakuEnabled || danmakuLayer == null || text == null || text.isEmpty()) return;
         try {
-            // 弹幕文本可能很长，截断到 40 字
-            String display = text.length() > 40 ? text.substring(0, 40) : text;
+            // 弹幕文本可能很长，按码点截断到 40 字符（避免截断 Unicode 代理对/emoji）
+            String display = text.codePointCount(0, text.length()) > 40
+                ? text.substring(0, text.offsetByCodePoints(0, 40))
+                : text;
             TextView danmaku = new TextView(this);
             danmaku.setText(display);
             danmaku.setTextColor(color);
@@ -625,7 +605,8 @@ public final class CastPlayerActivity extends AppCompatActivity
         } catch (Exception ignored) {}
     }
 
-    private void addChatBubble(String sender, String message, String time, boolean isAi) {
+    /** 添加气泡到聊天区，返回气泡 view 用于后续标记。 */
+    private LinearLayout addChatBubble(String sender, String message, String time, boolean isAi) {
         LinearLayout bubble = new LinearLayout(this);
         bubble.setOrientation(LinearLayout.VERTICAL);
         bubble.setPadding(dp(12), dp(8), dp(12), dp(8));
@@ -661,9 +642,11 @@ public final class CastPlayerActivity extends AppCompatActivity
         msgView.setTextSize(14);
         msgView.setLineSpacing(0, 1.2f);
         msgView.setPadding(0, dp(4), 0, 0);
+        msgView.setTag("msg_text");
         bubble.addView(msgView);
 
         chatContainer.addView(bubble);
+        return bubble;
     }
 
     // ================================================================ 输入栏
@@ -713,7 +696,8 @@ public final class CastPlayerActivity extends AppCompatActivity
     private void requestAiReply(String userText) {
         // 显示"正在回复..."等待气泡，分配唯一 ID 防止多消息超时交叉覆盖
         final int bubbleId = ++pendingBubbleId;
-        addChatBubble(aiName, "\u6B63\u5728\u56DE\u590D\u2026", "", true);
+        LinearLayout pendingBubble = addChatBubble(aiName, "\u6B63\u5728\u56DE\u590D\u2026", "", true);
+        pendingBubble.setTag(Integer.valueOf(bubbleId));
         chatScroll.post(() -> chatScroll.fullScroll(View.FOCUS_DOWN));
 
         // 8 秒超时守护：Web 层未响应（监听器未挂载/后端超时）时替换为诚实降级
@@ -737,8 +721,57 @@ public final class CastPlayerActivity extends AppCompatActivity
 
     /** 仅当对应消息仍处于待回复状态时替换气泡（防止多消息交叉覆盖）。 */
     private void replacePendingBubbleIfId(int expectedId, String sender, String message, String time, boolean isAi) {
-        if (expectedId < pendingBubbleId) return;
-        replacePendingBubble(sender, message, time, isAi);
+        // 从后往前找匹配 tag 的气泡
+        for (int i = chatContainer.getChildCount() - 1; i >= 0; i--) {
+            View child = chatContainer.getChildAt(i);
+            if (child instanceof LinearLayout) {
+                Object tag = child.getTag();
+                if (tag instanceof Integer && ((Integer) tag).intValue() == expectedId) {
+                    // 找到匹配的气泡，检查是否仍处于待回复状态
+                    if (isPendingMessage((LinearLayout) child)) {
+                        chatContainer.removeView(child);
+                        addChatBubble(sender, message, time, isAi);
+                        chatScroll.post(() -> chatScroll.fullScroll(View.FOCUS_DOWN));
+                    }
+                    // 如已替换为真实回复则跳过
+                    return;
+                }
+            }
+        }
+        // 未找到匹配 tag 的气泡 → 已被真实回复替换，不做任何事
+    }
+
+    /** 检查气泡是否仍显示"正在回复…"（待回复状态）。 */
+    private boolean isPendingMessage(LinearLayout bubble) {
+        for (int i = 0; i < bubble.getChildCount(); i++) {
+            View child = bubble.getChildAt(i);
+            if (child instanceof TextView && "msg_text".equals(child.getTag())) {
+                String text = ((TextView) child).getText().toString();
+                return text.contains("\u6B63\u5728\u56DE\u590D"); // "正在回复"
+            }
+        }
+        return false;
+    }
+
+    /** 替换 AI 聊天气泡（从 Web 层收到真实回复时调用）：
+     * 按 FIFO 顺序找到第一个"正在回复…"气泡替换，确保多消息时顺序正确。 */
+    private void replacePendingBubble(String sender, String message, String time, boolean isAi) {
+        // 从前往后（FIFO）找第一个待回复气泡
+        for (int i = 0; i < chatContainer.getChildCount(); i++) {
+            View child = chatContainer.getChildAt(i);
+            if (child instanceof LinearLayout) {
+                LinearLayout bubble = (LinearLayout) child;
+                if (isPendingMessage(bubble)) {
+                    chatContainer.removeView(child);
+                    addChatBubble(sender, message, time, isAi);
+                    chatScroll.post(() -> chatScroll.fullScroll(View.FOCUS_DOWN));
+                    return;
+                }
+            }
+        }
+        // 没有待回复气泡 → 直接追加
+        addChatBubble(sender, message, time, isAi);
+        chatScroll.post(() -> chatScroll.fullScroll(View.FOCUS_DOWN));
     }
 
     private final Handler chatHandler = new Handler(Looper.getMainLooper());
@@ -987,54 +1020,64 @@ public final class CastPlayerActivity extends AppCompatActivity
                 final Bitmap target = bitmap;
                 PixelCopy.request(surfaceView, bitmap, copyResult -> {
                     if (copyResult == PixelCopy.SUCCESS) {
-                        sendAiFrame(target, posMs, durMs);
+                        sendAiFrame(target, posMs, durMs); // sendAiFrame 负责 recycle
                     } else {
+                        if (!target.isRecycled()) target.recycle();
                         sendAiFrameFallback(posMs, durMs);
                     }
                 }, new Handler(Looper.getMainLooper()));
             } else {
+                if (!bitmap.isRecycled()) bitmap.recycle();
                 sendAiFrameFallback(posMs, durMs);
             }
         } catch (Exception e) {
+            if (!bitmap.isRecycled()) bitmap.recycle();
             Log.w(TAG, "ai frame capture failed: " + e.getMessage());
         }
     }
 
-    /** PixelCopy 成功路径：压缩并上传帧。 */
+    /** PixelCopy 成功路径：压缩并上传帧。帧 bitmap 使用后必须回收，防止内存泄漏。 */
     private void sendAiFrame(Bitmap bitmap, long posMs, long durMs) {
+        Bitmap scaled = null;
         try {
             // 降采样到宽 640，控制体积；JPEG 60% 质量
             int srcW = bitmap.getWidth();
             int srcH = bitmap.getHeight();
             int targetW = Math.min(640, srcW);
             int targetH = Math.max(1, (int) ((long) srcH * targetW / Math.max(1, srcW)));
-            Bitmap scaled = Bitmap.createScaledBitmap(bitmap, targetW, targetH, true);
+            scaled = Bitmap.createScaledBitmap(bitmap, targetW, targetH, true);
             java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
             scaled.compress(Bitmap.CompressFormat.JPEG, 60, out);
             byte[] jpeg = out.toByteArray();
             String base64 = android.util.Base64.encodeToString(jpeg, android.util.Base64.NO_WRAP);
             DlnaReceiverPlugin.notifyCastFrameFromNative(base64, posMs, durMs, pendingTitle);
-            scaled.recycle();
         } catch (Exception e) {
             Log.w(TAG, "ai frame encode failed: " + e.getMessage());
+        } finally {
+            if (scaled != null && !scaled.isRecycled()) scaled.recycle();
+            if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
         }
     }
 
     /** PixelCopy 不可用时的降级：用 MediaMetadataRetriever 从源 URI 截帧。 */
     private void sendAiFrameFallback(long posMs, long durMs) {
+        MediaMetadataRetriever retriever = null;
         try {
             if (playbackService == null || playbackService.player == null) return;
             String uri = playbackService.getOriginalUri();
             if (uri == null || uri.isEmpty()) return;
-            MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+            retriever = new MediaMetadataRetriever();
             retriever.setDataSource(uri, new java.util.HashMap<>());
             Bitmap frame = retriever.getFrameAtTime(posMs * 1000, MediaMetadataRetriever.OPTION_CLOSEST);
-            retriever.release();
             if (frame != null) {
-                sendAiFrame(frame, posMs, durMs);
+                sendAiFrame(frame, posMs, durMs); // sendAiFrame 负责 recycle
             }
         } catch (Exception e) {
             Log.w(TAG, "ai frame fallback failed: " + e.getMessage());
+        } finally {
+            if (retriever != null) {
+                try { retriever.release(); } catch (Exception ignored) {}
+            }
         }
     }
 
@@ -1088,12 +1131,9 @@ public final class CastPlayerActivity extends AppCompatActivity
         if (isFullscreen) {
             // 全屏：隐藏所有非视频面板，视频铺满，强制横屏
             titleBar.setVisibility(View.GONE);
-            controlBar.setVisibility(View.GONE);
             chatPanel.setVisibility(View.GONE);
             inputBar.setVisibility(View.GONE);
             fullscreenBtn.setVisibility(View.GONE);
-            exitFullscreenBtn.setVisibility(View.VISIBLE);
-            settingsBtn.setVisibility(View.VISIBLE);
 
             LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) videoContainer.getLayoutParams();
             lp.weight = 0;
@@ -1116,10 +1156,8 @@ public final class CastPlayerActivity extends AppCompatActivity
             // 允许布局延伸到屏幕边缘
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
 
-            // 全屏初始显示控制层，4 秒后自动隐藏
-            controlsVisible = true;
-            controlHandler.removeCallbacks(autoHideControls);
-            controlHandler.postDelayed(autoHideControls, 4000);
+            // 全屏初始显示控制层（退出按钮 + 设置 + 控制栏），4 秒后自动隐藏
+            setControlsVisibility(true);
         } else {
             // 分屏：恢复所有面板
             titleBar.setVisibility(View.VISIBLE);
@@ -1160,7 +1198,8 @@ public final class CastPlayerActivity extends AppCompatActivity
         controlsVisible = show;
         int vis = show ? View.VISIBLE : View.GONE;
         if (isFullscreen) {
-            fullscreenBtn.setVisibility(vis);
+            // 全屏时不需要"进入全屏"按钮，用退出按钮替代
+            fullscreenBtn.setVisibility(View.GONE);
             exitFullscreenBtn.setVisibility(vis);
             settingsBtn.setVisibility(vis);
             controlBar.setVisibility(vis);
@@ -1222,7 +1261,10 @@ public final class CastPlayerActivity extends AppCompatActivity
         if (playbackEndedOverlay != null) playbackEndedOverlay.setVisibility(View.GONE);
         if (errorText != null) errorText.setVisibility(View.GONE);
         if (statusLabel != null) statusLabel.setText("\u6B63\u5728\u64AD\u653E");
-        progressHandler.post(progressRunnable);
+        // 防重复链：已有 progressRunnable 在运行时不再重复添加
+        if (!progressHandler.hasCallbacks(progressRunnable)) {
+            progressHandler.post(progressRunnable);
+        }
     }
 
     private void showEnded() {
@@ -1259,7 +1301,7 @@ public final class CastPlayerActivity extends AppCompatActivity
     @Override
     public void onConfigurationChanged(Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
-        runOnUiThread(this::updateSurfaceLayout);
+        updateSurfaceLayout();
     }
 
     @Override
@@ -1346,10 +1388,21 @@ public final class CastPlayerActivity extends AppCompatActivity
                     break;
                 case Player.STATE_READY:
                     showPlaying();
-                    isPlaying = true;
-                    hasEnded = false;
-                    if (playPauseBtn != null) {
-                        playPauseBtn.setImageResource(android.R.drawable.ic_media_pause);
+                    if (playbackService != null && playbackService.player != null) {
+                        boolean actuallyPlaying = playbackService.player.getPlayWhenReady();
+                        isPlaying = actuallyPlaying;
+                        hasEnded = false;
+                        if (playPauseBtn != null) {
+                            playPauseBtn.setImageResource(actuallyPlaying
+                                ? android.R.drawable.ic_media_pause
+                                : android.R.drawable.ic_media_play);
+                        }
+                    } else {
+                        isPlaying = true;
+                        hasEnded = false;
+                        if (playPauseBtn != null) {
+                            playPauseBtn.setImageResource(android.R.drawable.ic_media_pause);
+                        }
                     }
                     break;
                 case Player.STATE_ENDED:
@@ -1382,6 +1435,23 @@ public final class CastPlayerActivity extends AppCompatActivity
             filter.addAction(DlnaReceiverPlugin.ACTION_CAST_DANMAKU);
             registerReceiver(castReplyReceiver, filter, Context.RECEIVER_NOT_EXPORTED);
         } catch (Exception ignored) {}
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // 回到前台时恢复进度轮询（如果正在播放且未结束）
+        if (isPlaying && !hasEnded && playbackService != null && playbackService.player != null
+            && !progressHandler.hasCallbacks(progressRunnable)) {
+            progressHandler.post(progressRunnable);
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // 进入后台时停止进度轮询和帧采集，省电省带宽
+        progressHandler.removeCallbacks(progressRunnable);
     }
 
     @Override

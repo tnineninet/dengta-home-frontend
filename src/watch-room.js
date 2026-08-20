@@ -88,7 +88,9 @@ export async function endWatchRoom(roomId) {
 /**
  * 放映厅实时事件订阅（SSE，通过 fetch + 手动解析，支持 Bearer 鉴权）。
  *
- * 返回一个 abort 函数，调用后断开连接。
+ * 返回一个 abort 函数，调用后断开连接且不再重连。
+ * 连接意外断开（网络错误/服务端重启/流结束）自动按指数退避重连：
+ * 1s → 2s → 4s → 8s → 16s → 封顶 30s；连接成功送达事件后重置退避。
  * 回调：
  *   onPlaybackSync(room)    — 播放状态、进度、revision 变化
  *   onMessage(msg)          — 新聊天消息
@@ -96,15 +98,31 @@ export async function endWatchRoom(roomId) {
  *   onParticipantLeave(info)- 有人离开
  *   onRoomEnded({roomId})   — 放映厅结束
  *   onError(error)          — 连接出错
+ *   onDisconnect()          — 连接断开、进入重连前触发（主动 abort 不触发）
  */
 export function subscribeRoomEvents(roomId, handlers = {}) {
   const controller = new AbortController();
   const url = `/api/v2/co-watch/rooms/${encodeURIComponent(roomId)}/events`;
 
+  let stopped = false;
+  let attempt = 0; // 连续失败次数：驱动指数退避
+  let retryTimer = null;
   let buffer = "";
   let currentEvent = "";
 
+  function scheduleReconnect() {
+    if (stopped || controller.signal.aborted) return;
+    const delay = Math.min(30_000, 1_000 * 2 ** attempt);
+    attempt += 1;
+    handlers.onDisconnect?.();
+    retryTimer = setTimeout(run, delay);
+  }
+
   async function run() {
+    if (stopped || controller.signal.aborted) return;
+    // 每个连接周期重置解析状态，防止跨连接残留半行文本或上一个事件名
+    buffer = "";
+    currentEvent = "";
     try {
       const authContext = await authSession?.getRequestContext?.();
       const headers = {};
@@ -120,6 +138,7 @@ export function subscribeRoomEvents(roomId, handlers = {}) {
       });
       if (!response.ok) {
         handlers.onError?.(new Error(`SSE HTTP ${response.status}`));
+        scheduleReconnect();
         return;
       }
       const reader = response.body.getReader();
@@ -144,17 +163,29 @@ export function subscribeRoomEvents(roomId, handlers = {}) {
                 case "participant_leave": handlers.onParticipantLeave?.(parsed); break;
                 case "room_ended": handlers.onRoomEnded?.(parsed); break;
               }
-            } catch {}
+              // 成功送达事件说明连接健康，重置退避
+              attempt = 0;
+            } catch (err) {
+              console.warn("[watch-room] SSE JSON 解析失败，原始数据：", data, err);
+            }
+            // SSE 规范：每个事件处理完即清空事件名，漏写 event: 的 data 不会错分到上一个事件
+            currentEvent = "";
           }
         }
       }
+      // 流正常结束（服务端关闭/重启）→ 自动重连
+      scheduleReconnect();
     } catch (err) {
-      if (err.name !== "AbortError") {
-        handlers.onError?.(err);
-      }
+      if (err.name === "AbortError") return; // 用户主动 stop，不再重连
+      handlers.onError?.(err);
+      scheduleReconnect();
     }
   }
 
   run();
-  return () => { controller.abort(); };
+  return () => {
+    stopped = true;
+    if (retryTimer) clearTimeout(retryTimer);
+    controller.abort();
+  };
 }

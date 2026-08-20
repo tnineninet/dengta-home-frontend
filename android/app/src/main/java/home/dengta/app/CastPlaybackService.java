@@ -216,6 +216,11 @@ public final class CastPlaybackService extends Service {
         if (oldUri != null && oldUri.equals(uri)) {
             // 同一地址不重播，直接续播
             if (player != null) {
+                // 如果播放器已结束，需要 seekTo(0)+prepare 才能重新播放
+                if (player.getPlaybackState() == Player.STATE_ENDED) {
+                    player.seekTo(0);
+                    player.prepare();
+                }
                 player.setPlayWhenReady(true);
             }
             return;

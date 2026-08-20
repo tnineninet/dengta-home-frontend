@@ -98,6 +98,7 @@
         <activity
             android:name=".CastPlayerActivity"
             android:exported="false"
+            android:launchMode="singleTask"
             android:hardwareAccelerated="true"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:theme="@style/AppTheme.NoActionBar" />
