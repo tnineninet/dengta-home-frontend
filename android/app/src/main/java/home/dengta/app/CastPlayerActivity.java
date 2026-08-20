@@ -841,6 +841,18 @@ public final class CastPlayerActivity extends AppCompatActivity
         hasEnded = false;
         playbackEndedOverlay.setVisibility(View.GONE);
         showLoading();
+        // 直接操作播放器 seek 到 0 重新准备，绕开 playUri 的"同一地址不重播"逻辑
+        if (playbackService != null && playbackService.player != null) {
+            ExoPlayer player = playbackService.player;
+            try {
+                player.seekTo(0);
+                player.prepare();
+                player.setPlayWhenReady(true);
+                return;
+            } catch (Exception ignored) {
+                // 回退到重新走整条播放链路
+            }
+        }
         if (!pendingUri.isEmpty()) {
             CastPlaybackService.play(this, pendingUri, pendingTitle);
         }
