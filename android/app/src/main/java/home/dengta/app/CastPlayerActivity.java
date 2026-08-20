@@ -110,6 +110,16 @@ public final class CastPlayerActivity extends AppCompatActivity
     private final float[] SPEED_OPTIONS = {0.5f, 1.0f, 1.5f, 2.0f};
     private int speedIndex = 1;
     private LinearLayout mainLayout;
+    /** B站式控制层：点击视频区域切换显示/隐藏 */
+    private FrameLayout videoOverlay;
+    private ImageView settingsBtn;
+    private boolean controlsVisible = true;
+    private final Handler controlHandler = new Handler(Looper.getMainLooper());
+    private final Runnable autoHideControls = () -> {
+        if (isFullscreen) {
+            setControlsVisibility(false);
+        }
+    };
 
     /** AI 主动互动：帧采集间隔（每 2 分钟采集一帧发给后端 AI 理解）。 */
     private static final long FRAME_CAPTURE_INTERVAL_MS = 30_000;
@@ -146,8 +156,8 @@ public final class CastPlayerActivity extends AppCompatActivity
                 addChatBubble((fromAi != null && !fromAi.isEmpty()) ? fromAi : aiName,
                     "🎬 " + reaction, time, true);
                 // 同时以弹幕形式飘过画面
-                showDanmaku((fromAi != null && !fromAi.isEmpty() ? fromAi : aiName) + "：" + reaction,
-                    Color.parseColor("#FFD9A8"));
+                // 只显示文字，不显示来源
+                showDanmaku(reaction, Color.parseColor("#FFD9A8"));
                 chatScroll.post(() -> chatScroll.fullScroll(View.FOCUS_DOWN));
             } else if (DlnaReceiverPlugin.ACTION_CAST_DANMAKU.equals(action)) {
                 String danmaku = intent.getStringExtra("danmakuText");
@@ -158,8 +168,8 @@ public final class CastPlayerActivity extends AppCompatActivity
                 try {
                     if (colorHex != null && !colorHex.isEmpty()) color = Color.parseColor(colorHex);
                 } catch (Exception ignored) {}
-                String prefix = (fromName != null && !fromName.isEmpty()) ? fromName + "：" : "";
-                showDanmaku(prefix + danmaku, color);
+                // 只显示文字，不显示来源
+                showDanmaku(danmaku, color);
             }
         }
     };
@@ -176,7 +186,8 @@ public final class CastPlayerActivity extends AppCompatActivity
                     if (firstChild instanceof LinearLayout) {
                         View nameView = ((LinearLayout) firstChild).getChildAt(0);
                         String name = String.valueOf(nameView instanceof TextView ? ((TextView) nameView).getText() : "");
-                        if ("\u6B63\u5728\u56DE\u590D\u2026".equals(name)) {
+                        // 只要最后一个气泡是 AI 回复（"正在回复…" 或超时兜底文案），都替换掉
+                        if (sender.equals(name)) {
                             chatContainer.removeView(lastChild);
                         }
                     }
@@ -214,6 +225,8 @@ public final class CastPlayerActivity extends AppCompatActivity
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // 默认锁定竖屏，仅当用户点击全屏按钮时切换到横屏
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
 
         // 隐藏系统默认标题栏（ActionBar）
         if (getSupportActionBar() != null) {
@@ -297,6 +310,32 @@ public final class CastPlayerActivity extends AppCompatActivity
         exLp.setMarginStart(dp(10));
         exLp.topMargin = dp(10);
         videoContainer.addView(exitFullscreenBtn, exLp);
+
+        // 右上角三点设置按钮（全屏时显示）
+        settingsBtn = new ImageView(this);
+        settingsBtn.setImageResource(android.R.drawable.ic_menu_manage);
+        settingsBtn.setColorFilter(Color.WHITE);
+        settingsBtn.setPadding(dp(8), dp(8), dp(8), dp(8));
+        settingsBtn.setBackgroundColor(0x44000000);
+        settingsBtn.setVisibility(View.GONE);
+        settingsBtn.setOnClickListener(v -> showSettingsPanel());
+        FrameLayout.LayoutParams stLp = new FrameLayout.LayoutParams(dp(44), dp(44));
+        stLp.gravity = Gravity.TOP | Gravity.END;
+        stLp.setMarginEnd(dp(10));
+        stLp.topMargin = dp(10);
+        videoContainer.addView(settingsBtn, stLp);
+
+        // ===== B站式控制层：点击视频区域切换显示/隐藏 =====
+        videoOverlay = new FrameLayout(this);
+        videoOverlay.setBackgroundColor(Color.TRANSPARENT);
+        videoOverlay.setOnClickListener(v -> toggleVideoControls());
+        videoContainer.addView(videoOverlay, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+
+        // 控制层已添加，但我们要让现有的 controlBar/fullscreenBtn/exitFullscreenBtn 共用一个定时器
+        // 显示时同时显示 controlBar + fullscreenBtn + exitFullscreenBtn；隐藏时全部隐藏
+        // 控制层的显示/隐藏由 videoOverlay 的点击事件和定时器管理
+        // 初始状态：非全屏时控制层可见，全屏时隐藏
 
         // 错误文字
         errorText = new TextView(this);
@@ -1042,6 +1081,7 @@ public final class CastPlayerActivity extends AppCompatActivity
             inputBar.setVisibility(View.GONE);
             fullscreenBtn.setVisibility(View.GONE);
             exitFullscreenBtn.setVisibility(View.VISIBLE);
+            settingsBtn.setVisibility(View.VISIBLE);
 
             LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) videoContainer.getLayoutParams();
             lp.weight = 0;
@@ -1063,6 +1103,11 @@ public final class CastPlayerActivity extends AppCompatActivity
 
             // 允许布局延伸到屏幕边缘
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
+
+            // 全屏初始显示控制层，4 秒后自动隐藏
+            controlsVisible = true;
+            controlHandler.removeCallbacks(autoHideControls);
+            controlHandler.postDelayed(autoHideControls, 4000);
         } else {
             // 分屏：恢复所有面板
             titleBar.setVisibility(View.VISIBLE);
@@ -1071,6 +1116,7 @@ public final class CastPlayerActivity extends AppCompatActivity
             inputBar.setVisibility(View.VISIBLE);
             fullscreenBtn.setVisibility(View.VISIBLE);
             exitFullscreenBtn.setVisibility(View.GONE);
+            settingsBtn.setVisibility(View.GONE);
 
             LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) videoContainer.getLayoutParams();
             lp.weight = VIDEO_WEIGHT;
@@ -1078,14 +1124,76 @@ public final class CastPlayerActivity extends AppCompatActivity
             lp.height = 0;
             videoContainer.setLayoutParams(lp);
 
-            // 恢复竖屏自由方向
-            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+            // 退出全屏 → 恢复竖屏
+            setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
 
             // 恢复正常状态栏
             getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
             getWindow().clearFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS);
+
+            // 退出全屏取消自动隐藏，控制栏始终可见
+            controlHandler.removeCallbacks(autoHideControls);
+            controlsVisible = true;
         }
         updateSurfaceLayout();
+    }
+
+    // ================================================================ B站式控制层
+
+    private void toggleVideoControls() {
+        setControlsVisibility(!controlsVisible);
+    }
+
+    private void setControlsVisibility(boolean show) {
+        controlsVisible = show;
+        int vis = show ? View.VISIBLE : View.GONE;
+        if (isFullscreen) {
+            fullscreenBtn.setVisibility(vis);
+            exitFullscreenBtn.setVisibility(vis);
+            settingsBtn.setVisibility(vis);
+            controlBar.setVisibility(vis);
+        } else {
+            // 非全屏时控制栏始终可见
+            controlBar.setVisibility(View.VISIBLE);
+            fullscreenBtn.setVisibility(View.VISIBLE);
+            settingsBtn.setVisibility(View.GONE);
+        }
+        // 自动隐藏（仅全屏模式下 4 秒后隐藏）
+        controlHandler.removeCallbacks(autoHideControls);
+        if (show && isFullscreen) {
+            controlHandler.postDelayed(autoHideControls, 4000);
+        }
+    }
+
+    // ================================================================ 设置面板
+
+    private void showSettingsPanel() {
+        final String[] items = {"倍速: " + playbackSpeed + "x", "取消"};
+        new android.app.AlertDialog.Builder(this)
+            .setTitle("播放设置")
+            .setItems(items, (dialog, which) -> {
+                if (which == 0) {
+                    showSpeedSelector();
+                }
+            })
+            .show();
+    }
+
+    private void showSpeedSelector() {
+        final String[] labels = new String[SPEED_OPTIONS.length];
+        for (int i = 0; i < SPEED_OPTIONS.length; i++) {
+            labels[i] = SPEED_OPTIONS[i] + "x" + (i == speedIndex ? " ✓" : "");
+        }
+        new android.app.AlertDialog.Builder(this)
+            .setTitle("播放速度")
+            .setItems(labels, (dialog, which) -> {
+                speedIndex = which;
+                playbackSpeed = SPEED_OPTIONS[which];
+                if (playbackService != null && playbackService.player != null) {
+                    playbackService.player.setPlaybackSpeed(playbackSpeed);
+                }
+            })
+            .show();
     }
 
     // ================================================================ 状态切换
