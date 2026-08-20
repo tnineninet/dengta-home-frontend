@@ -17,6 +17,7 @@ import {
   leaveWatchRoom,
   endWatchRoom,
 } from "./watch-room";
+import { peekPendingInvite, clearPendingInvite, fetchRoomInviteInfo } from "./room-invite";
 
 /**
  * 投屏放映厅（DengTa 一起看）。
@@ -45,6 +46,102 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
   const roomMessagesRef = useRef([]);
   const launchedRef = useRef("");
   const sessionRef = useRef("");
+
+  // 邀请弹窗
+  const [inviteCode, setInviteCode] = useState("");
+  const [inviteInfo, setInviteInfo] = useState(null);
+  const [inviteBusy, setInviteBusy] = useState(false);
+  const [inviteError, setInviteError] = useState("");
+
+  /**
+   * 构建「用户&AI名」双高亮显示名。
+   * 用户发言时 userName 高亮、AI 部分暗；AI 发言时 AI 名高亮、用户部分暗。
+   */
+  const buildAttributedName = (participant, senderType) => {
+    const dn = participant?.displayName || userName;
+    const an = participant?.aiName || aiName;
+    const userActive = senderType === "user";
+    return { displayName: dn, aiName: an, userActive, full: `${dn}&${an}` };
+  };
+
+  /** 分享放映厅邀请链接（Web Share API / 剪贴板）。 */
+  const shareRoomInvite = async () => {
+    const current = roomRef.current;
+    if (!current?.joinCode) return;
+    const code = current.joinCode;
+    const webLink = `https://dengtahome.com/room/join?room_code=${code}`;
+    const deepLink = `dengta://room/join?code=${code}`;
+    const text = `🎬 ${userName} 邀请您和您的伴侣（${aiName}）一起观影《${title}》！加入放映厅，一起看～\n\n邀请码：${code}\n${webLink}`;
+    try {
+      if (navigator.share && navigator.canShare?.({ text })) {
+        await navigator.share({ title: "灯塔放映厅邀请", text, url: webLink });
+      } else {
+        await navigator.clipboard.writeText(text);
+        // 简单反馈
+        setRoomError("已复制邀请链接，快去分享给好友吧！");
+        setTimeout(() => setRoomError(""), 3000);
+      }
+    } catch (_) { /* 用户取消分享 */ }
+  };
+
+  /** 检查是否有待处理的邀请（深链或 URL 参数）。 */
+  useEffect(() => {
+    const pending = peekPendingInvite();
+    if (!pending?.code) return;
+    setInviteCode(pending.code);
+    setInviteBusy(true);
+    setInviteError("");
+    setInviteInfo(null);
+    fetchRoomInviteInfo(pending.code)
+      .then((info) => {
+        setInviteInfo(info);
+        setInviteBusy(false);
+      })
+      .catch(() => {
+        setInviteError("邀请信息读取失败，邀请码可能已过期。");
+        setInviteBusy(false);
+      });
+  }, []);
+
+  /** 接受邀请 → 加入放映厅。 */
+  const handleAcceptInvite = async () => {
+    if (!inviteCode || inviteBusy) return;
+    setInviteBusy(true);
+    setInviteError("");
+    try {
+      const joined = await joinWatchRoom(inviteCode, {
+        displayName: userName,
+        aiName,
+      });
+      if (!joined?.id) throw new Error("join_failed");
+      setRoom(joined);
+      roomRef.current = joined;
+      setInviteCode("");
+      setInviteInfo(null);
+      clearPendingInvite();
+      await syncRoomData(joined.id);
+      if (joined.mediaUrl) {
+        DlnaReceiver.launchPlayer({
+          uri: joined.mediaUrl,
+          title: joined.title || title,
+          userName,
+          aiName,
+        }).catch(() => {});
+      }
+    } catch (error) {
+      setInviteError("加入失败，邀请码可能已过期或放映厅已结束。");
+    } finally {
+      setInviteBusy(false);
+    }
+  };
+
+  /** 拒绝邀请。 */
+  const handleDeclineInvite = () => {
+    setInviteCode("");
+    setInviteInfo(null);
+    setInviteError("");
+    clearPendingInvite();
+  };
 
   const mediaUrl = info?.uri || info?.mediaUrl || "";
   const title = info?.title || "投屏播放";
@@ -263,11 +360,16 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
         roomRef.current = { ...(roomRef.current || {}), ...updatedRoom };
       },
       onMessage: (msg) => {
-        // 远程消息 → 以弹幕形式飘过播放画面
-        const prefix = `${msg.senderName}：`;
+        // 远程消息 → 以弹幕形式飘过播放画面，显示「用户&AI名」归属
+        const participant = (participants || []).find(
+          (p) => p.displayName === msg.senderName || (msg.senderUserId && p.userId === msg.senderUserId)
+        );
+        const attr = participant
+          ? buildAttributedName(participant, msg.senderType)
+          : { displayName: msg.senderName, aiName: "", userActive: msg.senderType === "user", full: msg.senderName || "成员" };
         DlnaReceiver.showCastDanmaku({
           text: String(msg.content || "").slice(0, 40),
-          senderName: msg.senderName || "成员",
+          senderName: attr.full,
           colorHex: msg.senderType === "ai" ? "#FFD9A8" : "#8BD8FF",
         }).catch(() => {});
         const next = [...roomMessagesRef.current, msg];
@@ -418,6 +520,43 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
         </header>
 
         <div className="dlna-cast-stage">
+          {/* 邀请弹窗 */}
+          {inviteCode && inviteInfo && (
+            <div className="dlna-invite-overlay">
+              <div className="dlna-invite-card">
+                <div className="dlna-invite-icon">🎬</div>
+                <h3 className="dlna-invite-title">
+                  {inviteInfo.hostName} 邀请您和您的伴侣（{inviteInfo.hostAiName || "伴侣"}）一起观影
+                </h3>
+                <p className="dlna-invite-meta">
+                  《{inviteInfo.title || "未命名内容"}》
+                </p>
+                <p className="dlna-invite-meta">
+                  👥 {inviteInfo.participantCount || 1} 人已加入 · 最多 {inviteInfo.maxParticipants || 50} 人
+                </p>
+                {inviteError && <p className="dlna-room-error">{inviteError}</p>}
+                <div className="dlna-invite-actions">
+                  <button
+                    type="button"
+                    className="dlna-cast-extract-btn"
+                    onClick={handleAcceptInvite}
+                    disabled={inviteBusy}
+                  >
+                    {inviteBusy ? "加入中…" : "✅ 接受邀请"}
+                  </button>
+                  <button
+                    type="button"
+                    className="dlna-cast-close"
+                    onClick={handleDeclineInvite}
+                    disabled={inviteBusy}
+                  >
+                    拒绝
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="dlna-cast-section">
             <h3>📡 等待投屏</h3>
             <p>在 B站 等视频 App 中点击投屏，选择「灯塔」。</p>
@@ -468,9 +607,18 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
               <div className="dlna-room-panel">
                 <div className="dlna-room-code-label">邀请码</div>
                 <div className="dlna-room-code">{room.joinCode}</div>
+                <div className="dlna-room-share-row">
+                  <button
+                    type="button"
+                    className="dlna-cast-extract-btn"
+                    onClick={shareRoomInvite}
+                  >
+                    📤 分享邀请
+                  </button>
+                </div>
                 <p className="dlna-cast-hint">
                   把邀请码发给下载了灯塔 App 的好友（最多 {room.maxParticipants || 50} 人），
-                  大家在同一个放映厅一起看。
+                  大家一起在同一个放映厅看。
                 </p>
                 <button type="button" className="dlna-cast-close" onClick={handleLeaveRoom}>
                   退出放映厅

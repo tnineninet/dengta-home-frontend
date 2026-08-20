@@ -39,6 +39,21 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="dengta" android:host="auth" />
             </intent-filter>
+            <!-- 放映厅邀请深链：dengta://room/join?code=XXXXXX -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="dengta" android:host="room" android:pathPrefix="/join" />
+            </intent-filter>
+            <!-- 通用 https 邀请链接：https://dengtahome.com/room/join?code=XXXXXX -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="dengtahome.com" android:pathPrefix="/room/join" />
+                <data android:scheme="https" android:host="www.dengtahome.com" android:pathPrefix="/room/join" />
+            </intent-filter>
         </activity>
 
         <provider

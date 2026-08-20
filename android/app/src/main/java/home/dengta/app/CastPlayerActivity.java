@@ -112,7 +112,10 @@ public final class CastPlayerActivity extends AppCompatActivity
     private LinearLayout mainLayout;
 
     /** AI 主动互动：帧采集间隔（每 2 分钟采集一帧发给后端 AI 理解）。 */
-    private static final long FRAME_CAPTURE_INTERVAL_MS = 120_000;
+    private static final long FRAME_CAPTURE_INTERVAL_MS = 30_000;
+    private static final long BURST_INTERVAL_MS = 10_000;
+    private static final long BURST_DURATION_MS = 60_000;
+    private long burstStartedAt = 0;
     private long nextFrameCaptureAt = System.currentTimeMillis() + 30_000; // 首次：30秒后开始
     private final Handler progressHandler = new Handler(Looper.getMainLooper());
     private final Runnable progressRunnable = new Runnable() {
@@ -1006,7 +1009,16 @@ public final class CastPlayerActivity extends AppCompatActivity
         if (player.getPlayWhenReady() && !hasEnded && dur > 0) {
             long now = System.currentTimeMillis();
             if (now >= nextFrameCaptureAt) {
-                nextFrameCaptureAt = now + FRAME_CAPTURE_INTERVAL_MS;
+                // 前 60 秒为爆发期（每 6 秒截帧），让 AI 快速建立视频初步理解
+                if (burstStartedAt == 0 && pos < 60_000) {
+                    burstStartedAt = now;
+                    nextFrameCaptureAt = now + BURST_INTERVAL_MS;
+                } else if (burstStartedAt > 0 && now - burstStartedAt < BURST_DURATION_MS) {
+                    nextFrameCaptureAt = now + BURST_INTERVAL_MS;
+                } else {
+                    burstStartedAt = 0;
+                    nextFrameCaptureAt = now + FRAME_CAPTURE_INTERVAL_MS;
+                }
                 captureAndSendFrameForAi(player, pos, dur);
             }
         }

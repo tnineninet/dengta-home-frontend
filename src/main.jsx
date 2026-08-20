@@ -10,6 +10,7 @@ import "./jelly-motion.css";
 import "./sun-glass-chat.css";
 import "./typography.css";
 import "./apple-high.css";
+import "./room-invite.css";
 import LoadedApp from "./LoadedApp.jsx";
 import AuthGate from "./AuthGate.jsx";
 import { authSession } from "./auth-session.js";
@@ -35,6 +36,7 @@ if (!isReceiverRoute) {
 
 // 缺陷 1 修复：接收 dengta://auth... 深度链接回跳（邮箱验证 / 密码重置）。
 // 原生 App 无法通过 WebView URL 感知 fragment，必须监听 @capacitor/app 事件。
+// 放映厅邀请深链：dengta://room/join?code=XXXXXX 或 https://dengtahome.com/room/join?code=XXXXXX
 if (!isReceiverRoute) {
   import("@capacitor/app")
     .then(({ App }) => {
@@ -46,6 +48,14 @@ if (!isReceiverRoute) {
             .catch(() => {
               // 回跳失败会发布 error 快照，由 AuthGate 显示给用户
             });
+        } else if (
+          rawUrl.includes("room/join") ||
+          /[?&]room_code=/.test(rawUrl)
+        ) {
+          // 放映厅邀请：把邀请码存入本地，App 加载完成后弹出接受/拒绝邀请
+          import("./room-invite.js")
+            .then((m) => m.acceptRoomInviteUrl(rawUrl))
+            .catch(() => {});
         }
       });
     })
