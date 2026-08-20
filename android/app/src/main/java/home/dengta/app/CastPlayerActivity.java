@@ -28,6 +28,7 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowInsets;
 import android.view.WindowManager;
 import android.widget.EditText;
 import android.widget.FrameLayout;
@@ -65,8 +66,8 @@ public final class CastPlayerActivity extends AppCompatActivity
     public static final String EXTRA_AI_NAME = "extra_ai_name";
 
     private static final String TAG = "CastPlayerActivity";
-    private static final int VIDEO_WEIGHT = 60;
-    private static final int CHAT_WEIGHT = 40;
+    private static final int VIDEO_WEIGHT = 55;
+    private static final int CHAT_WEIGHT = 45;
 
     private SurfaceView surfaceView;
     private FrameLayout videoContainer;
@@ -74,6 +75,7 @@ public final class CastPlayerActivity extends AppCompatActivity
     private View playbackEndedOverlay;
     private TextView errorText;
     private ImageView fullscreenBtn;
+    private ImageView backOverlayBtn;
     private ImageView exitFullscreenBtn;
     private ImageView playPauseBtn;
     private ImageView speedBtn;
@@ -223,7 +225,17 @@ public final class CastPlayerActivity extends AppCompatActivity
 
         mainLayout = new LinearLayout(this);
         mainLayout.setOrientation(LinearLayout.VERTICAL);
-        mainLayout.setBackgroundColor(0xFF0D0D0D);
+        mainLayout.setBackgroundColor(0xFF1A1515); // 暖深色背景，非纯黑
+        mainLayout.setClipToPadding(false);
+        // 状态栏/灵动岛安全区
+        mainLayout.setOnApplyWindowInsetsListener((v, insets) -> {
+            if (android.os.Build.VERSION.SDK_INT >= 20) {
+                int topInset = insets.getSystemWindowInsetTop();
+                int bottomInset = insets.getSystemWindowInsetBottom();
+                v.setPadding(0, topInset > 0 ? topInset : dp(24), 0, bottomInset > 0 ? bottomInset : 0);
+            }
+            return insets;
+        });
 
         // 1) 标题栏
         titleBar = createTitleBar();
@@ -231,12 +243,12 @@ public final class CastPlayerActivity extends AppCompatActivity
 
         // 2) 视频容器
         videoContainer = new FrameLayout(this);
-        videoContainer.setBackgroundColor(0xFF000000);
+        videoContainer.setBackgroundColor(0xFF0A0A0A);
 
         surfaceView = new SurfaceView(this);
         surfaceView.getHolder().addCallback(this);
         surfaceView.setOnClickListener(v -> {
-            if (!isFullscreen && !hasEnded) toggleFullscreen();
+            if (!hasEnded) toggleVideoControls();
         });
         videoContainer.addView(surfaceView, new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
@@ -274,7 +286,7 @@ public final class CastPlayerActivity extends AppCompatActivity
         // 控制层的显示/隐藏由 videoOverlay 的点击事件和定时器管理
         // 初始状态：非全屏时控制层可见，全屏时隐藏
 
-        // 全屏按钮
+        // 全屏按钮（右下角，视频覆盖层）——始终可见，点击全屏/横屏
         fullscreenBtn = new ImageView(this);
         fullscreenBtn.setImageResource(android.R.drawable.ic_menu_zoom);
         fullscreenBtn.setColorFilter(Color.WHITE);
@@ -287,7 +299,20 @@ public final class CastPlayerActivity extends AppCompatActivity
         fsLp.bottomMargin = dp(10);
         videoContainer.addView(fullscreenBtn, fsLp);
 
-        // 退出全屏按钮
+        // B站风格：左上角返回按钮覆盖层（控制圈显示时可见）
+        backOverlayBtn = new ImageView(this);
+        backOverlayBtn.setImageResource(android.R.drawable.ic_menu_close_clear_cancel);
+        backOverlayBtn.setColorFilter(Color.WHITE);
+        backOverlayBtn.setPadding(dp(8), dp(8), dp(8), dp(8));
+        backOverlayBtn.setBackgroundColor(0x44000000);
+        backOverlayBtn.setOnClickListener(v -> finish());
+        FrameLayout.LayoutParams backLp = new FrameLayout.LayoutParams(dp(44), dp(44));
+        backLp.gravity = Gravity.TOP | Gravity.START;
+        backLp.setMarginStart(dp(10));
+        backLp.topMargin = dp(10);
+        videoContainer.addView(backOverlayBtn, backLp);
+
+        // 退出全屏按钮（全屏时左上角，替代 backOverlayBtn）
         exitFullscreenBtn = new ImageView(this);
         exitFullscreenBtn.setImageResource(android.R.drawable.ic_menu_close_clear_cancel);
         exitFullscreenBtn.setColorFilter(Color.WHITE);
@@ -301,13 +326,12 @@ public final class CastPlayerActivity extends AppCompatActivity
         exLp.topMargin = dp(10);
         videoContainer.addView(exitFullscreenBtn, exLp);
 
-        // 右上角三点设置按钮（全屏时显示）
+        // 右上角三点设置按钮（全屏+控制圈时显示）
         settingsBtn = new ImageView(this);
         settingsBtn.setImageResource(android.R.drawable.ic_menu_manage);
         settingsBtn.setColorFilter(Color.WHITE);
         settingsBtn.setPadding(dp(8), dp(8), dp(8), dp(8));
         settingsBtn.setBackgroundColor(0x44000000);
-        settingsBtn.setVisibility(View.GONE);
         settingsBtn.setOnClickListener(v -> showSettingsPanel());
         FrameLayout.LayoutParams stLp = new FrameLayout.LayoutParams(dp(44), dp(44));
         stLp.gravity = Gravity.TOP | Gravity.END;
@@ -327,22 +351,34 @@ public final class CastPlayerActivity extends AppCompatActivity
         mainLayout.addView(videoContainer, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, VIDEO_WEIGHT));
 
-        // 3) 控制栏
+        // 控制栏覆盖在视频底部（B站风格：半透明，不占独立行）
         controlBar = createControlBar();
-        mainLayout.addView(controlBar, new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        controlBar.setBackgroundColor(0x88000000);
+        videoContainer.addView(controlBar, new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
+            Gravity.BOTTOM));
 
-        // 4) 对话区域
+        // 4) 对话区域（默认收起，用户通过控制栏按钮展开）
         chatPanel = createChatPanel();
+        chatPanel.setVisibility(View.GONE);
         mainLayout.addView(chatPanel, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, CHAT_WEIGHT));
 
-        // 5) 输入栏
+        // 5) 输入栏（默认收起）
         inputBar = createInputBar();
+        inputBar.setVisibility(View.GONE);
         mainLayout.addView(inputBar, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         setContentView(mainLayout);
+
+        // 初始状态：B站风格，控制圈默认隐藏，点视频显示
+        controlsVisible = false;
+        backOverlayBtn.setVisibility(View.GONE);
+        settingsBtn.setVisibility(View.GONE);
+        controlBar.setVisibility(View.GONE);
+        fullscreenBtn.setVisibility(View.GONE);
+        exitFullscreenBtn.setVisibility(View.GONE);
 
         bindPlaybackService();
         showLoading();
@@ -355,7 +391,7 @@ public final class CastPlayerActivity extends AppCompatActivity
 
     private View createTitleBar() {
         FrameLayout bar = new FrameLayout(this);
-        bar.setBackgroundColor(0xFF1A1A1A);
+        bar.setBackgroundColor(0xFF1A1515);
         bar.setPadding(dp(12), dp(12), dp(12), dp(12));
 
         TextView backBtn = new TextView(this);
@@ -405,7 +441,7 @@ public final class CastPlayerActivity extends AppCompatActivity
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.VERTICAL);
         bar.setPadding(dp(16), dp(8), dp(16), dp(8));
-        bar.setBackgroundColor(0xFF0D0D0D);
+        bar.setBackgroundColor(0xFF1A1515);
 
         // 第一行：播放/暂停 + 进度条 + 时间
         LinearLayout row1 = new LinearLayout(this);
@@ -488,6 +524,15 @@ public final class CastPlayerActivity extends AppCompatActivity
         spacer.setLayoutParams(new LinearLayout.LayoutParams(0, 0, 1));
         row2.addView(spacer);
 
+        // 对话展开/收起按钮
+        TextView chatToggleBtn = new TextView(this);
+        chatToggleBtn.setText("\uD83D\uDCAC");
+        chatToggleBtn.setTextColor(0xCCFFFFFF);
+        chatToggleBtn.setTextSize(15);
+        chatToggleBtn.setPadding(dp(4), 0, dp(8), 0);
+        chatToggleBtn.setOnClickListener(v -> toggleChatPanel());
+        row2.addView(chatToggleBtn);
+
         // 全屏按钮
         TextView fullscreenText = new TextView(this);
         fullscreenText.setText("\u26F6 \u5168\u5C4F");
@@ -504,13 +549,13 @@ public final class CastPlayerActivity extends AppCompatActivity
 
     private View createChatPanel() {
         FrameLayout panel = new FrameLayout(this);
-        panel.setBackgroundColor(0xFF0D0D0D);
+        panel.setBackgroundColor(0xFF1A1515);
 
         // 对话标题行
         LinearLayout header = new LinearLayout(this);
         header.setOrientation(LinearLayout.HORIZONTAL);
         header.setPadding(dp(16), dp(12), dp(16), dp(8));
-        header.setBackgroundColor(0xFF0D0D0D);
+        header.setBackgroundColor(0xFF1A1515);
 
         TextView chatTitle = new TextView(this);
         chatTitle.setText("\u5173\u4E8E\u5F53\u524D\u64AD\u653E");
@@ -653,7 +698,7 @@ public final class CastPlayerActivity extends AppCompatActivity
 
     private View createInputBar() {
         FrameLayout bar = new FrameLayout(this);
-        bar.setBackgroundColor(0xFF1A1A1A);
+        bar.setBackgroundColor(0xFF1A1515);
         bar.setPadding(dp(12), dp(8), dp(12), dp(8));
 
         chatInput = new EditText(this);
@@ -700,12 +745,12 @@ public final class CastPlayerActivity extends AppCompatActivity
         pendingBubble.setTag(Integer.valueOf(bubbleId));
         chatScroll.post(() -> chatScroll.fullScroll(View.FOCUS_DOWN));
 
-        // 8 秒超时守护：Web 层未响应（监听器未挂载/后端超时）时替换为诚实降级
+        // 30 秒超时守护：Web 层未响应（监听器未挂载/后端超时）时替换为诚实提示，不再使用固定回复
         final Runnable timeoutGuard = () -> {
             String time = new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date());
-            replacePendingBubbleIfId(bubbleId, aiName, "\u6211\u5728\u914D\u4F60\u770B\u5462\uFF5E\u56DE\u5230\u4E3B\u754C\u9762\u6211\u4EEC\u53EF\u4EE5\u6162\u6162\u804A\u3002", time, true);
+            replacePendingBubbleIfId(bubbleId, aiName, "回复超时，请稍后重试。", time, true);
         };
-        chatHandler.postDelayed(timeoutGuard, 8000);
+        chatHandler.postDelayed(timeoutGuard, 30000);
 
         // 通过 DlnaReceiverPlugin 静态桥接转发到 Web 层（Web 层持鉴权调用真实 AI 回复 API）
         double positionMs = playbackService != null ? playbackService.getCurrentPosition() : 0;
@@ -714,7 +759,7 @@ public final class CastPlayerActivity extends AppCompatActivity
             // 插件未就绪：1.2 秒后替换气泡（不造假回复）
             chatHandler.postDelayed(() -> {
                 String time = new SimpleDateFormat("HH:mm", Locale.getDefault()).format(new Date());
-                replacePendingBubbleIfId(bubbleId, aiName, "\u6211\u5728\u914D\u4F60\u770B\u5462\uFF5E\u56DE\u5230\u4E3B\u754C\u9762\u6211\u4EEC\u53EF\u4EE5\u6162\u6162\u804A\u3002", time, true);
+                replacePendingBubbleIfId(bubbleId, aiName, "聊天连接未就绪，请稍后重试。", time, true);
             }, 1200);
         }
     }
@@ -1159,14 +1204,17 @@ public final class CastPlayerActivity extends AppCompatActivity
             // 全屏初始显示控制层（退出按钮 + 设置 + 控制栏），4 秒后自动隐藏
             setControlsVisibility(true);
         } else {
-            // 分屏：恢复所有面板
+            // 分屏：恢复视频和面板
             titleBar.setVisibility(View.VISIBLE);
             controlBar.setVisibility(View.VISIBLE);
-            chatPanel.setVisibility(View.VISIBLE);
-            inputBar.setVisibility(View.VISIBLE);
+            // 聊天面板默认收起，用户通过按钮展开
+            chatPanel.setVisibility(View.GONE);
+            inputBar.setVisibility(View.GONE);
             fullscreenBtn.setVisibility(View.VISIBLE);
+            backOverlayBtn.setVisibility(View.GONE);
             exitFullscreenBtn.setVisibility(View.GONE);
             settingsBtn.setVisibility(View.GONE);
+            controlsVisible = false; // 重新进入时控制圈隐藏，等待点击视频召唤
 
             LinearLayout.LayoutParams lp = (LinearLayout.LayoutParams) videoContainer.getLayoutParams();
             lp.weight = VIDEO_WEIGHT;
@@ -1188,6 +1236,17 @@ public final class CastPlayerActivity extends AppCompatActivity
         updateSurfaceLayout();
     }
 
+    /** 展开/收起对话面板（分屏模式下）。 */
+    private void toggleChatPanel() {
+        if (isFullscreen) return;
+        boolean showing = chatPanel.getVisibility() == View.VISIBLE;
+        chatPanel.setVisibility(showing ? View.GONE : View.VISIBLE);
+        inputBar.setVisibility(showing ? View.GONE : View.VISIBLE);
+        if (!showing) {
+            chatScroll.post(() -> chatScroll.fullScroll(View.FOCUS_DOWN));
+        }
+    }
+
     // ================================================================ B站式控制层
 
     private void toggleVideoControls() {
@@ -1198,21 +1257,26 @@ public final class CastPlayerActivity extends AppCompatActivity
         controlsVisible = show;
         int vis = show ? View.VISIBLE : View.GONE;
         if (isFullscreen) {
-            // 全屏时不需要"进入全屏"按钮，用退出按钮替代
+            // 全屏：显示退出全屏/设置/控制栏，不显示进全屏按钮
             fullscreenBtn.setVisibility(View.GONE);
+            backOverlayBtn.setVisibility(View.GONE);
             exitFullscreenBtn.setVisibility(vis);
             settingsBtn.setVisibility(vis);
             controlBar.setVisibility(vis);
         } else {
-            // 非全屏时控制栏始终可见
-            controlBar.setVisibility(View.VISIBLE);
-            fullscreenBtn.setVisibility(View.VISIBLE);
-            settingsBtn.setVisibility(View.GONE);
+            // 非全屏：B站风格控制圈——点击视频时显示控制层
+            backOverlayBtn.setVisibility(vis);
+            settingsBtn.setVisibility(vis);
+            controlBar.setVisibility(vis);
+            fullscreenBtn.setVisibility(vis);
+            exitFullscreenBtn.setVisibility(View.GONE);
         }
         // 自动隐藏（仅全屏模式下 4 秒后隐藏）
         controlHandler.removeCallbacks(autoHideControls);
         if (show && isFullscreen) {
             controlHandler.postDelayed(autoHideControls, 4000);
+        } else if (!show && !isFullscreen) {
+            // 非全屏不自动隐藏
         }
     }
 
