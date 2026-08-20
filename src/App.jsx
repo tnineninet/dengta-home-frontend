@@ -2662,6 +2662,30 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     let nativeListener;
     const openNativeTarget = (target) => {
       if (target?.available !== true) return;
+      // 深链 URI（冷启动/单实例复用时 appUrlOpen 可能不触发，由插件补送）
+      const deepLinkUrl = String(target?.url || "");
+      if (deepLinkUrl) {
+        if (deepLinkUrl.startsWith("dengta://auth")) {
+          void import("./auth-session.js")
+            .then(({ authSession }) => authSession.handleAuthCallbackUrl(deepLinkUrl))
+            .catch(() => {});
+        } else if (
+          deepLinkUrl.includes("room/join") ||
+          /[?&]room_code=/.test(deepLinkUrl)
+        ) {
+          void import("./room-invite.js")
+            .then((m) => {
+              const code = m.acceptRoomInviteUrl(deepLinkUrl);
+              if (code) {
+                // 深链进来直接到“一起看”，让邀请确认框立即弹出
+                setActiveView("together");
+                setIsSidebarOpen(false);
+                setIsMobileNavOpen(false);
+              }
+            })
+            .catch(() => {});
+        }
+      }
       if (target.view === "together") {
         setActiveView("together");
         setIsSidebarOpen(false);

@@ -16,6 +16,8 @@ import {
   subscribeRoomEvents,
   leaveWatchRoom,
   endWatchRoom,
+  recordViewingProgress,
+  listRecentViewings,
 } from "./watch-room";
 import { peekPendingInvite, clearPendingInvite, fetchRoomInviteInfo } from "./room-invite";
 import "./cast-player.css";
@@ -52,6 +54,11 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
   const [inviteInfo, setInviteInfo] = useState(null);
   const [inviteBusy, setInviteBusy] = useState(false);
   const [inviteError, setInviteError] = useState("");
+
+  // 播放结束界面（票根+影片详情+最近观看）
+  const [endScreen, setEndScreen] = useState(null);
+  const viewingPositionRef = useRef(0);
+  const viewingReportAtRef = useRef(0);
 
   // 视图切换：confirmation（播放确认）→ player（播放中）
   const [viewMode, setViewMode] = useState("confirmation");
@@ -152,6 +159,69 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
     clearPendingInvite();
   };
 
+  /* ─── 观看进度上报与票根 ─── */
+  const notePlaybackPosition = (positionSeconds) => {
+    const pos = Math.max(0, Math.round(Number(positionSeconds) || 0));
+    if (pos > viewingPositionRef.current) viewingPositionRef.current = pos;
+  };
+
+  /** 上报观看进度（非 final 时节流 30s）；返回后端结果。 */
+  const reportViewing = async (final = false) => {
+    const now = Date.now();
+    if (!final && now - viewingReportAtRef.current < 30_000) return null;
+    const current = roomRef.current;
+    const sessionIdLike = current?.id || sessionRef.current || "";
+    if (!sessionIdLike) return null;
+    viewingReportAtRef.current = now;
+    notePlaybackPosition(current?.mediaPositionSeconds);
+    const duration = Math.max(
+      Number(current?.mediaDurationSeconds) || 0,
+      durationSeconds,
+    );
+    try {
+      const result = await recordViewingProgress({
+        session_id: sessionIdLike,
+        media_url: mediaUrl,
+        title: current?.title || title,
+        duration_seconds: duration,
+        position_seconds: viewingPositionRef.current,
+      });
+      // 看到片尾：后端签发票根后直接弹出结束界面
+      if (result?.isCompleted && !endScreen) {
+        void openEndScreen(result);
+      }
+      return result;
+    } catch (_) {
+      return null;
+    }
+  };
+
+  /** 播放结束界面：票根 + 影片详情 + 最近观看。 */
+  const openEndScreen = async (result = null) => {
+    let recent = [];
+    try { recent = await listRecentViewings(5); } catch (_) {}
+    setEndScreen({
+      viewing: result?.viewing || null,
+      receipt: result?.receipt || null,
+      isCompleted: Boolean(result?.isCompleted),
+      ratio: Number(result?.ratio) || 0,
+      recent,
+    });
+  };
+
+  const handleEndScreenReplay = () => {
+    const url = String(endScreen?.viewing?.media_url || mediaUrl || "");
+    setEndScreen(null);
+    if (url) {
+      DlnaReceiver.launchPlayer({ uri: url, title: endScreen?.viewing?.media_title || title, userName, aiName }).catch(() => {});
+    }
+  };
+
+  const handleEndScreenClose = () => {
+    setEndScreen(null);
+    onClose?.();
+  };
+
   const mediaUrl = info?.uri || info?.mediaUrl || "";
   const title = info?.title || "投屏播放";
   const durationSeconds = Number(info?.durationSeconds || info?.duration || 0);
@@ -190,6 +260,8 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
     const text = String(event?.text || "").trim();
     if (!text) return;
     const positionMs = Number(event?.positionMs) || 0;
+    notePlaybackPosition(Math.round(positionMs / 1000));
+    void reportViewing();
     forwardToRoom(text, Math.round(positionMs / 1000));
     try {
       const session = await ensureSession();
@@ -297,6 +369,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
   const handleLeaveRoom = async () => {
     const current = roomRef.current;
     if (!current) return;
+    void reportViewing(true); // 静默存档，不打断退出流程
     try { await leaveWatchRoom(current.id); } catch (_) {}
     roomRef.current = null;
     setRoom(null);
@@ -307,12 +380,12 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
   /* ─── SSE 实时事件 ─── */
   useEffect(() => {
     const onInvite = () => {
-      const code = peekPendingInvite();
-      if (code && code !== inviteCode) {
-        setInviteCode(code);
+      const pending = peekPendingInvite();
+      if (pending?.code && pending.code !== inviteCode) {
+        setInviteCode(pending.code);
         setInviteError("");
         setInviteInfo(null);
-        fetchRoomInviteInfo(code)
+        fetchRoomInviteInfo(pending.code)
           .then((info) => { setInviteInfo(info); setInviteError(""); })
           .catch((e) => { setInviteInfo(null); setInviteError(e.message || "获取邀请信息失败"); });
       }
@@ -325,6 +398,8 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
       onPlaybackSync: (updatedRoom) => {
         setRoom((prev) => ({ ...(prev || {}), ...updatedRoom }));
         roomRef.current = { ...(roomRef.current || {}), ...updatedRoom };
+        notePlaybackPosition(updatedRoom?.mediaPositionSeconds);
+        void reportViewing();
       },
       onMessage: (msg) => {
         const latest = participantsRef.current;
@@ -348,7 +423,13 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
         });
       },
       onParticipantLeave: () => { syncRoomData(current.id).catch(() => {}); },
-      onRoomEnded: () => { roomRef.current = null; setRoom(null); setParticipants([]); participantsRef.current = []; },
+      onRoomEnded: () => {
+        // 放映厅结束：先终态上报进度（可能签发票根），再弹出结束界面
+        void reportViewing(true)
+          .then((result) => openEndScreen(result))
+          .catch(() => openEndScreen(null));
+        roomRef.current = null; setRoom(null); setParticipants([]); participantsRef.current = [];
+      },
       onError: (err) => { console.warn("[DlnaCastPlayer] SSE 连接错误:", err); },
     });
     return () => { stop(); window.removeEventListener("dengta:room-invite", onInvite); };
@@ -382,6 +463,14 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
   /* ─── 播放控制 ─── */
   async function handleClose() {
     try { await DlnaReceiver.stopPlayback(); } catch (_) {}
+    // 有观看记录时先展示结束界面（票根/最近观看），而不是直接退出
+    if (!endScreen && (viewingPositionRef.current > 0 || roomRef.current || sessionRef.current)) {
+      const result = await reportViewing(true).catch(() => null);
+      if (result?.viewing) {
+        await openEndScreen(result);
+        return;
+      }
+    }
     onClose?.();
   }
 
@@ -458,6 +547,86 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
   };
 
   const showWaitingOnly = !mediaUrl && !waiting && !launching && !extracting;
+
+  /* ================================================================
+     渲染：播放结束界面（票根 + 影片详情 + 最近观看）
+     ================================================================ */
+  if (endScreen) {
+    const viewing = endScreen.viewing;
+    const receipt = endScreen.receipt;
+    return (
+      <div className="cast-root">
+        <div className="cast-narrow-scroll">
+          <div className="cast-end-screen">
+            <div className="cast-end-icon">{receipt ? "🎫" : "🎬"}</div>
+            <h2 className="cast-end-title">{endScreen.isCompleted ? "放映完成" : "放映结束"}</h2>
+
+            {receipt && (
+              <div className="cast-end-receipt">
+                <div className="cast-end-receipt-no">票号 {receipt.ticket_no}</div>
+                <div className="cast-end-receipt-title">《{receipt.media_title || viewing?.media_title || title || "未命名"}》</div>
+                <div className="cast-end-receipt-row">
+                  <span>观看 {formatDuration(receipt.watched_seconds)}</span>
+                  <span>/ {formatDuration(receipt.duration_seconds)}</span>
+                  <span className="cast-end-receipt-ratio">{Math.round(Number(receipt.completion_ratio) || endScreen.ratio)}%</span>
+                </div>
+                <div className="cast-end-receipt-names">
+                  <span className="cast-attr-user is-active">{userName}</span>
+                  <span className="cast-attr-amp">&</span>
+                  <span className="cast-attr-ai is-active">{aiName}</span>
+                </div>
+                <div className="cast-end-receipt-date">{new Date(receipt.issued_at || Date.now()).toLocaleDateString("zh-CN")}</div>
+              </div>
+            )}
+            {!receipt && viewing && (
+              <div className="cast-end-progress">
+                <div className="cast-end-receipt-title">《{viewing.media_title || title || "未命名"}》</div>
+                <div className="cast-end-receipt-row">
+                  <span>看到 {formatDuration(viewing.last_position_seconds)}</span>
+                  <span>/ {formatDuration(viewing.media_duration_seconds)}</span>
+                  <span className="cast-end-receipt-ratio">{endScreen.ratio}%</span>
+                </div>
+              </div>
+            )}
+
+            {viewing && (
+              <div className="cast-end-detail">
+                <div className="cast-end-detail-row"><span>影片</span><b>{viewing.media_title || title || "未命名"}</b></div>
+                <div className="cast-end-detail-row"><span>时长</span><b>{formatDuration(viewing.media_duration_seconds)}</b></div>
+                <div className="cast-end-detail-row"><span>开始观看</span><b>{new Date(viewing.started_at).toLocaleString("zh-CN", { hour12: false })}</b></div>
+              </div>
+            )}
+
+            <div className="cast-end-actions">
+              {(viewing?.media_url || mediaUrl) && (
+                <button type="button" className="cast-end-replay" onClick={handleEndScreenReplay}>▶ 再看一遍</button>
+              )}
+              <button type="button" className="cast-end-done" onClick={handleEndScreenClose}>完成</button>
+            </div>
+
+            {endScreen.recent.length > 0 && (
+              <div className="cast-end-recent">
+                <div className="cast-end-recent-title">最近观看</div>
+                {endScreen.recent.map((v) => {
+                  const pct = Number(v.media_duration_seconds) > 0
+                    ? Math.min(100, Math.round((Number(v.last_position_seconds) / Number(v.media_duration_seconds)) * 100))
+                    : 0;
+                  return (
+                    <div key={v.id} className="cast-end-recent-item">
+                      <span className="cast-end-recent-name">《{v.media_title || "未命名"}》</span>
+                      <span className={`cast-end-recent-status ${v.is_completed ? "done" : ""}`}>
+                        {v.is_completed ? "✅ 已看完" : `▶ 看到 ${pct}%`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   /* ================================================================
      渲染：等待页（无媒体时）

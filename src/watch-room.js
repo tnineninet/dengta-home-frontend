@@ -85,6 +85,35 @@ export async function endWatchRoom(roomId) {
   return data;
 }
 
+/* ─── 观看记录与票根（对应后端 routes/co-watch.js /viewings 端点） ─── */
+
+/** 上报观看进度；完成时后端会一次性签发 ticket。返回 { viewing, receipt, isCompleted, ratio }。 */
+export async function recordViewingProgress(input = {}) {
+  const data = await apiRequest("/api/v2/co-watch/viewings", {
+    method: "POST",
+    body: input,
+    timeoutMs: 10_000,
+  });
+  return data || null;
+}
+
+/** 拉取最近观看列表。 */
+export async function listRecentViewings(limit = 20) {
+  const data = await apiRequest(`/api/v2/co-watch/viewings?limit=${limit}`, {
+    timeoutMs: 10_000,
+  });
+  return Array.isArray(data?.viewings) ? data.viewings : [];
+}
+
+/** 读取某次观看的票根。 */
+export async function readViewingReceipt(viewingId) {
+  const data = await apiRequest(
+    `/api/v2/co-watch/viewings/${encodeURIComponent(viewingId)}/receipt`,
+    { timeoutMs: 10_000 },
+  );
+  return data?.receipt || null;
+}
+
 /**
  * 放映厅实时事件订阅（SSE，通过 fetch + 手动解析，支持 Bearer 鉴权）。
  *

@@ -12,6 +12,7 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 @CapacitorPlugin(name = "BackgroundNotifications")
 public final class BackgroundNotificationsPlugin extends Plugin {
     private JSObject pendingLaunchTarget;
+    private String pendingLaunchUrl = "";
 
     @Override
     public void load() {
@@ -30,6 +31,12 @@ public final class BackgroundNotificationsPlugin extends Plugin {
         if (target == null) {
             target = new JSObject();
             target.put("available", false);
+        }
+        // 冷启动/单实例复用时，把深链 intent 的数据 URI 一并交给 Web 层
+        // （@capacitor/app 的 appUrlOpen 对首个 intent 可能不触发）。
+        if (!pendingLaunchUrl.isEmpty()) {
+            target.put("url", pendingLaunchUrl);
+            pendingLaunchUrl = "";
         }
         call.resolve(target);
     }
@@ -134,6 +141,17 @@ public final class BackgroundNotificationsPlugin extends Plugin {
 
     private void captureLaunchTarget(Intent intent, boolean notify) {
         if (intent == null) return;
+        // 深链 URI（dengta://room/join?code=...、https://dengtahome.com/room/join?...、
+        // dengta://auth#...）：通知 extra 缺失时也视为有效启动目标。
+        if (Intent.ACTION_VIEW.equals(intent.getAction()) && intent.getData() != null) {
+            pendingLaunchUrl = clean(intent.getData().toString(), 2048);
+            JSObject target = new JSObject();
+            target.put("available", true);
+            target.put("url", pendingLaunchUrl);
+            pendingLaunchTarget = target;
+            if (notify) notifyListeners("notificationTarget", target, true);
+            return;
+        }
         String view = clean(intent.getStringExtra("dengta_view"), 40);
         String sessionId = clean(
             intent.getStringExtra("dengta_session_id"),

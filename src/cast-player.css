@@ -1055,3 +1055,173 @@
   min-height: 100dvh;
   background: var(--cast-bg);
 }
+
+/* ============================================================
+   播放结束界面（票根 + 影片详情 + 最近观看）
+   ============================================================ */
+.cast-end-screen {
+  padding: 56px 24px 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  animation: cast-invite-in 0.3s ease-out;
+}
+.cast-end-icon {
+  font-size: 44px;
+  line-height: 1;
+}
+.cast-end-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  color: var(--cast-text-primary);
+}
+
+/* 票根卡片：虚线票根风格 */
+.cast-end-receipt {
+  width: 100%;
+  max-width: 360px;
+  background: var(--cast-surface-card);
+  border: 1px dashed var(--cast-border-strong);
+  border-radius: var(--cast-radius-lg);
+  padding: 22px 24px;
+  text-align: center;
+  display: grid;
+  gap: 8px;
+}
+.cast-end-receipt-no {
+  font-size: 12px;
+  letter-spacing: 4px;
+  color: var(--cast-text-accent);
+}
+.cast-end-receipt-title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--cast-text-primary);
+}
+.cast-end-receipt-row {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--cast-text-secondary);
+}
+.cast-end-receipt-ratio {
+  color: var(--cast-text-accent);
+  font-weight: 600;
+}
+.cast-end-receipt-names {
+  font-size: 14px;
+}
+.cast-end-receipt-date {
+  font-size: 12px;
+  color: var(--cast-text-muted);
+}
+
+/* 未完成时的进度卡 */
+.cast-end-progress {
+  width: 100%;
+  max-width: 360px;
+  background: var(--cast-surface-card);
+  border: 1px solid var(--cast-border-strong);
+  border-radius: var(--cast-radius-lg);
+  padding: 20px 24px;
+  text-align: center;
+  display: grid;
+  gap: 8px;
+}
+
+/* 影片详情 */
+.cast-end-detail {
+  width: 100%;
+  max-width: 360px;
+  background: var(--cast-surface);
+  border: 1px solid var(--cast-border);
+  border-radius: var(--cast-radius-md);
+  padding: 14px 18px;
+  display: grid;
+  gap: 8px;
+}
+.cast-end-detail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+.cast-end-detail-row span {
+  color: var(--cast-text-muted);
+}
+.cast-end-detail-row b {
+  color: var(--cast-text-primary);
+  font-weight: 500;
+  text-align: right;
+}
+
+/* 操作按钮 */
+.cast-end-actions {
+  display: flex;
+  gap: 12px;
+  width: 100%;
+  max-width: 360px;
+}
+.cast-end-replay,
+.cast-end-done {
+  flex: 1;
+  padding: 12px 0;
+  border-radius: var(--cast-radius-md);
+  border: 1px solid var(--cast-border-strong);
+  font-size: 14px;
+  cursor: pointer;
+  font-family: var(--cast-font);
+}
+.cast-end-replay {
+  background: var(--cast-text-accent);
+  border-color: var(--cast-text-accent);
+  color: #2A2118;
+  font-weight: 600;
+}
+.cast-end-done {
+  background: var(--cast-control-bg);
+  color: var(--cast-text-primary);
+}
+
+/* 最近观看 */
+.cast-end-recent {
+  width: 100%;
+  max-width: 360px;
+  display: grid;
+  gap: 6px;
+}
+.cast-end-recent-title {
+  font-size: 13px;
+  letter-spacing: 2px;
+  color: var(--cast-text-muted);
+  margin-bottom: 4px;
+}
+.cast-end-recent-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  background: var(--cast-surface);
+  border: 1px solid var(--cast-border);
+  border-radius: var(--cast-radius-md);
+  padding: 10px 14px;
+}
+.cast-end-recent-name {
+  font-size: 13px;
+  color: var(--cast-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cast-end-recent-status {
+  font-size: 12px;
+  color: var(--cast-text-secondary);
+  flex-shrink: 0;
+}
+.cast-end-recent-status.done {
+  color: var(--cast-text-accent);
+}
