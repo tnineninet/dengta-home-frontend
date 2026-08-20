@@ -8065,6 +8065,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       <DlnaCastPlayer
         key={dlnaCastInfo?.receivedAt || "cast"}
         info={dlnaCastInfo}
+        userName={effectiveUserName}
+        aiName={effectiveAiName}
         onClose={() => {
           setDlnaCastInfo(null);
           setActiveView("chat");

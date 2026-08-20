@@ -1167,6 +1167,10 @@ button:disabled {
   display: none;
 }
 
+.view-cast .topbar {
+  display: none;
+}
+
 .diary-frame {
   width: 100%;
   height: 100%;
@@ -9388,20 +9392,22 @@ body,
   display: flex;
   gap: 6px;
   flex-shrink: 0;
+  align-items: center;
 }
 .music-cookie-track-actions button {
   border: none;
   background: transparent;
   font-family: var(--apple-ff-text);
   font-size: 10.5px;
-  color: var(--apple-blue);
+  color: #c0718a;
   padding: 4px 10px;
   border-radius: var(--apple-radius-pill);
   cursor: pointer;
   transition: background var(--apple-transition), transform var(--apple-transition);
+  white-space: nowrap;
 }
 .music-cookie-track-actions button:active {
-  background: rgba(0, 102, 204, 0.08);
+  background: rgba(192, 113, 138, 0.12);
   transform: var(--apple-press-scale);
 }
 .music-cookie-track-actions button:disabled {
@@ -9941,6 +9947,16 @@ body,
 }
 
 /* ============ DLNA 投屏专用播放器（与屏幕共看完全独立） ============ */
+.dlna-cast-icon {
+  vertical-align: middle;
+  margin-right: 6px;
+  opacity: 0.8;
+  flex-shrink: 0;
+}
+.dlna-cast-player .dlna-cast-header .dlna-cast-icon {
+  color: #ffd9a8;
+  margin-right: 8px;
+}
 .dlna-cast-player {
   position: relative;
   display: flex;
@@ -9952,6 +9968,8 @@ body,
   color: #f2e9dc;
   overflow: hidden;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.4);
 }
 .dlna-cast-header {
   display: flex;
@@ -10000,12 +10018,55 @@ body,
   background: rgba(255,255,255,0.26);
 }
 .dlna-cast-stage {
+  position: relative;
   flex: 1 1 auto;
   display: flex;
   align-items: center;
   justify-content: center;
   min-height: 0;
   background: #000;
+}
+.dlna-cast-overlay-loading {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.7);
+  z-index: 2;
+  color: #f2e9dc;
+  gap: 8px;
+}
+.dlna-cast-overlay-loading p {
+  margin: 0;
+}
+.dlna-cast-overlay-loading p:first-child::before {
+  content: "";
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-right: 8px;
+  border: 2px solid rgba(242, 233, 220, 0.3);
+  border-top-color: #ffd9a8;
+  border-radius: 50%;
+  animation: dlna-cast-spin 0.8s linear infinite;
+  vertical-align: middle;
+}
+.dlna-cast-overlay-loading p:first-child::before {
+  content: "";
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-right: 8px;
+  border: 2px solid rgba(242, 233, 220, 0.3);
+  border-top-color: #ffd9a8;
+  border-radius: 50%;
+  animation: dlna-cast-spin 0.8s linear infinite;
+  vertical-align: middle;
+}
+@keyframes dlna-cast-spin {
+  to { transform: rotate(360deg); }
 }
 .dlna-cast-stage video {
   width: 100%;
@@ -10024,11 +10085,13 @@ body,
 .dlna-cast-failed p,
 .dlna-cast-ended p,
 .dlna-cast-empty p,
-.dlna-cast-waiting p {
+.dlna-cast-waiting p,
+.dlna-cast-loading p {
   margin: 0 0 8px;
 }
 .dlna-cast-failed .dlna-cast-failed-hint,
-.dlna-cast-waiting .dlna-cast-waiting-hint {
+.dlna-cast-waiting .dlna-cast-waiting-hint,
+.dlna-cast-loading-hint {
   opacity: 0.6;
   font-size: 12px;
 }
@@ -10094,4 +10157,279 @@ body,
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: rgba(242, 233, 220, 0.85);
+}
+
+/* ---- 放映厅播放中界面（票根 + 电影详情） ---- */
+.dlna-cast-playing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 60px 20px 40px;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+  overflow-y: auto;
+}
+
+/* ---- 放映厅多人联机 UI ---- */
+.dlna-room-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+}
+.dlna-room-create {
+  width: 100%;
+  max-width: 320px;
+  font-size: 14px !important;
+  padding: 12px 20px !important;
+  background: linear-gradient(135deg, #ffd9a8, #f0c080) !important;
+  color: #101019 !important;
+  border: none !important;
+  font-weight: 600 !important;
+}
+.dlna-room-create:disabled {
+  opacity: 0.5;
+}
+.dlna-room-join {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  max-width: 380px;
+  margin: 8px auto 0;
+}
+.dlna-room-join input {
+  flex: 1;
+  min-width: 0;
+}
+.dlna-room-error {
+  color: #fb7299;
+  font-size: 12px;
+  margin: 4px 0 0;
+}
+.dlna-room-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+}
+.dlna-room-code-label {
+  font-size: 11px;
+  color: rgba(242, 233, 220, 0.5);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+.dlna-room-code {
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 6px;
+  color: #ffd9a8;
+  background: rgba(255, 217, 168, 0.08);
+  border: 1px solid rgba(255, 217, 168, 0.2);
+  border-radius: 12px;
+  padding: 12px 24px;
+  user-select: all;
+  cursor: copy;
+}
+.dlna-room-badge-code {
+  flex: 0 0 auto;
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: #ffd9a8;
+  border: 1px solid rgba(255, 217, 168, 0.35);
+  border-radius: 4px;
+  padding: 2px 8px;
+  background: rgba(255, 217, 168, 0.1);
+  cursor: pointer;
+}
+.dlna-cast-playing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  padding: 60px 20px 40px;
+  width: 100%;
+  max-width: 380px;
+  margin: 0 auto;
+  overflow-y: auto;
+}
+
+/* 票根 */
+.dlna-ticket {
+  position: relative;
+  width: 100%;
+  background: linear-gradient(135deg, #1a1a28, #14141e);
+  border: 1px solid rgba(255, 217, 168, 0.18);
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+.dlna-ticket-notch {
+  position: absolute;
+  top: 50%;
+  left: -8px;
+  width: 16px;
+  height: 16px;
+  background: #0e0e14;
+  border-radius: 50%;
+  transform: translateY(-50%);
+  border: 1px solid rgba(255, 217, 168, 0.18);
+}
+.dlna-ticket-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 10px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: rgba(242, 233, 220, 0.6);
+}
+.dlna-ticket-brand {
+  font-weight: 600;
+}
+.dlna-ticket-no {
+  font-family: monospace;
+  font-size: 10px;
+  color: rgba(255, 217, 168, 0.6);
+}
+.dlna-ticket-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #ffd9a8;
+  line-height: 1.3;
+  margin: 4px 0;
+}
+.dlna-ticket-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: rgba(242, 233, 220, 0.7);
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.dlna-ticket-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: rgba(242, 233, 220, 0.5);
+  border-top: 1px dashed rgba(255, 217, 168, 0.15);
+  padding-top: 8px;
+}
+.dlna-ticket-cover {
+  width: 100%;
+  max-height: 160px;
+  object-fit: cover;
+  border-radius: 8px;
+  margin-top: 4px;
+}
+
+/* 电影详情 */
+.dlna-movie-details {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  font-size: 13px;
+  color: rgba(242, 233, 220, 0.85);
+  margin: 0;
+  padding: 0;
+}
+.dlna-movie-details dt {
+  color: rgba(242, 233, 220, 0.5);
+  font-weight: 400;
+}
+.dlna-movie-details dd {
+  margin: 0;
+  text-align: right;
+  word-break: break-all;
+}
+
+/* ---- 网页视频提取器 UI ---- */
+.dlna-cast-section {
+  padding: 16px 24px;
+  text-align: center;
+}
+.dlna-cast-section h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  color: #f2e9dc;
+}
+.dlna-cast-section p {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(242, 233, 220, 0.6);
+}
+.dlna-cast-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 40px;
+  margin: 8px 0;
+  color: rgba(242, 233, 220, 0.3);
+  font-size: 12px;
+}
+.dlna-cast-divider::before,
+.dlna-cast-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: rgba(242, 233, 220, 0.15);
+}
+.dlna-cast-url-row {
+  display: flex;
+  gap: 8px;
+  padding: 0 24px;
+  margin-top: 8px;
+}
+.dlna-cast-url-input {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 217, 168, 0.3);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: #f2e9dc;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.dlna-cast-url-input:focus {
+  border-color: #ffd9a8;
+}
+.dlna-cast-url-input::placeholder {
+  color: rgba(242, 233, 220, 0.35);
+}
+.dlna-cast-extract-btn {
+  padding: 10px 18px;
+  border: none;
+  border-radius: 8px;
+  background: #ffd9a8;
+  color: #1e1a1a;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity 0.2s;
+}
+.dlna-cast-extract-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.dlna-cast-extract-btn:active:not(:disabled) {
+  opacity: 0.8;
+}
+.dlna-cast-hint {
+  margin: 6px 0 0;
+  font-size: 11px;
+  color: rgba(242, 233, 220, 0.35);
+  text-align: center;
 }

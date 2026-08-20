@@ -969,7 +969,15 @@ select:focus-visible {
 }
 
 .nursery-meter > span {
-  background: var(--apple-blue);
+  background: transparent;
+}
+
+.nursery-meter > i > b {
+  background: #c0718a;
+}
+
+.nursery-meter.is-inverse > i > b {
+  background: #6d9a8c;
 }
 
 /* Settings sheet */

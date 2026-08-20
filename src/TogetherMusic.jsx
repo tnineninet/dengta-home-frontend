@@ -846,8 +846,8 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
                     <li key={track.providerTrackId}>
                       <span className="music-cookie-track-title">{track.title}<em>{track.artist}</em></span>
                       <span className="music-cookie-track-actions">
-                        <button type="button" disabled={cookieOpBusy} onClick={() => void cookieLikeTrack(track.providerTrackId, true)}>♥ 红心</button>
-                        <button type="button" disabled={cookieOpBusy} onClick={() => { setCookieOpStatus("正在交给网易云播放…"); void Promise.all([requestExternalMusicPlayback("song", track.providerTrackId), openNeteasePlayback("song", track.providerTrackId)]).then(() => setCookieOpStatus("已交给网易云播放这首。")).catch((caught) => setCookieOpStatus(caught?.message || "无法打开网易云播放。")); }}><Play aria-hidden="true" />播放</button>
+                        <button type="button" disabled={cookieOpBusy} onClick={() => void cookieLikeTrack(track.providerTrackId, true)} title="红心">♥</button>
+                        <button type="button" disabled={cookieOpBusy} onClick={() => { setCookieOpStatus("正在交给网易云播放…"); void Promise.all([requestExternalMusicPlayback("song", track.providerTrackId), openNeteasePlayback("song", track.providerTrackId)]).then(() => setCookieOpStatus("已交给网易云播放这首。")).catch((caught) => setCookieOpStatus(caught?.message || "无法打开网易云播放。")); }}><Play aria-hidden="true" size={13} /><span style={{marginLeft:3}}>播放</span></button>
                       </span>
                     </li>
                   ))}
@@ -902,7 +902,8 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
                           <li key={track.id || index}>
                             <span className="music-cookie-track-title">{index + 1}. {track.title}<em>{track.artist}</em></span>
                             <span className="music-cookie-track-actions">
-                              <button type="button" disabled={cookieOpBusy} onClick={() => void cookieLikeTrack(track.id, true)}>♥ 红心</button>
+                              <button type="button" disabled={cookieOpBusy} onClick={() => void cookieLikeTrack(track.id, true)} title="红心">♥</button>
+                              <button type="button" disabled={cookieOpBusy} onClick={() => { setCookieOpStatus("正在交给网易云播放…"); void Promise.all([requestExternalMusicPlayback("song", track.id), openNeteasePlayback("song", track.id)]).then(() => setCookieOpStatus("已交给网易云播放这首。")).catch((caught) => setCookieOpStatus(caught?.message || "无法打开网易云播放。")); }}><Play aria-hidden="true" size={13} /><span style={{marginLeft:3}}>播放</span></button>
                             </span>
                           </li>
                         ))}
@@ -921,7 +922,8 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
                     <li key={track.id}>
                       <span className="music-cookie-track-title">{track.title}<em>{track.artist}{track.reason ? ` · ${track.reason}` : ""}</em></span>
                       <span className="music-cookie-track-actions">
-                        <button type="button" disabled={cookieOpBusy} onClick={() => void cookieLikeTrack(track.id, true)}>♥ 红心</button>
+                        <button type="button" disabled={cookieOpBusy} onClick={() => void cookieLikeTrack(track.id, true)} title="红心">♥</button>
+                        <button type="button" disabled={cookieOpBusy} onClick={() => { setCookieOpStatus("正在交给网易云播放…"); void Promise.all([requestExternalMusicPlayback("song", track.id), openNeteasePlayback("song", track.id)]).then(() => setCookieOpStatus("已交给网易云播放这首。")).catch((caught) => setCookieOpStatus(caught?.message || "无法打开网易云播放。")); }}><Play aria-hidden="true" size={13} /><span style={{marginLeft:3}}>播放</span></button>
                       </span>
                     </li>
                   ))}
@@ -938,7 +940,10 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
                   {cookieHistory.map((track) => (
                     <li key={track.id}>
                       <span className="music-cookie-track-title">{track.title}<em>{track.artist}</em></span>
-                      <span className="music-cookie-track-actions">{track.play_count > 0 && <small>播放 {track.play_count} 次</small>}</span>
+                      <span className="music-cookie-track-actions">{track.play_count > 0 && <small title={`播放 ${track.play_count} 次`}>播放 {track.play_count} 次</small>}
+                        <button type="button" disabled={cookieOpBusy} onClick={() => void cookieLikeTrack(track.id, true)} title="红心">♥</button>
+                        <button type="button" disabled={cookieOpBusy} onClick={() => { setCookieOpStatus("正在交给网易云播放…"); void Promise.all([requestExternalMusicPlayback("song", track.id), openNeteasePlayback("song", track.id)]).then(() => setCookieOpStatus("已交给网易云播放这首。")).catch((caught) => setCookieOpStatus(caught?.message || "无法打开网易云播放。")); }}><Play aria-hidden="true" size={13} /><span style={{marginLeft:3}}>播放</span></button>
+                      </span>
                     </li>
                   ))}
                 </ul>

@@ -419,6 +419,7 @@
   padding: 7px 6px;
   border-bottom: 1px dashed #eeddd2;
   font-size: 13px;
+  min-width: 0;
 }
 .music-cookie-track-list li:last-child { border-bottom: none; }
 .music-cookie-track-title {

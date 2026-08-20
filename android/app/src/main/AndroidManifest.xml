@@ -80,10 +80,27 @@
                 <data android:scheme="dengta" android:host="browser" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".CastPlayerActivity"
+            android:exported="false"
+            android:hardwareAccelerated="true"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:theme="@style/AppTheme.NoActionBar" />
+        <activity
+            android:name=".VideoExtractorActivity"
+            android:exported="false"
+            android:hardwareAccelerated="true"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:theme="@style/AppTheme" />
         <service
             android:name=".DlnaReceiverService"
             android:exported="false"
             android:foregroundServiceType="dataSync"
+            android:stopWithTask="false" />
+        <service
+            android:name=".CastPlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback"
             android:stopWithTask="false" />
         <service
             android:name=".NowPlayingListenerService"
@@ -104,6 +121,7 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />

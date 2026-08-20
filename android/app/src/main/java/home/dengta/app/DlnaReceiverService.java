@@ -21,12 +21,9 @@ import androidx.core.app.NotificationCompat;
 import com.getcapacitor.JSObject;
 
 import org.json.JSONObject;
-import org.json.JSONArray;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -37,10 +34,7 @@ import java.net.NetworkInterface;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketTimeoutException;
-import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.Enumeration;
 import java.util.Locale;
 import java.util.UUID;
@@ -84,14 +78,13 @@ public final class DlnaReceiverService extends Service {
     private static final int SSDP_PORT = 1900;
     private static final int HTTP_PORT = 48620;
     private static final String DEVICE_TYPE = "urn:schemas-upnp-org:device:MediaRenderer:1";
-    private static final String ROOT_DEVICE_TYPE = "upnp:rootdevice";
 
     private static volatile boolean running = false;
     private static volatile boolean wifiAware = false;
 
     // —— 播放状态机（供 SOAP 查询，也供前端感知） ——
-    private static volatile String transportState = "STOPPED";
-    private static volatile String currentUri = "";
+    static volatile String transportState = "STOPPED";
+    static volatile String currentUri = "";
     private static volatile String currentMeta = "";
     private static volatile String trackDuration = "00:00:00";
 
@@ -102,12 +95,10 @@ public final class DlnaReceiverService extends Service {
     private Handler mainHandler;
     private Handler ssdpHandler;
     private Handler httpHandler;
-    private DatagramSocket ssdpSocket;
-    private ServerSocket httpServer;
+    private volatile DatagramSocket ssdpSocket;
+    private volatile ServerSocket httpServer;
     private WifiManager.MulticastLock multicastLock;
     private String deviceId = "";
-    private boolean deviceIdGenerated = false;
-    private boolean wifiMulticastAcquired = false;
 
     public static boolean isRunning() {
         return running;
@@ -245,6 +236,10 @@ public final class DlnaReceiverService extends Service {
     @Override
     public void onDestroy() {
         stopReceiver();
+        // 移除前台通知，避免服务停止后通知残留
+        try {
+            stopForeground(STOP_FOREGROUND_REMOVE);
+        } catch (Exception ignored) {}
         activeInstance = null;
         super.onDestroy();
     }
@@ -316,22 +311,24 @@ public final class DlnaReceiverService extends Service {
 
     private void startSsdpLoop() {
         ssdpHandler.post(() -> {
-            // 1900 端口可能暂时被占用：多次重试，避免一次失败后设备彻底消失
-            for (int attempt = 0; attempt < 5 && running; attempt++) {
+            // 1900 端口可能暂时被占用或需要系统权限：多次重试，避免一次失败后设备彻底消失
+            for (int attempt = 0; attempt < 10 && running; attempt++) {
                 MulticastSocket socket = null;
                 try {
                     socket = new MulticastSocket(null);
                     socket.setReuseAddress(true);
-                    socket.bind(new InetSocketAddress(SSDP_PORT));
+                    socket.setBroadcast(true); // 允许向组播地址发送 SSDP 响应
+                    socket.bind(new InetSocketAddress(InetAddress.getByName("0.0.0.0"), SSDP_PORT));
                     socket.setSoTimeout(2000);
                     // 加入组播组，确保收到来自 239.255.255.250:1900 的 M-SEARCH
                     try {
                         InetAddress group = InetAddress.getByName(SSDP_ADDR);
                         socket.joinGroup(group);
                     } catch (Exception joinError) {
-                        publishDebug("ssdp joinGroup failed: " + joinError.getMessage());
+                        publishDebug("ssdp joinGroup failed: " + safeMsg(joinError));
                     }
                     ssdpSocket = socket;
+                    publishDebug("ssdp bound to port " + SSDP_PORT + " on attempt " + (attempt + 1));
                     while (running && ssdpSocket != null) {
                         try {
                             byte[] buffer = new byte[8192];
@@ -346,14 +343,15 @@ public final class DlnaReceiverService extends Service {
                     }
                     return;
                 } catch (Exception socketError) {
-                    publishDebug("ssdp bind failed (attempt " + (attempt + 1) + "): "
-                        + socketError.getMessage());
+                    String msg = safeMsg(socketError);
+                    publishDebug("ssdp bind failed (attempt " + (attempt + 1) + "): " + msg);
                     if (socket != null) {
                         try { socket.close(); } catch (Exception ignored) {}
                     }
                     try { Thread.sleep(3000L * (attempt + 1)); } catch (InterruptedException ignored) {}
                 }
             }
+            publishDebug("ssdp: all attempts exhausted, DLNA discovery unavailable");
         });
     }
 
@@ -381,6 +379,10 @@ public final class DlnaReceiverService extends Service {
             uuidPrefix + "::" + DEVICE_TYPE,
             uuidPrefix
         };
+        // RFC 1123 DATE 头：部分严格客户端（爱奇艺/腾讯视频）要求 M-SEARCH 响应带 DATE
+        String dateHeader = java.text.SimpleDateFormat.getDateTimeInstance(
+                java.text.SimpleDateFormat.MEDIUM, java.text.SimpleDateFormat.MEDIUM, Locale.US)
+            .format(new java.util.Date());
         for (int i = 0; i < ntList.length; i++) {
             String st = ntList[i];
             if (!matchAll && !matchRoot && !st.equals(DEVICE_TYPE) && !st.equals(uuidPrefix)) continue;
@@ -389,6 +391,7 @@ public final class DlnaReceiverService extends Service {
             String response =
                 "HTTP/1.1 200 OK\r\n"
                     + "CACHE-CONTROL: max-age=1800\r\n"
+                    + "DATE: " + dateHeader + "\r\n"
                     + "EXT:\r\n"
                     + "LOCATION: " + location + "\r\n"
                     + "SERVER: DENGTA/2.10 UPnP/1.0 DENGTA-DLNA/1.0\r\n"
@@ -410,26 +413,40 @@ public final class DlnaReceiverService extends Service {
         String localIp = localIpAddress();
         if (localIp.isEmpty()) return;
         String location = "http://" + localIp + ":" + HTTP_PORT + "/description.xml";
-        String usn = "uuid:" + deviceId + "::" + DEVICE_TYPE;
-        String nt = DEVICE_TYPE;
-        String alive =
-            "NOTIFY * HTTP/1.1\r\n"
-                + "HOST: 239.255.255.250:1900\r\n"
-                + "CACHE-CONTROL: max-age=1800\r\n"
-                + "LOCATION: " + location + "\r\n"
-                + "NT: " + nt + "\r\n"
-                + "NTS: ssdp:alive\r\n"
-                + "SERVER: DENGTA/2.10 UPnP/1.0 DENGTA-DLNA/1.0\r\n"
-                + "USN: " + usn + "\r\n"
-                + "BOOTID.UPNP.ORG: 1\r\n"
-                + "CONFIGID.UPNP.ORG: 1\r\n"
-                + "\r\n";
-        try {
-            InetAddress group = InetAddress.getByName(SSDP_ADDR);
-            byte[] payload = alive.getBytes(StandardCharsets.UTF_8);
-            DatagramPacket packet = new DatagramPacket(payload, payload.length, group, SSDP_PORT);
-            ssdpSocket.send(packet);
-        } catch (Exception ignored) {
+        String uuidPrefix = "uuid:" + deviceId;
+
+        // 发送三条 NOTIFY（rootdevice / deviceType / UUID），满足 UPnP 规范对 ssdp:all 的发现要求
+        String[] ntList = {
+            "upnp:rootdevice",
+            DEVICE_TYPE,
+            uuidPrefix
+        };
+        String[] usnList = {
+            uuidPrefix + "::upnp:rootdevice",
+            uuidPrefix + "::" + DEVICE_TYPE,
+            uuidPrefix
+        };
+        for (int i = 0; i < ntList.length; i++) {
+            String alive =
+                "NOTIFY * HTTP/1.1\r\n"
+                    + "HOST: 239.255.255.250:1900\r\n"
+                    + "CACHE-CONTROL: max-age=1800\r\n"
+                    + "LOCATION: " + location + "\r\n"
+                    + "NT: " + ntList[i] + "\r\n"
+                    + "NTS: ssdp:alive\r\n"
+                    + "SERVER: DENGTA/2.10 UPnP/1.0 DENGTA-DLNA/1.0\r\n"
+                    + "USN: " + usnList[i] + "\r\n"
+                    + "BOOTID.UPNP.ORG: 1\r\n"
+                    + "CONFIGID.UPNP.ORG: 1\r\n"
+                    + "SUPPORTS.LV.UPNP.ORG: 1\r\n"
+                    + "\r\n";
+            try {
+                InetAddress group = InetAddress.getByName(SSDP_ADDR);
+                byte[] payload = alive.getBytes(StandardCharsets.UTF_8);
+                DatagramPacket packet = new DatagramPacket(payload, payload.length, group, SSDP_PORT);
+                ssdpSocket.send(packet);
+            } catch (Exception ignored) {
+            }
         }
     }
 
@@ -473,8 +490,9 @@ public final class DlnaReceiverService extends Service {
     private void startHttpServer() {
         httpHandler.post(() -> {
             try {
-                ServerSocket server = new ServerSocket(HTTP_PORT);
+                ServerSocket server = new ServerSocket();
                 server.setReuseAddress(true);
+                server.bind(new InetSocketAddress(HTTP_PORT));
                 httpServer = server;
                 while (running && httpServer != null) {
                     try {
@@ -485,7 +503,7 @@ public final class DlnaReceiverService extends Service {
                     }
                 }
             } catch (Exception httpError) {
-                publishDebug("http server failed: " + httpError.getMessage());
+                publishDebug("http server failed: " + safeMsg(httpError));
             }
         });
     }
@@ -563,7 +581,7 @@ public final class DlnaReceiverService extends Service {
                         "not found".getBytes(StandardCharsets.UTF_8));
                 }
             } catch (Exception ignored) {
-                Log.w("DlnaReceiverService", "handleHttpClient error: " + ignored.getMessage());
+                Log.w("DlnaReceiverService", "handleHttpClient error: " + safeMsg(ignored));
             }
         });
     }
@@ -585,11 +603,13 @@ public final class DlnaReceiverService extends Service {
                 : !findTag(xml, "GetCurrentConnectionInfo").isEmpty() ? "GetCurrentConnectionInfo"
                 : !findTag(xml, "GetDeviceCapabilities").isEmpty() ? "GetDeviceCapabilities"
                 : "";
-            Log.i("DlnaReceiverService", "handleSoapRequest: path=" + path + " action=" + action + " xml=" + (xml.length() > 300 ? xml.substring(0, 300) : xml));
+            Log.i("DlnaReceiverService", "handleSoapRequest: path=" + path + " action=" + action);
+            // 不打印完整 XML：含签名 URL/播放元数据，可能有隐私与泄露风险
             switch (action) {
                 case "SetAVTransportURI": {
-                    String uri = findTag(xml, "CurrentURI");
-                    String meta = findTag(xml, "CurrentURIMetaData");
+                    String uri = unescapeXml(findTag(xml, "CurrentURI"));
+                    // meta 里嵌的是被 XML 双重转义的 DIDL-Lite（&lt;dc:title&gt;），先反转义再提取标题
+                    String meta = unescapeXml(findTag(xml, "CurrentURIMetaData"));
                     transportState = "PLAYING";
                     currentUri = uri;
                     currentMeta = meta;
@@ -633,11 +653,34 @@ public final class DlnaReceiverService extends Service {
                         "182", bodyXml);
                     break;
                 }
+                case "GetTransportSettings": {
+                    String bodyXml = "<u:GetTransportSettingsResponse xmlns:u=\"urn:schemas-upnp-org:service:AVTransport:1\">"
+                        + "<PlayMode>NORMAL</PlayMode>"
+                        + "<RecQualityMode>NONE</RecQualityMode>"
+                        + "</u:GetTransportSettingsResponse>";
+                    writeSoapResponse(output, "u:GetTransportSettingsResponse",
+                        "189", bodyXml);
+                    break;
+                }
+                case "GetMediaInfo": {
+                    String bodyXml = "<u:GetMediaInfoResponse xmlns:u=\"urn:schemas-upnp-org:service:AVTransport:1\">"
+                        + "<NrTracks>1</NrTracks>"
+                        + "<MediaDuration>" + trackDuration + "</MediaDuration>"
+                        + "<CurrentURI>" + escapeXml(currentUri) + "</CurrentURI>"
+                        + "<CurrentURIMetaData>" + escapeXml(currentMeta) + "</CurrentURIMetaData>"
+                        + "<NextURI></NextURI><NextURIMetaData></NextURIMetaData>"
+                        + "<PlayMedium>NONE</PlayMedium><RecordMedium>NONE</RecordMedium>"
+                        + "<WriteStatus>NOT_IMPLEMENTED</WriteStatus>"
+                        + "</u:GetMediaInfoResponse>";
+                    writeSoapResponse(output, "u:GetMediaInfoResponse",
+                        "190", bodyXml);
+                    break;
+                }
                 case "GetPositionInfo": {
                     String bodyXml = "<u:GetPositionInfoResponse xmlns:u=\"urn:schemas-upnp-org:service:AVTransport:1\">"
                         + "<Track>0</Track><TrackDuration>" + trackDuration + "</TrackDuration>"
-                        + "<TrackMetaData>" + currentMeta + "</TrackMetaData>"
-                        + "<TrackURI>" + currentUri + "</TrackURI>"
+                        + "<TrackMetaData>" + escapeXml(currentMeta) + "</TrackMetaData>"
+                        + "<TrackURI>" + escapeXml(currentUri) + "</TrackURI>"
                         + "<RelTime>00:00:00</RelTime><AbsTime>00:00:00</AbsTime>"
                         + "<RelCount>0</RelCount><AbsCount>0</AbsCount></u:GetPositionInfoResponse>";
                     writeSoapResponse(output, "u:GetPositionInfoResponse",
@@ -697,29 +740,24 @@ public final class DlnaReceiverService extends Service {
                             .getBytes(StandardCharsets.UTF_8));
             }
         } catch (Exception soapError) {
+            String errMsg = soapError.getMessage();
+            if (errMsg == null) errMsg = "Unknown SOAP error";
             writeHttpResponse(output, "500 Internal Server Error", "text/plain",
-                soapError.getMessage().getBytes(StandardCharsets.UTF_8));
+                errMsg.getBytes(StandardCharsets.UTF_8));
         }
     }
 
     private String scpdFor(String path) {
-        String ns = "urn:schemas-upnp-org:service:AVTransport:1";
-        String serviceName = "AVTransport";
-        if (path.contains("/cm")) {
-            ns = "urn:schemas-upnp-org:service:ConnectionManager:1";
-            serviceName = "ConnectionManager";
-        } else if (path.contains("/rc")) {
-            ns = "urn:schemas-upnp-org:service:RenderingControl:1";
-            serviceName = "RenderingControl";
-        }
-        // 声明足够覆盖常见控制点（B站）的动作集合
         String actions = "SetAVTransportURI,SetNextAVTransportURI,Play,Pause,Stop,Seek,"
             + "GetTransportInfo,GetPositionInfo,GetTransportSettings,GetMediaInfo,"
             + "GetProtocolInfo,GetCurrentConnectionInfo,GetDeviceCapabilities,"
             + "GetVolume,SetVolume";
-        if (path.contains("/cm")) {
+        boolean isAVT = path.contains("/avt");
+        boolean isCM = path.contains("/cm");
+        boolean isRC = path.contains("/rc");
+        if (isCM) {
             actions = "GetProtocolInfo,GetCurrentConnectionIDs,GetCurrentConnectionInfo";
-        } else if (path.contains("/rc")) {
+        } else if (isRC) {
             actions = "GetVolume,SetVolume,GetMute,SetMute";
         }
         StringBuilder sb = new StringBuilder();
@@ -728,14 +766,52 @@ public final class DlnaReceiverService extends Service {
             .append("<specVersion><major>1</major><minor>0</minor></specVersion>")
             .append("<actionList>");
         for (String a : actions.split(",")) {
-            sb.append("<action><name>").append(a).append("</name><argumentList><argument>")
-                .append("<name>InstanceID</name><direction>in</direction>")
-                .append("<relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable>")
-                .append("</argument></argumentList></action>");
+            sb.append("<action><name>").append(a).append("</name><argumentList>");
+            // SetAVTransportURI 需要特定参数，否则某些客户端（爱奇艺等）会拒绝调用
+            if ("SetAVTransportURI".equals(a)) {
+                sb.append("<argument><name>InstanceID</name><direction>in</direction>")
+                    .append("<relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable></argument>")
+                    .append("<argument><name>CurrentURI</name><direction>in</direction>")
+                    .append("<relatedStateVariable>A_ARG_TYPE_URI</relatedStateVariable></argument>")
+                    .append("<argument><name>CurrentURIMetaData</name><direction>in</direction>")
+                    .append("<relatedStateVariable>A_ARG_TYPE_URIMetaData</relatedStateVariable></argument>");
+            } else if ("SetNextAVTransportURI".equals(a)) {
+                sb.append("<argument><name>InstanceID</name><direction>in</direction>")
+                    .append("<relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable></argument>")
+                    .append("<argument><name>NextURI</name><direction>in</direction>")
+                    .append("<relatedStateVariable>A_ARG_TYPE_URI</relatedStateVariable></argument>")
+                    .append("<argument><name>NextURIMetaData</name><direction>in</direction>")
+                    .append("<relatedStateVariable>A_ARG_TYPE_URIMetaData</relatedStateVariable></argument>");
+            } else if ("Seek".equals(a)) {
+                sb.append("<argument><name>InstanceID</name><direction>in</direction>")
+                    .append("<relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable></argument>")
+                    .append("<argument><name>Unit</name><direction>in</direction>")
+                    .append("<relatedStateVariable>A_ARG_TYPE_SeekMode</relatedStateVariable></argument>")
+                    .append("<argument><name>Target</name><direction>in</direction>")
+                    .append("<relatedStateVariable>A_ARG_TYPE_SeekTarget</relatedStateVariable></argument>");
+            } else if ("SetVolume".equals(a)) {
+                sb.append("<argument><name>InstanceID</name><direction>in</direction>")
+                    .append("<relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable></argument>")
+                    .append("<argument><name>DesiredVolume</name><direction>in</direction>")
+                    .append("<relatedStateVariable>Volume</relatedStateVariable></argument>");
+            } else {
+                // 其他动作：只带 InstanceID
+                sb.append("<argument><name>InstanceID</name><direction>in</direction>")
+                    .append("<relatedStateVariable>A_ARG_TYPE_InstanceID</relatedStateVariable></argument>");
+            }
+            sb.append("</argumentList></action>");
         }
         sb.append("</actionList><serviceStateTable>")
             .append("<stateVariable sendEvents=\"no\"><name>A_ARG_TYPE_InstanceID</name>")
             .append("<dataType>ui4</dataType></stateVariable>")
+            .append("<stateVariable sendEvents=\"no\"><name>A_ARG_TYPE_URI</name>")
+            .append("<dataType>string</dataType></stateVariable>")
+            .append("<stateVariable sendEvents=\"no\"><name>A_ARG_TYPE_URIMetaData</name>")
+            .append("<dataType>string</dataType></stateVariable>")
+            .append("<stateVariable sendEvents=\"no\"><name>A_ARG_TYPE_SeekMode</name>")
+            .append("<dataType>string</dataType></stateVariable>")
+            .append("<stateVariable sendEvents=\"no\"><name>A_ARG_TYPE_SeekTarget</name>")
+            .append("<dataType>string</dataType></stateVariable>")
             .append("<stateVariable sendEvents=\"yes\"><name>TransportState</name>")
             .append("<dataType>string</dataType></stateVariable>")
             .append("<stateVariable sendEvents=\"yes\"><name>CurrentTrackURI</name>")
@@ -746,6 +822,8 @@ public final class DlnaReceiverService extends Service {
             .append("<dataType>string</dataType></stateVariable>")
             .append("<stateVariable sendEvents=\"yes\"><name>Volume</name>")
             .append("<dataType>ui2</dataType></stateVariable>")
+            .append("<stateVariable sendEvents=\"yes\"><name>Mute</name>")
+            .append("<dataType>boolean</dataType></stateVariable>")
             .append("<stateVariable sendEvents=\"no\"><name>A_ARG_TYPE_AudioChannel</name>")
             .append("<dataType>string</dataType></stateVariable>")
             .append("</serviceStateTable></scpd>");
@@ -754,11 +832,8 @@ public final class DlnaReceiverService extends Service {
 
     private void writeSoapResponse(OutputStream output, String action,
                                    String serviceKey, String bodyXml) throws IOException {
-        String ns = action.contains("ConnectionManager")
-            ? "urn:schemas-upnp-org:service:ConnectionManager:1"
-            : action.contains("RenderingControl")
-            ? "urn:schemas-upnp-org:service:RenderingControl:1"
-            : "urn:schemas-upnp-org:service:AVTransport:1";
+        // 注意：bodyXml 内部各动作已带正确的 xmlns:u 声明，此处 envelope 命名空间仅作形式占位。
+        // （早期版本曾尝试依据 action 推断 namespace，但 body 内声明已足够，控制点只认 u:Action 内容）
         String envelope = "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
             + "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\" "
             + "s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">"
@@ -770,15 +845,13 @@ public final class DlnaReceiverService extends Service {
     private String deviceDescription() {
         String ip = localIpAddress();
         String host = ip.isEmpty() ? "127.0.0.1" : ip;
-        String base = "http://" + host + ":" + HTTP_PORT;
-        String uniq = UUID.randomUUID().toString();
         return "<?xml version=\"1.0\" encoding=\"utf-8\"?>"
             + "<root xmlns=\"urn:schemas-upnp-org:device-1-0\""
             + " xmlns:dlna=\"urn:schemas-dlna-org:device-1-0\">"
             + "<specVersion><major>1</major><minor>0</minor></specVersion>"
             + "<device>"
             + "<deviceType>" + DEVICE_TYPE + "</deviceType>"
-            + "<friendlyName>灯塔 DENGTA</friendlyName>"
+            + "<friendlyName>\u706F\u5854 DENGTA</friendlyName>"
             + "<manufacturer>DengTa Home</manufacturer>"
             + "<manufacturerURL>https://dengtahome.com</manufacturerURL>"
             + "<modelDescription>DENGTA DLNA Media Renderer</modelDescription>"
@@ -786,6 +859,8 @@ public final class DlnaReceiverService extends Service {
             + "<modelNumber>1.0</modelNumber>"
             + "<UDN>uuid:" + uuidDevice() + "</UDN>"
             + "<dlna:X_DLNADOC xmlns:dlna=\"urn:schemas-dlna-org:device-1-0\">DMR-1.50</dlna:X_DLNADOC>"
+            + "<dlna:X_DLNACAP xmlns:dlna=\"urn:schemas-dlna-org:device-1-0\">av-upload</dlna:X_DLNACAP>"
+            + "<presentationURL>http://" + host + ":" + HTTP_PORT + "/</presentationURL>"
             + "<iconList>"
             + "<icon>"
             + "<mimetype>image/png</mimetype>"
@@ -899,6 +974,7 @@ public final class DlnaReceiverService extends Service {
 
     private byte[] readBody(InputStream input, int contentLength) throws IOException {
         // 优先按 Content-Length 精确读取，避免 keep-alive 连接下等 EOF 卡住
+        if (contentLength == 0) return new byte[0];
         if (contentLength > 0) {
             java.io.ByteArrayOutputStream buffer = new java.io.ByteArrayOutputStream();
             byte[] chunk = new byte[Math.min(4096, contentLength)];
@@ -965,13 +1041,53 @@ public final class DlnaReceiverService extends Service {
         intent.putExtra(EXTRA_TITLE, title);
         intent.putExtra(EXTRA_META_JSON, meta);
         sendBroadcast(intent);
-        Log.i("DlnaReceiverService", "publishReceivedMedia: uri=" + uri + " title=" + title);
+        Log.i("DlnaReceiverService", "publishReceivedMedia: title=" + title
+            + " uri=" + maskUri(uri));
+    }
+
+    /** 日志脱敏：隐藏 URL 的签名参数，避免泄漏可播放地址。 */
+    private String maskUri(String uri) {
+        if (uri == null || uri.isEmpty()) return "";
+        try {
+            java.net.URI parsed = new java.net.URI(uri);
+            String query = parsed.getQuery();
+            if (query == null || query.isEmpty()) return uri;
+            StringBuilder sb = new StringBuilder();
+            for (String pair : query.split("&")) {
+                if (sb.length() > 0) sb.append('&');
+                int eq = pair.indexOf('=');
+                String name = eq > 0 ? pair.substring(0, eq) : pair;
+                if (isSensitiveParam(name)) {
+                    sb.append(name).append("=***");
+                } else {
+                    sb.append(pair);
+                }
+            }
+            String base = uri;
+            String scheme = parsed.getScheme();
+            String host = parsed.getHost();
+            String path = parsed.getPath();
+            if (scheme != null && host != null && path != null) {
+                base = scheme + "://" + host + path;
+            }
+            return base + "?" + sb;
+        } catch (Exception e) {
+            return "(" + uri.length() + " bytes)";
+        }
+    }
+
+    private boolean isSensitiveParam(String name) {
+        if (name == null) return false;
+        String lower = name.toLowerCase(Locale.ROOT);
+        return lower.contains("sig") || lower.contains("sign") || lower.contains("token")
+            || lower.contains("key") || lower.contains("secret") || lower.contains("pass")
+            || lower.contains("deadline") || lower.contains("expires");
     }
 
     private String extractTitleFromMeta(String meta) {
         if (meta == null || meta.isEmpty()) return "";
         // findTag 内部会剥 namespace 前缀，所以 dc:title 剥后就成 <title>，直接搜 title 即可
-        String like = findTag(meta, "title");
+        String like = unescapeXml(findTag(meta, "title"));
         if (like.isEmpty()) {
             // 兜底：直接在原文里找 dc:title 或 <title> 的内容
             int titleStart = meta.indexOf("dc:title");
@@ -980,11 +1096,84 @@ public final class DlnaReceiverService extends Service {
                 int gt = meta.indexOf(">", titleStart);
                 if (gt >= 0) {
                     int end = meta.indexOf("<", gt);
-                    if (end > gt) like = meta.substring(gt + 1, end).trim();
+                    if (end > gt) like = unescapeXml(meta.substring(gt + 1, end).trim());
                 }
             }
         }
         return like;
+    }
+
+    /** XML 实体反转义：SOAP/XML 里 &amp; &lt; &gt; &quot; &apos; 还原为原文（视频签名 URL 必须还原 &）。 */
+    private String unescapeXml(String input) {
+        if (input == null || input.isEmpty()) return input == null ? "" : input;
+        StringBuilder result = null;
+        int start = 0;
+        int amp;
+        while ((amp = input.indexOf('&', start)) >= 0) {
+            int semi = input.indexOf(';', amp);
+            if (semi < 0 || semi - amp > 10) {
+                // 不是完整的实体，保留原样并继续
+                start = amp + 1;
+                continue;
+            }
+            if (result == null) result = new StringBuilder(input.length());
+            result.append(input, start, amp);
+            String entity = input.substring(amp + 1, semi);
+            switch (entity) {
+                case "amp": result.append('&'); break;
+                case "lt": result.append('<'); break;
+                case "gt": result.append('>'); break;
+                case "quot": result.append('"'); break;
+                case "apos": result.append('\''); break;
+                default:
+                    // 数字实体（&#38; 等）
+                    if (entity.startsWith("#x") || entity.startsWith("#X")) {
+                        try {
+                            result.append((char) Integer.parseInt(entity.substring(2), 16));
+                        } catch (NumberFormatException ignored) {
+                            result.append(entity);
+                        }
+                    } else if (entity.startsWith("#")) {
+                        try {
+                            result.append((char) Integer.parseInt(entity.substring(1)));
+                        } catch (NumberFormatException ignored) {
+                            result.append(entity);
+                        }
+                    } else {
+                        result.append('&').append(entity).append(';');
+                    }
+                    break;
+            }
+            start = semi + 1;
+        }
+        if (result == null) return input;
+        if (start < input.length()) result.append(input, start, input.length());
+        return result.toString();
+    }
+
+    /** 异常消息安全取值（避免 getMessage()==null 拼出 "null" 或 NPE）。 */
+    private String safeMsg(Throwable t) {
+        if (t == null) return "unknown";
+        String m = t.getMessage();
+        return m == null || m.isEmpty() ? "unknown (" + t.getClass().getSimpleName() + ")" : m;
+    }
+
+    /** XML 实体转义：`&` `<` `>` `"` `'` 编码为 `&amp;` `&lt;` `&gt;` `&quot;` `&apos;`。用于嵌入 XML 响应。 */
+    private String escapeXml(String input) {
+        if (input == null || input.isEmpty()) return input == null ? "" : input;
+        StringBuilder sb = new StringBuilder(input.length());
+        for (int i = 0; i < input.length(); i++) {
+            char c = input.charAt(i);
+            switch (c) {
+                case '&': sb.append("&amp;"); break;
+                case '<': sb.append("&lt;"); break;
+                case '>': sb.append("&gt;"); break;
+                case '"': sb.append("&quot;"); break;
+                case '\'': sb.append("&apos;"); break;
+                default: sb.append(c); break;
+            }
+        }
+        return sb.toString();
     }
 
     private void broadcastState() {
@@ -1000,21 +1189,22 @@ public final class DlnaReceiverService extends Service {
             PendingIntent stopPending = PendingIntent.getService(
                 this, 0, stopIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            Intent openIntent = getPackageManager().getLaunchIntentForPackage(
-                getPackageName());
-            PendingIntent openPending = PendingIntent.getActivity(
-                this, 0, openIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            Notification notification = new NotificationCompat.Builder(this, CHANNEL_ID)
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("灯塔投屏已开启")
                 .setContentText("视频 App 里点投屏，选择「灯塔 DENGTA」即可一起看")
                 .setSmallIcon(android.R.drawable.ic_menu_share)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
-                .setContentIntent(openPending)
                 .addAction(0, "停止投屏", stopPending)
-                .setOngoing(true)
-                .build();
-            startForeground(NOTIFICATION_ID, notification);
+                .setOngoing(true);
+            Intent openIntent = getPackageManager().getLaunchIntentForPackage(
+                getPackageName());
+            if (openIntent != null) {
+                PendingIntent openPending = PendingIntent.getActivity(
+                    this, 0, openIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                builder.setContentIntent(openPending);
+            }
+            startForeground(NOTIFICATION_ID, builder.build());
         } catch (Exception ignored) {
         }
     }

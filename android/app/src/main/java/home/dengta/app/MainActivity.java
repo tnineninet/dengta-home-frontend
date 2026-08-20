@@ -29,6 +29,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(OrderBrowserPlugin.class);
         registerPlugin(BrowserLauncherPlugin.class);
         registerPlugin(DlnaReceiverPlugin.class);
+        registerPlugin(VideoExtractorPlugin.class);
         super.onCreate(savedInstanceState);
         configureStableWebView();
         PushNotificationWorker.ensureNotificationChannel(this);
