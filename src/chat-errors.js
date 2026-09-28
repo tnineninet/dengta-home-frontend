@@ -4,6 +4,8 @@ const COMMITTED_CHAT_ERROR_FALLBACK =
 const MAX_PUBLIC_ERROR_LENGTH = 220;
 
 const PUBLIC_ERROR_BY_CODE = Object.freeze({
+  companion_gender_schema_required: "伴侣性别功能正在等待服务器数据库更新，本次设置未保存 / Companion gender requires a database update; these settings were not saved.",
+  context_budget_exceeded: "本轮上下文超过模型的估算容量，请选择更大窗口模型或减少本轮附件；预算检查不会改写人设或记忆 / This turn exceeds the estimated model context capacity. Choose a larger-context model or fewer attachments. Budget checks do not rewrite personalization or memories.",
   CHAT_GENERATION_IN_PROGRESS: "这条消息已经保存，AI 仍在服务器处理中。",
   MODEL_NOT_AVAILABLE:
     "请求的模型不在当前接口可用列表中 / The requested model is not available from the current API.",

@@ -12,7 +12,7 @@ const chatMessage = fs.readFileSync(
 );
 const css = fs.readFileSync(path.join(here, "..", "src", "index.css"), "utf8");
 
-assert.match(component, /MCP 设备中心/);
+assert.match(component, /自定义 MCP 连接/);
 assert.match(component, /迁移后设备测试失败/);
 assert.match(component, /settingsServiceErrorMessage/);
 assert.match(component, /禁止自动执行（默认）/);

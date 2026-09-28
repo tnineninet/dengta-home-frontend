@@ -13,7 +13,6 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.media.MediaMetadataRetriever;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
@@ -49,6 +48,8 @@ import java.io.FileOutputStream;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Locale;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * 投屏「一起看」放映厅模式。
@@ -64,6 +65,18 @@ public final class CastPlayerActivity extends AppCompatActivity
     public static final String EXTRA_TITLE = "extra_title";
     public static final String EXTRA_USER_NAME = "extra_user_name";
     public static final String EXTRA_AI_NAME = "extra_ai_name";
+    public static final String EXTRA_WINDOW_ACTION = "extra_window_action";
+    public static final String EXTRA_WINDOW_REQUEST = "extra_window_request";
+    private static final String STATE_FULLSCREEN = "cast_fullscreen";
+
+    private String windowRequestId = "";
+    private String windowAction = "";
+    private String windowExpectedUri = "";
+    private boolean windowResumed;
+    private boolean captureInFlight;
+    private final Handler windowActionHandler = new Handler(Looper.getMainLooper());
+    private final Runnable applyWindowAction = this::tryWindowAction;
+    private final ExecutorService screenshotWriter = Executors.newSingleThreadExecutor();
 
     private static final String TAG = "CastPlayerActivity";
     private static final int VIDEO_WEIGHT = 55;
@@ -133,7 +146,9 @@ public final class CastPlayerActivity extends AppCompatActivity
     private final Runnable progressRunnable = new Runnable() {
         @Override
         public void run() {
+            if (!windowResumed || isDestroyed() || isFinishing()) return;
             updateProgress();
+            progressHandler.removeCallbacks(this);
             progressHandler.postDelayed(this, 500);
         }
     };
@@ -181,9 +196,7 @@ public final class CastPlayerActivity extends AppCompatActivity
         public void onServiceConnected(ComponentName name, IBinder service) {
             playbackService = ((CastPlaybackService.LocalBinder) service).getService();
             playbackService.setListener(CastPlayerActivity.this);
-            if (!pendingUri.isEmpty()) {
-                CastPlaybackService.play(CastPlayerActivity.this, pendingUri, pendingTitle);
-            }
+            refreshPlaybackUi();
             try {
                 if (surfaceReady && playbackService != null) {
                     SurfaceHolder holder = surfaceView.getHolder();
@@ -203,8 +216,9 @@ public final class CastPlayerActivity extends AppCompatActivity
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        // 默认锁定竖屏，仅当用户点击全屏按钮时切换到横屏
-        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+        boolean restoreFullscreen = savedInstanceState != null && savedInstanceState.getBoolean(STATE_FULLSCREEN);
+        setRequestedOrientation(restoreFullscreen ? ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            : ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
 
         // 隐藏系统默认标题栏（ActionBar）
         if (getSupportActionBar() != null) {
@@ -222,6 +236,12 @@ public final class CastPlayerActivity extends AppCompatActivity
         }
         if (pendingUri == null) pendingUri = "";
         if (pendingTitle == null) pendingTitle = "";
+        if (savedInstanceState != null) {
+            pendingUri = savedInstanceState.getString(EXTRA_URI, pendingUri);
+            pendingTitle = savedInstanceState.getString(EXTRA_TITLE, pendingTitle);
+            userName = savedInstanceState.getString(EXTRA_USER_NAME, userName);
+            aiName = savedInstanceState.getString(EXTRA_AI_NAME, aiName);
+        }
 
         mainLayout = new LinearLayout(this);
         mainLayout.setOrientation(LinearLayout.VERTICAL);
@@ -380,11 +400,65 @@ public final class CastPlayerActivity extends AppCompatActivity
         fullscreenBtn.setVisibility(View.GONE);
         exitFullscreenBtn.setVisibility(View.GONE);
 
-        bindPlaybackService();
         showLoading();
         if (pendingTitle != null && !pendingTitle.isEmpty()) {
             titleText.setText(pendingTitle);
         }
+        if (restoreFullscreen) toggleFullscreen();
+        bindPlaybackService();
+        // A recreated window must never replay an old command or save another image.
+        if (savedInstanceState == null && intent != null && intent.hasExtra(EXTRA_WINDOW_ACTION)) queueWindowAction(intent);
+    }
+
+    private void queueWindowAction(Intent intent) {
+        String id = intent.getStringExtra(EXTRA_WINDOW_REQUEST);
+        String action = intent.getStringExtra(EXTRA_WINDOW_ACTION);
+        String uri = intent.getStringExtra(EXTRA_URI);
+        intent.removeExtra(EXTRA_WINDOW_ACTION);
+        intent.removeExtra(EXTRA_WINDOW_REQUEST);
+        if (!DlnaReceiverPlugin.hasWindowRequest(id)) return;
+        windowRequestId = id;
+        windowAction = action == null ? "" : action;
+        windowExpectedUri = uri == null ? "" : uri;
+        tryWindowAction();
+    }
+
+    private void finishWindowAction(String error, String fileName) {
+        finishWindowAction(windowRequestId, error, fileName);
+    }
+
+    private void finishWindowAction(String expectedId, String error, String fileName) {
+        if (!expectedId.equals(windowRequestId)) return;
+        windowActionHandler.removeCallbacks(applyWindowAction);
+        String id = windowRequestId;
+        windowRequestId = "";
+        windowAction = "";
+        DlnaReceiverPlugin.finishWindowRequest(id, error, fileName);
+    }
+
+    private void tryWindowAction() {
+        windowActionHandler.removeCallbacks(applyWindowAction);
+        if (windowAction.isEmpty() || !windowResumed) return;
+        if (!DlnaReceiverPlugin.hasWindowRequest(windowRequestId)) { finishWindowAction("player_window_timeout", ""); return; }
+        if (playbackService == null || playbackService.player == null) {
+            windowActionHandler.postDelayed(applyWindowAction, 100);
+            return;
+        }
+        if (!windowExpectedUri.equals(playbackService.getOriginalUri())) { finishWindowAction("player_media_changed", ""); return; }
+        if ("fullscreen".equals(windowAction)) {
+            if (hasEnded) { finishWindowAction("playback_ended", ""); return; }
+            if (!isFullscreen) toggleFullscreen();
+            finishWindowAction(isFullscreen ? "" : "player_window_failed", "");
+        } else if ("capture".equals(windowAction)) {
+            if (!surfaceReady || surfaceView.getWidth() <= 0 || surfaceView.getHeight() <= 0
+                    || playbackService.player.getPlaybackState() != Player.STATE_READY) {
+                windowActionHandler.postDelayed(applyWindowAction, 100);
+                return;
+            }
+            windowAction = "";
+            final String requestId = windowRequestId;
+            captureFrame((error, fileName) -> finishWindowAction(requestId, error, fileName));
+        } else finishWindowAction("invalid_playback_command", "");
     }
 
     // ================================================================ 标题栏
@@ -941,18 +1015,24 @@ public final class CastPlayerActivity extends AppCompatActivity
     private void togglePlayPause() {
         if (playbackService == null || playbackService.player == null) return;
         ExoPlayer player = playbackService.player;
-        if (isPlaying) {
+        if (player.getPlayWhenReady()) {
             player.pause();
             playPauseBtn.setImageResource(android.R.drawable.ic_media_play);
         } else {
             player.play();
             playPauseBtn.setImageResource(android.R.drawable.ic_media_pause);
         }
-        isPlaying = !isPlaying;
+        isPlaying = player.getPlayWhenReady();
     }
 
     /** 循环切换播放速度。 */
     private void cycleSpeed() {
+        if (playbackService != null && playbackService.player != null) {
+            float actualSpeed = playbackService.player.getPlaybackParameters().speed;
+            for (int i = 0; i < SPEED_OPTIONS.length; i++) {
+                if (Math.abs(SPEED_OPTIONS[i] - actualSpeed) < 0.01f) { speedIndex = i; break; }
+            }
+        }
         speedIndex = (speedIndex + 1) % SPEED_OPTIONS.length;
         playbackSpeed = SPEED_OPTIONS[speedIndex];
         if (playbackService != null && playbackService.player != null) {
@@ -977,80 +1057,78 @@ public final class CastPlayerActivity extends AppCompatActivity
         Toast.makeText(this, "\u500D\u901F: " + speedText, Toast.LENGTH_SHORT).show();
     }
 
-    /** 截取当前视频帧并保存。 */
+    private interface ScreenshotCallback { void finish(String errorCode, String fileName); }
+
+    /** Save only the visible surface; never refetch the media URL on the UI thread. */
     private void captureFrame() {
-        if (surfaceView == null) return;
-        final Bitmap bitmap = Bitmap.createBitmap(
-            surfaceView.getWidth(), surfaceView.getHeight(), Bitmap.Config.ARGB_8888
-        );
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            PixelCopy.request(surfaceView, bitmap, copyResult -> {
-                if (copyResult == PixelCopy.SUCCESS) {
-                    saveScreenshot(bitmap);
-                } else {
-                    // 降级：通过 MediaMetadataRetriever 截帧
-                    fallbackCaptureFrame();
+        captureFrame((error, fileName) -> {
+            if (!isDestroyed() && !isFinishing()) Toast.makeText(this,
+                error.isEmpty() ? "截帧已保存到应用图片目录: " + fileName : "截帧未完成，请在画面就绪后重试。",
+                Toast.LENGTH_SHORT).show();
+        });
+    }
+
+    private void captureFrame(ScreenshotCallback callback) {
+        if (captureInFlight) { callback.finish("capture_busy", ""); return; }
+        if (!windowResumed || surfaceView == null || !surfaceReady || playbackService == null
+                || !surfaceView.getHolder().getSurface().isValid()) {
+            callback.finish("capture_not_ready", ""); return;
+        }
+        final String sourceUri = playbackService.getOriginalUri();
+        final String requestId = windowRequestId;
+        final Bitmap bitmap;
+        try {
+            int[] size = CastFrameSize.fit(surfaceView.getWidth(), surfaceView.getHeight());
+            bitmap = Bitmap.createBitmap(size[0], size[1], Bitmap.Config.ARGB_8888);
+        } catch (IllegalArgumentException | OutOfMemoryError error) {
+            callback.finish("capture_not_ready", ""); return;
+        }
+        captureInFlight = true;
+        try {
+            PixelCopy.request(surfaceView, bitmap, result -> {
+                if (result != PixelCopy.SUCCESS || !captureStillCurrent(sourceUri, requestId)) {
+                    bitmap.recycle(); captureInFlight = false;
+                    callback.finish("capture_unavailable", ""); return;
                 }
-            }, new Handler(Looper.getMainLooper()));
-        } else {
-            fallbackCaptureFrame();
+                try {
+                    screenshotWriter.execute(() -> {
+                        File file = null;
+                        String errorCode = "";
+                        try {
+                            File directory = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
+                            if (directory == null) directory = new File(getFilesDir(), "screenshots");
+                            if (!directory.isDirectory() && !directory.mkdirs()) throw new java.io.IOException("directory_unavailable");
+                            file = File.createTempFile("DengTa_Cast_", ".png", directory);
+                            try (FileOutputStream output = new FileOutputStream(file)) {
+                                if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) throw new java.io.IOException("encode_failed");
+                            }
+                        } catch (Exception error) { errorCode = "capture_save_failed"; }
+                        finally { bitmap.recycle(); }
+                        final File saved = file;
+                        final String failure = errorCode;
+                        windowActionHandler.post(() -> {
+                            captureInFlight = false;
+                            if (!failure.isEmpty() || !captureStillCurrent(sourceUri, requestId)) {
+                                if (saved != null && !saved.delete()) Log.w(TAG, "capture_cleanup_failed");
+                                callback.finish(failure.isEmpty() ? "capture_cancelled" : failure, "");
+                            } else callback.finish("", saved.getName());
+                        });
+                    });
+                } catch (java.util.concurrent.RejectedExecutionException error) {
+                    bitmap.recycle(); captureInFlight = false;
+                    callback.finish("capture_cancelled", "");
+                }
+            }, windowActionHandler);
+        } catch (IllegalArgumentException error) {
+            bitmap.recycle(); captureInFlight = false;
+            callback.finish("capture_unavailable", "");
         }
     }
 
-    private void fallbackCaptureFrame() {
-        if (playbackService == null || playbackService.player == null) return;
-        try {
-            MediaMetadataRetriever retriever = new MediaMetadataRetriever();
-            String uri = playbackService.getOriginalUri();
-            if (uri == null || uri.isEmpty()) {
-                Toast.makeText(this, "\u65E0\u6CD5\u622A\u53D6\u5F53\u524D\u5E27", Toast.LENGTH_SHORT).show();
-                return;
-            }
-            retriever.setDataSource(uri, new java.util.HashMap<>());
-            long pos = playbackService.player.getCurrentPosition() * 1000; // to microseconds
-            Bitmap frame = retriever.getFrameAtTime(pos, MediaMetadataRetriever.OPTION_CLOSEST);
-            retriever.release();
-            if (frame != null) {
-                saveScreenshot(frame);
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "fallback capture failed", e);
-            Toast.makeText(this, "\u622A\u5E27\u5931\u8D25", Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    private void saveScreenshot(Bitmap bitmap) {
-        try {
-            String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(new Date());
-            String fileName = "DengTa_Cast_" + timeStamp + ".png";
-            File picturesDir;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                picturesDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES);
-            } else {
-                picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES);
-            }
-            if (picturesDir != null && !picturesDir.exists()) {
-                picturesDir.mkdirs();
-            }
-            File file = new File(picturesDir, fileName);
-            FileOutputStream fos = new FileOutputStream(file);
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, fos);
-            fos.close();
-
-            // 通知系统扫描
-            Intent mediaScanIntent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
-            mediaScanIntent.setData(Uri.fromFile(file));
-            sendBroadcast(mediaScanIntent);
-
-            runOnUiThread(() ->
-                Toast.makeText(this, "\u622A\u5E27\u5DF2\u4FDD\u5B58: " + fileName, Toast.LENGTH_SHORT).show()
-            );
-        } catch (Exception e) {
-            Log.e(TAG, "save screenshot failed", e);
-            runOnUiThread(() ->
-                Toast.makeText(this, "\u622A\u5E27\u4FDD\u5B58\u5931\u8D25", Toast.LENGTH_SHORT).show()
-            );
-        }
+    private boolean captureStillCurrent(String sourceUri, String requestId) {
+        return !isDestroyed() && !isFinishing() && windowResumed && playbackService != null
+            && sourceUri.equals(playbackService.getOriginalUri())
+            && (requestId.isEmpty() || DlnaReceiverPlugin.hasWindowRequest(requestId));
     }
 
     /** 采集当前视频帧 → 压缩为 JPEG(base64) → 交给 Web 层（鉴权）调后端 AI 理解并主动评论。 */
@@ -1326,7 +1404,7 @@ public final class CastPlayerActivity extends AppCompatActivity
         if (errorText != null) errorText.setVisibility(View.GONE);
         if (statusLabel != null) statusLabel.setText("\u6B63\u5728\u64AD\u653E");
         // 防重复链：已有 progressRunnable 在运行时不再重复添加
-        if (!progressHandler.hasCallbacks(progressRunnable)) {
+        if (windowResumed && !progressHandler.hasCallbacks(progressRunnable)) {
             progressHandler.post(progressRunnable);
         }
     }
@@ -1404,6 +1482,15 @@ public final class CastPlayerActivity extends AppCompatActivity
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
+        if (intent != null && intent.hasExtra(EXTRA_WINDOW_ACTION)) {
+            queueWindowAction(intent);
+            return;
+        }
+        if (intent == null || !intent.hasExtra(EXTRA_URI)) {
+            refreshPlaybackUi();
+            return;
+        }
+        finishWindowAction("player_media_changed", "");
         if (intent != null) {
             pendingUri = intent.getStringExtra(EXTRA_URI);
             pendingTitle = intent.getStringExtra(EXTRA_TITLE);
@@ -1414,10 +1501,7 @@ public final class CastPlayerActivity extends AppCompatActivity
         }
         if (pendingUri == null) pendingUri = "";
         if (pendingTitle == null) pendingTitle = "";
-        if (playbackService != null && !pendingUri.isEmpty()) {
-            CastPlaybackService.play(this, pendingUri, pendingTitle);
-        }
-        showLoading();
+        refreshPlaybackUi();
     }
 
     @Override
@@ -1484,9 +1568,37 @@ public final class CastPlayerActivity extends AppCompatActivity
     private void bindPlaybackService() {
         Intent serviceIntent = new Intent(this, CastPlaybackService.class);
         bound = bindService(serviceIntent, connection, BIND_AUTO_CREATE);
-        if (!pendingUri.isEmpty()) {
-            CastPlaybackService.play(this, pendingUri, pendingTitle);
+    }
+
+    private void refreshPlaybackUi() {
+        if (playbackService == null) return;
+        if (playbackService.getOriginalUri().isEmpty()) {
+            showError("播放会话已结束，请返回重新打开视频。");
+            return;
         }
+        pendingUri = playbackService.getOriginalUri();
+        pendingTitle = playbackService.getCurrentTitle();
+        titleText.setText(pendingTitle);
+        ExoPlayer player = playbackService.player;
+        if (player == null) return;
+        videoWidth = player.getVideoSize().width;
+        videoHeight = player.getVideoSize().height;
+        updateSurfaceLayout();
+        isPlaying = player.getPlayWhenReady();
+        playbackSpeed = player.getPlaybackParameters().speed;
+        playPauseBtn.setImageResource(isPlaying ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play);
+        onPlaybackStateChanged(player.getPlaybackState());
+        if (player.getPlayerError() != null) showError(CastError.formatMediaError(player.getPlayerError().errorCode));
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle state) {
+        state.putBoolean(STATE_FULLSCREEN, isFullscreen);
+        state.putString(EXTRA_URI, pendingUri);
+        state.putString(EXTRA_TITLE, pendingTitle);
+        state.putString(EXTRA_USER_NAME, userName);
+        state.putString(EXTRA_AI_NAME, aiName);
+        super.onSaveInstanceState(state);
     }
 
     @Override
@@ -1504,22 +1616,24 @@ public final class CastPlayerActivity extends AppCompatActivity
     @Override
     protected void onResume() {
         super.onResume();
-        // 回到前台时恢复进度轮询（如果正在播放且未结束）
-        if (isPlaying && !hasEnded && playbackService != null && playbackService.player != null
-            && !progressHandler.hasCallbacks(progressRunnable)) {
-            progressHandler.post(progressRunnable);
-        }
+        windowResumed = true;
+        tryWindowAction();
+        refreshPlaybackUi();
     }
 
     @Override
     protected void onPause() {
         super.onPause();
+        windowResumed = false;
+        windowActionHandler.removeCallbacks(applyWindowAction);
+        controlHandler.removeCallbacks(autoHideControls);
         // 进入后台时停止进度轮询和帧采集，省电省带宽
         progressHandler.removeCallbacks(progressRunnable);
     }
 
     @Override
     protected void onStop() {
+        finishWindowAction("player_window_closed", "");
         try {
             unregisterReceiver(castReplyReceiver);
         } catch (Exception ignored) {}
@@ -1528,7 +1642,10 @@ public final class CastPlayerActivity extends AppCompatActivity
 
     @Override
     protected void onDestroy() {
+        finishWindowAction("player_window_closed", "");
+        screenshotWriter.shutdown();
         progressHandler.removeCallbacks(progressRunnable);
+        controlHandler.removeCallbacks(autoHideControls);
         chatHandler.removeCallbacksAndMessages(null);
         if (playbackService != null) {
             playbackService.setListener(null);

@@ -4,6 +4,8 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import androidx.core.content.ContextCompat;
@@ -13,6 +15,7 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import java.util.UUID;
 
 /**
  * DLNA 接收端 Capacitor 插件。
@@ -47,6 +50,17 @@ public final class DlnaReceiverPlugin extends Plugin {
 
     /** 供原生 Activity 向 Web 层转发消息的静态引用（Capacitor 插件为单例常驻）。 */
     private static volatile DlnaReceiverPlugin instance;
+    private final CastWindowRequests windowRequests = new CastWindowRequests();
+    private final Handler windowHandler = new Handler(Looper.getMainLooper());
+
+    static boolean hasWindowRequest(String id) {
+        return instance != null && instance.windowRequests.contains(id);
+    }
+
+    static void finishWindowRequest(String id, String errorCode, String fileName) {
+        DlnaReceiverPlugin plugin = instance;
+        if (plugin != null) plugin.windowRequests.finish(id, errorCode, fileName);
+    }
 
     public static DlnaReceiverPlugin getInstance() {
         return instance;
@@ -123,7 +137,9 @@ public final class DlnaReceiverPlugin extends Plugin {
 
     @Override
     protected void handleOnDestroy() {
-        instance = null;
+        windowRequests.cancel("player_window_closed");
+        windowHandler.removeCallbacksAndMessages(null);
+        if (instance == this) instance = null;
         unregisterBroadcastReceivers();
         super.handleOnDestroy();
     }
@@ -205,6 +221,99 @@ public final class DlnaReceiverPlugin extends Plugin {
     public void stopPlayback(PluginCall call) {
         CastPlaybackService.stop(getContext());
         call.resolve();
+    }
+
+    /** Controls the already-running ExoPlayer; resolve only after the command is applied. */
+    @PluginMethod
+    public void sendPlaybackCommand(PluginCall call) {
+        final String action = call.getString("action", "");
+        final Double value = call.getDouble("value");
+        getBridge().executeOnMainThread(() -> {
+            if ("fullscreen".equals(action)) {
+                openPlayerWindow(call, "fullscreen");
+                return;
+            }
+            CastPlaybackService service = CastPlaybackService.getActiveService();
+            if (service == null) {
+                call.reject("播放服务尚未就绪。", "playback_not_active");
+                return;
+            }
+            try {
+                service.executePlaybackCommand(action, value);
+                call.resolve(playbackState(service));
+            } catch (IllegalArgumentException error) {
+                call.reject("不支持的播放操作或倍速参数。", "invalid_playback_command");
+            } catch (IllegalStateException error) {
+                call.reject("播放器尚未就绪。", "playback_not_active");
+            } catch (Exception error) {
+                call.reject("播放操作未完成，请稍后重试。", "playback_command_failed");
+            }
+        });
+    }
+
+    @PluginMethod
+    public void captureFrame(PluginCall call) {
+        getBridge().executeOnMainThread(() -> openPlayerWindow(call, "capture"));
+    }
+
+    private void openPlayerWindow(PluginCall call, String action) {
+        CastPlaybackService service = CastPlaybackService.getActiveService();
+        if (service == null || service.player == null || service.getOriginalUri().isEmpty()) {
+            call.reject("播放器尚未就绪，请先打开视频。", "playback_not_active");
+            return;
+        }
+        String id = UUID.randomUUID().toString();
+        if (!windowRequests.begin(id, (errorCode, fileName) -> {
+            windowHandler.removeCallbacksAndMessages(null);
+            if (errorCode != null && !errorCode.isEmpty()) {
+                call.reject("播放器窗口操作未完成，请稍后重试。", errorCode);
+            } else {
+                JSObject result = new JSObject();
+                result.put("completed", true);
+                result.put("action", action);
+                if ("capture".equals(action)) {
+                    result.put("saved", true);
+                    result.put("fileName", fileName);
+                } else result.put("fullscreen", true);
+                call.resolve(result);
+            }
+        })) {
+            call.reject("已有播放器窗口操作正在进行。", "player_window_busy");
+            return;
+        }
+        windowHandler.postDelayed(() -> windowRequests.finish(id, "player_window_timeout", ""), 30_000);
+        try {
+            Intent intent = new Intent(getContext(), CastPlayerActivity.class)
+                .putExtra(CastPlayerActivity.EXTRA_URI, service.getOriginalUri())
+                .putExtra(CastPlayerActivity.EXTRA_TITLE, service.getCurrentTitle())
+                .putExtra(CastPlayerActivity.EXTRA_WINDOW_ACTION, action)
+                .putExtra(CastPlayerActivity.EXTRA_WINDOW_REQUEST, id)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            getContext().startActivity(intent);
+        } catch (Exception error) { windowRequests.finish(id, "player_window_failed", ""); }
+    }
+
+    @PluginMethod
+    public void getPlaybackState(PluginCall call) {
+        getBridge().executeOnMainThread(() -> {
+            CastPlaybackService service = CastPlaybackService.getActiveService();
+            if (service == null || service.player == null) {
+                call.reject("播放器尚未就绪。", "playback_not_active");
+                return;
+            }
+            try { call.resolve(playbackState(service)); }
+            catch (Exception error) { call.reject("播放状态读取失败。", "playback_state_failed"); }
+        });
+    }
+
+    private static JSObject playbackState(CastPlaybackService service) {
+        JSObject result = new JSObject();
+        result.put("playWhenReady", service.player.getPlayWhenReady());
+        result.put("isPlaying", service.player.isPlaying());
+        result.put("speed", service.player.getPlaybackParameters().speed);
+        result.put("positionMs", Math.max(0, service.getCurrentPosition()));
+        result.put("durationMs", Math.max(0, service.getDuration()));
+        return result;
     }
 
     /** 获取投屏诊断信息（前端调试用）。 */

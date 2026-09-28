@@ -29,7 +29,8 @@ function fileLabel(entry) {
 function safeFileName(name) {
   return String(name || "")
     .trim()
-    .replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_")
+    .replace(/[\\/:*?"<>|]/g, "_")
+    .split("").map((char) => char.charCodeAt(0) < 32 ? "_" : char).join("")
     .replace(/\s+/g, " ")
     .slice(0, 180);
 }
@@ -325,13 +326,13 @@ export default function WorkspaceManager() {
       await navigator.clipboard.writeText(content);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1800);
-    } catch (caught) {
+    } catch {
       try {
         editorRef.current?.select?.();
         document.execCommand("copy");
         setCopied(true);
         window.setTimeout(() => setCopied(false), 1800);
-      } catch (inner) {
+      } catch {
         setError("复制失败，请手动选择后复制。");
       }
     }
@@ -339,10 +340,10 @@ export default function WorkspaceManager() {
 
   // —— 粘贴：从剪贴板建一个新文件 ——
   async function pasteFromClipboard() {
-    let text = "";
+    let text;
     try {
       text = await navigator.clipboard.readText();
-    } catch (caught) {
+    } catch {
       setError("无法读取剪贴板。请先在系统里复制文本，再点此按钮。");
       return;
     }

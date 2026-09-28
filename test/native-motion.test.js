@@ -140,7 +140,7 @@ test("the sky does not repaint invisible weather layers at animation speed", () 
   assert.match(backdropSource, /const starsVisible = sky\.night > 0\.08/);
   assert.match(
     backdropSource,
-    /if \(hasVisibleMotion\) animationFrame = requestAnimationFrame\(paint\)/,
+    /createVisualLoop\(paint, \{ animated: hasVisibleMotion/,
   );
 });
 
@@ -153,7 +153,8 @@ test("dialogs share a layout-free jelly spring on the compositor", () => {
   assert.match(styles, /\.settings-sheet,[\s\S]*?\.account-menu-popover/);
   assert.match(styles, /@keyframes dengta-jelly-pop/);
   assert.match(styles, /@keyframes dengta-jelly-sheet-pop/);
-  assert.match(styles, /scale3d\(1\.035, 1\.02, 1\)/);
+  assert.match(styles, /--dengta-jelly-enter: 220ms/);
+  assert.doesNotMatch(jellyFrames, /scale3d\(1\.0[1-9]/);
   assert.doesNotMatch(
     jellyFrames,
     /(?:height|width|margin|padding|top|left|border-radius)\s*:/,

@@ -26,16 +26,7 @@ async function preferencesAdapter() {
   };
 }
 
-function localStorageAdapter(storage) {
-  return {
-    getItem: (key) => storage.getItem(key),
-    setItem: (key, value) => storage.setItem(key, String(value ?? "")),
-    removeItem: (key) => storage.removeItem(key),
-  };
-}
-
 export async function resolveAuthStorage({
-  windowObject = globalThis.window,
   storage = globalThis.localStorage,
 } = {}) {
   if (Capacitor.isNativePlatform()) {

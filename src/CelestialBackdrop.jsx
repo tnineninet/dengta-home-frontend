@@ -1,3 +1,4 @@
+import { createVisualLoop } from "./visual-loop.js";
 import { useEffect, useMemo, useRef } from "react";
 import { getSunGlassSky, weatherModeFromAmbient } from "./sun-glass-sky.js";
 
@@ -37,10 +38,12 @@ function drawCloudShape(context, x, y, size, alpha, darkness) {
 
 function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode }) {
   const skyRef = useRef(sky);
+  const loopRef = useRef(null);
   const starsVisible = sky.night > 0.08;
 
   useEffect(() => {
     skyRef.current = sky;
+    loopRef.current?.invalidate();
   }, [sky]);
 
   useEffect(() => {
@@ -52,6 +55,7 @@ function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode }) 
     const starsContext = starsCanvas.getContext("2d");
     const cloudContext = cloudCanvas.getContext("2d");
     const weatherContext = weatherCanvas.getContext("2d");
+    if (!starsContext || !cloudContext || !weatherContext) return undefined;
     let starPoints = [];
     let galaxyPoints = [];
     let cloudPoints = [];
@@ -62,8 +66,7 @@ function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode }) 
     let nextLightningAt = performance.now() + 480;
     let lightningUntil = 0;
     let lightningSegments = [];
-    let animationFrame = 0;
-    let lastPaintAt = 0;
+
 
     const resize = () => {
       sizeCanvas(starsCanvas, 2);
@@ -126,20 +129,6 @@ function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode }) 
 
     const paint = (now) => {
       const currentSky = skyRef.current;
-      const settingsOpen = Boolean(document.querySelector(".settings-sheet"));
-      const hasVisibleMotion =
-        starsVisible ||
-        mode === "cloudy" ||
-        mode === "rain" ||
-        mode === "storm";
-      const timeScrubbing =
-        document.documentElement.dataset.timeScrubbing === "true";
-      const minimumInterval = timeScrubbing ? 120 : settingsOpen ? 180 : 33;
-      if (now - lastPaintAt < minimumInterval) {
-        animationFrame = requestAnimationFrame(paint);
-        return;
-      }
-      lastPaintAt = now;
       const starsRatio = Math.min(window.devicePixelRatio || 1, 2);
       const cloudRatio = Math.min(window.devicePixelRatio || 1, 1.5);
       const width = starsCanvas.width / starsRatio;
@@ -311,15 +300,23 @@ function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode }) 
         weatherContext.stroke();
         weatherContext.shadowBlur = 0;
       }
-      if (hasVisibleMotion) animationFrame = requestAnimationFrame(paint);
+
     };
 
     resize();
-    window.addEventListener("resize", resize);
-    animationFrame = requestAnimationFrame(paint);
+    const hasVisibleMotion = starsVisible || mode === "cloudy" || mode === "rain" || mode === "storm";
+    const loop = createVisualLoop(paint, { animated: hasVisibleMotion, interval: () => {
+      if (document.documentElement.dataset.timeScrubbing === "true") return 120;
+      if (document.querySelector(".settings-sheet, .message-list.is-scrolling")) return 180;
+      return 33;
+    } });
+    loopRef.current = loop;
+    const handleResize = () => { resize(); loop.invalidate(); };
+    window.addEventListener("resize", handleResize);
     return () => {
-      cancelAnimationFrame(animationFrame);
-      window.removeEventListener("resize", resize);
+      loop.dispose();
+      loopRef.current = null;
+      window.removeEventListener("resize", handleResize);
     };
   }, [cloudsRef, mode, starsRef, starsVisible, weatherRef]);
 }

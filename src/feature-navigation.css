@@ -1,0 +1,10 @@
+.feature-navigation { min-height: 0; flex: 0 1 auto; max-height: 52vh; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; padding: 2px; }
+.feature-navigation-search { display: block; margin: 10px 0 8px; }
+.feature-navigation-search > span { display: block; font-size: 11px; opacity: .75; margin-bottom: 6px; }
+.feature-navigation-search input { box-sizing: border-box; width: 100%; min-height: 42px; padding: 8px 12px; border-radius: 12px; border: 1px solid #aa91852b; background: #aa918510; color: inherit; font: inherit; font-size: 13px; }
+.feature-navigation .primary-nav { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.feature-navigation-group { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 3px; }
+.feature-navigation-group > p { grid-column: 1 / -1; font-size: 11px; letter-spacing: .08em; opacity: .65; margin: 6px 10px; }
+.feature-navigation-group > button { width: 100%; min-height: 42px; text-align: left; }
+.feature-navigation-empty { font-size: 13px; line-height: 1.7; padding: 8px; }
+.feature-navigation :focus-visible { outline: 2px solid #ab866c; outline-offset: 2px; }

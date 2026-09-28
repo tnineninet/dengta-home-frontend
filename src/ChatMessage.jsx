@@ -24,6 +24,7 @@ function formatMessageTime(value) {
 function ChatMessage({
   item,
   aiName = "伴侣",
+  aiPronoun = "TA",
   userName = "你",
   companionMood = "",
   skin = "classic-glass",
@@ -379,6 +380,7 @@ function ChatMessage({
                 <ThinkingPanel
                   message={item}
                   aiName={aiName}
+                  aiPronoun={aiPronoun}
                   companionMood={companionMood}
                   innerMonologue={innerMonologue}
                   innerMonologuePending={innerMonologuePending}

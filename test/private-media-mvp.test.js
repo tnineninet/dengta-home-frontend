@@ -92,6 +92,10 @@ test("private media API wrappers preserve endpoint methods and JSON bodies", asy
     /ID 无效/,
   );
   assert.equal(calls.length, 5, "非法 UUID 不得产生编辑或归档请求");
+  await archivePrivateMediaAsset(UUIDS.sticker, true, client);
+  assert.equal(calls.at(-1)[0], `/api/v2/private-media/assets/${UUIDS.sticker}?permanent=true`);
+  await archivePrivateMediaAsset(UUIDS.sticker, "true", client);
+  assert.equal(calls.at(-1)[0], `/api/v2/private-media/assets/${UUIDS.sticker}`, "只有明确布尔 true 可以请求永久删除");
 });
 
 test("size guidance warns at 5/12 MB without blocking submission", () => {

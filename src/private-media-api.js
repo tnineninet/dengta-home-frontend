@@ -95,10 +95,15 @@ export function patchPrivateMediaAsset(id, changes, client = { apiRequest }) {
 }
 
 export function archivePrivateMediaAsset(id, permanent = false, client = { apiRequest }) {
+  // Preserve the previous (id, client) signature; only literal true requests deletion.
+  if (permanent && typeof permanent === "object") {
+    client = permanent;
+    permanent = false;
+  }
   if (!isPrivateMediaAssetId(id)) {
     throw new TypeError("私密媒体资源 ID 无效。");
   }
-  const query = permanent ? `?permanent=true` : "";
+  const query = permanent === true ? `?permanent=true` : "";
   return client.apiRequest(
     `/api/v2/private-media/assets/${encodeURIComponent(id)}${query}`,
     { method: "DELETE" },

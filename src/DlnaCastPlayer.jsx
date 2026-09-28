@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { DlnaReceiver } from "./dlna-receiver";
-import { apiFetch, API_BASE_URL } from "./api.js";
+import { apiFetch } from "./api.js";
 import {
   createCoWatchSession,
   readActiveCoWatchSession,
@@ -12,61 +12,62 @@ import {
   readWatchRoom,
   sendRoomMessage,
   sendRoomAiMessage,
-  readRoomMessages,
   subscribeRoomEvents,
   leaveWatchRoom,
-  endWatchRoom,
 } from "./watch-room";
 import { peekPendingInvite, clearPendingInvite, fetchRoomInviteInfo } from "./room-invite";
 import "./cast-player.css";
-
-/** 帧理解失败日志节流：60 秒内最多输出一次 */
-let _lastFrameWarnTs = 0;
 
 /**
  * B站放映厅风格 — 投屏/一起看播放器。
  * 窄屏（手机）→ 播放确认页；宽屏（桌面/平板）→ 完整播放器+聊天+AI分析。
  */
 export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴侣", onClose }) {
-  const [waiting, setWaiting] = useState(false);
-  const [launching, setLaunching] = useState(false);
+  const [launchResult, setLaunchResult] = useState(null);
+  const [launchAttempt, setLaunchAttempt] = useState(0);
+  const [playbackError, setPlaybackError] = useState("");
+  const [captureNotice, setCaptureNotice] = useState("");
+  const [capturing, setCapturing] = useState(false);
+  const captureBusyRef = useRef(false);
   const [urlInput, setUrlInput] = useState("");
   const [extracting, setExtracting] = useState(false);
-  const [sessionId, setSessionId] = useState("");
-  const [dialog, setDialog] = useState([]);
   // 放映厅
   const [room, setRoom] = useState(null);
   const [participants, setParticipants] = useState([]);
-  const [roomMessages, setRoomMessages] = useState([]);
   const [roomBusy, setRoomBusy] = useState(false);
   const [roomError, setRoomError] = useState("");
   const [joinCodeInput, setJoinCodeInput] = useState("");
   const roomRef = useRef(null);
-  const roomMessagesRef = useRef([]);
+  const roomEpochRef = useRef(0);
   const participantsRef = useRef([]);
-  const launchedRef = useRef("");
+  const launchedRef = useRef(null);
   const sessionRef = useRef("");
+  const sessionPromiseRef = useRef(null);
+  const lifetimeRef = useRef(null);
+  const lastFrameWarnRef = useRef(0);
+  const scrollTimerRef = useRef(null);
+  const shareTimerRef = useRef(null);
+  const frameBusyRef = useRef(false);
+  const playbackCommandBusyRef = useRef(false);
+  const playbackRevisionRef = useRef(0);
 
   // 邀请弹窗
-  const [inviteCode, setInviteCode] = useState("");
+  const [inviteCode, setInviteCode] = useState(() => peekPendingInvite()?.code || "");
   const [inviteInfo, setInviteInfo] = useState(null);
   const [inviteBusy, setInviteBusy] = useState(false);
   const [inviteError, setInviteError] = useState("");
 
-  // 视图切换：confirmation（播放确认）→ player（播放中）
-  const [viewMode, setViewMode] = useState("confirmation");
   // 播放器控制
   const [isPlaying, setIsPlaying] = useState(false);
   const [controlsVisible, setControlsVisible] = useState(true);
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0);
-  const [currentTime, setCurrentTime] = useState("00:00");
-  const [totalTime, setTotalTime] = useState("00:00");
+  const [position, setPosition] = useState({ positionMs: 0, durationMs: 0 });
   const [danmakuEnabled, setDanmakuEnabled] = useState(true);
   const danmakuEnabledRef = useRef(true);
   useEffect(() => { danmakuEnabledRef.current = danmakuEnabled; }, [danmakuEnabled]);
   const [chatInput, setChatInput] = useState("");
   // AI 分析状态
-  const [analysisState, setAnalysisState] = useState("loading"); // loading | progress | degraded | error | complete | never
+  const [analysisState, setAnalysisState] = useState("never");
   // 聊天消息
   const [messages, setMessages] = useState([]);
 
@@ -74,19 +75,11 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
   const controlTimerRef = useRef(null);
   const chatEndRef = useRef(null);
   const speedOptions = [0.5, 1.0, 1.5, 2.0];
-  const speedIndexRef = useRef(1);
-
-  /* ─── 构建双高亮名 ─── */
-  const buildAttributedName = (participant, senderType) => {
-    const dn = participant?.displayName || userName;
-    const an = participant?.aiName || aiName;
-    const userActive = senderType === "user";
-    return { displayName: dn, aiName: an, userActive, full: `${dn}&${an}` };
-  };
 
   /* ─── 分享邀请 ─── */
   const shareRoomInvite = async () => {
     const current = roomRef.current;
+    const lifetime = lifetimeRef.current;
     if (!current?.joinCode) return;
     const code = current.joinCode;
     // 获取自己的显示ID
@@ -97,53 +90,72 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
         const data = await resp.json().catch(() => ({}));
         displayId = data?.display_id || "";
       }
-    } catch (_) {}
-    const webLink = `https://dengtahome.com/room/join?room_code=${code}${displayId ? `&host_id=${displayId}` : ""}`;
+    } catch { /* 显示 ID 不影响分享。 */ }
+    if (!lifetime?.active || roomRef.current?.id !== current.id) return;
+    const webLink = `https://dengtahome.com/room/join?room_code=${encodeURIComponent(code)}${displayId ? `&host_id=${encodeURIComponent(displayId)}` : ""}`;
     const text = `🎬 ${userName} 邀请您和您的伴侣（${aiName}）一起观影《${current.title || "影片"}》！\n\n加入放映厅：${webLink}\n邀请码：${code}`;
     try {
       if (navigator.share && navigator.canShare?.({ text })) {
         await navigator.share({ title: "灯塔放映厅邀请", text, url: webLink });
       } else {
         await navigator.clipboard.writeText(text);
+        if (!lifetime.active) return;
         setRoomError("已复制邀请链接");
-        setTimeout(() => setRoomError(""), 3000);
+        clearTimeout(shareTimerRef.current);
+        shareTimerRef.current = setTimeout(() => setRoomError(""), 3000);
       }
-    } catch (_) {}
+    } catch { /* 系统分享可以由用户取消。 */ }
   };
 
   /* ─── 检查待处理邀请 ─── */
+  const onPendingInvite = useEffectEvent(() => {
+      const code = peekPendingInvite()?.code || "";
+      if (code === inviteCode) return;
+      setInviteCode(code);
+      setInviteInfo(null);
+      setInviteError("");
+  });
   useEffect(() => {
-    const pending = peekPendingInvite();
-    if (!pending?.code) return;
-    setInviteCode(pending.code);
-    setInviteBusy(true);
-    setInviteError("");
-    setInviteInfo(null);
-    fetchRoomInviteInfo(pending.code)
-      .then((info) => { setInviteInfo(info); setInviteBusy(false); })
-      .catch(() => { setInviteError("邀请信息读取失败，邀请码可能已过期。"); setInviteBusy(false); });
+    const onInvite = () => onPendingInvite();
+    window.addEventListener("dengta:room-invite", onInvite);
+    return () => window.removeEventListener("dengta:room-invite", onInvite);
   }, []);
+
+  useEffect(() => {
+    if (!inviteCode) return;
+    let active = true;
+    fetchRoomInviteInfo(inviteCode).then((data) => {
+      if (!active) return;
+      setInviteInfo(data);
+      setInviteError(data ? "" : "邀请信息读取失败，邀请码可能已过期。");
+    }).catch(() => {
+      if (active) setInviteError("邀请信息读取失败，邀请码可能已过期。");
+    });
+    return () => { active = false; };
+  }, [inviteCode]);
 
   /* ─── 接受/拒绝邀请 ─── */
   const handleAcceptInvite = async () => {
-    if (!inviteCode || inviteBusy) return;
+    if (!inviteCode || inviteBusy || roomRef.current) return;
+    const lifetime = lifetimeRef.current;
     setInviteBusy(true);
     setInviteError("");
     try {
       const joined = await joinWatchRoom(inviteCode, { displayName: userName, aiName });
+      if (!lifetime?.active) return;
       if (!joined?.id) throw new Error("join_failed");
       setRoom(joined);
+      roomEpochRef.current += 1;
       roomRef.current = joined;
-      setInviteCode("");
-      setInviteInfo(null);
-      clearPendingInvite();
-      await syncRoomData(joined.id);
-      if (joined.mediaUrl) {
-        DlnaReceiver.launchPlayer({ uri: joined.mediaUrl, title: joined.title || title, userName, aiName }).catch(() => {});
+      if (peekPendingInvite()?.code === inviteCode) {
+        setInviteCode("");
+        setInviteInfo(null);
+        clearPendingInvite();
       }
-    } catch (error) {
-      setInviteError("加入失败，邀请码可能已过期或放映厅已结束。");
-    } finally { setInviteBusy(false); }
+      await syncRoomData(joined.id);
+    } catch {
+      if (lifetime?.active) setInviteError("加入失败，邀请码可能已过期或放映厅已结束。");
+    } finally { if (lifetime?.active) setInviteBusy(false); }
   };
   const handleDeclineInvite = () => {
     setInviteCode("");
@@ -152,8 +164,8 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
     clearPendingInvite();
   };
 
-  const mediaUrl = info?.uri || info?.mediaUrl || "";
-  const title = info?.title || "投屏播放";
+  const mediaUrl = room?.mediaUrl || info?.uri || info?.mediaUrl || "";
+  const title = room?.title || info?.title || "投屏播放";
   const durationSeconds = Number(info?.durationSeconds || info?.duration || 0);
   const cover = info?.cover || info?.thumb || "";
   const sourceApp = info?.sourceApp || "DLNA 投屏";
@@ -161,15 +173,23 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
   /* ─── 异步会话 ─── */
   const ensureSession = async () => {
     if (sessionRef.current) return sessionRef.current;
-    try {
-      const existing = await readActiveCoWatchSession({ sessionMode: "screen" });
-      if (existing?.id) { sessionRef.current = existing.id; setSessionId(existing.id); return existing.id; }
-      const created = await createCoWatchSession({ title, sourceApp, sessionMode: "screen", mediaDurationSeconds: durationSeconds, mediaPositionSeconds: 0 });
-      if (!created?.id) throw new Error("no_session");
-      sessionRef.current = created.id;
-      setSessionId(created.id);
-      return created.id;
-    } catch (_) { return ""; }
+    if (sessionPromiseRef.current) return sessionPromiseRef.current;
+    const lifetime = lifetimeRef.current;
+    const pending = (async () => {
+      try {
+        const existing = await readActiveCoWatchSession({ sessionMode: "screen" });
+        if (!lifetime?.active) return "";
+        if (existing?.id) { sessionRef.current = existing.id; return existing.id; }
+        const created = await createCoWatchSession({ title, sourceApp, sessionMode: "screen", mediaDurationSeconds: durationSeconds, mediaPositionSeconds: 0 });
+        if (!created?.id) throw new Error("no_session");
+        if (!lifetime.active) return "";
+        sessionRef.current = created.id;
+        return created.id;
+      } catch { return ""; }
+    })();
+    sessionPromiseRef.current = pending;
+    try { return await pending; }
+    finally { if (sessionPromiseRef.current === pending) sessionPromiseRef.current = null; }
   };
 
   /* ─── 原生聊天消息 ─── */
@@ -180,234 +200,206 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
     return bytes;
   };
 
-  const forwardToRoom = async (text, positionSeconds) => {
-    const current = roomRef.current;
-    if (!current?.id || !text) return;
-    try { await sendRoomMessage(current.id, text, positionSeconds); } catch (_) {}
+  const addMessage = (type, content, sender) => {
+    const message = { type, content, sender, id: crypto.randomUUID() };
+    setMessages((prev) => [...prev, message].slice(-100));
+    clearTimeout(scrollTimerRef.current);
+    scrollTimerRef.current = setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
   };
 
   const handleCastChat = async (event) => {
     const text = String(event?.text || "").trim();
     if (!text) return;
-    const positionMs = Number(event?.positionMs) || 0;
-    forwardToRoom(text, Math.round(positionMs / 1000));
+    const lifetime = lifetimeRef.current;
+    const originRoom = roomRef.current;
+    const originRoomEpoch = roomEpochRef.current;
+    const positionSeconds = Math.round((Number(event?.positionMs) || 0) / 1000);
+    addMessage("user", text, userName);
+    if (originRoom?.id) void sendRoomMessage(originRoom.id, text, positionSeconds).catch(() => {});
     try {
       const session = await ensureSession();
+      if (!lifetime?.active) return;
       if (!session) throw new Error("no_session");
-      const reply = await sendCoWatchReply(session, text, Math.round(positionMs / 1000));
-      const replyText = reply?.reaction || "没有获得回复。";
-      DlnaReceiver.showCastReply({ text: replyText, aiName: String(event?.aiName || aiName || "伴侣") }).catch(() => {});
-      if (roomRef.current?.id && replyText) {
-        sendRoomAiMessage(roomRef.current.id, replyText, Math.round(positionMs / 1000), String(event?.aiName || aiName || "伴侣")).catch(() => {});
+      const reply = await sendCoWatchReply(session, text, positionSeconds);
+      if (!lifetime.active) return;
+      const replyText = String(reply?.reaction || "").trim();
+      if (!replyText) throw new Error("empty_reply");
+      addMessage("ai", replyText, aiName);
+      DlnaReceiver.showCastReply({ text: replyText, aiName }).catch(() => {});
+      if (originRoom?.id && roomRef.current?.id === originRoom.id && roomEpochRef.current === originRoomEpoch) {
+        void sendRoomAiMessage(originRoom.id, replyText, positionSeconds, aiName).catch(() => {});
       }
-    } catch (_) {
-      DlnaReceiver.showCastReply({ text: "回复获取失败，请稍后再试。", aiName: String(event?.aiName || aiName || "伴侣") }).catch(() => {});
+    } catch {
+      if (!lifetime?.active) return;
+      setPlaybackError("回复获取失败，请稍后再试。");
     }
   };
 
-  /* ─── 视频帧（AI 主动互动） ─── */
-  const handleCastFrame = async (event) => {
+  /* 同一时刻只分析一帧，避免原生周期事件积压请求。 */
+  const handleCastFrame = useEffectEvent(async (event) => {
     const base64 = String(event?.frameBase64 || "");
-    if (!base64) return;
+    if (!base64 || frameBusyRef.current) return;
+    const lifetime = lifetimeRef.current;
+    frameBusyRef.current = true;
+    setAnalysisState("loading");
     try {
       const session = await ensureSession();
-      if (!session) return;
-      const bytes = base64ToBytes(base64);
-      const capturedAt = new Date().toISOString();
-      const query = new URLSearchParams({ session_id: session, mode: "screen", epoch: "cast-renderer", sequence: String(Date.now()), captured_at: capturedAt });
-      const response = await apiFetch(`/api/v2/co-watch/frame?${query.toString()}`, { method: "POST", timeoutMs: 90_000, headers: { "Content-Type": "image/jpeg" }, body: bytes, retry: false });
-      const data = await response.json().catch(() => ({}));
+      if (!lifetime?.active) return;
+      if (!session) throw new Error("no_session");
+      const query = new URLSearchParams({ session_id: session, mode: "screen", epoch: "cast-renderer", sequence: String(Date.now()), captured_at: new Date().toISOString() });
+      const response = await apiFetch('/api/v2/co-watch/frame?' + query.toString(), { method: "POST", timeoutMs: 90_000, headers: { "Content-Type": "image/jpeg" }, body: base64ToBytes(base64), retry: false });
+      const data = await response.json();
+      if (!lifetime.active) return;
+      if (!response.ok) throw new Error("frame_failed");
       const reaction = String(data?.reaction || "").trim();
       if (reaction) {
-        DlnaReceiver.showCastReaction({ text: reaction, aiName: String(data?.ai_name || aiName || "伴侣") }).catch(() => {});
-        DlnaReceiver.showCastDanmaku({ text: reaction, senderName: String(data?.ai_name || aiName || "伴侣"), colorHex: "#FFD9A8" }).catch(() => {});
-        // 添加到聊天
-        addMessage("ai", reaction, String(data?.ai_name || aiName || "伴侣"));
+        const sender = String(data?.ai_name || aiName);
+        DlnaReceiver.showCastReaction({ text: reaction, aiName: sender }).catch(() => {});
+        if (danmakuEnabledRef.current) DlnaReceiver.showCastDanmaku({ text: reaction, senderName: sender, colorHex: "#FFD9A8" }).catch(() => {});
+        addMessage("ai", reaction, sender);
       }
-    } catch (error) {
+      setAnalysisState("complete");
+    } catch {
+      if (!lifetime?.active) return;
+      setAnalysisState("error");
       const now = Date.now();
-      if (now - _lastFrameWarnTs > 60_000) { _lastFrameWarnTs = now; console.warn("[DlnaCastPlayer] handleCastFrame failed:", error?.message || error); }
-    }
-  };
+      if (now - lastFrameWarnRef.current > 60_000) {
+        lastFrameWarnRef.current = now;
+        console.warn("[DlnaCastPlayer] frame_failed");
+      }
+    } finally { frameBusyRef.current = false; }
+  });
 
-  /* ─── 聊天消息管理 ─── */
-  const addMessage = (type, content, sender) => {
-    setMessages((prev) => {
-      const next = [...prev, { type, content, sender, id: Date.now() + Math.random() }];
-      if (next.length > 100) next.splice(0, next.length - 100);
-      return next;
-    });
-    setTimeout(() => chatEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
-  };
-
-  /* ─── 发送聊天消息 ─── */
   const handleSendMessage = () => {
     const text = chatInput.trim();
     if (!text) return;
-    addMessage("user", text, userName);
     setChatInput("");
-    // 转发到原生和放映厅
-    DlnaReceiver.sendChatMessage({ text, positionMs: 0 }).catch(() => {});
-    forwardToRoom(text, 0);
-    // 模拟AI回复（真实回复由原生回调触发）
-    setAnalysisState("loading");
+    setPlaybackError("");
+    void handleCastChat({ text, positionMs: position.positionMs });
   };
 
-  /* ─── 放映厅同步 ─── */
   const syncRoomData = async (roomId) => {
     if (!roomId) return;
+    const lifetime = lifetimeRef.current;
+    const epoch = roomEpochRef.current;
     const data = await readWatchRoom(roomId).catch(() => null);
+    if (!lifetime?.active || roomRef.current?.id !== roomId || roomEpochRef.current !== epoch) return;
     if (data?.room) { setRoom(data.room); roomRef.current = data.room; }
     if (Array.isArray(data?.participants)) { setParticipants(data.participants); participantsRef.current = data.participants; }
-    const msgs = await readRoomMessages(roomId, 50).catch(() => []);
-    setRoomMessages(msgs);
-    roomMessagesRef.current = msgs;
   };
 
   const handleCreateRoom = async () => {
     if (roomBusy || roomRef.current) return;
+    const lifetime = lifetimeRef.current;
     setRoomBusy(true);
     setRoomError("");
     try {
       const created = await createWatchRoom({ title, sourceApp, mediaUrl, mediaDurationSeconds: durationSeconds, displayName: userName, aiName, session_id: sessionRef.current || undefined });
+      if (!lifetime?.active) return;
       if (!created?.id) throw new Error("no_room");
-      setRoom(created);
-      roomRef.current = created;
+      roomEpochRef.current += 1;
+      setRoom(created); roomRef.current = created;
       await syncRoomData(created.id);
-    } catch (_) { setRoomError("创建放映厅失败，请稍后再试。"); } finally { setRoomBusy(false); }
+    } catch { if (lifetime?.active) setRoomError("创建放映厅失败，请稍后再试。"); }
+    finally { if (lifetime?.active) setRoomBusy(false); }
   };
 
   const handleJoinRoom = async () => {
     const code = joinCodeInput.trim().toUpperCase();
     if (!code || roomBusy || roomRef.current) return;
-    setRoomBusy(true);
-    setRoomError("");
+    const lifetime = lifetimeRef.current;
+    setRoomBusy(true); setRoomError("");
     try {
       const joined = await joinWatchRoom(code, { displayName: userName, aiName });
+      if (!lifetime?.active) return;
       if (!joined?.id) throw new Error("join_failed");
-      setRoom(joined);
-      roomRef.current = joined;
+      roomEpochRef.current += 1;
+      setRoom(joined); roomRef.current = joined;
       await syncRoomData(joined.id);
-      if (joined.mediaUrl && joined.mediaUrl !== mediaUrl) {
-        DlnaReceiver.launchPlayer({ uri: joined.mediaUrl, title: joined.title || title, userName, aiName }).catch(() => {});
-      }
-    } catch (_) { setRoomError("加入失败：邀请码可能无效或放映厅已结束。"); } finally { setRoomBusy(false); }
+    } catch { if (lifetime?.active) setRoomError("加入失败：邀请码可能无效或放映厅已结束。"); }
+    finally { if (lifetime?.active) setRoomBusy(false); }
   };
 
   const handleLeaveRoom = async () => {
     const current = roomRef.current;
     if (!current) return;
-    try { await leaveWatchRoom(current.id); } catch (_) {}
-    roomRef.current = null;
-    setRoom(null);
-    setParticipants([]);
-    setRoomMessages([]);
+    roomEpochRef.current += 1;
+    roomRef.current = null; participantsRef.current = [];
+    setRoom(null); setParticipants([]);
+    try { await leaveWatchRoom(current.id); }
+    catch { if (lifetimeRef.current?.active) setRoomError("退出同步失败，请稍后重试。"); }
   };
 
-  /* ─── SSE 实时事件 ─── */
+  const onRoomMessage = useEffectEvent((msg) => {
+    if (danmakuEnabledRef.current) DlnaReceiver.showCastDanmaku({ text: String(msg.content || "").slice(0, 40), colorHex: msg.senderType === "ai" ? "#FFD9A8" : "#8BD8FF" }).catch(() => {});
+    addMessage(msg.senderType === "ai" ? "ai" : "user", msg.content, msg.senderName || "成员");
+  });
+  const onRoomRefresh = useEffectEvent((id) => { void syncRoomData(id); });
   useEffect(() => {
-    const onInvite = () => {
-      const code = peekPendingInvite();
-      if (code && code !== inviteCode) {
-        setInviteCode(code);
-        setInviteError("");
-        setInviteInfo(null);
-        fetchRoomInviteInfo(code)
-          .then((info) => { setInviteInfo(info); setInviteError(""); })
-          .catch((e) => { setInviteInfo(null); setInviteError(e.message || "获取邀请信息失败"); });
-      }
-    };
-    window.addEventListener("dengta:room-invite", onInvite);
-
-    const current = roomRef.current;
-    if (!current?.id) { return () => window.removeEventListener("dengta:room-invite", onInvite); }
-    const stop = subscribeRoomEvents(current.id, {
-      onPlaybackSync: (updatedRoom) => {
-        setRoom((prev) => ({ ...(prev || {}), ...updatedRoom }));
-        roomRef.current = { ...(roomRef.current || {}), ...updatedRoom };
+    const id = room?.id;
+    if (!id) return;
+    let active = true;
+    const valid = () => active && roomRef.current?.id === id;
+    const stop = subscribeRoomEvents(id, {
+      onPlaybackSync: (updated) => {
+        if (!valid()) return;
+        roomRef.current = { ...roomRef.current, ...updated };
+        setRoom(roomRef.current);
       },
-      onMessage: (msg) => {
-        const latest = participantsRef.current;
-        const participant = (latest || []).find((p) => p.displayName === msg.senderName || (msg.senderUserId && p.userId === msg.senderUserId));
-        const attr = participant ? buildAttributedName(participant, msg.senderType) : { displayName: msg.senderName, aiName: "", userActive: msg.senderType === "user", full: msg.senderName || "成员" };
-        // 弹幕：只文字，不显示来源（用户已开启弹幕时）
-        if (danmakuEnabledRef.current) {
-          DlnaReceiver.showCastDanmaku({ text: String(msg.content || "").slice(0, 40), colorHex: msg.senderType === "ai" ? "#FFD9A8" : "#8BD8FF" }).catch(() => {});
-        }
-        const next = [...roomMessagesRef.current, msg];
-        if (next.length > 100) next.splice(0, next.length - 100);
-        roomMessagesRef.current = next;
-        setRoomMessages(next);
-        addMessage(msg.senderType === "ai" ? "ai" : "user", msg.content, msg.senderName || "成员");
+      onMessage: (msg) => { if (valid()) onRoomMessage(msg); },
+      onParticipantJoin: (data) => {
+        if (!valid()) return;
+        const participant = { displayName: data.displayName || "新成员", aiName: data.aiName || "", role: "member", joinedAt: new Date().toISOString() };
+        participantsRef.current = [...participantsRef.current, participant];
+        setParticipants(participantsRef.current);
       },
-      onParticipantJoin: (info) => {
-        setParticipants((prev) => {
-          const next = [...prev, { displayName: info.displayName || "新成员", aiName: info.aiName || "", role: "member", joinedAt: new Date().toISOString() }];
-          participantsRef.current = next;
-          return next;
-        });
+      onParticipantLeave: () => { if (valid()) onRoomRefresh(id); },
+      onRoomEnded: () => {
+        if (!valid()) return;
+        roomEpochRef.current += 1;
+        roomRef.current = null; participantsRef.current = [];
+        setRoom(null); setParticipants([]);
       },
-      onParticipantLeave: () => { syncRoomData(current.id).catch(() => {}); },
-      onRoomEnded: () => { roomRef.current = null; setRoom(null); setParticipants([]); participantsRef.current = []; },
-      onError: (err) => { console.warn("[DlnaCastPlayer] SSE 连接错误:", err); },
+      onError: () => { if (valid()) setRoomError("放映厅连接中断，正在重连。"); },
     });
-    return () => { stop(); window.removeEventListener("dengta:room-invite", onInvite); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return () => { active = false; stop(); };
   }, [room?.id]);
 
-  /* ─── 生命周期监听 ─── */
+  const onNativeChat = useEffectEvent((event) => { void handleCastChat(event); });
   useEffect(() => {
-    let chatHandle = null;
-    let frameHandle = null;
-    DlnaReceiver.addListener("castChat", async (event) => { try { await handleCastChat(event); } catch (_) {} }).then((l) => { chatHandle = l; }).catch(() => {});
-    DlnaReceiver.addListener("castFrame", async (event) => { try { await handleCastFrame(event); } catch (_) {} }).then((l) => { frameHandle = l; }).catch(() => {});
-    // 监听原生消息回调
-    DlnaReceiver.addListener("castReply", (event) => {
-      const reply = String(event?.text || "");
-      const from = String(event?.aiName || aiName);
-      if (reply) addMessage("ai", reply, from);
-    }).catch(() => {});
-    DlnaReceiver.addListener("castReaction", (event) => {
-      const reaction = String(event?.text || "");
-      const from = String(event?.aiName || aiName);
-      if (reaction) addMessage("ai", "🎬 " + reaction, from);
-    }).catch(() => {});
-    return () => {
-      chatHandle?.remove?.();
-      frameHandle?.remove?.();
+    const lifetime = { active: true };
+    lifetimeRef.current = lifetime;
+    const handles = [];
+    const remove = (handle) => { Promise.resolve().then(() => handle?.remove?.()).catch(() => {}); };
+    const listen = (name, callback) => {
+      Promise.resolve().then(() => DlnaReceiver.addListener(name, (event) => {
+        if (lifetime.active) callback(event);
+      })).then((handle) => {
+        if (lifetime.active) handles.push(handle);
+        else remove(handle);
+      }).catch(() => {});
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    listen("castChat", (event) => onNativeChat(event));
+    listen("castFrame", (event) => { void handleCastFrame(event); });
+    listen("castPosition", (event) => {
+      const finite = (value) => Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0;
+      setPosition({ positionMs: finite(event?.positionMs), durationMs: finite(event?.durationMs) });
+    });
+    return () => {
+      lifetime.active = false;
+      handles.forEach(remove);
+      clearTimeout(controlTimerRef.current);
+      clearTimeout(scrollTimerRef.current);
+      clearTimeout(shareTimerRef.current);
+    };
   }, []);
 
-  /* ─── 播放控制 ─── */
   async function handleClose() {
-    try { await DlnaReceiver.stopPlayback(); } catch (_) {}
+    if (lifetimeRef.current) lifetimeRef.current.active = false;
+    try { await DlnaReceiver.stopPlayback(); }
+    catch { /* 关闭页面仍需完成。 */ }
     onClose?.();
   }
-
-  const handlePlayPause = () => {
-    setIsPlaying(!isPlaying);
-    DlnaReceiver.sendPlaybackCommand({ action: isPlaying ? "pause" : "play" }).catch(() => {});
-    showControls();
-  };
-
-  const handleToggleFullscreen = () => {
-    DlnaReceiver.sendPlaybackCommand({ action: "fullscreen" }).catch(() => {});
-  };
-
-  const handleScreenshot = () => {
-    DlnaReceiver.captureFrame().catch(() => {});
-    setAnalysisState("loading");
-    setTimeout(() => setAnalysisState("progress"), 2000);
-  };
-
-  const handleCycleSpeed = () => {
-    const next = (speedIndexRef.current + 1) % speedOptions.length;
-    speedIndexRef.current = next;
-    setPlaybackSpeed(speedOptions[next]);
-    DlnaReceiver.sendPlaybackCommand({ action: "speed", value: speedOptions[next] }).catch(() => {});
-    showControls();
-  };
 
   const showControls = () => {
     setControlsVisible(true);
@@ -415,59 +407,128 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
     controlTimerRef.current = setTimeout(() => setControlsVisible(false), 4000);
   };
 
-  // 自动播放
-  useEffect(() => {
-    if (!mediaUrl) { setLaunching(false); return undefined; }
-    if (launchedRef.current === mediaUrl) return undefined;
-    launchedRef.current = mediaUrl;
-    setWaiting(false);
-    setLaunching(true);
-    setViewMode("player");
-    DlnaReceiver.launchPlayer({ uri: mediaUrl, title, userName, aiName })
-      .then(() => { setLaunching(false); setIsPlaying(true); })
-      .catch(() => { setLaunching(false); setWaiting(true); });
-    return undefined;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mediaUrl, title]);
+  const runPlaybackCommand = async (command, onSuccess) => {
+    if (playbackCommandBusyRef.current) return;
+    playbackCommandBusyRef.current = true;
+    playbackRevisionRef.current += 1;
+    const lifetime = lifetimeRef.current;
+    try {
+      const result = await DlnaReceiver.sendPlaybackCommand(command);
+      if (lifetime?.active) {
+        onSuccess?.(result);
+        if (typeof result?.playWhenReady === "boolean") setIsPlaying(result.playWhenReady);
+        if (Number.isFinite(result?.speed) && result.speed >= 0.5 && result.speed <= 2) setPlaybackSpeed(result.speed);
+        if (Number.isFinite(result?.positionMs) && Number.isFinite(result?.durationMs)) {
+          setPosition({ positionMs: Math.max(0, result.positionMs), durationMs: Math.max(0, result.durationMs) });
+        }
+        setPlaybackError("");
+      }
+    } catch (error) {
+      if (lifetime?.active) setPlaybackError(error?.code === "playback_not_active"
+        ? "播放器尚未就绪，请先打开视频。"
+        : "播放操作未完成，请在原生播放器内操作或稍后重试。");
+    } finally { playbackCommandBusyRef.current = false; playbackRevisionRef.current += 1; }
+    if (lifetime?.active) showControls();
+  };
+  const handlePlayPause = () => { void runPlaybackCommand({ action: isPlaying ? "pause" : "play" }, () => setIsPlaying(!isPlaying)); };
+  const handleToggleFullscreen = () => { void runPlaybackCommand({ action: "fullscreen" }); };
+  const handleScreenshot = async () => {
+    if (captureBusyRef.current) return;
+    captureBusyRef.current = true;
+    setCapturing(true);
+    setCaptureNotice("");
+    setPlaybackError("");
+    const lifetime = lifetimeRef.current;
+    try {
+      const result = await DlnaReceiver.captureFrame();
+      if (result?.saved !== true || result?.completed !== true) throw new Error("capture_incomplete");
+      if (lifetime?.active) setCaptureNotice("截帧已保存到应用图片目录。");
+    } catch {
+      if (lifetime?.active) setPlaybackError("截帧未完成，请在画面就绪后重试；旧版客户端可在原生播放器内截帧。");
+    } finally {
+      captureBusyRef.current = false;
+      if (lifetime?.active) setCapturing(false);
+    }
+  };
+  const handleCycleSpeed = () => {
+    const next = speedOptions.find((speed) => speed > playbackSpeed) || speedOptions[0];
+    void runPlaybackCommand({ action: "speed", value: next }, () => setPlaybackSpeed(next));
+  };
 
+  const onPlaybackSnapshot = useEffectEvent((result) => {
+    if (playbackCommandBusyRef.current) return;
+    if (typeof result?.playWhenReady === "boolean") setIsPlaying(result.playWhenReady);
+    if (Number.isFinite(result?.speed) && result.speed >= 0.5 && result.speed <= 2) setPlaybackSpeed(result.speed);
+    if (Number.isFinite(result?.positionMs) && Number.isFinite(result?.durationMs)) {
+      setPosition({ positionMs: Math.max(0, result.positionMs), durationMs: Math.max(0, result.durationMs) });
+    }
+  });
   useEffect(() => {
-    const onFocus = () => { if (!mediaUrl) setWaiting(true); };
-    globalThis.addEventListener?.("focus", onFocus);
-    return () => globalThis.removeEventListener?.("focus", onFocus);
+    if (!mediaUrl) return;
+    let active = true, busy = false, unsupported = false;
+    let timer;
+    const poll = async () => {
+      if (!active || unsupported || busy || document.visibilityState === "hidden") return;
+      busy = true;
+      const revision = playbackRevisionRef.current;
+      try {
+        const result = await DlnaReceiver.getPlaybackState();
+        if (active && lifetimeRef.current?.active && revision === playbackRevisionRef.current && document.visibilityState !== "hidden") onPlaybackSnapshot(result);
+      } catch (error) {
+        unsupported = error?.code === "UNIMPLEMENTED" || error?.code === "UNAVAILABLE";
+      } finally {
+        busy = false;
+        if (active && !unsupported && document.visibilityState !== "hidden") timer = setTimeout(poll, 1000);
+      }
+    };
+    const onVisibility = () => { clearTimeout(timer); if (document.visibilityState !== "hidden") void poll(); };
+    document.addEventListener("visibilitychange", onVisibility);
+    void poll();
+    return () => { active = false; clearTimeout(timer); document.removeEventListener("visibilitychange", onVisibility); };
   }, [mediaUrl]);
+
+  // StrictMode 重订阅复用同一个启动请求；仅当前媒体的结果可更新界面。
+  const launchNativePlayer = useEffectEvent((uri) => {
+    if (!lifetimeRef.current?.active || launchedRef.current?.uri !== uri) return Promise.reject(new Error("launch_cancelled"));
+    return DlnaReceiver.launchPlayer({ uri, title, userName, aiName });
+  });
+  useEffect(() => {
+    if (!mediaUrl) return;
+    let active = true;
+    if (launchedRef.current?.uri !== mediaUrl || launchedRef.current?.attempt !== launchAttempt) {
+      launchedRef.current = { uri: mediaUrl, attempt: launchAttempt, promise: Promise.resolve().then(() => launchNativePlayer(mediaUrl)) };
+    }
+    launchedRef.current.promise.then(() => {
+      if (active) { setLaunchResult({ uri: mediaUrl, attempt: launchAttempt, ok: true }); setIsPlaying(true); }
+    }).catch(() => {
+      if (active) setLaunchResult({ uri: mediaUrl, attempt: launchAttempt, ok: false });
+    });
+    return () => { active = false; };
+  }, [mediaUrl, launchAttempt]);
 
   async function handleExtract() {
     const url = urlInput.trim();
-    if (!url) return;
-    setExtracting(true);
+    if (!url || extracting) return;
+    const lifetime = lifetimeRef.current;
+    setExtracting(true); setPlaybackError("");
     try {
-      const { VideoExtractor } = await import("./video-extractor").catch(() => ({ VideoExtractor: null }));
-      if (VideoExtractor) { await VideoExtractor.extractVideo({ url, title: url }); }
-      else { await DlnaReceiver.launchPlayer({ uri: url, title: url, userName, aiName }); }
-    } catch (_) {
-      try { await DlnaReceiver.launchPlayer({ uri: url, title: url, userName, aiName }); } catch (e) { setWaiting(true); }
-    }
-    setExtracting(false);
+      const { VideoExtractor } = await import("./video-extractor");
+      if (lifetime?.active) await VideoExtractor.extractVideo({ url, title: url });
+    } catch {
+      if (!lifetime?.active) return;
+      try { await DlnaReceiver.launchPlayer({ uri: url, title: url, userName, aiName }); }
+      catch { if (lifetime.active) setPlaybackError("视频打开失败，请检查链接或稍后重试。"); }
+    } finally { if (lifetime?.active) setExtracting(false); }
   }
 
-  const formatTime = (sec) => {
-    const total = Math.max(0, Math.round(Number(sec) || 0));
-    const m = Math.floor(total / 60);
-    const s = total % 60;
-    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-  };
+  const currentTime = formatDuration(position.positionMs / 1000);
+  const totalTime = formatDuration(position.durationMs / 1000 || durationSeconds);
+  const launchCurrent = launchResult?.uri === mediaUrl && launchResult?.attempt === launchAttempt;
+  const launching = Boolean(mediaUrl) && !launchCurrent;
+  const launchFailed = launchCurrent && !launchResult.ok;
+  const showWaitingOnly = !mediaUrl;
 
-  const showWaitingOnly = !mediaUrl && !waiting && !launching && !extracting;
-
-  /* ================================================================
-     渲染：等待页（无媒体时）
-     ================================================================ */
-  if (showWaitingOnly) {
-    return (
-      <div className="cast-root">
-        <div className="cast-narrow-scroll">
-          {/* 邀请弹窗 */}
-          {inviteCode && (inviteInfo || inviteError) && (
+  const inviteDialog = (inviteCode && (inviteInfo || inviteError) && (
             <div className="cast-invite-overlay">
               <div className="cast-invite-card">
                 <div className="cast-invite-icon">🎬</div>
@@ -482,7 +543,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
                     <p className="cast-invite-meta">《{inviteInfo.title || "未命名内容"}》</p>
                     <p className="cast-invite-meta">👥 {inviteInfo.participantCount || 1} 人已加入 · 最多 {inviteInfo.maxParticipants || 50} 人</p>
                     <div className="cast-invite-actions">
-                      <button type="button" className="cast-invite-accept" onClick={handleAcceptInvite} disabled={inviteBusy}>
+                      <button type="button" className="cast-invite-accept" onClick={handleAcceptInvite} disabled={inviteBusy || Boolean(room)}>
                         {inviteBusy ? "加入中…" : "接受邀请"}
                       </button>
                       <button type="button" className="cast-invite-decline" onClick={handleDeclineInvite} disabled={inviteBusy}>
@@ -501,36 +562,10 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
                 )}
               </div>
             </div>
-          )}
+          ));
 
-          <div className="cast-status-bar">
-            <span />
-            <span />
-          </div>
-
-          <div className="cast-nav">
-            <span className="cast-nav-back" onClick={handleClose}>← 返回</span>
-            <span className="cast-nav-title">放映厅</span>
-            <span className="cast-nav-right">票夹</span>
-          </div>
-
-          <div className="cast-waiting">
-            <div className="cast-waiting-icon">📡</div>
-            <div className="cast-waiting-title">等待投屏</div>
-            <div className="cast-waiting-hint">在 B站 等视频 App 中点击投屏，选择「灯塔」。</div>
-
-            <div className="cast-waiting-url-row">
-              <input className="cast-waiting-url-input" type="url" placeholder="粘贴视频地址…" value={urlInput} onChange={(e) => setUrlInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleExtract()} />
-              <button className="cast-waiting-extract-btn" type="button" onClick={handleExtract} disabled={extracting || !urlInput.trim()}>
-                {extracting ? "提取中…" : "提取"}
-              </button>
-            </div>
-          </div>
-
-          {/* 放映厅: 创建/加入 */}
-          <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", margin: "0 16px" }} />
-          <div className="cast-room-actions">
-            {!roomRef.current ? (
+  const roomActions = (<div className="cast-room-actions">
+            {!room ? (
               <>
                 <button type="button" className="cast-room-create-btn" onClick={handleCreateRoom} disabled={roomBusy || !mediaUrl}>
                   {roomBusy ? "创建中…" : "🎬 创建放映厅"}
@@ -553,7 +588,41 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
                 <button type="button" className="cast-room-leave-btn" onClick={handleLeaveRoom}>退出放映厅</button>
               </div>
             )}
+          </div>);
+
+  if (showWaitingOnly) {
+    return (
+      <div className="cast-root">
+        <div className="cast-narrow-scroll">
+          {inviteDialog}
+          <div className="cast-status-bar">
+            <span />
+            <span />
           </div>
+
+          <div className="cast-nav">
+            <span className="cast-nav-back" onClick={handleClose}>← 返回</span>
+            <span className="cast-nav-title">放映厅</span>
+            <span className="cast-nav-right">票夹</span>
+          </div>
+
+          {playbackError && <p role="alert" className="cast-room-error">{playbackError}</p>}
+          <div className="cast-waiting">
+            <div className="cast-waiting-icon">📡</div>
+            <div className="cast-waiting-title">等待投屏</div>
+            <div className="cast-waiting-hint">在 B站 等视频 App 中点击投屏，选择「灯塔」。</div>
+
+            <div className="cast-waiting-url-row">
+              <input className="cast-waiting-url-input" type="url" placeholder="粘贴视频地址…" value={urlInput} onChange={(e) => setUrlInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleExtract()} />
+              <button className="cast-waiting-extract-btn" type="button" onClick={handleExtract} disabled={extracting || !urlInput.trim()}>
+                {extracting ? "提取中…" : "提取"}
+              </button>
+            </div>
+          </div>
+
+          {/* 放映厅: 创建/加入 */}
+          <div style={{ borderTop: "1px solid rgba(255,255,255,0.08)", margin: "0 16px" }} />
+          {roomActions}
         </div>
       </div>
     );
@@ -565,6 +634,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
   return (
     <div className="cast-root">
       <div className="cast-player-body">
+        {inviteDialog}
         {/* 顶部标题 */}
         <div className="cast-player-header">
           <span className="cast-player-header-title">{title || "当前播放内容"}</span>
@@ -572,7 +642,10 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
         </div>
 
         {/* 同步标签 */}
-        <div className="cast-sync-label">播放已同步</div>
+        <div className="cast-sync-label">{launching ? "正在打开播放器…" : launchFailed ? "播放器打开失败" : "已打开原生播放器"}</div>
+        {launchFailed && <button type="button" onClick={() => setLaunchAttempt((value) => value + 1)}>重试打开播放器</button>}
+        {playbackError && <p role="alert" className="cast-room-error">{playbackError}</p>}
+        {captureNotice && <p role="status" className="cast-sync-label">{captureNotice}</p>}
 
         {/* 视频播放器 */}
         <div className="cast-video-container">
@@ -587,7 +660,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
 
           {/* 进度条 */}
           <div className="cast-progress-track">
-            <div className="cast-progress-fill" />
+            <div className="cast-progress-fill" style={{ width: (position.durationMs > 0 ? Math.min(100, position.positionMs / position.durationMs * 100) : 0) + "%" }} />
           </div>
 
           {/* 控制栏 */}
@@ -599,8 +672,8 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
               <span className="cast-control-time">{currentTime} / {totalTime}</span>
             </div>
             <div className="cast-controls-right">
-              <button className="cast-control-btn" onClick={handleScreenshot} title="截帧">
-                📷
+              <button className="cast-control-btn" onClick={handleScreenshot} title="截帧" disabled={capturing}>
+                {capturing ? "…" : "📷"}
               </button>
               <span className="cast-control-speed" onClick={handleCycleSpeed} title="切换倍速">
                 {playbackSpeed}x
@@ -613,7 +686,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
         </div>
 
         {/* 分 P 信息 */}
-        <div className="cast-episode">P1/1 · 00:00</div>
+        <div className="cast-episode">P1/1 · {totalTime}</div>
 
         {/* 内容标题 */}
         <div className="cast-content-title">{title || "内容标题"}</div>
@@ -654,7 +727,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
           {analysisState === "error" && (
             <div className="cast-analysis-error">
               <span>连接暂时中断</span>
-              <span className="cast-analysis-retry" onClick={() => setAnalysisState("loading")}>重试分析</span>
+              <span>等待下一帧重试</span>
             </div>
           )}
           {analysisState === "complete" && (
@@ -666,7 +739,8 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
         </div>
 
         {/* 放映厅房间信息 */}
-        {roomRef.current && (
+        {!room && roomActions}
+        {room && (
           <div className="cast-room-panel">
             <div className="cast-room-code-area" style={{ flexDirection: "row", justifyContent: "space-between", padding: "12px 16px" }}>
               <div>

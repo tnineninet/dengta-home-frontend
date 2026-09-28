@@ -3,6 +3,7 @@ import {
   lazy,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -43,8 +44,20 @@ import {
   writeAccountStorage,
 } from "./account-storage";
 import CompanionStatus from "./CompanionStatus";
+import CompanionGenderFields from "./CompanionGenderFields";
+import { companionPronoun } from "./companion-gender";
 import AmbientContextBadge from "./AmbientContextBadge";
 import ChatMessage from "./ChatMessage";
+import ChatActivities from "./ChatActivities.jsx";
+import AchievementGuide from "./AchievementGuide.jsx";
+import LocalDiagnostics from "./LocalDiagnostics.jsx";
+import { diagnosticScopeKey } from "./operation-diagnostics.js";
+import FeatureNavigation from "./FeatureNavigation.jsx";
+import { FEATURE_LABELS, QUICK_FEATURES } from "./feature-navigation.js";
+import AchievementNotice from "./AchievementNotice.jsx";
+import { ACHIEVEMENT_ACTIONS, freshAchievements, guideStorageKey } from "./achievement-guide.js";
+import { appendActivityDraft } from "./chat-activities.js";
+import { useChatDraft } from "./use-chat-draft.js";
 import ChatBackground from "./ChatBackground";
 import CelestialBackdrop from "./CelestialBackdrop";
 import SunGlassTimeDeck from "./SunGlassTimeDeck";
@@ -147,6 +160,7 @@ import {
   formatPromptReceiptProvider,
   normalizePromptReceipt,
   normalizeSettingsDraft,
+  mergeLegacyPromptFields,
   settingsNeedsUnifiedPromptMigration,
   settingsPayloadFingerprint,
 } from "./settings";
@@ -314,6 +328,8 @@ const VoiceProviderSettings = lazy(
   () => import("./VoiceProviderSettings"),
 );
 const WorkspaceManager = lazy(() => import("./WorkspaceManager"));
+const CottonPet = lazy(() => import("./CottonPet.jsx"));
+const CottonChatDock = lazy(() => import("./CottonChatDock.jsx"));
 
 function DeferredFeature({ label }) {
   return (
@@ -400,7 +416,7 @@ const SETTINGS_CATEGORIES = [
   },
 ];
 
-function ErrorLogsPanel() {
+function ErrorLogsPanel({ accountScope, companionScope }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -432,10 +448,12 @@ function ErrorLogsPanel() {
   }
 
   return (
+    <div>
+      <LocalDiagnostics scope={diagnosticScopeKey(accountScope, companionScope)} />
     <div className="settings-card error-logs-card">
       <h3>错误日志（最近 {logs.length} 条）</h3>
       <p className="card-hint">
-        每条记录包含错误代码、来源、位置（文件:行:列）与上游状态；点击可展开完整堆栈。
+        点击可查看错误代码、业务文件位置和请求阶段。展示技术信息，不展示异常原文；旧记录可能没有可用位置。
       </p>
       <div className="error-logs-actions">
         <button type="button" onClick={() => void refresh()} disabled={loading}>
@@ -466,6 +484,7 @@ function ErrorLogsPanel() {
               {expanded && (
                 <div className="error-log-detail">
                   <p className="error-log-message">{log.message || ""}</p>
+                  {log.error_location && <p>业务位置：{log.error_location}</p>}
                   <p className="error-log-meta">
                     来源 / Source: {log.error_source || "dengta"} · 阶段 / Phase:{" "}
                     {log.provider_phase || "-"} · 上游 / Upstream:{" "}
@@ -481,6 +500,7 @@ function ErrorLogsPanel() {
           );
         })}
       </ul>
+    </div>
     </div>
   );
 }
@@ -702,6 +722,7 @@ const navItems = [
   { id: "moments", icon: "◌", label: "Moments" },
   { id: "diary", icon: "▱", label: "Diary" },
   { id: "nursery", icon: "♡", label: "Family" },
+  { id: "cotton", icon: "✿", label: "小棉花" },
   { id: "together", icon: "▻", label: "Together" },
   { id: "music", icon: "🎵", label: "听歌" },
   { id: "duel", icon: "⚔", label: "Duel" },
@@ -945,7 +966,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
-  const [message, setMessage] = useState("");
+  const [message, setMessage, setSessionDraft, moveSessionDraft] = useChatDraft(accountStorageScope, companionScope, activeSessionId);
   const [messageReference, setMessageReference] = useState(null);
   const [turnContext, setTurnContext] = useState("");
   const [chatAttachments, setChatAttachments] = useState([]);
@@ -979,8 +1000,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     () => readCachedWeather().weather,
   );
   const [weatherPreviewMode, setWeatherPreviewMode] = useState(null);
-  // 输入框草稿持久化（页面刷新后恢复）
-  const draftTimerRef = useRef(null);
   const {
     preferences: themePreferences,
     snapshot: celestialSnapshot,
@@ -1231,7 +1250,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [voiceState, setVoiceState] = useState(VOICE_STATES.idle);
   const [voiceElapsedMs, setVoiceElapsedMs] = useState(0);
   const [voiceError, setVoiceError] = useState("");
-  const [voiceTapToSend, setVoiceTapToSend] = useState(false);
   const [lastVoiceAnalysis, setLastVoiceAnalysis] = useState(null);
   const [isComposerMenuOpen, setIsComposerMenuOpen] = useState(false);
   const [isStatusPanelExpanded, setIsStatusPanelExpanded] = useState(false);
@@ -1351,7 +1369,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const composerHintLoadTokenRef = useRef(0);
   const settingsLifecycleFlushPendingRef = useRef(false);
   const flushLatestSettingsDraftRef = useRef(() => Promise.resolve(true));
-  const settingsMigrationPendingRef = useRef(false);
   const componentMountedRef = useRef(true);
   const musicPlaybackSyncRef = useRef({
     sessionId: "",
@@ -2096,9 +2113,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         globalThis.localStorage,
         accountStorageScope,
       );
-      const migrationNeeded = settingsNeedsUnifiedPromptMigration(
-        settingsData.settings,
-      );
       const nextSettings = normalizeSettingsDraft(settingsData.settings);
       const nextSessions = sessionsData.sessions || [];
       const serverRuntimeState = runtimeData?.state || {};
@@ -2137,7 +2151,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         const resetStatus = createResetCompanionStatus();
         const resetInteractionStats = createDefaultCompanionInteractionStats();
         setMessages([]);
-        setMessage("");
+        setSessionDraft(activeSessionIdRef.current, "");
         setMessageReference(null);
         setTurnContext("");
         setMemories([]);
@@ -2167,10 +2181,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         latestDraftFingerprintRef.current = settingsFingerprint;
         setDraftSettings(nextSettings);
       }
-      lastSavedSettingsFingerprintRef.current = migrationNeeded
-        ? ""
-        : settingsFingerprint;
-      settingsMigrationPendingRef.current = migrationNeeded;
+      lastSavedSettingsFingerprintRef.current = settingsFingerprint;
       setSettings(nextSettings);
       setHasLoadedSettings(true);
       setSettingsAutosaveState(hasUnsavedSettingsDraft ? "pending" : "saved");
@@ -2221,21 +2232,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     loadChatSkinPreferences,
     refreshServiceHealth,
     refreshVoiceOutputStatus,
+    setSessionDraft,
     visualPreview,
   ]);
-
-  useEffect(() => {
-    if (
-      !hasLoadedSettings ||
-      !settingsMigrationPendingRef.current
-    ) {
-      return;
-    }
-    settingsMigrationPendingRef.current = false;
-    scheduleSettingsAutosave(draftSettingsRef.current, { immediate: true });
-    // This migration is intentionally armed only by the initial settings load.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasLoadedSettings]);
 
   // 启动随机播放：勾选"打开软件后随机播放一首歌"后，
   // 每次进入 App（登录态就绪）随机播一首 DengTa 里已有、不跳转网易云的内置歌曲；
@@ -2351,37 +2350,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       savedScrollState?.pinnedToBottom ?? true;
     setMessageReference(null);
     void loadComposerHint(activeSessionId);
-    // 从 localStorage 恢复该会话的草稿
-    try {
-      const key = `dengta_chat_draft_${activeSessionId || "__draft__"}`;
-      const saved = globalThis.localStorage?.getItem(key);
-      if (typeof saved === "string" && saved.length > 0) {
-        setMessage(saved);
-      }
-    } catch {
-      // localStorage 不可用时静默降级
-    }
   }, [activeSessionId, loadComposerHint]);
-
-  // 输入框草稿防抖保存到 localStorage
-  useEffect(() => {
-    const key = `dengta_chat_draft_${activeSessionId || "__draft__"}`;
-    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
-    draftTimerRef.current = setTimeout(() => {
-      try {
-        if (message.length > 0) {
-          globalThis.localStorage?.setItem(key, message);
-        } else {
-          globalThis.localStorage?.removeItem(key);
-        }
-      } catch {
-        // localStorage 不可用时静默降级
-      }
-    }, 500);
-    return () => {
-      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
-    };
-  }, [message, activeSessionId]);
 
   useEffect(() => {
     if (!hasLoadedSettingsRef.current) return;
@@ -3314,7 +3283,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   function setVoiceTapToSendMode(enabled) {
     voiceTapToSendRef.current = enabled;
-    if (componentMountedRef.current) setVoiceTapToSend(enabled);
   }
 
   function clearVoiceRecordingTimers() {
@@ -3461,6 +3429,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           body: JSON.stringify({ title: "语音对话" }),
         });
         sessionId = created.session.id;
+        moveSessionDraft(null, sessionId);
         voiceSessionId = sessionId;
         setSessions((current) =>
           current.some((item) => item.id === sessionId)
@@ -4193,6 +4162,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             : [created.session, ...current],
         );
         if (!activeSessionIdRef.current) {
+          moveSessionDraft(null, sessionId);
           activeSessionIdRef.current = sessionId;
           messagesSessionIdRef.current = sessionId;
           setActiveSessionId(sessionId);
@@ -4519,11 +4489,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
     if (!preserveComposer) {
       setMessage("");
-      // 清除 localStorage 草稿
-      try {
-        const key = `dengta_chat_draft_${activeSessionId || "__draft__"}`;
-        globalThis.localStorage?.removeItem(key);
-      } catch { /* 静默降级 */ }
       setMessageReference(null);
       chatAttachmentsRef.current = [];
       setChatAttachments([]);
@@ -4568,6 +4533,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         });
         sessionId = created.session.id;
         activeSessionIdRef.current = sessionId;
+        moveSessionDraft(null, sessionId);
         messagesSessionIdRef.current = sessionId;
         streamingSessionIdRef.current = sessionId;
         setSessions((current) => [created.session, ...current]);
@@ -4886,6 +4852,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         throw error;
       }
       sendSucceeded = true;
+      void refreshFunLabs();
       if (
         !preserveComposer &&
         turnContextSnapshot &&
@@ -4983,7 +4950,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             );
           }
           if (text) {
-            setMessage((current) =>
+            setSessionDraft(sessionId, (current) =>
               restoreChatRetryText(current, text),
             );
           }
@@ -5028,7 +4995,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             );
           }
           if (text) {
-            setMessage((current) =>
+            setSessionDraft(sessionId, (current) =>
               restoreChatRetryText(current, text),
             );
           }
@@ -5666,12 +5633,20 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }, []);
 
 
-  const [funLabsState, setFunLabsState] = useState({
+  const funScope = JSON.stringify([accountStorageScope, companionScope]);
+  const funToken = useMemo(() => ({ scope: funScope, requestId: 0 }), [funScope]);
+  const funTokenRef = useRef(funToken);
+  funTokenRef.current = funToken;
+  const [funLabsSnapshot, setFunLabsState] = useState({
     status: "idle",
     dates: [],
     achievements: [],
     shots: { today: null, recent: [] },
   });
+  const funLabsState = funLabsSnapshot.scope === funToken ? funLabsSnapshot : {
+    status: "idle", dates: [], achievements: [], shots: { today: null, recent: [] },
+  };
+  const [guideRevision, setGuideRevision] = useState(0);
   const [customAchievement, setCustomAchievement] = useState({
     title: "",
     emoji: "",
@@ -5825,65 +5800,32 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     visible: false,
     items: [],
   });
-  const [onboarding, setOnboarding] = useState(() => {
-    // 进度持久化:跳去设置/聊天后再回来,引导从上次的步骤继续。
-    try {
-      const saved = JSON.parse(
-        window.localStorage.getItem("dengta_onboarding_v1") || "{}",
-      );
-      return { open: false, step: Number(saved.step) || 0 };
-    } catch {
-      return { open: false, step: 0 };
-    }
-  });
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(
-        "dengta_onboarding_v1",
-        JSON.stringify({ step: onboarding.step }),
-      );
-    } catch {
-      // 本地存储不可用时只影响续接。
-    }
-  }, [onboarding.step]);
   const unlockedCodesRef = useRef(null);
+  const dismissAchievement = useCallback(() => setAchievementPopup({ visible: false, items: [] }), []);
 
-  function detectAchievementUnlocks(achievements) {
-    const unlocked = achievements
-      .filter((item) => item.unlocked)
-      .map((item) => item.code || item.id);
-    const previous = unlockedCodesRef.current;
-    unlockedCodesRef.current = unlocked;
-    if (!previous) return;
-    const fresh = achievements.filter(
-      (item) =>
-        item.unlocked && !previous.includes(item.code || item.id)
-    );
-    if (fresh.length > 0) {
-      setAchievementPopup({ visible: true, items: fresh.slice(0, 3) });
-    }
-  }
-
-  async function refreshFunLabs() {
-    setFunLabsState((previous) => ({ ...previous, status: "busy" }));
-    // 三个数据各自独立请求与容错：任何一个失败都不再拖垮整页（避免“等 5 秒后变加载失败”）。
+  const refreshFunLabs = useCallback(async () => {
+    if (funTokenRef.current !== funToken || !componentMountedRef.current) return;
+    const requestId = ++funToken.requestId;
+    setFunLabsState(previous => ({ ...(previous.scope === funToken ? previous : { dates: [], achievements: [], shots: { today: null, recent: [] } }), scope: funToken, status: "busy" }));
     const [datesData, achievementsData, shotsData] = await Promise.all([
-      apiRequest("/api/v2/special-dates", { timeoutMs: 12_000 }).catch(() => ({ dates: [] })),
-      apiRequest("/api/v2/fun-labs/achievements", { timeoutMs: 20_000 }).catch(() => ({ achievements: [] })),
-      apiRequest("/api/v2/fun-labs/daily-shots", { timeoutMs: 12_000 }).catch(() => ({ today: null, recent: [] })),
+      apiRequest("/api/v2/special-dates", { timeoutMs: 12_000 }).catch(() => null),
+      apiRequest("/api/v2/fun-labs/achievements", { timeoutMs: 20_000 }).catch(() => null),
+      apiRequest("/api/v2/fun-labs/daily-shots", { timeoutMs: 12_000 }).catch(() => null),
     ]);
-    const achievements = Array.isArray(achievementsData?.achievements)
-      ? achievementsData.achievements
-      : [];
-    setFunLabsState((previous) => ({
-      status: "success",
-      dates: Array.isArray(datesData?.dates) ? datesData.dates : previous.dates,
-      achievements: achievements.length > 0 ? achievements : previous.achievements,
-      shots: shotsData || previous.shots,
+    if (funTokenRef.current !== funToken || funToken.requestId !== requestId || !componentMountedRef.current) return;
+    const items = Array.isArray(achievementsData?.achievements) ? achievementsData.achievements : null;
+    setFunLabsState(previous => ({
+      scope: funToken, status: items ? "success" : "error",
+      dates: Array.isArray(datesData?.dates) ? datesData.dates : previous.dates || [],
+      achievements: items || previous.achievements || [],
+      shots: shotsData || previous.shots || { today: null, recent: [] },
     }));
-    detectAchievementUnlocks(achievements);
-  }
+    if (!items) return;
+    const previous = unlockedCodesRef.current?.scope === funToken ? unlockedCodesRef.current.codes : null;
+    const fresh = freshAchievements(previous, items);
+    unlockedCodesRef.current = { scope: funToken, codes: items.filter(item => item.unlocked).map(item => item.code || item.id) };
+    if (fresh.length) setAchievementPopup({ scope: funToken, visible: true, items: fresh });
+  }, [funToken]);
 
   async function addCustomAchievement() {
     if (!customAchievement.title.trim()) return;
@@ -5900,7 +5842,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       setCustomAchievement({ title: "", emoji: "", description: "" });
       await refreshFunLabs();
     } catch {
-      // 添加失败不阻塞。
+      if (funTokenRef.current === funToken) setNotice("成就没有保存成功，内容仍在输入框中。请重试，或在设置的错误日志中查看 DT-ACHIEVEMENTS。");
     }
   }
 
@@ -5912,7 +5854,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       );
       await refreshFunLabs();
     } catch {
-      // 解锁失败不阻塞。
+      if (funTokenRef.current === funToken) setNotice("这次未能保存成就完成状态，请稍后重试。诊断编号：DT-ACHIEVEMENTS。");
     }
   }
 
@@ -5924,93 +5866,43 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       });
       await refreshFunLabs();
     } catch {
-      // 删除失败不阻塞。
+      if (funTokenRef.current === funToken) setNotice("这次没有删除成功，请稍后重试。可到设置中的错误日志查看操作诊断。");
     }
   }
 
   async function completeOnboarding() {
-    try {
-      await apiRequest("/api/v2/fun-labs/onboarding", {
-        method: "POST",
-        timeoutMs: 12_000,
-        body: JSON.stringify({}),
-      });
-      await refreshFunLabs();
-      setOnboarding({ open: false, step: 0 });
-    } catch {
-      // 完成失败不阻塞。
+    const result = await apiRequest("/api/v2/fun-labs/onboarding", {
+      method: "POST", timeoutMs: 12_000, body: JSON.stringify({}),
+    });
+    if (funTokenRef.current !== funToken || !componentMountedRef.current) return;
+    if (Array.isArray(result.achievements)) {
+      setFunLabsState(previous => ({ ...previous, scope: funToken, achievements: result.achievements }));
     }
+    await refreshFunLabs();
   }
 
-  useEffect(() => {
-    if (!achievementPopup.visible) return undefined;
-    const timer = setTimeout(
-      () => setAchievementPopup({ visible: false, items: [] }),
-      5200
-    );
-    return () => clearTimeout(timer);
-  }, [achievementPopup.visible]);
+  function handleGuideAction(action) {
+    if (action === "connect") { openProviderRecovery(); return; }
+    changeView("chat");
+    if (action === "explore") setIsComposerMenuOpen(true);
+    else requestAnimationFrame(() => messageInputRef.current?.focus());
+  }
 
-  useEffect(() => {
-    if (!onboarding.open && onboarding.step !== 2) return undefined;
-    let cancelled = false;
-    const tick = async () => {
-      try {
-        const data = await apiRequest("/api/v2/fun-labs/achievements", {
-          timeoutMs: 12_000,
-        });
-        if (cancelled) return;
-        const items = Array.isArray(data?.achievements) ? data.achievements : [];
-        const firstChat = items.find((item) => item.code === "first_chat");
-        if (firstChat?.unlocked && onboarding.step === 2) {
-          // 第一句话发出后自动进入第 3 步(领取毕业成就),即使引导窗口此刻关着。
-          setOnboarding((previous) => ({ ...previous, step: 3 }));
-        }
-        const graduated = items.find((item) => item.code === "onboarding_1");
-        if (graduated?.unlocked && onboarding.step < 3) {
-          setOnboarding((previous) => ({ ...previous, step: 3 }));
-        }
-      } catch {
-        // 轮询失败忽略。
-      }
-    };
-    const timer = setInterval(() => {
-      void tick();
-    }, 4000);
-    void tick();
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-     
-  }, [onboarding.open, onboarding.step]);
+  function renderAchievementGuide() {
+    return <AchievementGuide key={funScope + guideRevision} storageKey={guideStorageKey(accountStorageScope, companionScope)}
+      achievements={funLabsState.achievements} loading={funLabsState.status === "busy"}
+      onAction={handleGuideAction} onClaim={completeOnboarding} />;
+  }
 
-  const onboardingAutoShownRef = useRef(false);
-  useEffect(() => {
-    if (onboardingAutoShownRef.current || funLabsState.achievements.length === 0) {
-      return;
-    }
-    onboardingAutoShownRef.current = true;
-    const firstChat = funLabsState.achievements.find(
-      (item) => item.code === "first_chat",
-    );
-    const graduated = funLabsState.achievements.find(
-      (item) => item.code === "onboarding_1",
-    );
+  function openAchievementGuide() {
+    const key = guideStorageKey(accountStorageScope, companionScope);
     try {
-      if (
-        !firstChat?.unlocked &&
-        !graduated?.unlocked &&
-        !window.localStorage.getItem("dengta_onboarding_auto_shown")
-      ) {
-        window.localStorage.setItem("dengta_onboarding_auto_shown", "1");
-        setOnboarding({ open: true, step: 0 });
-      }
-    } catch {
-      // 本地存储不可用时仅跳过自动弹出。
-    }
-     
-  }, [funLabsState.achievements]);
+      const saved = JSON.parse(globalThis.localStorage?.getItem(key) || "{}");
+      if (key) globalThis.localStorage?.setItem(key, JSON.stringify({ ...saved, collapsed: false }));
+    } catch { /* The guide remains available without storage. */ }
+    setGuideRevision(value => value + 1);
+    changeView("achievements");
+  }
 
   async function removeSpecialDate(id) {
     try {
@@ -6027,11 +5919,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   useEffect(() => {
     void refreshFunLabs();
     const timer = setInterval(() => {
-      void refreshFunLabs();
+      if (document.visibilityState !== "hidden") void refreshFunLabs();
     }, 90_000);
     return () => clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [refreshFunLabs]);
 
 
   async function saveScreenGlanceConfig(nextValue = screenGlanceConfig) {
@@ -6510,9 +6401,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       ...draftSettingsRef.current,
       prompt_mode: "unified",
       unified_system_prompt: value,
-      system_prompt: "",
-      additional_prompt: "",
-      personality: "",
     };
     draftSettingsRef.current = nextDraft;
     setSettingsSaveReceipt(null);
@@ -6855,6 +6743,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           aria-live="polite"
           onScroll={trackMessageScroll}
         >
+          {!isLoading && renderAchievementGuide()}
           {isLoading ? (
             <div className="empty-state">正在加载 DengTa home…</div>
           ) : messages.length === 0 ? (
@@ -6878,6 +6767,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   chatSkinPreferences,
                 )}
                 aiName={effectiveAiName}
+                aiPronoun={companionPronoun(settings)}
                 userName={effectiveUserName}
                 companionMood={companionStatus.mood}
                 apiBaseUrl={API_BASE_URL}
@@ -6903,6 +6793,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         </section>
 
         <div className="composer-wrap">
+          <Suspense fallback={null}>
+            <CottonChatDock
+              accountScope={accountStorageScope}
+              companionScope={companionScope}
+              blocked={isSettingsOpen || isSidebarOpen || isMobileNavOpen || isComposerMenuOpen || isStatusPanelExpanded || Boolean(imageViewer)}
+              onOpenHouse={() => changeView("cotton")}
+            />
+          </Suspense>
           {isComposerMenuOpen && (
             <button
               type="button"
@@ -7144,6 +7042,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   <small>PDF、文档与文本</small>
                 </button>
               </div>
+              <ChatActivities key={JSON.stringify([accountStorageScope, companionScope, activeSessionId])} disabled={isVoiceInputBusy}
+                onChoose={(text) => {
+                  setMessage((current) => appendActivityDraft(current, text));
+                  setIsComposerMenuOpen(false);
+                  requestAnimationFrame(() => messageInputRef.current?.focus());
+                }} />
               <label className="chat-model-picker">
                 <span>模型</span>
                 <select
@@ -7656,44 +7560,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           <h2>🏆 成就</h2>
           <p>
             {funLabsState.achievements.length > 0
-              ? `${unlockedCount}/${funLabsState.achievements.length} 已解锁 · 你和 AI 一起完成的目标`
+              ? `已经留下 ${unlockedCount} 份小纪念 · 按自己的节奏慢慢发现`
               : "加载中…"}
           </p>
         </header>
-        {(() => {
-          const firstChatDone = funLabsState.achievements.find(
-            (item) => item.code === "first_chat",
-          )?.unlocked;
-          const graduated = funLabsState.achievements.find(
-            (item) => item.code === "onboarding_1",
-          )?.unlocked;
-          if (graduated) return null;
-          const targetStep = firstChatDone ? 3 : onboarding.step;
-          const label = firstChatDone
-            ? "最后一步 · 领取毕业成就"
-            : onboarding.step === 0
-              ? "新手引导 · 第 1/3 步"
-              : onboarding.step === 1
-                ? "新手引导 · 第 2/3 步（接入 AI 接口）"
-                : "新手引导 · 已发出第一句话，进入最后一步";
-          return (
-            <div className="onboarding-progress">
-              <span>{label}</span>
-              <button
-                type="button"
-                className="fun-onboarding-button"
-                onClick={() => setOnboarding({ open: true, step: targetStep })}
-              >
-                {firstChatDone ? "领取成就 🎉" : onboarding.step === 0 ? "开始引导" : "继续引导"}
-              </button>
-            </div>
-          );
-        })()}
+        {renderAchievementGuide()}
         <div className="notification-feature-panel device-activity-panel">
           <div className="device-activity-heading">
             <div>
               <strong>成就墙</strong>
-              <span>系统成就自动解锁 · 自定义成就一起完成</span>
+              <span>完成后自动记录 · 不必集齐，也没有截止日期</span>
             </div>
             <div className="device-activity-actions">
               <button type="button" onClick={() => void refreshFunLabs()}>
@@ -7702,9 +7578,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               <button
                 type="button"
                 className="fun-onboarding-button"
-                onClick={() => setOnboarding({ open: true, step: 0 })}
+                onClick={openAchievementGuide}
               >
-                🎓 新手引导
+                ✧ 使用路线
               </button>
             </div>
           </div>
@@ -7728,10 +7604,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                     }`}
                   >
                     <span className="fun-achievement-emoji" aria-hidden="true">
-                      {item.unlocked ? item.emoji : "🔒"}
+                      {item.emoji || "✧"}
                     </span>
                     <strong>{item.title}</strong>
                     <small>{item.description}</small>
+                    <small>{item.unlocked ? "✓ 已留下这份纪念" : "有兴趣时再试试"}</small>
+                    {!item.unlocked && !item.custom && ACHIEVEMENT_ACTIONS[item.code] && <button type="button" onClick={() => {
+                      const target = ACHIEVEMENT_ACTIONS[item.code].view;
+                      if (target === "guide") openAchievementGuide();
+                      else changeView(target);
+                    }}>{ACHIEVEMENT_ACTIONS[item.code].label}</button>}
                     {item.custom && !item.unlocked ? (
                       <div className="fun-achievement-card-actions">
                         <button
@@ -8063,7 +7945,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   function renderDlnaCastPlayer() {
     return (
       <DlnaCastPlayer
-        key={dlnaCastInfo?.receivedAt || "cast"}
+        key={JSON.stringify([accountStorageScope, companionScope, dlnaCastInfo?.receivedAt || "cast"])}
         info={dlnaCastInfo}
         userName={effectiveUserName}
         aiName={effectiveAiName}
@@ -8423,6 +8305,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               />
             </label>
 
+            <CompanionGenderFields settings={draftSettings} onChange={updateDraft} />
+
             <div className="service-last-checked" role="status">
               当前账号权限：
               {settings.account_role === "owner"
@@ -8434,6 +8318,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             </div>
 
             <div className="prompt-layer-list unified-prompt-layout">
+              {settingsNeedsUnifiedPromptMigration(draftSettings) && <div className="mcp-setup-required">
+                <p>当前使用旧版个性化字段。修改昵称或性别不会合并或改写它们；点击下方按钮可将原文带标题复制到个性化指令。</p>
+                <button type="button" className="secondary-button" onClick={() => updateUnifiedPrompt(mergeLegacyPromptFields(draftSettings))}>将旧版字段复制到个性化指令</button>
+              </div>}
               <label className="prompt-layer highest-priority unified-prompt-layer">
                 <span className="prompt-layer-title">
                   <span className="prompt-priority-number">指</span>
@@ -8446,7 +8334,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   <em>长期保存</em>
                 </span>
                 <p>
-                  写下希望伴侣长期遵循的身份、关系、表达方式和规则。保存与发送时不解析内容，也不删除开头、结尾的空格或换行；旧版三个输入区只会在首次迁移时带标题合并到这里。
+                  写下希望伴侣长期遵循的身份、关系、表达方式和规则。保存时保留原文的空格与换行；旧版字段只在你主动选择复制时合并。
                 </p>
                 <textarea
                   data-setting-field="unified_system_prompt"
@@ -8828,7 +8716,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               </>
             )}
             {settingsCategory === "logs" && (
-              <ErrorLogsPanel />
+              <ErrorLogsPanel key={JSON.stringify([accountStorageScope, companionScope])} accountScope={accountStorageScope} companionScope={companionScope} />
             )}
 
             {settingsCategory === "devices" && (
@@ -9430,6 +9318,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     moments: "Moments",
     diary: "Diary",
     nursery: "Family",
+    cotton: "小棉花的小屋",
     together: "Together",
     duel: "Duel",
     memories: "Portrait",
@@ -9474,18 +9363,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           </div>
         </div>
 
-        <nav className="primary-nav" aria-label="主要功能">
-          {navItems.map((item) => (
-            <button
-              className={activeView === item.id ? "active" : ""}
-              key={item.id}
-              onClick={() => changeView(item.id)}
-            >
-              <span>{item.icon}</span>
-              {item.label}
-            </button>
-          ))}
-        </nav>
+        <FeatureNavigation items={navItems} activeView={activeView} onNavigate={changeView} />
 
         <div className="session-heading">
           <span>最近对话</span>
@@ -9617,158 +9495,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           </div>
         </header>
 
-        {achievementPopup.visible ? (
-          <div
-            className="achievement-popup-backdrop"
-            role="dialog"
-            aria-modal="true"
-            onClick={() => setAchievementPopup({ visible: false, items: [] })}
-          >
-            <div
-              className="achievement-popup-card"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div className="achievement-popup-confetti" aria-hidden="true">
-                {Array.from({ length: 16 }).map((_, index) => (
-                  <span key={index} />
-                ))}
-              </div>
-              <div className="achievement-popup-emoji" aria-hidden="true">
-                {achievementPopup.items[0]?.emoji || "🏆"}
-              </div>
-              <h3>成就解锁！</h3>
-              {achievementPopup.items.map((item) => (
-                <div
-                  key={item.code || item.id}
-                  className="achievement-popup-item"
-                >
-                  <strong>
-                    {item.emoji} {item.title}
-                  </strong>
-                  <small>{item.description}</small>
-                </div>
-              ))}
-              <button
-                type="button"
-                className="achievement-popup-close"
-                onClick={() => setAchievementPopup({ visible: false, items: [] })}
-              >
-                收下
-              </button>
-            </div>
-          </div>
-        ) : null}
-
-        {onboarding.open ? (
-          <div
-            className="achievement-popup-backdrop"
-            role="dialog"
-            aria-modal="true"
-            onClick={() => setOnboarding({ open: false, step: 0 })}
-          >
-            <div
-              className="onboarding-card"
-              onClick={(event) => event.stopPropagation()}
-            >
-              <div className="onboarding-steps" aria-hidden="true">
-                {[0, 1, 2, 3].map((step) => (
-                  <span
-                    key={step}
-                    className={`onboarding-dot${
-                      onboarding.step >= step ? " is-done" : ""
-                    }${onboarding.step === step ? " is-current" : ""}`}
-                  />
-                ))}
-              </div>
-              {onboarding.step === 0 ? (
-                <>
-                  <div className="onboarding-emoji" aria-hidden="true">🗼</div>
-                  <h3>欢迎来到灯塔</h3>
-                  <p>
-                    三步点亮你的灯塔，领取「🎓 新手毕业」成就。跟着引导走，每一步都有成就等你。
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setOnboarding({ open: true, step: 1 })}
-                  >
-                    开始引导
-                  </button>
-                </>
-              ) : onboarding.step === 1 ? (
-                <>
-                  <div className="onboarding-emoji" aria-hidden="true">🔑</div>
-                  <h3>第一步 · 接入 AI 接口</h3>
-                  <p>
-                    点「去设置」，在「服务」分类里填入你的模型 API
-                    密钥（就是你平时用的那个 key）。填好后回到成就页，点「我已接入」继续。
-                  </p>
-                  <div className="onboarding-actions">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOnboarding((previous) => ({ ...previous, open: false }));
-                        openSettingsPanel();
-                        setSettingsCategory("services");
-                      }}
-                    >
-                      去设置
-                    </button>
-                    <button
-                      type="button"
-                      className="is-secondary"
-                      onClick={() => setOnboarding({ open: true, step: 2 })}
-                    >
-                      我已接入，下一步
-                    </button>
-                  </div>
-                  <small className="onboarding-hint">
-                    进度会自动保存；从设置返回后，到「🏆 成就」页点「继续引导」即可。
-                  </small>
-                </>
-              ) : onboarding.step === 2 ? (
-                <>
-                  <div className="onboarding-emoji" aria-hidden="true">💌</div>
-                  <h3>第二步 · 说第一句话</h3>
-                  <p>
-                    点「去聊天」跟小灯打个招呼，发出第一句话就能解锁「初次相遇」。说完回到成就页，系统会自动进入最后一步。
-                  </p>
-                  <div className="onboarding-actions">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOnboarding((previous) => ({ ...previous, open: false }));
-                        changeView("chat");
-                      }}
-                    >
-                      去聊天
-                    </button>
-                    <small className="onboarding-hint">
-                      进度会自动保存；说完第一句话后，成就页会显示「领取成就」。
-                    </small>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="onboarding-emoji" aria-hidden="true">🎓</div>
-                  <h3>毕业啦！</h3>
-                  <p>
-                    三步全部完成。收下你的「新手毕业」成就，去探索更多玩法吧。
-                  </p>
-                  <button type="button" onClick={() => void completeOnboarding()}>
-                    领取成就 🎉
-                  </button>
-                </>
-              )}
-              <button
-                type="button"
-                className="onboarding-close"
-                aria-label="关闭引导"
-                onClick={() => setOnboarding({ open: false, step: 0 })}
-              >
-                ×
-              </button>
-            </div>
-          </div>
+        {achievementPopup.visible && achievementPopup.scope === funToken && !isSettingsOpen ? (
+          <AchievementNotice items={achievementPopup.items} onDismiss={dismissAchievement}
+            onView={() => { dismissAchievement(); changeView("achievements"); }} />
         ) : null}
 
         {distillState.modalOpen ? (
@@ -9835,6 +9564,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             aiName={effectiveAiName}
             userName={effectiveUserName}
             status={companionStatus}
+            aiPronoun={companionPronoun(settings)}
             interactionStats={companionInteractionStats}
             intimateExpressionEnabled={
               settings.intimate_expression_enabled === true
@@ -9907,6 +9637,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           {activeView === "moments" && renderMoments()}
           {activeView === "diary" && renderDiary()}
           {activeView === "nursery" && renderNursery()}
+          {activeView === "cotton" && (
+            <Suspense fallback={<DeferredFeature label="正在打开小棉花的小屋…" />}>
+              <CottonPet accountScope={accountStorageScope} companionScope={companionScope} onShare={(text) => { setMessage((current) => current ? `${current}\n${text}` : text); changeView("chat"); }} />
+            </Suspense>
+          )}
           {activeView === "together" && renderTogether("together")}
           {activeView === "music" && renderTogether("music")}
           {activeView === "cast" && renderDlnaCastPlayer()}
@@ -9938,16 +9673,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           <span aria-hidden="true">{isMobileNavOpen ? "‹" : "›"}</span>
         </button>
         <nav className="mobile-nav" aria-label="手机侧边导航">
-          {navItems.map((item) => (
+          {navItems.filter(item => QUICK_FEATURES.includes(item.id)).map((item) => (
             <button
               className={activeView === item.id ? "active" : ""}
               key={item.id}
               onClick={() => changeView(item.id)}
             >
               <span>{item.icon}</span>
-              <small>{item.label}</small>
+              <small>{FEATURE_LABELS[item.id] || item.label}</small>
             </button>
           ))}
+                  <button type="button" className={!QUICK_FEATURES.includes(activeView) ? "active" : ""} aria-label="查看全部玩法" onClick={() => { setIsMobileNavOpen(false); setIsSidebarOpen(true); }}><span aria-hidden="true">···</span><small>更多</small></button>
         </nav>
       </div>
 

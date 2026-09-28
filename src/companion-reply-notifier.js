@@ -118,7 +118,7 @@ export async function maybeNotifyNewCompanionReplies(
             title: (cleanText(aiName, 30) || "小灯") + " 想对你说",
             body:
               cleanText(message.content, 120) ||
-              "她给你留了话，回 App 看看。",
+              `${cleanText(aiName, 30) || "伴侣"}给你留了话，回 App 看看。`,
             largeBody: cleanText(message.content, 800),
             channelId: COMPANION_REPLY_CHANNEL_ID,
             extra: {

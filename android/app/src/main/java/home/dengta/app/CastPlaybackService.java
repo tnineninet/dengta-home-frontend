@@ -31,6 +31,7 @@ import androidx.media3.exoplayer.source.ProgressiveMediaSource;
 
 import java.util.Locale;
 import java.util.Map;
+import java.lang.ref.WeakReference;
 
 /**
  * 投屏播放前台服务（PlayBridge ExoRendererService 模式 + Castor 本地代理）。
@@ -49,6 +50,25 @@ public final class CastPlaybackService extends Service {
     private static final int NOTIFICATION_ID = 42;
 
     private static final String TAG = "CastPlaybackService";
+    private static WeakReference<CastPlaybackService> activeService = new WeakReference<>(null);
+
+    /** Main-thread access only; commands must never start a new playback service. */
+    static CastPlaybackService getActiveService() {
+        return activeService.get();
+    }
+
+    void executePlaybackCommand(String action, Double value) {
+        if (originalUri.isEmpty()) throw new IllegalStateException("playback_not_active");
+        final ExoPlayer current = player;
+        CastPlaybackCommands.execute(action, value, current == null ? null : new CastPlaybackCommands.Target() {
+            @Override public void play() {
+                audioFocusHelper.requestFocus();
+                current.play();
+            }
+            @Override public void pause() { current.pause(); }
+            @Override public void setSpeed(float speed) { current.setPlaybackSpeed(speed); }
+        });
+    }
 
     public interface Listener {
         void onPlaybackStateChanged(int state);
@@ -101,6 +121,7 @@ public final class CastPlaybackService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        activeService = new WeakReference<>(this);
         createNotificationChannel();
         audioFocusHelper = new AudioFocusHelper(this);
         // 无 Surface 时不设置视频输出，播放器自动降级为音频+进度（后台播放场景）
@@ -116,6 +137,14 @@ public final class CastPlaybackService extends Service {
         String action = intent.getAction();
         if (ACTION_STOP.equals(action)) {
             stopForegroundCompat();
+            if (player != null) {
+                player.stop();
+                player.clearMediaItems();
+            }
+            originalUri = "";
+            currentTitle = "";
+            closeLocalProxy();
+            if (listener != null) listener.onPlaybackError("投屏已停止，请重新打开视频。");
             stopSelf();
             return START_NOT_STICKY;
         }
@@ -203,22 +232,17 @@ public final class CastPlaybackService extends Service {
     }
 
     private void playUri(String uri, String title) {
+        boolean sameMedia = uri.equals(originalUri) && player != null && player.getCurrentMediaItem() != null;
         originalUri = uri;
-        // 安全获取当前媒体项
-        String oldUri = null;
-        try {
-            MediaItem current = player != null ? player.getCurrentMediaItem() : null;
-            if (current != null && current.localConfiguration != null && current.localConfiguration.uri != null) {
-                oldUri = current.localConfiguration.uri.toString();
-            }
-        } catch (Exception ignored) {}
         currentTitle = title == null ? "" : title;
-        if (oldUri != null && oldUri.equals(uri)) {
+        if (sameMedia) {
             // 同一地址不重播，直接续播
             if (player != null) {
                 // 如果播放器已结束，需要 seekTo(0)+prepare 才能重新播放
                 if (player.getPlaybackState() == Player.STATE_ENDED) {
                     player.seekTo(0);
+                    player.prepare();
+                } else if (player.getPlaybackState() == Player.STATE_IDLE) {
                     player.prepare();
                 }
                 player.setPlayWhenReady(true);
@@ -230,10 +254,7 @@ public final class CastPlaybackService extends Service {
         }
         if (player == null) return;
         // 清理旧代理
-        if (localProxy != null) {
-            localProxy.stop();
-            localProxy = null;
-        }
+        closeLocalProxy();
         proxyRetryCount = 0;
         try {
             MediaSource mediaSource = buildMediaSource(uri);
@@ -241,10 +262,9 @@ public final class CastPlaybackService extends Service {
             player.prepare();
             player.setPlayWhenReady(true);
         } catch (Exception e) {
-            Log.e(TAG, "Failed to play URI: " + uri, e);
+            Log.e(TAG, "Failed to prepare media");
             if (listener != null) {
-                String detail = e.getMessage();
-                listener.onPlaybackError("播放失败" + (detail == null || detail.isEmpty() ? "" : "：" + detail));
+                listener.onPlaybackError("播放失败，请重新打开视频。");
             }
         }
     }
@@ -281,28 +301,38 @@ public final class CastPlaybackService extends Service {
     /** 启动本地代理重新播放（CDN 防盗链 403 回退策略，Castor 启发）。 */
     private void startProxyForUri(String uri) {
         if (player == null) return;
-        // startRandom() 内部已创建并 start 代理（端口绑定无竞态），返回端口号
-        int proxyPort = LocalMediaProxy.startRandom();
-        if (proxyPort < 0) {
+        long resumePosition = Math.max(0, player.getCurrentPosition());
+        boolean resumePlaying = player.getPlayWhenReady();
+        closeLocalProxy();
+        localProxy = LocalMediaProxy.startRandom(uri);
+        if (localProxy == null) {
             Log.e(TAG, "Failed to start local media proxy");
             if (listener != null) {
                 listener.onPlaybackError("启动本地代理失败，请检查网络后重试。");
             }
             return;
         }
-        String proxyUrl = LocalMediaProxy.buildProxyUrl(proxyPort, uri);
-        Log.i(TAG, "Using local proxy on port " + proxyPort + " (target hidden for privacy)");
+        String proxyUrl = localProxy.getProxyUrl();
+        Log.i(TAG, "Using local media proxy (target hidden for privacy)");
 
         try {
             MediaSource mediaSource = buildMediaSource(proxyUrl);
-            player.setMediaSource(mediaSource);
+            player.setMediaSource(mediaSource, resumePosition);
             player.prepare();
-            player.setPlayWhenReady(true);
+            player.setPlayWhenReady(resumePlaying);
         } catch (Exception e) {
+            closeLocalProxy();
             Log.e(TAG, "Proxy playback failed", e);
             if (listener != null) {
                 listener.onPlaybackError("代理播放失败，请重新投屏。");
             }
+        }
+    }
+
+    private void closeLocalProxy() {
+        if (localProxy != null) {
+            localProxy.stop();
+            localProxy = null;
         }
     }
 
@@ -451,11 +481,9 @@ public final class CastPlaybackService extends Service {
 
     @Override
     public void onDestroy() {
+        if (activeService.get() == this) activeService.clear();
         setListener(null);
-        if (localProxy != null) {
-            localProxy.stop();
-            localProxy = null;
-        }
+        closeLocalProxy();
         if (player != null) {
             player.release();
             player = null;

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import "./cast-activity-lifecycle.test.js";
 import {
   normalizeScreenGlanceConfig,
   normalizeScreenGlanceState,
@@ -37,7 +38,7 @@ assert.match(service, /uploadGlanceFrame/);
 assert.match(service, /mode=glance/);
 assert.match(
   service,
-  /else if \(request\.mode == CaptureMode\.GLANCE\) \{\s*uploadGlanceFrame\(request, encoded\);/,
+  /else if \(request\.mode == CaptureMode\.GLANCE\) \{\s*uploadGlanceFrame\(request, encoded, frameHash\);/,
 );
 assert.match(service, /else \{\s*saveCapture\(encoded, width, height\);/);
 assert.match(service, /nextRandomOverrideDelayMs/);

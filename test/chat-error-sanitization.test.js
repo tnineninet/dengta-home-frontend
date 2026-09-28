@@ -11,6 +11,9 @@ import {
 } from "../src/chat-errors.js";
 import { hydrateChatMessage } from "../src/chat-history.js";
 
+assert.match(publicChatErrorMessage({ code: "context_budget_exceeded", message: "private diagnostic body" }), /上下文超过模型/);
+assert.ok(!publicChatErrorMessage({ code: "context_budget_exceeded", message: "private diagnostic body" }).includes("private diagnostic"));
+
 assert.equal(
   publicChatErrorMessage("<html><pre>provider stack</pre></html>"),
   CHAT_ERROR_FALLBACK,

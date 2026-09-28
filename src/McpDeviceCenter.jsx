@@ -43,7 +43,7 @@ async function mcpRequest(path, { method = "GET", body } = {}) {
   try {
     return await apiRequest(path, {
       method,
-      timeoutMs: 12_000,
+      timeoutMs: method === "GET" || method === "DELETE" ? 12_000 : 90_000,
       headers: { Accept: "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
@@ -134,7 +134,7 @@ export default function McpDeviceCenter() {
       }));
       setFeedback(data.provider_profile === "netease_cloud_music"
         ? `连接成功，已自动识别网易云音乐接口和 ${data.tools?.length || 0} 个工具。`
-        : `连接成功，发现 ${data.tools?.length || 0} 个工具；未识别为完整网易云接口，可作为通用 MCP 保存。`);
+        : `连接成功，发现 ${data.tools?.length || 0} 个工具。保存后可逐项授权给 AI 使用。`);
     } catch (error) {
       setDiscovery(null);
       setFeedback(error.message);
@@ -231,14 +231,20 @@ export default function McpDeviceCenter() {
     <div className="settings-card mcp-device-center">
       <div className="mcp-device-heading">
         <div>
-          <h3>MCP 设备中心</h3>
+          <h3>自定义 MCP 连接</h3>
           <p className="card-hint">
-            接入空调、灯、Home Assistant、网易云音乐或其他 MCP 服务。模型只会使用你明确授权的工具；这是一套可核验的工具调用机制，不是意识。
+            自行添加外部记忆、设备或其他 MCP 服务，无需管理员审批。填写服务地址与访问令牌，保存后选择允许 AI 使用的工具。
           </p>
         </div>
         <span className={`status-chip ${status.available ? "online" : "pending"}`}>
-          {status.checking ? "检查中" : status.available ? `${status.connections || 0} 个连接` : "待配置"}
+          {status.checking ? "检查中" : status.available ? `${connections.length} 个连接` : "待配置"}
         </span>
+      </div>
+
+      <div className="mcp-setup-required" role="note">
+        <strong>连接外部 MCP 记忆</strong>
+        <p>接口类型选择“外部记忆 MCP”，填写服务商提供的 Streamable HTTP 地址，测试并保存。启用连接，并分别授权记忆查询或写入工具。AI 可在聊天中按需使用；查询结果不会自动导入灯塔记忆库。</p>
+        <p>记忆读写权限由你决定。服务器只提供加密保存和账号隔离，不需要人工确认连接。</p>
       </div>
 
       <div className="mcp-safety-note">
@@ -289,6 +295,7 @@ export default function McpDeviceCenter() {
                  <select value={draft.provider_profile} onChange={(event) => updateDraft("provider_profile", event.target.value)}>
                    <option value="auto">自动识别（推荐）</option>
                    <option value="">通用 MCP</option>
+                   <option value="memory_mcp">外部记忆 MCP</option>
                    <option value="netease_cloud_music">网易云音乐</option>
                 </select>
               </label>
@@ -296,7 +303,9 @@ export default function McpDeviceCenter() {
                  协议版本
                  <select value={draft.protocol_version} onChange={(event) => updateDraft("protocol_version", event.target.value)}>
                    <option value="auto">自动识别（推荐）</option>
-                   <option value="2025-03-26">2025-03-26（推荐）</option>
+                   <option value="2025-11-25">2025-11-25</option>
+                   <option value="2025-06-18">2025-06-18</option>
+                   <option value="2025-03-26">2025-03-26</option>
                   <option value="2024-11-05">2024-11-05（兼容旧服务）</option>
                 </select>
               </label>
@@ -337,8 +346,8 @@ export default function McpDeviceCenter() {
             {discovery && (
               <div className="mcp-discovery-result">
                  <strong>{discovery.server_name || "MCP 服务"} 已响应</strong>
-                 <span>{discovery.provider_profile === "netease_cloud_music" ? `网易云音乐 · ${discovery.adapter_id || "兼容接口"} · 置信度 ${Math.round((discovery.confidence || 0) * 100)}%` : "通用 MCP 接口"}</span>
-                 {discovery.capabilities && <div className="mcp-discovered-tools">{Object.entries(discovery.capabilities).map(([name, available]) => <span key={name}>{available ? "已识别" : "缺少"} · {CAPABILITY_LABELS[name] || name}</span>)}</div>}
+                 <span>{discovery.provider_profile === "netease_cloud_music" ? `网易云音乐 · ${discovery.adapter_id || "兼容接口"} · 置信度 ${Math.round((discovery.confidence || 0) * 100)}%` : discovery.provider_profile === "memory_mcp" ? "外部记忆 MCP" : "通用 MCP 接口"}</span>
+                 {discovery.provider_profile === "netease_cloud_music" && discovery.capabilities && <div className="mcp-discovered-tools">{Object.entries(discovery.capabilities).map(([name, available]) => <span key={name}>{available ? "已识别" : "缺少"} · {CAPABILITY_LABELS[name] || name}</span>)}</div>}
                 {(discovery.tools || []).length ? (
                   <div className="mcp-discovered-tools">
                     {discovery.tools.map((tool) => <span key={tool.name}><code>{tool.name}</code><span className="mcp-tool-risk">{toolRiskLabel(tool.name)}</span></span>)}

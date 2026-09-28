@@ -1,3 +1,4 @@
+import { diagnosticScopeKey, recordOperationFailure } from "./operation-diagnostics.js";
 import { isChatGenerationInProgress } from "./chat-idempotency.js";
 import { authSession as defaultAuthSession } from "./auth-session.js";
 import {
@@ -159,6 +160,13 @@ export async function fetchErrorLogById(logId) {
 }
 
 export async function apiRequest(path, options = {}) {
+  const snapshot = (options.authSession || defaultAuthSession)?.getSnapshot?.();
+  const scope = diagnosticScopeKey(snapshot?.user?.id, snapshot?.activeCompanionId);
+  try { return await requestJson(path, options); }
+  catch (error) { recordOperationFailure(scope, path, error); throw error; }
+}
+
+async function requestJson(path, options = {}) {
   const response = await apiFetch(path, {
     ...options,
     headers: {

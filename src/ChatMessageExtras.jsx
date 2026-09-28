@@ -173,6 +173,7 @@ const VISIBLE_MONOLOGUE_UI_ENABLED = true;
 export function ThinkingPanel({
   message,
   aiName = "伴侣",
+  aiPronoun = "TA",
   companionMood = "",
   innerMonologue = null,
   innerMonologuePending = false,
@@ -333,7 +334,7 @@ export function ThinkingPanel({
               disabled={innerMonologuePending}
               onClick={requestMonologue}
             >
-              {innerMonologuePending ? "正在写下此刻的心声…" : "听听她此刻的心声"}
+              {innerMonologuePending ? "正在写下此刻的心声…" : `听听${aiPronoun}此刻的心声`}
             </button>
             {innerMonologueError && (
               <small className="inner-monologue-error">
@@ -384,7 +385,7 @@ export function ThinkingPanel({
               {innerMonologuePending ? (
                 <div className="inner-monologue-dialog-pending" role="status">
                   <span aria-hidden="true" />
-                  <p>她正在把没有说出口的念头慢慢写下来…</p>
+                  <p>{aiPronoun}正在把没有说出口的念头慢慢写下来…</p>
                 </div>
               ) : monologueText ? (
                 <>

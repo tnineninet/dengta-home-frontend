@@ -32,12 +32,12 @@ assert.equal(legacy.additional_prompt, "");
 assert.equal(legacy.personality, "旧版人设");
 assert.equal(legacy.user_details, "");
 assert.equal(legacy.model, "test-model");
-assert.equal(legacy.prompt_mode, "unified");
+assert.equal(legacy.prompt_mode, "legacy");
 assert.equal(legacy.reasoning_effort, "");
-assert.equal(settingsNeedsUnifiedPromptMigration(legacy), false);
+assert.equal(settingsNeedsUnifiedPromptMigration(legacy), true);
 assert.equal(
   legacy.unified_system_prompt,
-  "【原最高优先级系统提示词】\n旧版系统规则\n\n【原独立人设词】\n旧版人设",
+  "",
 );
 assert.equal(
   mergeLegacyPromptFields({
@@ -118,7 +118,7 @@ assert.equal(payload.additional_prompt, unlimitedPrompts.additional_prompt);
 assert.equal(payload.personality, unlimitedPrompts.personality);
 assert.equal(payload.unified_system_prompt, unlimitedPrompts.unified_system_prompt);
 assert.equal(payload.user_details, unlimitedPrompts.user_details);
-assert.equal(payload.prompt_mode, "unified");
+assert.equal(payload.prompt_mode, "legacy");
 assert.equal(payload.intimate_expression_enabled, true);
 
 const receipt = normalizePromptReceipt({

@@ -58,8 +58,8 @@ assert.equal(
       pathname: "/",
     },
   }),
-  "https://www.dengtahome.com/",
-  "Android registration must return email links to the public app, never WebView localhost",
+  "dengta://auth",
+  "Android registration must return to the registered app deep link, never WebView localhost",
 );
 
 assert.equal(

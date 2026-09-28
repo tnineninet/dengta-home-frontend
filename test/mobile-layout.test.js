@@ -112,6 +112,8 @@ assert.deepEqual(
     "jelly-motion.css",
     "sun-glass-chat.css",
     "typography.css",
+    "apple-high.css",
+    "room-invite.css",
   ],
   "layout tests must use the same stylesheet order as the application entrypoint",
 );
@@ -132,6 +134,8 @@ assert.deepEqual(
     "jelly-motion.css",
     "sun-glass-chat.css",
     "typography.css",
+    "apple-high.css",
+    "room-invite.css",
   ],
   "the 280px regression must use the complete application stylesheet cascade",
 );

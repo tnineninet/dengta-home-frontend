@@ -74,9 +74,8 @@ export function mergeLegacyPromptFields(value) {
 
 export function normalizeSettingsDraft(value) {
   const source = objectOrEmpty(value);
-  const migratedPrompt = settingsNeedsUnifiedPromptMigration(source)
-    ? mergeLegacyPromptFields(source)
-    : textOrFallback(source.unified_system_prompt);
+  const promptMode = ["legacy", "unified"].includes(source.prompt_mode)
+    ? source.prompt_mode : settingsNeedsUnifiedPromptMigration(source) ? "legacy" : "unified";
 
   return {
     ...emptySettings,
@@ -91,8 +90,8 @@ export function normalizeSettingsDraft(value) {
       textOrFallback(source.provider, emptySettings.provider),
       source.reasoning_effort,
     ),
-    prompt_mode: "unified",
-    unified_system_prompt: migratedPrompt,
+    prompt_mode: promptMode,
+    unified_system_prompt: textOrFallback(source.unified_system_prompt),
     user_details: textOrFallback(source.user_details),
     intimate_expression_enabled:
       source.intimate_expression_enabled === true,
@@ -122,7 +121,7 @@ export function createSettingsPayload(value) {
     system_prompt: normalized.system_prompt,
     additional_prompt: normalized.additional_prompt,
     personality: normalized.personality,
-    prompt_mode: "unified",
+    prompt_mode: normalized.prompt_mode,
     unified_system_prompt: normalized.unified_system_prompt,
     user_details: normalized.user_details,
     intimate_expression_enabled:
