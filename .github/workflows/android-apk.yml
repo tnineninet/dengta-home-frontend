@@ -17,6 +17,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   build-debug-apk:
@@ -56,6 +57,12 @@ jobs:
 
       - name: Install web dependencies
         run: npm ci
+
+      - name: Prune old APK artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/${{ github.repository }}/actions/artifacts --paginate | jq -r '.artifacts[] | select(.name == "DengTa-home-android-debug" and .expired == false) | .id' | tail -n +5 | xargs -r -I{} gh api -X DELETE repos/${{ github.repository }}/actions/artifacts/{}
 
       - name: Run frontend regression checks
         run: |
@@ -108,9 +115,3 @@ jobs:
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
-
-      - name: Prune old APK artifacts
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api repos/${{ github.repository }}/actions/artifacts --paginate | jq -r '.artifacts[] | select(.name == "DengTa-home-android-debug" and .expired == false) | .id' | tail -n +5 | xargs -r -I{} gh api -X DELETE repos/${{ github.repository }}/actions/artifacts/{}

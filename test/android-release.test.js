@@ -83,6 +83,8 @@ assert.match(buildGradle, /signingConfig signingConfigs\.debug/);
 assert.match(variablesGradle, /minSdkVersion = 31\b/);
 assert.match(variablesGradle, /targetSdkVersion = 36\b/);
 assert.match(androidWorkflow, /npm test\s+npm run lint/);
+assert.match(androidWorkflow, /actions: write/, "artifact retention requires Actions write permission");
+assert.ok(androidWorkflow.indexOf("name: Prune old APK artifacts") < androidWorkflow.indexOf("name: Upload APK"), "quota failures must not prevent the existing artifact retention policy from running");
 assert.match(
   androidWorkflow,
   /VITE_SUPABASE_URL: \$\{\{ secrets\.VITE_SUPABASE_URL \}\}/,
@@ -138,4 +140,4 @@ assert.match(neteasePlaybackPlugin, /Uri\.parse\("orpheus:\/\/" \+ resourceType 
 assert.match(neteasePlaybackPlugin, /new AlertDialog\.Builder/);
 assert.match(neteasePlaybackPlugin, /Intent\.CATEGORY_BROWSABLE/);
 assert.doesNotMatch(neteasePlaybackPlugin, /getString\("(?:url|intent|package|component)"/);
-console.log("Android 2.10.0 NetEase playlist release tests passed");
+console.log("Android release configuration, signing and artifact retention checks passed");
