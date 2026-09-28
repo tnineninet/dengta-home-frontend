@@ -193,6 +193,12 @@ export function isSynchronizedVisibleMonologue(value) {
   return normalizeVisibleMonologue(value)?.synchronized === true;
 }
 
+export function canRequestVisibleMonologue(message = {}) {
+  if (message.chatError || message.isStreaming) return false;
+  const monologue = visibleMonologueForMessage(message);
+  return !monologue || (monologue.state === "missing" && !monologue.text.trim());
+}
+
 function settleCurrentVisibleSegment(value = {}) {
   const text = String(value.text || "");
   const characters = Array.from(text);
@@ -235,7 +241,8 @@ export function reduceVisibleMonologueEvent(current, event = {}) {
   ) {
     return previous;
   }
-  if (previous && TERMINAL_VISIBLE_MONOLOGUE_STATES.has(previous.state)) {
+  if (previous && TERMINAL_VISIBLE_MONOLOGUE_STATES.has(previous.state) &&
+      !(event.phase === "end" && event.state === "failed")) {
     return previous;
   }
 

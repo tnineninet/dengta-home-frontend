@@ -188,7 +188,8 @@ export function ThinkingPanel({
     : "legacy";
   const canRequestInnerMonologue =
     completed &&
-    !synchronizedMonologue &&
+    !message.chatError &&
+    (!synchronizedMonologue || monologueState === "missing") &&
     typeof onRequestInnerMonologue === "function";
   const visible =
     !completed ||
@@ -244,8 +245,8 @@ export function ThinkingPanel({
             ? synchronizedMonologue
               ? synchronizedSummary
               : monologueText
-                ? "旧版心声 · 仅保存在这台设备"
-                : "旧消息可按需生成"
+                ? "按需心声 · 仅保存在这台设备"
+                : "可按需生成心声"
             : synchronizedMonologue
               ? synchronizedSummary
               : "正在处理这条消息"}
@@ -309,6 +310,17 @@ export function ThinkingPanel({
                 可显示片段已保留，但这次心声没有完整生成。
               </small>
             )}
+            {monologueState === "failed" && monologueText && (
+              <small className="visible-monologue-status">本轮失败，片段仅临时显示，未保存。</small>
+            )}
+            {canRequestInnerMonologue && monologueState === "missing" && (
+              <>
+                <button type="button" disabled={innerMonologuePending} onClick={requestMonologue}>
+                  {innerMonologuePending ? "正在补充心声…" : "补充这次心声"}
+                </button>
+                {innerMonologueError && <small role="alert">{innerMonologueError}</small>}
+              </>
+            )}
             {completed && monologueText && (
               <button
                 type="button"
@@ -324,7 +336,7 @@ export function ThinkingPanel({
               {monologueText}
             </p>
             <button type="button" onClick={() => setMonologueDialogOpen(true)}>
-              打开这次旧版心声
+              打开这次补充心声
             </button>
           </div>
         ) : completed ? (
@@ -391,7 +403,10 @@ export function ThinkingPanel({
                 <>
                   <p>{monologueText}</p>
                   {monologueState === "truncated" && (
-                    <small>这次心声未完整生成，以上是已保存的片段。</small>
+                    <small>心声格式未闭合或超过显示长度，以上仅为收到的片段。</small>
+                  )}
+                  {monologueState === "failed" && (
+                    <small>本轮回复失败，以上片段仅临时显示，未保存到聊天记录。</small>
                   )}
                 </>
               ) : synchronizedMonologue ? (

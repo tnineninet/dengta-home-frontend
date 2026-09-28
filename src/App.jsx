@@ -129,6 +129,7 @@ import {
   reduceVisibleMonologueEvent,
   storeInnerMonologue,
   visibleMonologueForMessage,
+  canRequestVisibleMonologue,
 } from "./inner-monologue";
 import { hydrateChatHistory } from "./chat-history";
 import {
@@ -303,6 +304,7 @@ import {
 import {
     dismissChatErrorMessage,
     publicChatErrorMessage,
+    temporaryReplyOnFailure,
 } from "./chat-errors";
 
 const AiProviderCenter = lazy(() => import("./AiProviderCenter"));
@@ -3992,7 +3994,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   companionInteractionHandlerRef.current = registerCompanionInteraction;
 
   async function requestVisibleInnerMonologue(item) {
-    if (!item || visibleMonologueForMessage(item)) return;
+    if (!item || !canRequestVisibleMonologue(item)) return;
 
     const sessionId =
       item?.conversation_id || item?.session_id || activeSessionIdRef.current;
@@ -4015,7 +4017,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       }));
       return;
     }
-    if (visibleMonologueForMessage(targetMessage)) return;
+    if (!canRequestVisibleMonologue(targetMessage)) return;
     if (
       innerMonologuePending[messageId] ||
       innerMonologueForMessage(innerMonologues, messageId)
@@ -4767,6 +4769,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                       content: eventGenerationInProgress
                         ? "这条消息已经保存，AI 仍在服务器处理中。"
                         : eventErrorMessage,
+                      partialContent: temporaryReplyOnFailure(item, event),
                       isStreaming: false,
                       chatError: true,
                       generationInProgress: eventGenerationInProgress,
@@ -5022,6 +5025,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   isStreaming: false,
                   chatError: true,
                   error_code: error?.code || 'CHAT_REQUEST_FAILED',
+                  partialContent: temporaryReplyOnFailure(item, error),
                   error_location: error?.error_location || '',
                   error_log_id: error?.error_log_id || '',
                   error_source: error?.error_source || '',
@@ -6775,8 +6779,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 onReference={selectMessageForReference}
                 onDismissError={dismissChatError}
                 innerMonologue={
-                  visibleMonologueForMessage(item) ||
-                  innerMonologueForMessage(innerMonologues, item.id)
+                  (visibleMonologueForMessage(item)?.text
+                    ? visibleMonologueForMessage(item)
+                    : innerMonologueForMessage(innerMonologues, item.id) || visibleMonologueForMessage(item))
                 }
                 innerMonologuePending={
                   innerMonologuePending[item.id] === true

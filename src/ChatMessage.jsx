@@ -299,6 +299,12 @@ function ChatMessage({
               </span>
             </div>
           )}
+          {item.chatError && item.partialContent && (
+            <div className="message-content" role="note">
+              <small>回复中断 · 以下片段仅临时显示，未保存</small>
+              <p>{item.partialContent}</p>
+            </div>
+          )}
           {item.content && (
             <div className="message-content">{item.content}</div>
           )}

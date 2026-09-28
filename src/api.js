@@ -286,6 +286,9 @@ export async function streamChat(
     );
     error.status = response.status;
     error.code = data.code || "stream_request_failed";
+    for (const key of ["provider_code", "error_source", "provider_phase", "upstream_status", "error_location", "error_log_id"]) {
+      if (data[key] !== undefined) error[key] = data[key];
+    }
     throw error;
   }
 
@@ -313,6 +316,8 @@ export async function streamChat(
     if (source?.error_source) error.error_source = source.error_source;
     if (source?.provider_phase) error.provider_phase = source.provider_phase;
     if (source?.upstream_status) error.upstream_status = source.upstream_status;
+    if (source?.error_location) error.error_location = source.error_location;
+    if (source?.error_log_id) error.error_log_id = source.error_log_id;
     error.generationInProgress = isChatGenerationInProgress(source);
     return error;
   }
@@ -378,11 +383,20 @@ export async function streamChat(
           message: userMessageCommitted
             ? "回复连接提前结束，但你的消息已经保存。"
             : "回复连接提前结束，服务器没有确认本轮已保存。附件仍保留，可稍后重试。",
+          code: "chat_stream_interrupted",
         },
       );
     }
 
     return completionEvent;
+  } catch (error) {
+    if (signal?.aborted || error?.code || streamError) throw error;
+    throw createStreamError({
+      code: "chat_stream_interrupted",
+      message: userMessageCommitted
+        ? "回复连接中断，但你的消息已经保存；收到的回复片段仅临时显示，可以重试。"
+        : "回复连接中断，服务器尚未确认保存，可以稍后重试。",
+    });
   } finally {
     if (signal?.aborted) {
       await reader.cancel(signal.reason).catch(() => {});

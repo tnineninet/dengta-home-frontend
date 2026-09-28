@@ -270,4 +270,22 @@ for (const fragments of [
   );
 }
 
+const diagnosticEvent = {
+  type: "error", content: "模型没有返回可保存的文字。",
+  code: "reply_body_missing", error_source: "dengta_stream_parser",
+  provider_phase: "output_parse", error_location: "ai-service.js:4328:15",
+  error_log_id: "synthetic-log-id", user_message_committed: true,
+};
+await assert.rejects(streamWithEvents([diagnosticEvent]), error => {
+  assert.equal(error.error_location, diagnosticEvent.error_location);
+  assert.equal(error.error_log_id, diagnosticEvent.error_log_id);
+  assert.equal(error.userMessageCommitted, true);
+  const displayed = publicChatErrorMessage(error);
+  assert.equal((displayed.match(/错误代码/g) || []).length, 1);
+  assert.match(displayed, /reply_body_missing.*dengta_stream_parser/);
+  return true;
+});
+const legacyDuplicate = '模型没有返回可保存的文字。' +
+  '（错误代码 / Code: unknown；来源 / Source: dengta；位置 / At: ai-service.js:4328:15；日志已记录 / Logged）'.repeat(2);
+assert.equal((publicChatErrorMessage({ message: legacyDuplicate, error_location: diagnosticEvent.error_location }).match(/错误代码/g) || []).length, 1);
 console.log("chat error sanitization tests passed");

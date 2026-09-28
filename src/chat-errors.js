@@ -4,6 +4,8 @@ const COMMITTED_CHAT_ERROR_FALLBACK =
 const MAX_PUBLIC_ERROR_LENGTH = 220;
 
 const PUBLIC_ERROR_BY_CODE = Object.freeze({
+  reply_body_missing: "本轮未收到可分离的正文，可能只生成了心声或格式未闭合；本轮回复未保存 / No separable reply body was received; this reply was not saved.",
+  provider_stream_incomplete: "上游模型流没有正常结束，本轮回复未保存 / The upstream model stream did not complete; this reply was not saved.",
   companion_gender_schema_required: "伴侣性别功能正在等待服务器数据库更新，本次设置未保存 / Companion gender requires a database update; these settings were not saved.",
   context_budget_exceeded: "本轮上下文超过模型的估算容量，请选择更大窗口模型或减少本轮附件；预算检查不会改写人设或记忆 / This turn exceeds the estimated model context capacity. Choose a larger-context model or fewer attachments. Budget checks do not rewrite personalization or memories.",
   CHAT_GENERATION_IN_PROGRESS: "这条消息已经保存，AI 仍在服务器处理中。",
@@ -31,6 +33,7 @@ const CONTENT_INSPECTION_ERROR_PATTERN =
   /(?:data_inspection_failed|input text data may contain inappropriate content)/i;
 const SAFE_PROVIDER_CODE_PATTERN = /^[a-zA-Z][a-zA-Z0-9_.-]{0,63}$/;
 const PUBLIC_ERROR_SOURCES = new Set([
+  "dengta_stream_parser",
   "upstream_provider_or_gateway",
   "dengta_output_guard",
 ]);
@@ -115,6 +118,7 @@ export function publicChatErrorMessage(source, fallback = CHAT_ERROR_FALLBACK) {
   }
 
   const candidate = stripControlCharacters(errorCandidate(source))
+    .replace(/（错误代码\s*\/\s*Code:[^）]*）/g, "")
     .replace(/\s+/g, " ")
     .trim();
   if (!candidate) return safeFallback;
@@ -155,6 +159,13 @@ export function dismissChatErrorMessage(messages, messageId) {
   return (Array.isArray(messages) ? messages : []).filter(
     (item) => !(item?.id === messageId && item?.chatError === true),
   );
+}
+
+export function temporaryReplyOnFailure(message, error) {
+  const code = String(error?.code || "");
+  // A failure is never a normal assistant message or a source for memory/TTS.
+  if (!["chat_stream_interrupted", "provider_stream_incomplete", "MODEL_STREAM_IDLE_TIMEOUT"].includes(code)) return "";
+  return String(message?.partialContent || (message?.chatError ? "" : message?.content) || "");
 }
 
 export {

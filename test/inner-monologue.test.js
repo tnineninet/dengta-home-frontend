@@ -9,6 +9,7 @@ import {
   reduceVisibleMonologueEvent,
   storeInnerMonologue,
   visibleMonologueForMessage,
+  canRequestVisibleMonologue,
 } from "../src/inner-monologue.js";
 import { hydrateChatHistory } from "../src/chat-history.js";
 import { mergeStreamedAssistantMessage } from "../src/chat-thinking.js";
@@ -244,6 +245,11 @@ const lateDelta = reduceVisibleMonologueEvent(completedStream, {
 });
 assert.equal(lateDelta.state, "complete");
 assert.equal(lateDelta.text, completedStream.text);
+const failedAfterComplete = reduceVisibleMonologueEvent(completedStream, {
+  type: "monologue", phase: "end", source: VISIBLE_MONOLOGUE_SOURCE, state: "failed",
+});
+assert.equal(failedAfterComplete.state, "failed", "a later failed turn invalidates the provisional completion");
+assert.equal(failedAfterComplete.text, completedStream.text);
 
 const missingStream = reduceVisibleMonologueEvent(null, {
   type: "monologue",
@@ -253,6 +259,9 @@ const missingStream = reduceVisibleMonologueEvent(null, {
 });
 assert.equal(missingStream.text, "");
 assert.equal(isSynchronizedVisibleMonologue(missingStream), true);
+assert.equal(canRequestVisibleMonologue({ visibleMonologue: missingStream }), true);
+assert.equal(canRequestVisibleMonologue({ visibleMonologue: completedStream }), false);
+assert.equal(canRequestVisibleMonologue({ visibleMonologue: missingStream, chatError: true }), false);
 assert.equal(
   reduceVisibleMonologueEvent(null, {
     type: "monologue",
@@ -380,8 +389,8 @@ assert.match(messageExtrasSource, /AI 生成的可见心声/);
 assert.match(messageExtrasSource, /不是模型隐藏的原始思考链/);
 assert.match(
   messageExtrasSource,
-  /completed\s*&&\s*!synchronizedMonologue\s*&&/,
-  "only legacy completed messages may expose the on-demand action",
+  /completed\s*&&\s*!message.chatError\s*&&\s*\(!synchronizedMonologue \|\| monologueState === "missing"\)/,
+  "completed messages with missing monologues may expose a separate recovery action",
 );
 const requestHandlerStart = appSource.indexOf(
   "async function requestVisibleInnerMonologue(item)",
@@ -391,7 +400,7 @@ const recoveryImport = appSource.indexOf(
   requestHandlerStart,
 );
 const synchronizedGuard = appSource.indexOf(
-  "visibleMonologueForMessage(item)",
+  "canRequestVisibleMonologue(item)",
   requestHandlerStart,
 );
 assert.ok(
