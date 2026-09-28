@@ -311,7 +311,7 @@ export function ThinkingPanel({
               </small>
             )}
             {monologueState === "failed" && monologueText && (
-              <small className="visible-monologue-status">本轮失败，片段仅临时显示，未保存。</small>
+              <small className="visible-monologue-status">本轮未完成，片段仅临时显示，尚未确认保存。</small>
             )}
             {canRequestInnerMonologue && monologueState === "missing" && (
               <>
@@ -406,7 +406,7 @@ export function ThinkingPanel({
                     <small>心声格式未闭合或超过显示长度，以上仅为收到的片段。</small>
                   )}
                   {monologueState === "failed" && (
-                    <small>本轮回复失败，以上片段仅临时显示，未保存到聊天记录。</small>
+                    <small>本轮回复未完成，以上片段仅临时显示，尚未确认保存到聊天记录。</small>
                   )}
                 </>
               ) : synchronizedMonologue ? (

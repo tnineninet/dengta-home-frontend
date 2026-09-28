@@ -23,7 +23,7 @@ try {
   await act(async () => button.props.onClick());
   assert.equal(requested, 1);
   await act(async () => { view.update(React.createElement(ThinkingPanel, { ...props, message: { ...props.message, chatError: true }, innerMonologue: { ...props.innerMonologue, state: 'failed', text: 'Temporary thought' } })); });
-  assert.match(JSON.stringify(view.toJSON()), /未保存/);
+  assert.match(JSON.stringify(view.toJSON()), /未确认保存/);
   assert.ok(!view.root.findAllByType('button').some(node => node.children.includes('补充这次心声')));
 } finally {
   if (view) await act(async () => view.unmount());
