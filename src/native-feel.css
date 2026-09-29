@@ -570,7 +570,6 @@ button:active:not(:disabled) {
   overscroll-behavior-y: contain;
 }
 
-.message-row,
 .moment-card,
 .diary-entry,
 .memory-card,
@@ -786,8 +785,7 @@ button:active:not(:disabled) {
 }
 
 /* Feature pages retain every tool, but share one material and rhythm. */
-.feature-page,
-.message-list {
+.feature-page {
   animation: native-page-enter 320ms var(--native-spring) both;
 }
 
@@ -1947,6 +1945,8 @@ button:active:not(:disabled) {
   inset: 0;
   overflow: hidden;
   pointer-events: none;
+  contain: paint;
+  transform: translateZ(0);
 }
 
 .main-panel.view-chat .message-list > :not(.private-chat-background) {

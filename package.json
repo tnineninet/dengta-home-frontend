@@ -1,7 +1,7 @@
 {
   "name": "dengta-home-react",
   "private": true,
-  "version": "2.10.27",
+  "version": "2.10.28",
   "type": "module",
   "scripts": {
     "test:interaction-polish": "node test/interaction-polish.test.js",
@@ -53,7 +53,7 @@
     "test:instant-feedback": "node test/instant-feedback.test.js",
     "test:mobile-layout": "node test/mobile-layout.test.js",
     "test:sun-glass-chat": "node --test test/sun-glass-chat.test.js",
-    "test:chat-scroll-state": "node test/chat-scroll-state.test.js",
+    "test:chat-scroll-state": "node test/chat-scroll-state.test.js && node test/chat-error-log.test.js",
     "test:native-motion": "node test/native-motion.test.js",
     "test:dengta-theme": "node test/dengta-theme.test.js",
     "test:typography": "node test/typography.test.js",

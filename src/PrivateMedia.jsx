@@ -38,6 +38,7 @@ export function AuthenticatedImage({
       src={media.url}
       alt={alt}
       loading={loading}
+      decoding="async"
     />
   );
   if (!onPreview) return image;

@@ -154,7 +154,7 @@ export async function fetchErrorLogs(limit = 50) {
 export async function fetchErrorLogById(logId) {
   const data = await apiRequest(
     `/api/errors/${encodeURIComponent(logId)}`,
-    { retry: false },
+    { retry: false, timeoutMs: 15000 },
   );
   return data?.log || null;
 }

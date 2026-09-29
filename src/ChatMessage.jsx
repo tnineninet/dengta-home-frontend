@@ -11,7 +11,7 @@ import { getStickerById } from "./sticker-catalog";
 import { formatVoiceConfidence } from "./voice";
 import ChatSkinOrnament from "./ChatSkinOrnament";
 import { privateMediaAsset, privateMediaContentPath } from "./private-media";
-import { fetchErrorLogById } from "./api";
+import ChatErrorLog from "./ChatErrorLog";
 
 function formatMessageTime(value) {
   if (!value) return "刚刚";
@@ -61,29 +61,7 @@ function ChatMessage({
     : null;
   const avatar = isUser ? userAvatar : companionAvatar;
 
-  // 错误日志详情（聊天页"查看日志"）
-  const [logExpanded, setLogExpanded] = useState(false);
-  const [logDetail, setLogDetail] = useState(null);
-  const [logLoading, setLogLoading] = useState(false);
-
   const refusalLogId = item.tool_calls?.refusal_detected?.error_log_id || item.error_log_id;
-  const toggleErrorLog = useCallback(async () => {
-    if (logExpanded) {
-      setLogExpanded(false);
-      return;
-    }
-    setLogExpanded(true);
-    if (logDetail || !refusalLogId) return;
-    setLogLoading(true);
-    try {
-      const log = await fetchErrorLogById(refusalLogId);
-      setLogDetail(log);
-    } catch {
-      setLogDetail({ fetch_failed: true });
-    } finally {
-      setLogLoading(false);
-    }
-  }, [logExpanded, logDetail, refusalLogId]);
 
   function formatErrorTime(value) {
     if (!value) return "";
@@ -217,6 +195,7 @@ function ChatMessage({
       {avatar ? (
         <AuthenticatedImage
           src={avatar}
+          loading="eager"
           alt={`${displayName}的头像`}
           className={`message-avatar message-avatar-image ${
             isUser ? "is-user" : "is-assistant"
@@ -258,35 +237,7 @@ function ChatMessage({
                 来源: {item.tool_calls.refusal_detected.source === "upstream" ? "上游模型（DengTa 提示词已允许成人内容，为模型自身/中转站审核拦截）" : "DengTa 自身过滤"}
               </span>
               <span className="chat-refusal-code">错误码: {item.tool_calls.refusal_detected.code || "provider_boundary_residue"}</span>
-              {refusalLogId ? (
-                <button
-                  type="button"
-                  className="chat-error-log-toggle chat-refusal-log-toggle"
-                  onClick={() => void toggleErrorLog()}
-                >
-                  {logExpanded ? "收起日志" : "查看日志"}
-                </button>
-              ) : null}
-              {logExpanded && (
-                <div className="chat-error-log-detail">
-                  {logLoading && <span className="chat-error-log-loading">读取中…</span>}
-                  {!logLoading && logDetail?.fetch_failed && (
-                    <span className="chat-error-log-failed">日志读取失败</span>
-                  )}
-                  {!logLoading && logDetail && !logDetail.fetch_failed && (
-                    <>
-                      <p className="chat-error-log-line"><strong>时间</strong>: {formatErrorTime(logDetail.created_at)}</p>
-                      <p className="chat-error-log-line"><strong>错误码</strong>: {logDetail.error_code}</p>
-                      {logDetail.error_source && <p className="chat-error-log-line"><strong>来源</strong>: {logDetail.error_source}</p>}
-                      {logDetail.error_location && <p className="chat-error-log-line"><strong>位置</strong>: {logDetail.error_location}</p>}
-                      <p className="chat-error-log-line chat-error-log-message"><strong>消息</strong>: {logDetail.error_message || logDetail.message}</p>
-                      {logDetail.stack_trace && (
-                        <pre className="chat-error-log-stack">{logDetail.stack_trace}</pre>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
+              <ChatErrorLog key={refusalLogId || "local"} logId={refusalLogId} diagnostic={item} />
             </div>
           )}
           {quotedMessage && (
@@ -413,62 +364,7 @@ function ChatMessage({
                   {formatErrorTime(item.error_time || item.created_at)}
                 </time>
               </div>
-              {item.error_log_id ? (
-                <button
-                  type="button"
-                  className="chat-error-log-toggle"
-                  onClick={() => void toggleErrorLog()}
-                >
-                  {logExpanded ? '收起日志' : '查看日志'}
-                </button>
-              ) : (
-                <span className="chat-error-no-log">未生成日志记录</span>
-              )}
-              {logExpanded && (
-                <div className="chat-error-log-detail">
-                  {logLoading && <span className="chat-error-log-loading">读取中…</span>}
-                  {!logLoading && logDetail?.fetch_failed && (
-                    <span className="chat-error-log-failed">日志读取失败</span>
-                  )}
-                  {!logLoading && logDetail && !logDetail.fetch_failed && (
-                    <>
-                      <p className="chat-error-log-line">
-                        <strong>时间</strong>: {formatErrorTime(logDetail.created_at)}
-                      </p>
-                      <p className="chat-error-log-line">
-                        <strong>路径</strong>: {logDetail.method} {logDetail.path}
-                      </p>
-                      <p className="chat-error-log-line">
-                        <strong>错误码</strong>: {logDetail.error_code || 'unknown'}
-                      </p>
-                      <p className="chat-error-log-line">
-                        <strong>消息</strong>: {logDetail.message || ''}
-                      </p>
-                      <p className="chat-error-log-line">
-                        <strong>来源/阶段</strong>: {logDetail.error_source || 'dengta'}
-                        {logDetail.provider_phase ? ` / ${logDetail.provider_phase}` : ''}
-                        {logDetail.provider_code ? ` / ${logDetail.provider_code}` : ''}
-                        {logDetail.upstream_status ? ` / HTTP ${logDetail.upstream_status}` : ''}
-                      </p>
-                      <p className="chat-error-log-line">
-                        <strong>会话</strong>: {logDetail.conversation_id || '-'}
-                      </p>
-                      {logDetail.request_summary && (
-                        <p className="chat-error-log-line">
-                          <strong>请求</strong>: 模型 {logDetail.request_summary.model || '-'}
-                          {' · '}流式 {logDetail.request_summary.stream ? '是' : '否'}
-                          {Array.isArray(logDetail.request_summary.body_keys) && logDetail.request_summary.body_keys.length > 0
-                            ? ` · 字段 ${logDetail.request_summary.body_keys.join(', ')}`
-                            : ''}
-                        </p>
-                      )}
-                      {logDetail.stack_trace && (
-                        <pre className="chat-error-log-stack">{logDetail.stack_trace}</pre>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
+              <ChatErrorLog key={refusalLogId || "local"} logId={refusalLogId} diagnostic={item} />
             </div>
           )}
           {item.voiceAnalysis && (

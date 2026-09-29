@@ -41,8 +41,7 @@
   animation: dengta-jelly-backdrop-in 220ms ease-out both;
 }
 
-.feature-page,
-.message-list {
+.feature-page {
   animation: dengta-jelly-page-arrive 200ms ease-out both;
 }
 

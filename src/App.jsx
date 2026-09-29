@@ -3,6 +3,7 @@ import {
   lazy,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -132,11 +133,8 @@ import {
   canRequestVisibleMonologue,
 } from "./inner-monologue";
 import { hydrateChatHistory } from "./chat-history";
-import {
-  captureChatScrollState,
-  claimPendingChatScrollRestore,
-  restoreChatScrollState,
-} from "./chat-scroll-state";
+import { createChatScrollController } from "./chat-scroll-controller";
+import { usePrivateMediaSource } from "./use-private-media";
 import {
   COMPANION_INTERACTION_TYPES,
   enqueueCompanionInteraction,
@@ -1293,16 +1291,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [innerMonologuePending, setInnerMonologuePending] = useState({});
   const [innerMonologueErrors, setInnerMonologueErrors] = useState({});
   const messageListRef = useRef(null);
-  const messageScrollIdleTimerRef = useRef(null);
+  const chatScrollControllerRef = useRef(null);
   const settingsScrollRef = useRef(null);
   const settingsScrollIdleTimerRef = useRef(null);
-  const chatScrollStatesRef = useRef(new Map());
-  const pendingChatScrollRestoreRef = useRef(null);
-  const messageEndRef = useRef(null);
   const messageInputRef = useRef(null);
   const composerMenuTriggerRef = useRef(null);
   const shouldAutoScrollRef = useRef(true);
-  const chatHadContentRef = useRef(false);
   const chatFileInputRef = useRef(null);
   const chatImageInputRef = useRef(null);
   const chatVideoInputRef = useRef(null);
@@ -1911,11 +1905,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
   }, []);
 
-  useEffect(
-    () => () => window.clearTimeout(messageScrollIdleTimerRef.current),
-    [],
-  );
-
   useEffect(() => {
     if (!isComposerMenuOpen) return undefined;
 
@@ -2166,8 +2155,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         setInnerMonologueErrors({});
         companionStatusRef.current = resetStatus;
         messagesSessionIdRef.current = null;
-        chatScrollStatesRef.current.clear();
-        pendingChatScrollRestoreRef.current = null;
       } else {
         setCompanionStatus(nextCompanionStatus);
         setCompanionInteractionStats(nextCompanionInteractionStats);
@@ -2345,11 +2332,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
-    const savedScrollState = chatScrollStatesRef.current.get(
-      activeSessionId || "__draft__",
-    );
-    shouldAutoScrollRef.current =
-      savedScrollState?.pinnedToBottom ?? true;
     setMessageReference(null);
     void loadComposerHint(activeSessionId);
   }, [activeSessionId, loadComposerHint]);
@@ -3017,51 +2999,22 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     };
   }, []);
 
-  useEffect(() => {
-    if (activeView !== "chat") return undefined;
-    const pending = claimPendingChatScrollRestore(
-      pendingChatScrollRestoreRef,
-      activeSessionId,
-      messages.length > 0,
+  useLayoutEffect(() => {
+    if (activeView !== "chat" || !messageListRef.current) return undefined;
+    const controller = createChatScrollController(
+      messageListRef.current,
+      shouldAutoScrollRef,
     );
-    if (!pending) return undefined;
-    let secondAnimationFrame = 0;
-    let lateCorrectionTimer = 0;
-    const animationFrame = window.requestAnimationFrame(() => {
-      secondAnimationFrame = window.requestAnimationFrame(() => {
-        const messageList = messageListRef.current;
-        if (!messageList) return;
-        restoreChatScrollState(messageList, pending.snapshot);
-        lateCorrectionTimer = window.setTimeout(() => {
-          restoreChatScrollState(messageListRef.current, pending.snapshot);
-        }, 120);
-      });
-    });
-
+    chatScrollControllerRef.current = controller;
     return () => {
-      window.cancelAnimationFrame(animationFrame);
-      window.cancelAnimationFrame(secondAnimationFrame);
-      window.clearTimeout(lateCorrectionTimer);
+      controller.dispose();
+      chatScrollControllerRef.current = null;
     };
-  }, [activeView, activeSessionId, messages.length]);
+  }, [activeView, activeSessionId]);
 
-  useEffect(() => {
-    if (activeView !== "chat" || pendingChatScrollRestoreRef.current) {
-      return undefined;
-    }
-    const animationFrame = window.requestAnimationFrame(() => {
-      const messageList = messageListRef.current;
-      if (!messageList || !shouldAutoScrollRef.current) return;
-      restoreChatScrollState(messageList, {
-        pinnedToBottom: true,
-        scrollTop: messageList.scrollTop,
-      });
-    });
-
-    return () => {
-      window.cancelAnimationFrame(animationFrame);
-    };
-  }, [activeView, activeSessionId, messages, isSending]);
+  useLayoutEffect(() => {
+    chatScrollControllerRef.current?.sync();
+  }, [messages, isSending]);
 
   useEffect(() => {
     if (
@@ -3113,33 +3066,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       }).catch(() => {});
     }
   }, [isSettingsOpen, screenGlanceFeedback.status]);
-
-  function trackMessageScroll(event) {
-    const messageList = event.currentTarget;
-    messageList.classList.add("is-scrolling");
-    window.clearTimeout(messageScrollIdleTimerRef.current);
-    messageScrollIdleTimerRef.current = window.setTimeout(() => {
-      messageList.classList.remove("is-scrolling");
-    }, 140);
-    const snapshot = captureChatScrollState(messageList);
-    // 首次加载时消息列表从空变长会触发一次非用户 scroll 事件（scrollTop 仍为 0）。
-    // 这种布局驱动的滚动不应把 shouldAutoScrollRef 置为 false，
-    // 否则会导致每次进入 App 聊天页都停在最上面。
-    const atVeryTop = messageList.scrollTop <= 1;
-    const grewFromEmpty =
-      !chatHadContentRef.current && messageList.scrollHeight > 0;
-    chatHadContentRef.current = messageList.scrollHeight > 0;
-    if (atVeryTop && grewFromEmpty) {
-      return;
-    }
-    shouldAutoScrollRef.current = snapshot?.pinnedToBottom ?? true;
-    if (snapshot) {
-      chatScrollStatesRef.current.set(
-        activeSessionIdRef.current || "__draft__",
-        snapshot,
-      );
-    }
-  }
 
   function handleSettingsScroll(event) {
     const settingsScroll = event.currentTarget;
@@ -3858,24 +3784,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   function chooseSession(sessionId) {
-    const currentSnapshot = captureChatScrollState(messageListRef.current);
-    if (currentSnapshot) {
-      chatScrollStatesRef.current.set(
-        activeSessionIdRef.current || "__draft__",
-        currentSnapshot,
-      );
-    }
-    const nextSnapshot = chatScrollStatesRef.current.get(sessionId) || {
-      distanceFromBottom: 0,
-      pinnedToBottom: true,
-      scrollTop: 0,
-    };
-    pendingChatScrollRestoreRef.current = {
-      sessionId,
-      snapshot: nextSnapshot,
-      waitForMessages: true,
-    };
-    shouldAutoScrollRef.current = nextSnapshot.pinnedToBottom;
+    chatScrollControllerRef.current?.open();
     if (sessionId !== activeSessionIdRef.current) {
       abortChatRequest(chatRequestRef, "session-change");
     }
@@ -6591,27 +6500,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         immediate: true,
       });
     }
-    const scrollStateKey = activeSessionIdRef.current || "__draft__";
-    if (activeView === "chat" && view !== "chat") {
-      const snapshot = captureChatScrollState(messageListRef.current);
-      if (snapshot) {
-        chatScrollStatesRef.current.set(scrollStateKey, snapshot);
-        shouldAutoScrollRef.current = snapshot.pinnedToBottom;
-      }
-    }
-    if (view === "chat" && activeView !== "chat") {
-      const snapshot = chatScrollStatesRef.current.get(scrollStateKey) || {
-        distanceFromBottom: 0,
-        pinnedToBottom: true,
-        scrollTop: 0,
-      };
-      pendingChatScrollRestoreRef.current = {
-        sessionId: activeSessionIdRef.current,
-        snapshot,
-        waitForMessages: false,
-      };
-      shouldAutoScrollRef.current = snapshot.pinnedToBottom;
-    }
     closeComposerMenu();
     requestStatusPanelClose();
     setActiveView(view);
@@ -6702,21 +6590,21 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     handleSendButton();
   }
 
+  // Resolve each private avatar once per account/companion, not once per message.
+  const userAvatarMedia = usePrivateMediaSource(privateMediaContentPath(
+    selectedPrivateMedia(privateMediaCatalog, "user_avatar")?.id,
+  ));
+  const companionAvatarMedia = usePrivateMediaSource(privateMediaContentPath(
+    selectedPrivateMedia(privateMediaCatalog, "companion_avatar")?.id,
+  ));
+
   function renderChat() {
-    const userAvatarAsset = selectedPrivateMedia(
-      privateMediaCatalog,
-      "user_avatar",
-    );
-    const companionAvatarAsset = selectedPrivateMedia(
-      privateMediaCatalog,
-      "companion_avatar",
-    );
     const chatBackgroundAsset = selectedPrivateMedia(
       privateMediaCatalog,
       "chat_background",
     );
-    const userAvatar = privateMediaContentPath(userAvatarAsset?.id);
-    const companionAvatar = privateMediaContentPath(companionAvatarAsset?.id);
+    const userAvatar = userAvatarMedia.url;
+    const companionAvatar = companionAvatarMedia.url;
     const chatBackground = privateMediaContentPath(chatBackgroundAsset?.id);
     const latestMessage = messages[messages.length - 1];
     const replySuggestions =
@@ -6745,8 +6633,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           ref={messageListRef}
           className="message-list"
           aria-live="polite"
-          onScroll={trackMessageScroll}
+          tabIndex={0}
+          aria-label="聊天记录"
         >
+          <div className="message-list-content">
           {!isLoading && renderAchievementGuide()}
           {isLoading ? (
             <div className="empty-state">正在加载 DengTa home…</div>
@@ -6794,7 +6684,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               />
             ))
           )}
-          <div ref={messageEndRef} />
+          </div>
         </section>
 
         <div className="composer-wrap">
