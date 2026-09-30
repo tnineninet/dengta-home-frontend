@@ -9,12 +9,12 @@
 | 文件与位置 | 行为变化 |
 | --- | --- |
 | src/screen-glance-lifecycle.js:3、32、90 | 被 App 实际使用的可测试控制器；同步锁、固定账号/伴侣、取消旧请求；先取得 Android 授权再创建服务器会话。对已加载的其他模式会话返回冲突；停止只结束 screen 会话。失败只回滚本次创建的会话，回滚失败保留记录并说明重试操作。请求回执验证 ID/状态/模式，重试沿用创建 ID。 |
-| src/App.jsx:1245、1644、1767、1810、6017、6317 | 接入控制器和同步共享锁；状态读取、截图转换和发送前检查范围与操作版本；切换时释放临时草稿；旧反馈不写入新范围。浏览器可结束远端屏幕会话，只有原生端能启动系统共享。启动尚在建立中显示等待，明确 native lastError 显示失败。 |
+| src/App.jsx:1245、1644、1767、1812、6020、6320 | 接入控制器和同步共享锁；状态读取、截图转换和发送前检查范围与操作版本；切换时释放临时草稿；旧反馈不写入新范围。浏览器可结束远端屏幕会话，只有原生端能启动系统共享。启动尚在建立中显示等待，明确 native lastError 显示失败。 |
 | src/screen-glance.js:176、198 | 原生预览收到后再次核对账号/伴侣 scopeKey；截图同样验证 scopeKey，拒绝归属缺失的旧临时图片。未修改 buildScreenGlanceTurn。 |
 | android/.../ScreenGlancePlugin.java:21、30、63、96、205、221 | 原生授权同步门、重复授权错误码；停止或身份变化后旧授权不能启动服务；启动/配置/停止核对前端预期身份。旧范围的停止请求不能取消新范围授权。 |
 | android/.../ProjectionConsentGate.java:3 | 系统授权窗口保持单一租约，取消后等原窗口返回再释放 Capacitor 回调槽；只接收正确回调与归属。 |
 | android/.../ScreenCaptureScope.java:3 | 无归属和归属不同的截图不得返回。 |
-| android/.../ScreenGlanceService.java:105、384、389、431、701、779、798、1049 | 手动截图请求也固定账号/伴侣；截图、预览、最近回应保存范围元数据，读取与返回再次验证。未修改上传凭据、权限和租户保护。旧版无归属的临时截图/预览在读取时清除；不删除聊天、记忆或作品库。 |
+| android/.../ScreenGlanceService.java:105、384、389、431、701、776、802、1049 | 手动截图请求也固定账号/伴侣；截图、预览、最近回应保存范围元数据，读取与返回再次验证。未修改上传凭据、权限和租户保护。旧版无归属的临时截图/预览在读取时清除；不删除聊天、记忆或作品库。 |
 | package.json、package-lock.json、android/app/build.gradle、test/android-release.test.js | 2.10.45 / versionCode 93；新的运行测试加入 npm test。 |
 
 上述 android/... 相对于 android/app/src/main/java/home/dengta/app；准确当前源码可直接查同名文件。没有付费操作，没有使用 release JKS；APK 沿用稳定 Android Debug 签名。
