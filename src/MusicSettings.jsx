@@ -19,6 +19,8 @@ import { MAX_PLAYLIST_TEXT_LENGTH, readPlaylistTextFile } from "./playlist-file.
 import { resolveMusicPlayback, MUSIC_PLAYBACK_MODES } from "./music-playback.js";
 import { openNeteasePlayback } from "./netease-playback.js";
 import MusicPagedList from "./MusicPagedList.jsx";
+import { useMusicScope } from "./use-music-scope.js";
+import { runMusicTask, musicErrorMessage } from "./music-operation-feedback.js";
 
 const PROVIDERS = [
   ["local_playlist", "本地歌单", "ready", "可用"],
@@ -30,7 +32,8 @@ const PLAYLIST_ACCEPT = ".json,.m3u,.m3u8,.txt,application/json,text/plain,audio
 const AUDIO_ACCEPT = ".mp3,.m4a,.aac,.wav,.ogg,.opus,.flac,audio/mpeg,audio/mp4,audio/aac,audio/wav,audio/ogg,audio/opus,audio/flac";
 const AUDIO_EXTENSION = /\.(?:mp3|m4a|aac|wav|ogg|opus|flac)$/i;
 
-export default function MusicSettings({ providerStatus = null, onOpenMcpDeviceCenter, onImported, onBusyChange, compact = false }) {
+export default function MusicSettings({ providerStatus = null, onOpenMcpDeviceCenter, onImported, onBusyChange, compact = false, accountScope = "", companionScope = "" }) {
+  const musicScope = useMusicScope(accountScope, companionScope);
   const [playlists, setPlaylists] = useState([]);
   const [selected, setSelected] = useState(null);
   const [format, setFormat] = useState("auto");
@@ -54,207 +57,168 @@ export default function MusicSettings({ providerStatus = null, onOpenMcpDeviceCe
   const [neteaseBusy, setNeteaseBusy] = useState("");
 
   const localAudioUrlRef = useRef("");
-  const importBusyRef = useRef(false);
   const neteaseShare = detectNeteaseShare(content);
   const canImport = Boolean(content.trim()) && !busy;
+  const neteaseLabel = [neteaseStatus?.display_name, neteaseStatus?.account_name, neteaseStatus?.status].find(value => typeof value === "string" && value.trim())
+    || (neteaseBusy === "loading" ? "读取中…" : neteaseStatus?.logged_in === false ? "未登录" : "未知");
   useEffect(() => { onBusyChange?.(busy || fileBusy); }, [busy, fileBusy, onBusyChange]);
 
   async function refresh({ quiet = false } = {}) {
-    setRefreshing(true);
-    if (!quiet) setError("");
-    try {
-      setPlaylists(await listMusicPlaylists());
-      return true;
-    } catch (caught) {
-      setError(caught?.message || "歌单暂时无法读取，请稍后重试。");
-      return false;
-    } finally {
-      setRefreshing(false);
-    }
+    const result = await runMusicTask(musicScope, "library", (token) => listMusicPlaylists(token.options), {
+      replace: true,
+      onStart: () => { setRefreshing(true); if (!quiet) setError(""); },
+      onSuccess: setPlaylists,
+      onError: (caught) => setError(musicErrorMessage(caught, "歌单暂时无法读取，请刷新重试。")),
+      onFinish: () => setRefreshing(false),
+    });
+    return result.ok;
   }
   useEffect(() => {
-    let active = true;
-    listMusicPlaylists().then((items) => {
-      if (active) setPlaylists(items);
-    }).catch((caught) => {
-      if (active) setError(caught?.message || "歌单暂时无法读取。");
-    });
-    return () => { active = false; };
-  }, []);
+    const token = musicScope.begin("library");
+    if (!token) return;
+    listMusicPlaylists(token.options).then((lists) => {
+      if (!musicScope.current(token)) return;
+      setPlaylists(lists);
+    }).catch((caught) => { if (musicScope.current(token)) setError(musicErrorMessage(caught, "歌单读取失败，请刷新重试。")); }).finally(() => musicScope.finish(token));
+    return () => musicScope.cancel(token);
+  }, [musicScope]);
   useEffect(() => {
-    let active = true;
-    listNeteaseConnections().then((items) => {
-      if (!active) return;
-      setNeteaseConnections(items);
-      setConnectionId((current) => current || String(items[0]?.id || ""));
-    }).catch((caught) => {
-      if (active) setError(caught?.message || "网易云 MCP 连接暂时无法读取。");
-    });
-    return () => { active = false; };
-  }, []);
+    const token = musicScope.capture();
+    listNeteaseConnections(token.options).then(connections => {
+      if (!musicScope.current(token)) return;
+      setNeteaseConnections(connections); setConnectionId(current => current || String(connections[0]?.id || ""));
+    }).catch(caught => { if (musicScope.current(token)) setError(musicErrorMessage(caught, "网易云连接读取失败，请重新打开设置重试。")); });
+  }, [musicScope]);
+  const finishRemote = () => setNeteaseBusy(musicScope.busy("remote-search") ? "search" : musicScope.busy("remote-detail") ? "playlist" : musicScope.busy("remote-source") ? "loading" : "");
   useEffect(() => {
     if (!connectionId) return;
-    let active = true;
+    const token = musicScope.begin("remote-source", { replace: true });
+    if (!token) return;
     Promise.resolve().then(() => {
-      if (active) setNeteaseBusy("loading");
-      return Promise.allSettled([getNeteaseConnectionStatus(connectionId), listNeteasePlaylists(connectionId)]);
+      musicScope.assertCurrent(token); setNeteaseBusy("loading");
+      return Promise.allSettled([getNeteaseConnectionStatus(connectionId, token.options), listNeteasePlaylists(connectionId, token.options)]);
     }).then(([statusResult, playlistsResult]) => {
-      if (!active) return;
+      if (!musicScope.current(token)) return;
       if (statusResult.status === "fulfilled") setNeteaseStatus(statusResult.value);
       if (playlistsResult.status === "fulfilled") setRemotePlaylists(playlistsResult.value);
       const failure = statusResult.status === "rejected" ? statusResult.reason : playlistsResult.status === "rejected" ? playlistsResult.reason : null;
-      if (failure) setError(failure?.message || "网易云账号状态或歌单读取失败。");
-    }).finally(() => { if (active) setNeteaseBusy(""); });
-    return () => { active = false; };
-  }, [connectionId]);
+      if (failure) setError(musicErrorMessage(failure, "网易云账号状态或歌单读取失败，请检查连接后重试。"));
+    }).catch((caught) => { if (musicScope.current(token)) setError(musicErrorMessage(caught, "网易云连接检查失败，请重试。")); })
+      .finally(() => { musicScope.finish(token); if (musicScope.current(token)) setNeteaseBusy(musicScope.busy("remote-search") ? "search" : musicScope.busy("remote-detail") ? "playlist" : ""); });
+    return () => musicScope.cancel(token);
+  }, [connectionId, musicScope]);
 
   function selectNeteaseConnection(nextId) {
-    setConnectionId(nextId);
-    setNeteaseStatus(null);
-    setRemotePlaylists([]);
-    setRemoteSelected(null);
-    setSearchResults([]);
+    for (const key of ["remote-search", "remote-detail", "remote-source"]) musicScope.cancelKey(key);
+    setNeteaseBusy(""); setConnectionId(nextId); setNeteaseStatus(null); setRemotePlaylists([]); setRemoteSelected(null); setSearchResults([]);
   }
-  useEffect(() => () => {
-    if (localAudioUrlRef.current) URL.revokeObjectURL(localAudioUrlRef.current);
-  }, []);
+  useEffect(() => () => { if (localAudioUrlRef.current) URL.revokeObjectURL(localAudioUrlRef.current); }, []);
 
+  async function notifyImported(imported, token) {
+    if (!musicScope.current(token) || typeof onImported !== "function") return;
+    try { await onImported(imported); }
+    catch (caught) { if (musicScope.current(token)) setMessage(`歌单已保存；播放器刷新失败，可关闭此面板后手动刷新，无需重复导入。${musicErrorMessage(caught, "播放器读取失败。")} `); }
+  }
   async function importPlaylist() {
-    if (importBusyRef.current) return;
-    importBusyRef.current = true;
-    if (neteaseShare) {
-      setBusy(true); setError(""); setMessage("");
-      try {
-        const imported = await importNeteaseShare(connectionId, content);
+    await runMusicTask(musicScope, "import", (token) => neteaseShare ? importNeteaseShare(connectionId, content, token.options) : importMusicPlaylist({ format, sourceName: fileName || "粘贴内容", name, content }, token.options), {
+      onStart: () => { setBusy(true); setError(""); setMessage(""); },
+      onSuccess: async (imported, token) => {
         setContent(""); setFileName(""); setSelected(imported);
         setMessage(`已导入“${imported.name}”，共 ${imported.itemCount} 首。可播放方式由歌曲的实际回执决定。`);
-        await notifyImported(imported);
-        if (!compact) void refresh({ quiet: true });
-      } catch (caught) { setError(caught?.message || "网易云分享链接导入失败。"); }
-      finally { importBusyRef.current = false; setBusy(false); }
-      return;
-    }
-    setBusy(true); setError(""); setMessage("");
-    try {
-      const imported = await importMusicPlaylist({ format, sourceName: fileName || "粘贴内容", name, content });
-      setContent(""); setFileName(""); setMessage("歌单已导入。曲目地址仍由浏览器直接访问，不经过 DengTa 后端代理。");
-      void refresh({ quiet: true }).then((ok) => {
-        if (!ok) setMessage("歌单已导入；列表刷新失败，可稍后手动刷新，页面仍可继续使用。");
-      });
-      await notifyImported(imported);
-    } catch (caught) { setError(caught?.message || "歌单导入失败。"); } finally { importBusyRef.current = false; setBusy(false); }
+        await notifyImported(imported, token);
+        if (musicScope.current(token) && !compact) void refresh({ quiet: true });
+      },
+      onError: (caught) => setError(musicErrorMessage(caught, "歌单导入失败，内容仍保留，请检查格式或连接后重试。")),
+      onFinish: () => setBusy(false),
+    });
   }
-
-  async function notifyImported(imported) {
-    if (typeof onImported !== "function") return;
-    try { await onImported(imported); }
-    catch { setMessage("歌单已保存；播放器刷新失败，可关闭此面板后手动刷新，无需重复导入。"); }
-  }
-
   async function searchNetease() {
     if (!connectionId || !searchQuery.trim()) return;
-    setNeteaseBusy("search"); setError("");
-    try { setSearchResults(await searchNeteaseMusic(connectionId, searchQuery)); }
-    catch (caught) { setError(caught?.message || "网易云搜索失败。"); }
-    finally { setNeteaseBusy(""); }
+    await runMusicTask(musicScope, "remote-search", (token) => searchNeteaseMusic(connectionId, searchQuery, token.options), {
+      replace: true, onStart: () => { setNeteaseBusy("search"); setError(""); },
+      onSuccess: (items) => { setSearchResults(items); setRemoteSelected(null); },
+      onError: (caught) => setError(musicErrorMessage(caught, "网易云搜索失败，请重试。")), onFinish: finishRemote,
+    });
   }
-
+  async function selectRemotePlaylist(id) {
+    await runMusicTask(musicScope, "remote-detail", (token) => getNeteasePlaylist(connectionId, id, token.options), {
+      replace: true, onStart: () => { setNeteaseBusy("playlist"); setError(""); }, onSuccess: setRemoteSelected,
+      onError: (caught) => setError(musicErrorMessage(caught, "远端歌单读取失败，请重试。")), onFinish: finishRemote,
+    });
+  }
+  async function selectSavedPlaylist(id) {
+    if (selected?.id === id) { musicScope.cancelKey("selection"); setSelected(null); return; }
+    await runMusicTask(musicScope, "selection", (token) => getMusicPlaylist(id, token.options), {
+      replace: true, onStart: () => setError(""), onSuccess: setSelected,
+      onError: (caught) => setError(musicErrorMessage(caught, "歌单读取失败，请重新选择或刷新。")),
+    });
+  }
   async function openExternal(item, resourceType = "song", fallbackId = "") {
-    const playback = resolveMusicPlayback(item);
-    const resourceId = playback.resourceId || fallbackId;
-    try {
-      const opening = openNeteasePlayback(resourceType, resourceId);
-      void requestExternalMusicPlayback(resourceType, resourceId).catch(() => {});
-      await opening;
-    } catch (caught) { setError(caught?.message || "无法打开网易云播放。"); }
+    const playback = resolveMusicPlayback(item), resourceId = playback.resourceId || fallbackId;
+    await runMusicTask(musicScope, "external-playback", (token) => Promise.all([openNeteasePlayback(resourceType, resourceId), requestExternalMusicPlayback(resourceType, resourceId, token.options)]), {
+      onError: (caught) => setError(musicErrorMessage(caught, "无法打开网易云播放，请检查设备和连接后重试。")),
+    });
   }
-
   async function removePlaylist(id) {
-    setBusy(true); setError("");
-    try {
-      await deleteMusicPlaylist(id); setSelected(null); setMessage("歌单已删除。");
-      void refresh({ quiet: true }).then((ok) => {
-        if (!ok) setMessage("歌单已删除；列表刷新失败，可稍后手动刷新。");
-      });
-    } catch (caught) { setError(caught?.message || "歌单删除失败。"); } finally { setBusy(false); }
+    await runMusicTask(musicScope, "import", (token) => deleteMusicPlaylist(id, token.options), {
+      onStart: () => { setBusy(true); setError(""); },
+      onSuccess: () => { musicScope.cancelKey("selection"); setSelected(null); setMessage("歌单已删除。"); void refresh({ quiet: true }); },
+      onError: (caught) => setError(musicErrorMessage(caught, "删除失败，歌单仍保留，请重试。")), onFinish: () => setBusy(false),
+    });
   }
-
   async function readClipboard() {
-    setClipboardBusy(true); setError("");
-    try {
-      let value = "";
+    await runMusicTask(musicScope, "clipboard", async (token) => {
+      let value;
       try { value = String((await Clipboard.read())?.value || ""); } catch {
+        musicScope.assertCurrent(token);
         if (!navigator.clipboard?.readText) throw new Error("当前设备不允许读取剪贴板，请长按输入框手动粘贴。");
         value = await navigator.clipboard.readText();
       }
       if (!value.trim()) throw new Error("剪贴板里没有可读取的文本，请复制歌单内容后重试。");
       if (value.length > MAX_PLAYLIST_TEXT_LENGTH) throw new Error("歌单文本不能超过 1 MiB，请精简后重试。");
-      setContent(value);
-      setMessage("已从剪贴板读取文本，请确认识别状态后继续。");
-    } catch (caught) {
-      setError(caught?.message || "剪贴板权限被拒绝。你可以授权后重试，或长按输入框手动粘贴。");
-    } finally { setClipboardBusy(false); }
+      return value;
+    }, {
+      onStart: () => { setClipboardBusy(true); setError(""); },
+      onSuccess: (value) => { setContent(value); setMessage("已从剪贴板读取文本，请确认识别状态后继续。"); },
+      onError: (caught) => setError(musicErrorMessage(caught, "剪贴板读取失败，可以长按输入框手动粘贴。")), onFinish: () => setClipboardBusy(false),
+    });
   }
-
   async function choosePlaylistFile(event) {
-    const input = event.currentTarget;
-    setFileBusy(true); setError("");
-    try {
-      const file = input.files?.[0];
-      if (!file) return;
-      const lower = file.name.toLowerCase();
-      const value = await readPlaylistTextFile(file);
-      setFileName(file.name);
-      setFormat(lower.endsWith(".json") ? "json" : /\.m3u8?$/.test(lower) ? "m3u" : "txt");
-      setContent(value);
-      setMessage(`已读取歌单文件：${file.name}`);
-    } catch (caught) { setError(caught?.message || "歌单文件读取失败，请重新选择。"); }
-    finally { input.value = ""; setFileBusy(false); }
+    const input = event.currentTarget, file = input.files?.[0];
+    if (!file) return;
+    await runMusicTask(musicScope, "file", () => readPlaylistTextFile(file), {
+      replace: true, onStart: () => { setFileBusy(true); setError(""); },
+      onSuccess: (value) => { const lower = file.name.toLowerCase(); setFileName(file.name); setFormat(lower.endsWith(".json") ? "json" : /\.m3u8?$/.test(lower) ? "m3u" : "txt"); setContent(value); setMessage(`已读取歌单文件：${file.name}`); },
+      onError: (caught) => setError(musicErrorMessage(caught, "歌单文件读取失败，请重新选择。")), onFinish: () => setFileBusy(false),
+    });
+    input.value = "";
   }
-
   function chooseLocalAudio(event) {
     const input = event.currentTarget;
-    setFileBusy(true); setError("");
+    setError("");
     try {
-      const file = input.files?.[0];
-      if (!file) return;
+      const file = input.files?.[0]; if (!file) return;
       if (!AUDIO_EXTENSION.test(file.name) && !String(file.type).startsWith("audio/")) throw new Error("请选择 MP3、M4A、AAC、WAV、OGG、OPUS 或 FLAC 音频文件。");
       if (localAudioUrlRef.current) URL.revokeObjectURL(localAudioUrlRef.current);
-      const url = URL.createObjectURL(file);
-      localAudioUrlRef.current = url;
-      setLocalAudio({ name: file.name, url, type: file.type });
-      setMessage(`已在本机载入：${file.name}`);
-    } catch (caught) { setError(caught?.message || "本机音频选择失败，请重试。"); }
-    finally { input.value = ""; setFileBusy(false); }
+      const url = URL.createObjectURL(file); localAudioUrlRef.current = url;
+      setLocalAudio({ name: file.name, url, type: file.type }); setMessage(`已在本机载入：${file.name}`);
+    } catch (caught) { setError(musicErrorMessage(caught, "本机音频选择失败，请重试。")); }
+    finally { input.value = ""; }
   }
-
   async function importLocalAudio(event) {
-    const input = event.currentTarget;
-    if (importBusyRef.current) return;
-    importBusyRef.current = true;
-    setFileBusy(true); setError("");
-    try {
-      const file = input.files?.[0];
-      if (!file) return;
+    const input = event.currentTarget, file = input.files?.[0]; if (!file) return;
+    await runMusicTask(musicScope, "import", async (token) => {
       if (!AUDIO_EXTENSION.test(file.name) && !String(file.type).startsWith("audio/")) throw new Error("请选择 MP3、M4A、WAV、OGG 或 FLAC 音频文件。");
-      const audio = await uploadLocalMusicFile(file);
-      const imported = await importMusicPlaylist({
-        format: "txt",
-        sourceName: "本机音频",
-        name: `本机 · ${audio.title}`,
-        content: audio.url,
-      });
-      setSelected(imported);
-      setMessage(`已把「${audio.title}」上传并导入歌单「${imported.name}」，可以在一起听里播放了。`);
-      void refresh({ quiet: true });
-      await notifyImported(imported);
-    } catch (caught) {
-      setError(caught?.message || "本机音频导入失败，请重试。");
-    } finally {
-      input.value = "";
-      setFileBusy(false);
-      importBusyRef.current = false;
-    }
+      const audio = await uploadLocalMusicFile(file, token.options);
+      musicScope.assertCurrent(token);
+      try { return { audio, imported: await importMusicPlaylist({ format: "txt", sourceName: "本机音频", name: `本机 · ${audio.title}`, content: audio.url }, token.options) }; }
+      catch (caught) { throw Object.assign(new Error("音频已上传，但歌单保存失败。请刷新确认后重试，避免重复上传。"), { code: caught?.code || "music_audio_playlist_failed", status: caught?.status, error_source: caught?.error_source, upstream_status: caught?.upstream_status, error_log_id: caught?.error_log_id, error_location: caught?.error_location }); }
+    }, {
+      onStart: () => { setFileBusy(true); setError(""); },
+      onSuccess: async ({ audio, imported }, token) => { setSelected(imported); setMessage(`已把「${audio.title}」上传并导入歌单「${imported.name}」，可以在一起听里播放了。`); await notifyImported(imported, token); if (musicScope.current(token) && !compact) void refresh({ quiet: true }); },
+      onError: (caught) => setError(musicErrorMessage(caught, "本机音频导入失败，请检查文件和网络后重试。")), onFinish: () => setFileBusy(false),
+    });
+    input.value = "";
   }
 
   return <section className={`music-settings settings-card${compact ? " is-import-sheet" : ""}`} aria-labelledby="music-settings-title">
@@ -270,8 +234,8 @@ export default function MusicSettings({ providerStatus = null, onOpenMcpDeviceCe
       <summary>高级来源：自托管网易云 MCP</summary>
       <label>已保存 MCP 连接<select value={connectionId} onChange={(event) => selectNeteaseConnection(event.target.value)}><option value="">选择 provider_profile=netease_cloud_music 的连接</option>{neteaseConnections.map((connection) => <option key={connection.id} value={connection.id}>{connection.name}</option>)}</select></label>
       {!neteaseConnections.length && <p>尚未保存网易云 Provider 连接。<button type="button" onClick={onOpenMcpDeviceCenter}>去 MCP 设备中心</button></p>}
-      {connectionId && <div className="music-netease-status"><strong>账号状态</strong><span>{neteaseStatus?.display_name || neteaseStatus?.account_name || neteaseStatus?.status || (neteaseBusy === "loading" ? "读取中…" : "未知")}</span><small>登录只可在自托管管理页完成；DengTa 不调用 cloud_music_login，也不接收 Cookie。</small></div>}
-      {connectionId && <><div className="music-remote-playlists"><strong>远端歌单</strong>{remotePlaylists.length ? remotePlaylists.map((playlist) => <button type="button" key={playlist.providerPlaylistId || playlist.id} onClick={async () => { setNeteaseBusy("playlist"); setError(""); try { setRemoteSelected(await getNeteasePlaylist(connectionId, playlist.providerPlaylistId || playlist.id)); } catch (caught) { setError(caught?.message || "远端歌单读取失败。"); } finally { setNeteaseBusy(""); } }}><span>{playlist.name}</span><small>{playlist.itemCount} 首</small></button>) : <p>{neteaseBusy === "loading" ? "正在读取远端歌单…" : "没有可显示的远端歌单。"}</p>}</div>
+      {connectionId && <div className="music-netease-status"><strong>账号状态</strong><span>{neteaseLabel}</span><small>登录只可在自托管管理页完成；DengTa 不调用 cloud_music_login，也不接收 Cookie。</small></div>}
+      {connectionId && <><div className="music-remote-playlists"><strong>远端歌单</strong>{remotePlaylists.length ? remotePlaylists.map((playlist) => <button type="button" key={playlist.providerPlaylistId || playlist.id} onClick={() => void selectRemotePlaylist(playlist.providerPlaylistId || playlist.id)}><span>{playlist.name}</span><small>{playlist.itemCount} 首</small></button>) : <p>{neteaseBusy === "loading" ? "正在读取远端歌单…" : "没有可显示的远端歌单。"}</p>}</div>
       <div className="music-netease-search"><label>搜索网易云曲目<input value={searchQuery} maxLength={500} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void searchNetease(); } }} /></label><button type="button" disabled={!searchQuery.trim() || Boolean(neteaseBusy)} onClick={() => void searchNetease()}>{neteaseBusy === "search" ? "搜索中…" : "搜索"}</button></div></>}
       {(remoteSelected || searchResults.length > 0) && <div className="music-external-results"><strong>{remoteSelected ? remoteSelected.name : "搜索结果"}</strong>{(remoteSelected?.items || searchResults).map((item, index) => <div key={item.id || item.providerTrackId || index}><span><b>{item.title}</b><small>{item.artist || "未知艺术家"}</small></span><button type="button" onClick={() => void openExternal(item)}>在网易云播放</button></div>)}<p>普通歌曲、VIP 歌曲和版权可用性均由网易云判断。</p></div>}
     </details>
@@ -288,7 +252,7 @@ export default function MusicSettings({ providerStatus = null, onOpenMcpDeviceCe
     <button type="button" className="together-primary" disabled={!canImport} onClick={() => void importPlaylist()}>{busy ? "正在导入…" : neteaseShare ? `导入网易云${neteaseShare.resourceType === "song" ? "单曲" : "歌单"}` : "导入歌单"}</button>
     {localAudio && <section className="music-local-audio" aria-label="本机音频播放器"><strong>{localAudio.name}</strong><audio src={localAudio.url} controls playsInline preload="metadata" /><p>仅本机播放，不能投屏/跨设备同步；文件不会上传、发送后端或交给 AI。</p></section>}
     {error && <p className="music-feedback is-error" role="alert">{error}</p>}{message && <p className="music-feedback" role="status">{message}</p>}
-    {!compact && <div className="music-playlist-list"><h4>已保存歌单</h4>{playlists.length ? playlists.map((playlist) => <article key={playlist.id}><button type="button" className="music-playlist-summary" aria-expanded={selected?.id === playlist.id} onClick={async () => setSelected(selected?.id === playlist.id ? null : await getMusicPlaylist(playlist.id))}><strong>{playlist.name}</strong><span>{playlist.itemCount} 首 · 来源：{playlist.provider}</span></button><button type="button" className="danger" disabled={busy} onClick={() => void removePlaylist(playlist.id)}>删除</button></article>) : <p>还没有导入歌单。</p>}</div>}
+    {!compact && <div className="music-playlist-list"><h4>已保存歌单</h4>{playlists.length ? playlists.map((playlist) => <article key={playlist.id}><button type="button" className="music-playlist-summary" aria-expanded={selected?.id === playlist.id} onClick={() => void selectSavedPlaylist(playlist.id)}><strong>{playlist.name}</strong><span>{playlist.itemCount} 首 · 来源：{playlist.provider}</span></button><button type="button" className="danger" disabled={busy} onClick={() => void removePlaylist(playlist.id)}>删除</button></article>) : <p>还没有导入歌单。</p>}</div>}
     {!compact && selected && <section className="music-playlist-detail" aria-label="歌单详情"><h4>{selected.name}</h4><p>来源：{selected.provider} · {selected.itemCount} 首</p>{selected.providerPlaylistId && <button type="button" onClick={() => void openExternal({}, "playlist", selected.providerPlaylistId)}>在网易云打开歌单</button>}{selected.items.length ? <MusicPagedList key={selected.id} items={selected.items} label="歌单详情" renderItem={(item, index) => { const playback = resolveMusicPlayback(item); return <div key={item.id || index}><span>{index + 1}</span><span><strong>{item.title}</strong><small>{item.artist || "未知艺术家"} · 播放模式：{playback.mode}</small></span>{playback.mode === MUSIC_PLAYBACK_MODES.external ? <button type="button" onClick={() => void openExternal(item)}>在网易云打开</button> : <audio src={playback.url} controls preload="none" aria-label={`播放 ${item.title}`} />}</div>; }} /> : <p>此歌单已保存链接元数据，尚无曲目；可在网易云打开，或连接 MCP 后重新导入补全。</p>}</section>}
   </section>;
 }

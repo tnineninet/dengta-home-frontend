@@ -7987,7 +7987,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
             {settingsCategory === "music-import" && (
               <Suspense fallback={<DeferredFeature label="正在打开音乐导入…" />}>
-                <MusicSettings />
+                <MusicSettings key={JSON.stringify([accountStorageScope, companionScope])} accountScope={accountStorageScope} companionScope={companionScope} />
               </Suspense>
             )}
 

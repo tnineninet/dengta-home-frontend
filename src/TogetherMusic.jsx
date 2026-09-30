@@ -46,6 +46,8 @@ import { openNeteasePlayback } from "./netease-playback.js";
 import { browserLauncherAvailable, openBuiltInBrowser, readBrowserCookie } from "./browser-launcher.js";
 
 import { createMusicQueueRequests } from "./music-queue-requests.js";
+import { useMusicScope } from "./use-music-scope.js";
+import { runMusicTask, musicErrorMessage } from "./music-operation-feedback.js";
 
 import MusicSettings from "./MusicSettings.jsx";
 import MusicImportDialog from "./MusicImportDialog.jsx";
@@ -55,13 +57,13 @@ const ERROR_MESSAGE = "音频无法播放。链接可能已过期、需要登录
 const REPEAT_LABELS = Object.freeze({ off: "不循环", all: "列表循环", one: "单曲循环" });
 
 export default function TogetherMusic({ session, busy = false, onStart, onEnd, onPlaybackChange, onPositionChange, request = null, accountScope = "", companionScope = "" }) {
+  const musicScope = useMusicScope(accountScope, companionScope);
   const audioRef = useRef(null);
   const mountedRef = useRef(true);
   const queueRef = useRef(null);
   const loadedPlaylistsRef = useRef({});
   const operationRef = useRef(null);
-  const libraryControllerRef = useRef(new AbortController());
-  const musicRequestOptions = useCallback(() => ({ accountScope, companionScope, signal: libraryControllerRef.current.signal }), [accountScope, companionScope]);
+  const musicRequestOptions = useCallback(() => musicScope.capture().options, [musicScope]);
   const [retryQueue, setRetryQueue] = useState(null);
   const lastReportRef = useRef(0);
   const autoPlayNextRef = useRef(false);
@@ -188,12 +190,14 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   });
 
   const refreshLibrary = useCallback(async ({ initial = false } = {}) => {
+    const token = musicScope.begin("library");
+    if (!token) return;
     if (initial) setLoading(true);
     else setRefreshing(true);
     setError("");
     try {
-      const [playlistResult, favoriteResult, connectionResult] = await Promise.allSettled([listMusicPlaylists(musicRequestOptions()), listMusicFavorites(), listNeteaseConnections()]);
-      if (!mountedRef.current) return;
+      const [playlistResult, favoriteResult, connectionResult] = await Promise.allSettled([listMusicPlaylists(token.options), listMusicFavorites(token.options), listNeteaseConnections(token.options)]);
+      if (!musicScope.current(token)) return;
       if (playlistResult.status === "fulfilled") {
         setPlaylists(playlistResult.value);
         setStatus(playlistResult.value.length ? "选择歌单后即可开始。" : "还没有可播放歌单，请先在设置中导入。");
@@ -205,17 +209,17 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
         setConnectionId((current) => availableConnections.some((connection) => connection.id === current) ? current : availableConnections[0]?.id || "");
       }
       const failure = playlistResult.status === "rejected" ? playlistResult.reason : favoriteResult.status === "rejected" ? favoriteResult.reason : connectionResult.status === "rejected" ? connectionResult.reason : null;
-      if (failure) setError(failure?.message || "部分音乐资料暂时无法读取，可稍后重试。");
+      if (failure) setError(musicErrorMessage(failure, "部分音乐资料暂时无法读取，可稍后重试。"));
     } finally {
-      if (mountedRef.current) { setLoading(false); setRefreshing(false); }
+      musicScope.finish(token);
+      if (musicScope.current(token)) { setLoading(false); setRefreshing(false); }
     }
-  }, [musicRequestOptions]);
+  }, [musicScope]);
 
   useEffect(() => {
     mountedRef.current = true;
-    if (libraryControllerRef.current.signal.aborted) libraryControllerRef.current = new AbortController();
     void Promise.resolve().then(() => refreshLibrary({ initial: true }));
-    return () => { mountedRef.current = false; operationRef.current = null; libraryControllerRef.current.abort(); };
+    return () => { mountedRef.current = false; operationRef.current = null; };
   }, [refreshLibrary]);
 
   useEffect(() => {
@@ -391,97 +395,70 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
     finally { if (operationRef.current === token) { operationRef.current = null; if (mountedRef.current) setLoading(false); } }
   };
 
+  const launchExternalTrack = async (resourceType, resourceId, cookie = false) => {
+    await runMusicTask(musicScope, "external-playback", (token) => Promise.all([
+      requestExternalMusicPlayback(resourceType, resourceId, token.options),
+      openNeteasePlayback(resourceType, resourceId),
+    ]), {
+      onStart: () => { setError(""); if (cookie) setCookieOpStatus("正在交给网易云打开…"); },
+      onSuccess: () => { if (cookie) setCookieOpStatus("已交给网易云打开这首，实际播放由网易云决定。"); else setStatus("已交给网易云打开；外部播放进度需手动同步，歌曲可用性由网易云判断。"); },
+      onError: (caught) => { const message = musicErrorMessage(caught, "无法打开网易云，请检查设备和连接后重试。"); if (cookie) setCookieOpStatus(message); else setError(message); },
+    });
+  };
   const openExternal = async () => {
-    if (playback.mode !== MUSIC_PLAYBACK_MODES.external) return;
-    setError("");
-    try {
-      await Promise.all([
-        requestExternalMusicPlayback(playback.resourceType, playback.resourceId),
-        openNeteasePlayback(playback.resourceType, playback.resourceId),
-      ]);
-      setPosition(0);
-      setDuration(item?.durationSeconds || 0);
-      setStatus("已交给网易云打开；灯塔无法读取外部 App 的实际播放进度，请手动同步听到的位置。版权可用性由网易云判断。");
-    } catch (caught) { setError(caught?.message || "无法打开网易云播放。"); }
+    if (playback.mode === MUSIC_PLAYBACK_MODES.external) await launchExternalTrack(playback.resourceType, playback.resourceId);
   };
 
   const connectProvider = async (event) => {
     event.preventDefault();
-    if (providerBusy) return;
-    setProviderBusy(true);
-    setError("");
-    setProviderStatus("正在协商协议并自动识别接口能力…");
-    try {
-      const connection = await connectNeteaseMcp({ name: connectionName, endpoint: connectionEndpoint, token: connectionToken });
-      const nextConnections = (await listNeteaseConnections()).filter((entry) => entry.enabled && entry.auth_configured);
-      setConnections(nextConnections);
-      setConnectionId(connection.id);
-      setConnectionToken("");
-      setProviderStatus(`已自动识别并启用“${connection.name}”${connection.adapter_id ? `（${connection.adapter_id}）` : ""}，凭据已从页面清空。`);
-    } catch (caught) {
-      setError(caught?.message || "网易云 MCP 连接失败。");
-      setProviderStatus("");
-    } finally {
-      setProviderBusy(false);
-    }
+    await runMusicTask(musicScope, "provider", async (token) => {
+      return connectNeteaseMcp({ name: connectionName, endpoint: connectionEndpoint, token: connectionToken }, token.options);
+    }, {
+      onStart: () => { setProviderBusy(true); setError(""); setProviderStatus("正在协商协议并自动识别接口能力…"); },
+      onSuccess: async (connection, token) => {
+        setConnections(current => [connection, ...current.filter(entry => entry.id !== connection.id)]); setConnectionId(connection.id); setConnectionToken("");
+        setProviderStatus(`连接“${connection.name}”已保存，凭据已从页面清空。`);
+        try {
+          const next = (await listNeteaseConnections(token.options)).filter(entry => entry.enabled && entry.auth_configured);
+          if (musicScope.current(token)) setConnections(next);
+        } catch (caught) { if (musicScope.current(token)) setProviderStatus(`连接已保存，列表刷新失败，无需重复创建。${musicErrorMessage(caught, "请刷新曲库。")} `); }
+      },
+      onError: (caught) => { setError(musicErrorMessage(caught, "网易云 MCP 连接失败，请检查地址或登录状态后重试。")); setProviderStatus(""); },
+      onFinish: () => setProviderBusy(false),
+    });
   };
 
-
   const connectNeteaseCookie = async (options = {}) => {
-    if (cookieBusy) return;
-    if (!browserLauncherAvailable()) {
-      setError("内置浏览器登录仅 Android App 可用。");
-      return;
-    }
-    setCookieBusy(true);
-    setError("");
-    try {
-      // 登录态长住的内置浏览器：打开网易云网页，登录后点「提取登录态」再返回，
-      // Cookie 自动保存给 AI 使用（可复用手机版/桌面版两种网页）。
-      const outcome = await openBuiltInBrowser({
-        url: "https://music.163.com/",
-        title: "网易云登录（内置浏览器）",
-        site: "netease",
-        desktop: options?.desktop === true,
-      });
-      // 用系统返回键关闭也会走到这里：只要点过「提取登录态」，
-      // 登录态已保存在本机，必须继续读取，不能因为返回方式而丢失。
+    if (!browserLauncherAvailable()) { setError("内置浏览器登录仅 Android App 可用。"); return; }
+    await runMusicTask(musicScope, "cookie-login", async (token) => {
+      const outcome = await openBuiltInBrowser({ url: "https://music.163.com/", title: "网易云登录（内置浏览器）", site: "netease", desktop: options?.desktop === true });
+      musicScope.assertCurrent(token);
       const saved = await readBrowserCookie("netease");
-      if (!saved.cookie) {
-        setError(outcome.ok
-          ? "没有提取到登录态。请重新打开，在页面里登录后点「提取登录态」，再返回。"
-          : (outcome.error || "没有拿到登录状态。") + " 且没有提取到登录态，请重试。");
-        return;
-      }
-      const savedSession = await saveNeteaseCookieSession(saved.cookie);
-      setCookieStatus({
-        checking: false,
-        connected: true,
-        account_name: savedSession?.session?.account_name || "",
-      });
-      setStatus("网易云账号已连接，可以搜歌和导入歌单了。");
-      void refreshLibrary();
-    } catch (caught) {
-      setError(caught?.message || "连接网易云失败。");
-    } finally {
-      setCookieBusy(false);
-    }
+      musicScope.assertCurrent(token);
+      if (!saved.cookie) throw Object.assign(new Error(outcome.ok ? "没有提取到登录态。请登录后点“提取登录态”，再返回重试。" : "浏览器未返回登录态，请重新打开网易云登录。"), { code: "netease_cookie_missing" });
+      return saveNeteaseCookieSession(saved.cookie, token.options);
+    }, {
+      onStart: () => { musicScope.cancelKey("cookie-check"); setCookieStatus(current => ({ ...current, checking: false })); setCookieBusy(true); setError(""); },
+      onSuccess: (saved) => { setCookieStatus({ checking: false, connected: saved?.session?.connected === true, account_name: saved?.session?.account_name || "" }); setStatus("网易云登录状态已保存，可以搜索或导入歌曲。"); void refreshLibrary(); },
+      onError: (caught) => setError(musicErrorMessage(caught, "连接网易云失败，请重新登录后重试。")),
+      onFinish: () => setCookieBusy(false),
+    });
   };
 
   const disconnectNeteaseCookie = async () => {
-    try {
-      await clearNeteaseCookieSession();
-    } catch {
-      // 忽略清理失败。
-    }
-    setCookieStatus({ checking: false, connected: false, account_name: "" });
+    await runMusicTask(musicScope, "cookie-login", (token) => clearNeteaseCookieSession(token.options), {
+      onStart: () => { musicScope.cancelKey("cookie-check"); setCookieStatus(current => ({ ...current, checking: false })); setCookieBusy(true); setError(""); },
+      onSuccess: () => { setCookieStatus({ checking: false, connected: false, account_name: "" }); setStatus("网易云登录已断开。"); },
+      onError: (caught) => setError(musicErrorMessage(caught, "断开登录失败，当前登录状态仍保留。请重试。")),
+      onFinish: () => setCookieBusy(false),
+    });
   };
+
   // ---------- 网易云音乐操作面板（Cookie 登录后可用） ----------
   const [cookiePanel, setCookiePanel] = useState(() => request?.query ? "search" : "closed"); // closed | search | playlists | daily | history
   const [cookieSearchQuery, setCookieSearchQuery] = useState(() => request?.query || "");
   const [cookieSearchResults, setCookieSearchResults] = useState([]);
   const [cookieSearchBusy, setCookieSearchBusy] = useState(false);
-  const searchRequestRef = useRef(0);
   const automaticSearchRef = useRef("");
   const [cookieMyPlaylists, setCookieMyPlaylists] = useState(null);
   const [cookiePlaylistDetail, setCookiePlaylistDetail] = useState(null);
@@ -496,20 +473,15 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
     await performCookieSearch(cookieSearchQuery);
   };
   const performCookieSearch = async (query) => {
-    const searchId = ++searchRequestRef.current;
-    setCookieSearchBusy(true);
-    setCookieOpStatus("");
-    try {
-      const items = await cookieSearchNetease(query, 12);
-      if (!mountedRef.current || searchRequestRef.current !== searchId) return;
-      setCookieSearchResults(items);
-      setCookieOpStatus(items.length ? `找到 ${items.length} 首。` : "没有找到相关歌曲。");
-    } catch (caught) {
-      if (mountedRef.current && searchRequestRef.current === searchId) setCookieOpStatus(caught?.message || "搜索失败。");
-    } finally {
-      if (mountedRef.current && searchRequestRef.current === searchId) setCookieSearchBusy(false);
-    }
+    await runMusicTask(musicScope, "cookie-search", (token) => cookieSearchNetease(query, 12, token.options), {
+      replace: true,
+      onStart: () => { setCookieSearchBusy(true); setCookieOpStatus(""); },
+      onSuccess: (items) => { setCookieSearchResults(items); setCookieOpStatus(items.length ? `找到 ${items.length} 首。` : "没有找到相关歌曲。"); },
+      onError: (caught) => setCookieOpStatus(musicErrorMessage(caught, "搜索失败，请重试或重新连接网易云。")),
+      onFinish: () => setCookieSearchBusy(false),
+    });
   };
+
   const searchFromActivity = useEffectEvent(query => { void performCookieSearch(query); });
   useEffect(() => {
     if (!cookieStatus.connected || !request?.id || !request.query || automaticSearchRef.current === request.id) return;
@@ -524,131 +496,92 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
 
   const openCookiePlaylists = async () => {
     setCookiePanel("playlists");
-    setCookieOpStatus("");
-    try {
-      const data = await cookieGetMyPlaylists();
-      setCookieMyPlaylists(data);
-      setCookiePlaylistDetail(null);
-    } catch (caught) {
-      setCookieOpStatus(caught?.message || "读取歌单失败。");
-    }
+    await runMusicTask(musicScope, "cookie-browse", (token) => cookieGetMyPlaylists(token.options), {
+      replace: true, onStart: () => { setCookieOpBusy(true); setCookieOpStatus(""); },
+      onSuccess: (data) => { setCookieMyPlaylists(data); setCookiePlaylistDetail(null); },
+      onError: (caught) => setCookieOpStatus(musicErrorMessage(caught, "读取歌单失败，请重试。")), onFinish: () => setCookieOpBusy(musicScope.busy("cookie-browse") || musicScope.busy("cookie-write")),
+    });
   };
-
   const openCookiePlaylist = async (playlistId) => {
     if (!playlistId) return;
-    setCookieOpBusy(true);
-    setCookieOpStatus("");
-    try {
-      const data = await cookieGetPlaylistTracks(playlistId);
-      setCookiePlaylistDetail({ id: playlistId, ...(data?.playlist || {}) });
-    } catch (caught) {
-      setCookieOpStatus(caught?.message || "读取歌单内容失败。");
-    } finally {
-      setCookieOpBusy(false);
-    }
+    await runMusicTask(musicScope, "cookie-browse", (token) => cookieGetPlaylistTracks(playlistId, token.options), {
+      replace: true, onStart: () => { setCookieOpBusy(true); setCookieOpStatus(""); },
+      onSuccess: (data) => setCookiePlaylistDetail({ id: playlistId, ...(data?.playlist || {}) }),
+      onError: (caught) => setCookieOpStatus(musicErrorMessage(caught, "读取歌单内容失败，请重试。")), onFinish: () => setCookieOpBusy(musicScope.busy("cookie-browse") || musicScope.busy("cookie-write")),
+    });
   };
-
   const openCookieDaily = async () => {
     setCookiePanel("daily");
-    setCookieOpStatus("");
-    try {
-      const data = await cookieGetDailyRecommend();
-      setCookieDaily(Array.isArray(data?.daily) ? data.daily : []);
-      setCookieOpStatus("今日推荐已加载。");
-    } catch (caught) {
-      setCookieOpStatus(caught?.message || "每日推荐读取失败。");
-    }
+    await runMusicTask(musicScope, "cookie-browse", (token) => cookieGetDailyRecommend(token.options), {
+      replace: true, onStart: () => { setCookieOpBusy(true); setCookieOpStatus(""); },
+      onSuccess: (data) => { setCookieDaily(Array.isArray(data?.daily) ? data.daily : []); setCookieOpStatus("今日推荐已加载。"); },
+      onError: (caught) => setCookieOpStatus(musicErrorMessage(caught, "每日推荐读取失败，请重试。")), onFinish: () => setCookieOpBusy(musicScope.busy("cookie-browse") || musicScope.busy("cookie-write")),
+    });
   };
-
   const openCookieHistory = async () => {
     setCookiePanel("history");
-    setCookieOpStatus("");
-    try {
-      const data = await cookieGetPlayHistory(20);
-      setCookieHistory(Array.isArray(data?.records) ? data.records : []);
-      setCookieOpStatus("听歌记录已加载。");
-    } catch (caught) {
-      setCookieOpStatus(caught?.message || "听歌记录读取失败。");
-    }
+    await runMusicTask(musicScope, "cookie-browse", (token) => cookieGetPlayHistory(20, token.options), {
+      replace: true, onStart: () => { setCookieOpBusy(true); setCookieOpStatus(""); },
+      onSuccess: (data) => { setCookieHistory(Array.isArray(data?.records) ? data.records : []); setCookieOpStatus("听歌记录已加载。"); },
+      onError: (caught) => setCookieOpStatus(musicErrorMessage(caught, "听歌记录读取失败，请重试。")), onFinish: () => setCookieOpBusy(musicScope.busy("cookie-browse") || musicScope.busy("cookie-write")),
+    });
   };
-
   const cookieLikeTrack = async (songId, liked) => {
-    setCookieOpBusy(true);
-    setCookieOpStatus("");
-    try {
-      const result = await cookieLikeSong(songId, liked);
-      setCookieOpStatus(result?.liked ? "已红心。♥" : "已取消红心。");
-    } catch (caught) {
-      setCookieOpStatus(caught?.message || "红心操作失败。");
-    } finally {
-      setCookieOpBusy(false);
-    }
+    await runMusicTask(musicScope, "cookie-write", (token) => cookieLikeSong(songId, liked, token.options), {
+      onStart: () => { setCookieOpBusy(true); setCookieOpStatus(""); },
+      onSuccess: (result) => setCookieOpStatus(result?.liked ? "已红心。♥" : "已取消红心。"),
+      onError: (caught) => setCookieOpStatus(musicErrorMessage(caught, "红心操作失败，请重试。")), onFinish: () => setCookieOpBusy(musicScope.busy("cookie-browse") || musicScope.busy("cookie-write")),
+    });
   };
-
   const cookieImportPlaylist = async (playlistId) => {
     if (!playlistId) return;
-    setCookieOpBusy(true);
-    setCookieOpStatus("");
-    try {
-      const imported = await importNeteaseShare("", `https://music.163.com/#/playlist?id=${playlistId}`);
-      await acceptImportedPlaylist(imported);
-      setCookieOpStatus(`已导入“${imported.name}”${imported.itemCount} 首，可以开始听了。`);
-    } catch (caught) {
-      setCookieOpStatus(caught?.message || "导入失败。");
-    } finally {
-      setCookieOpBusy(false);
-    }
+    await runMusicTask(musicScope, "cookie-write", (token) => importNeteaseShare("", `https://music.163.com/#/playlist?id=${playlistId}`, token.options), {
+      onStart: () => { setCookieOpBusy(true); setCookieOpStatus(""); },
+      onSuccess: async (imported, token) => {
+        try { await acceptImportedPlaylist(imported); }
+        catch (caught) { if (musicScope.current(token)) setCookieOpStatus(`歌单已保存，播放器读取失败，无需重复导入。${musicErrorMessage(caught, "请刷新播放器。")}`); return; }
+        if (musicScope.current(token)) setCookieOpStatus(`已导入“${imported.name}”${imported.itemCount} 首，可以开始听了。`);
+      },
+      onError: (caught) => setCookieOpStatus(musicErrorMessage(caught, "导入失败，请检查登录状态后重试。")), onFinish: () => setCookieOpBusy(musicScope.busy("cookie-browse") || musicScope.busy("cookie-write")),
+    });
   };
 
+
+
   useEffect(() => {
-    let cancelled = false;
-    readNeteaseCookieSession()
-      .then((data) => {
-        if (cancelled) return;
-        const session = data?.session || {};
-        setCookieStatus({
-          checking: false,
-          connected: session.connected === true,
-          account_name: session.account_name || "",
-        });
-      })
-      .catch(() => {
-        if (!cancelled) setCookieStatus({ checking: false, connected: false, account_name: "" });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    const token = musicScope.begin("cookie-check");
+    if (!token) return;
+    readNeteaseCookieSession(token.options).then((data) => {
+      if (!musicScope.current(token)) return;
+      const session = data?.session || {};
+      setCookieStatus({ checking: false, connected: session.connected === true, account_name: session.account_name || "" });
+    }).catch((caught) => {
+      if (musicScope.current(token)) { setCookieStatus({ checking: false, connected: false, account_name: "" }); setError(musicErrorMessage(caught, "网易云登录状态暂时无法检查，请刷新或重试连接。")); }
+    }).finally(() => musicScope.finish(token));
+    return () => musicScope.cancel(token);
+  }, [musicScope]);
 
   const importShare = async (event) => {
     event.preventDefault();
-    if (providerBusy) return;
-    setProviderBusy(true);
-    setError("");
-    setProviderStatus("正在通过网易云 MCP 导入歌单…");
-    try {
-      const imported = await importNeteaseShare(connectionId || "", shareUrl);
-      const nextPlaylists = await listMusicPlaylists();
-      const selected = await getMusicPlaylist(imported.id);
-      setPlaylists(nextPlaylists);
-      setPlaylist(selected);
-      rememberPlaylist(selected);
-      setLocalIndex(0);
-      setPosition(0);
-      setShareUrl("");
-      setProviderStatus(`已导入“${selected.name}”，曲目现在可以直接查看。`);
-    } catch (caught) {
-      setError(caught?.message || "网易云歌单导入失败。");
-      setProviderStatus("");
-    } finally {
-      setProviderBusy(false);
-    }
+    await runMusicTask(musicScope, "provider", (token) => importNeteaseShare(connectionId || "", shareUrl, token.options), {
+      onStart: () => { setProviderBusy(true); setError(""); setProviderStatus("正在导入网易云歌单…"); },
+      onSuccess: async (imported, token) => {
+        setShareUrl("");
+        try { await acceptImportedPlaylist(imported); }
+        catch (caught) { if (musicScope.current(token)) setProviderStatus(`歌单已保存，播放器读取失败，无需重复导入。${musicErrorMessage(caught, "请刷新播放器。")}`); return; }
+        if (musicScope.current(token)) setProviderStatus(`已导入“${imported.name}”，曲目现在可以直接查看。`);
+      },
+      onError: (caught) => { setError(musicErrorMessage(caught, "网易云歌单导入失败，请检查连接后重试。")); setProviderStatus(""); },
+      onFinish: () => setProviderBusy(false),
+    });
   };
 
   const acceptImportedPlaylist = async (imported) => {
     const request = ++playlistSelectionRef.current;
     try {
-      const selected = await getMusicPlaylist(imported.id);
+      const token = musicScope.capture();
+      const selected = await getMusicPlaylist(imported.id, token.options);
+      musicScope.assertCurrent(token);
       if (!mountedRef.current || request !== playlistSelectionRef.current) return;
       rememberPlaylist(selected);
       setPlaylist(selected); setLocalIndex(0); setPosition(0);
@@ -665,6 +598,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
     onPositionChange?.(nextPosition);
     if (!active || !item) return;
     onPlaybackChange?.({
+      accountScope, companionScope,
       sessionId: session.id,
       playbackState: "paused",
       mediaPositionSeconds: nextPosition,
@@ -676,25 +610,19 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   };
 
   const toggleFavorite = async () => {
-    if (!itemId || favoriteBusy) return;
-    setFavoriteBusy(true);
-    setError("");
-    try {
-      if (favorite) {
-        await deleteMusicFavorite(itemId);
-        setFavorites((current) => current.filter((entry) => entry.itemId !== itemId));
-        setStatus("已取消收藏当前曲目。");
-      } else {
-        const next = await putMusicFavorite(itemId);
-        setFavorites((current) => [next, ...current.filter((entry) => entry.itemId !== itemId)]);
-        setStatus("已收藏当前曲目。");
-      }
-    } catch (caught) {
-      setError(caught?.message || "收藏状态暂时无法更新。");
-    } finally {
-      setFavoriteBusy(false);
-    }
+    if (!itemId) return;
+    await runMusicTask(musicScope, "favorite", (token) => favorite ? deleteMusicFavorite(itemId, token.options) : putMusicFavorite(itemId, token.options), {
+      onStart: () => { setFavoriteBusy(true); setError(""); },
+      onSuccess: (next) => {
+        setFavorites((current) => favorite ? current.filter((entry) => entry.itemId !== itemId) : [next, ...current.filter((entry) => entry.itemId !== itemId)]);
+        setStatus(favorite ? "已取消收藏当前曲目。" : "已收藏当前曲目。");
+      },
+      onError: (caught) => setError(musicErrorMessage(caught, "收藏更新失败，状态仍保留，请重试。")),
+      onFinish: () => setFavoriteBusy(false),
+    });
   };
+
+
 
   useEffect(() => {
     if (!item || typeof navigator === "undefined" || !("mediaSession" in navigator)) return;
@@ -751,7 +679,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
 
   return <div className="together-setup together-music-setup" aria-busy={loading || queueBusy}>
     {!active && <section className="music-import-entry"><div><strong>把想听的歌带进来</strong><p>粘贴分享链接、选择歌单文件或导入本机音频，保存后直接选中。</p></div><button type="button" className="together-primary" aria-haspopup="dialog" aria-expanded={importOpen} onClick={() => setImportOpen(true)}><ListPlus aria-hidden="true" />导入歌曲</button></section>}
-    {!active && importOpen && <MusicImportDialog busy={importBusy} onClose={() => setImportOpen(false)}><MusicSettings compact onBusyChange={setImportBusy} onImported={acceptImportedPlaylist} /></MusicImportDialog>}
+    {!active && importOpen && <MusicImportDialog busy={importBusy} onClose={() => setImportOpen(false)}><MusicSettings accountScope={accountScope} companionScope={companionScope} compact onBusyChange={setImportBusy} onImported={acceptImportedPlaylist} /></MusicImportDialog>}
     {!active && (
       <label className="music-random-play-toggle">
         <input
@@ -826,7 +754,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
                       <span className="music-cookie-track-title">{track.title}<em>{track.artist}</em></span>
                       <span className="music-cookie-track-actions">
                         <button type="button" disabled={cookieOpBusy} onClick={() => void cookieLikeTrack(track.providerTrackId, true)} title="红心">♥</button>
-                        <button type="button" disabled={cookieOpBusy} onClick={() => { setCookieOpStatus("正在交给网易云播放…"); void Promise.all([requestExternalMusicPlayback("song", track.providerTrackId), openNeteasePlayback("song", track.providerTrackId)]).then(() => setCookieOpStatus("已交给网易云播放这首。")).catch((caught) => setCookieOpStatus(caught?.message || "无法打开网易云播放。")); }}><Play aria-hidden="true" size={13} /><span style={{marginLeft:3}}>播放</span></button>
+                        <button type="button" disabled={cookieOpBusy} onClick={() => void launchExternalTrack("song", track.providerTrackId, true)}><Play aria-hidden="true" size={13} /><span style={{marginLeft:3}}>播放</span></button>
                       </span>
                     </li>
                   ))}
@@ -882,7 +810,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
                             <span className="music-cookie-track-title">{index + 1}. {track.title}<em>{track.artist}</em></span>
                             <span className="music-cookie-track-actions">
                               <button type="button" disabled={cookieOpBusy} onClick={() => void cookieLikeTrack(track.id, true)} title="红心">♥</button>
-                              <button type="button" disabled={cookieOpBusy} onClick={() => { setCookieOpStatus("正在交给网易云播放…"); void Promise.all([requestExternalMusicPlayback("song", track.id), openNeteasePlayback("song", track.id)]).then(() => setCookieOpStatus("已交给网易云播放这首。")).catch((caught) => setCookieOpStatus(caught?.message || "无法打开网易云播放。")); }}><Play aria-hidden="true" size={13} /><span style={{marginLeft:3}}>播放</span></button>
+                              <button type="button" disabled={cookieOpBusy} onClick={() => void launchExternalTrack("song", track.id, true)}><Play aria-hidden="true" size={13} /><span style={{marginLeft:3}}>播放</span></button>
                             </span>
                           </li>
                         ))}
@@ -902,7 +830,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
                       <span className="music-cookie-track-title">{track.title}<em>{track.artist}{track.reason ? ` · ${track.reason}` : ""}</em></span>
                       <span className="music-cookie-track-actions">
                         <button type="button" disabled={cookieOpBusy} onClick={() => void cookieLikeTrack(track.id, true)} title="红心">♥</button>
-                        <button type="button" disabled={cookieOpBusy} onClick={() => { setCookieOpStatus("正在交给网易云播放…"); void Promise.all([requestExternalMusicPlayback("song", track.id), openNeteasePlayback("song", track.id)]).then(() => setCookieOpStatus("已交给网易云播放这首。")).catch((caught) => setCookieOpStatus(caught?.message || "无法打开网易云播放。")); }}><Play aria-hidden="true" size={13} /><span style={{marginLeft:3}}>播放</span></button>
+                        <button type="button" disabled={cookieOpBusy} onClick={() => void launchExternalTrack("song", track.id, true)}><Play aria-hidden="true" size={13} /><span style={{marginLeft:3}}>播放</span></button>
                       </span>
                     </li>
                   ))}
@@ -921,7 +849,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
                       <span className="music-cookie-track-title">{track.title}<em>{track.artist}</em></span>
                       <span className="music-cookie-track-actions">{track.play_count > 0 && <small title={`播放 ${track.play_count} 次`}>播放 {track.play_count} 次</small>}
                         <button type="button" disabled={cookieOpBusy} onClick={() => void cookieLikeTrack(track.id, true)} title="红心">♥</button>
-                        <button type="button" disabled={cookieOpBusy} onClick={() => { setCookieOpStatus("正在交给网易云播放…"); void Promise.all([requestExternalMusicPlayback("song", track.id), openNeteasePlayback("song", track.id)]).then(() => setCookieOpStatus("已交给网易云播放这首。")).catch((caught) => setCookieOpStatus(caught?.message || "无法打开网易云播放。")); }}><Play aria-hidden="true" size={13} /><span style={{marginLeft:3}}>播放</span></button>
+                        <button type="button" disabled={cookieOpBusy} onClick={() => void launchExternalTrack("song", track.id, true)}><Play aria-hidden="true" size={13} /><span style={{marginLeft:3}}>播放</span></button>
                       </span>
                     </li>
                   ))}
@@ -998,7 +926,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
           </div>
         </li>} /> : <p>队列是空的，可以从下面的歌单加入曲目。</p>}
       </section>
-      {playlist && <section className="music-queue-picker" aria-label="从当前歌单加入队列"><strong>{playlist.name}</strong>{<MusicPagedList key={playlist.id} items={playlist.items} label="歌单曲目" renderItem={(entry) => { const entryPlayback = resolveMusicPlayback(entry); const external = entryPlayback.mode === MUSIC_PLAYBACK_MODES.external; return <div key={entry.id}><span>{entry.title}{external && <small> · Together 元数据队列</small>}</span><button type="button" disabled={controlsBusy} onClick={() => void runQueueOperation({ type: "add", item_id: entry.id, position: Math.max(0, currentQueueIndex + 1) }, { retryConflict: true }).catch(() => {})}><Play aria-hidden="true" />下一首播放</button><button type="button" disabled={controlsBusy} onClick={() => void runQueueOperation({ type: "add", item_id: entry.id }, { retryConflict: true }).catch(() => {})}><ListPlus aria-hidden="true" />加入队尾</button>{external && <button type="button" onClick={() => { void Promise.all([requestExternalMusicPlayback(entryPlayback.resourceType, entryPlayback.resourceId), openNeteasePlayback(entryPlayback.resourceType, entryPlayback.resourceId)]).catch((caught) => setError(caught?.message || "无法打开网易云播放。")); }}><Play aria-hidden="true" />在网易云播放</button>}</div>; }} />}</section>}
+      {playlist && <section className="music-queue-picker" aria-label="从当前歌单加入队列"><strong>{playlist.name}</strong>{<MusicPagedList key={playlist.id} items={playlist.items} label="歌单曲目" renderItem={(entry) => { const entryPlayback = resolveMusicPlayback(entry); const external = entryPlayback.mode === MUSIC_PLAYBACK_MODES.external; return <div key={entry.id}><span>{entry.title}{external && <small> · Together 元数据队列</small>}</span><button type="button" disabled={controlsBusy} onClick={() => void runQueueOperation({ type: "add", item_id: entry.id, position: Math.max(0, currentQueueIndex + 1) }, { retryConflict: true }).catch(() => {})}><Play aria-hidden="true" />下一首播放</button><button type="button" disabled={controlsBusy} onClick={() => void runQueueOperation({ type: "add", item_id: entry.id }, { retryConflict: true }).catch(() => {})}><ListPlus aria-hidden="true" />加入队尾</button>{external && <button type="button" onClick={() => void launchExternalTrack(entryPlayback.resourceType, entryPlayback.resourceId)}><Play aria-hidden="true" />在网易云播放</button>}</div>; }} />}</section>}
     </>}
     {active && <button type="button" disabled={controlsBusy} onClick={() => void end()}><CircleStop aria-hidden="true" />结束本场</button>}
     <p className="together-device-note">{formatMediaTime(position)} / {duration ? formatMediaTime(duration) : "等待媒体信息"}。{playback.mode === MUSIC_PLAYBACK_MODES.external ? "只进入 Together 元数据队列，不进入 App audio；切歌后请点击在网易云播放" : "队列不保存音频 URL，播放地址仅从本机已加载歌单解析；不代理、不下载、不绕过 DRM。"}</p>

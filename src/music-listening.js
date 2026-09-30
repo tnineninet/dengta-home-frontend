@@ -1,12 +1,43 @@
 import { apiFetch, apiRequest } from "./api.js";
 import { authSession } from "./auth-session.js";
 import { coWatchRequestOptions } from "./co-watch-request-scope.js";
+import { captureMusicScope, assertMusicScope } from "./music-request-scope.js";
+import { musicErrorMessage } from "./music-operation-feedback.js";
 import { isPrivateMediaHostname } from "./direct-media.js";
 
 const MAX_TEXT = 500;
 const MAX_ITEMS = 2_000;
 const READ_TIMEOUT_MS = 12_000;
 const WRITE_TIMEOUT_MS = 15_000;
+
+
+async function musicRequest(path, input, options) {
+  const scope = captureMusicScope(options, authSession);
+  assertMusicScope(scope, authSession);
+  const result = await apiRequest(path, { ...input, ...coWatchRequestOptions(scope, authSession) });
+  assertMusicScope(scope, authSession);
+  return result;
+}
+
+async function musicFetch(path, input, scope) {
+  assertMusicScope(scope, authSession);
+  const result = await apiFetch(path, { ...input, ...coWatchRequestOptions(scope, authSession) });
+  assertMusicScope(scope, authSession);
+  return result;
+}
+
+function importReceipt(data) {
+  const playlist = normalizeMusicPlaylist(data);
+  if (!playlist.id) throw Object.assign(new Error("服务器未返回歌单保存回执。请先刷新列表确认，避免重复导入。"), { code: "music_import_receipt_invalid" });
+  return playlist;
+}
+
+function cookieReceipt(data, expected) {
+  if (typeof data?.session?.connected !== "boolean" || (expected !== undefined && data.session.connected !== expected)) {
+    throw Object.assign(new Error("服务器未确认网易云登录状态，请刷新或重试。当前状态仍保留。"), { code: "music_cookie_receipt_invalid" });
+  }
+  return data;
+}
 
 function text(value, maximum = MAX_TEXT) {
   return String(value ?? "").trim().slice(0, maximum);
@@ -119,15 +150,15 @@ function normalizeRemotePlaylists(data) {
   return Object.freeze(values.slice(0, MAX_ITEMS).map(normalizeMusicPlaylist));
 }
 
-export async function listNeteaseConnections() {
-  const data = await apiRequest("/api/mcp/connections/manage", { timeoutMs: READ_TIMEOUT_MS });
+export async function listNeteaseConnections(options = {}) {
+  const data = await musicRequest("/api/mcp/connections/manage", { timeoutMs: READ_TIMEOUT_MS }, options);
   return Object.freeze((Array.isArray(data?.connections) ? data.connections : []).filter(
     (connection) => connection?.provider_profile === "netease_cloud_music",
   ));
 }
 
-export async function connectNeteaseMcp({ name, endpoint, token } = {}) {
-  const data = await apiRequest("/api/v2/music/providers/netease/connections/provision", {
+export async function connectNeteaseMcp({ name, endpoint, token } = {}, options = {}) {
+  const data = await musicRequest("/api/v2/music/providers/netease/connections/provision", {
     method: "POST",
     timeoutMs: WRITE_TIMEOUT_MS,
     body: JSON.stringify({
@@ -135,65 +166,68 @@ export async function connectNeteaseMcp({ name, endpoint, token } = {}) {
       endpoint: text(endpoint, 1000),
       token: String(token ?? "").trim(),
     }),
-  });
-  return Object.freeze(data?.connection || data);
+  }, options);
+  const connection = data?.connection || data;
+  if (!connection?.id) throw Object.assign(new Error("服务器未返回连接保存回执，请刷新连接列表确认。"), { code: "music_connection_receipt_invalid" });
+  return Object.freeze(connection);
 }
 
-export async function getNeteaseConnectionStatus(connectionId) {
-  return apiRequest(`/api/v2/music/providers/netease/connections/${encodeURIComponent(connectionId)}/status`, { timeoutMs: READ_TIMEOUT_MS });
+export async function getNeteaseConnectionStatus(connectionId, options = {}) {
+  const data = await musicRequest(`/api/v2/music/providers/netease/connections/${encodeURIComponent(connectionId)}/status`, { timeoutMs: READ_TIMEOUT_MS }, options);
+  return data?.status && typeof data.status === "object" ? data.status : data;
 }
 
-export async function listNeteasePlaylists(connectionId) {
-  return normalizeRemotePlaylists(await apiRequest(queryWithConnection("/api/v2/music/providers/netease/playlists", connectionId), { timeoutMs: READ_TIMEOUT_MS }));
+export async function listNeteasePlaylists(connectionId, options = {}) {
+  return normalizeRemotePlaylists(await musicRequest(queryWithConnection("/api/v2/music/providers/netease/playlists", connectionId), { timeoutMs: READ_TIMEOUT_MS }, options));
 }
 
-export async function getNeteasePlaylist(connectionId, providerPlaylistId) {
-  return normalizeMusicPlaylist(await apiRequest(queryWithConnection(
+export async function getNeteasePlaylist(connectionId, providerPlaylistId, options = {}) {
+  return normalizeMusicPlaylist(await musicRequest(queryWithConnection(
     `/api/v2/music/providers/netease/playlists/${encodeURIComponent(providerPlaylistId)}`,
     connectionId,
-  ), { timeoutMs: READ_TIMEOUT_MS }));
+  ), { timeoutMs: READ_TIMEOUT_MS }, options));
 }
 
-export async function searchNeteaseMusic(connectionId, query) {
-  const data = await apiRequest(queryWithConnection("/api/v2/music/providers/netease/search", connectionId, { q: query }), { timeoutMs: READ_TIMEOUT_MS });
+export async function searchNeteaseMusic(connectionId, query, options = {}) {
+  const data = await musicRequest(queryWithConnection("/api/v2/music/providers/netease/search", connectionId, { q: query }), { timeoutMs: READ_TIMEOUT_MS }, options);
   const values = Array.isArray(data?.items) ? data.items : Array.isArray(data?.tracks) ? data.tracks : Array.isArray(data) ? data : [];
   return Object.freeze(values.slice(0, MAX_ITEMS).map(normalizeItem));
 }
 
-export async function importNeteaseShare(connectionId, shareUrl) {
-  return normalizeMusicPlaylist(await apiRequest("/api/v2/music/providers/netease/imports/share", {
+export async function importNeteaseShare(connectionId, shareUrl, options = {}) {
+  return importReceipt(await musicRequest("/api/v2/music/providers/netease/imports/share", {
     method: "POST",
     timeoutMs: WRITE_TIMEOUT_MS,
     body: JSON.stringify({ connection_id: text(connectionId, 100), share_url: text(shareUrl, 4096) }),
-  }));
+  }, options));
 }
 
-export async function readNeteaseCookieSession() {
-  return apiRequest("/api/v2/music/providers/netease/cookie-session", {
+export async function readNeteaseCookieSession(options = {}) {
+  return cookieReceipt(await musicRequest("/api/v2/music/providers/netease/cookie-session", {
     timeoutMs: 12_000,
-  });
+  }, options));
 }
 
-export async function saveNeteaseCookieSession(cookie) {
-  return apiRequest("/api/v2/music/providers/netease/cookie-session", {
+export async function saveNeteaseCookieSession(cookie, options = {}) {
+  return cookieReceipt(await musicRequest("/api/v2/music/providers/netease/cookie-session", {
     method: "POST",
     timeoutMs: 20_000,
     body: JSON.stringify({ cookie: text(cookie, 4096) }),
-  });
+  }, options), true);
 }
 
-export async function clearNeteaseCookieSession() {
-  return apiRequest("/api/v2/music/providers/netease/cookie-session", {
+export async function clearNeteaseCookieSession(options = {}) {
+  return cookieReceipt(await musicRequest("/api/v2/music/providers/netease/cookie-session", {
     method: "DELETE",
     timeoutMs: 12_000,
-  });
+  }, options), false);
 }
-export async function requestExternalMusicPlayback(resourceType, resourceId) {
-  return apiRequest("/api/v2/music/providers/netease/external-playback", {
+export async function requestExternalMusicPlayback(resourceType, resourceId, options = {}) {
+  return musicRequest("/api/v2/music/providers/netease/external-playback", {
     method: "POST",
     timeoutMs: WRITE_TIMEOUT_MS,
     body: JSON.stringify({ resource_type: resourceType, resource_id: text(resourceId, 20) }),
-  });
+  }, options);
 }
 
 
@@ -211,58 +245,58 @@ function normalizeSearchTrack(item) {
   });
 }
 
-export async function cookieSearchNetease(query, limit = 10) {
-  const data = await apiRequest("/api/v2/music/providers/netease/cookie/search?q=" + encodeURIComponent(text(query, 120)) + "&limit=" + Math.min(30, Math.max(1, number(limit, 10))), { timeoutMs: READ_TIMEOUT_MS });
+export async function cookieSearchNetease(query, limit = 10, options = {}) {
+  const data = await musicRequest("/api/v2/music/providers/netease/cookie/search?q=" + encodeURIComponent(text(query, 120)) + "&limit=" + Math.min(30, Math.max(1, number(limit, 10))), { timeoutMs: READ_TIMEOUT_MS }, options);
   const values = Array.isArray(data?.items) ? data.items : [];
   return Object.freeze(values.slice(0, 50).map(normalizeSearchTrack));
 }
 
-export async function cookieGetMyPlaylists() {
-  return apiRequest("/api/v2/music/providers/netease/cookie/my-playlists", { timeoutMs: READ_TIMEOUT_MS });
+export async function cookieGetMyPlaylists(options = {}) {
+  return musicRequest("/api/v2/music/providers/netease/cookie/my-playlists", { timeoutMs: READ_TIMEOUT_MS }, options);
 }
 
-export async function cookieGetPlaylistTracks(playlistId) {
-  return apiRequest("/api/v2/music/providers/netease/cookie/playlist?id=" + encodeURIComponent(text(playlistId, 20)), { timeoutMs: READ_TIMEOUT_MS });
+export async function cookieGetPlaylistTracks(playlistId, options = {}) {
+  return musicRequest("/api/v2/music/providers/netease/cookie/playlist?id=" + encodeURIComponent(text(playlistId, 20)), { timeoutMs: READ_TIMEOUT_MS }, options);
 }
 
-export async function cookieGetDailyRecommend() {
-  return apiRequest("/api/v2/music/providers/netease/cookie/daily", { timeoutMs: READ_TIMEOUT_MS });
+export async function cookieGetDailyRecommend(options = {}) {
+  return musicRequest("/api/v2/music/providers/netease/cookie/daily", { timeoutMs: READ_TIMEOUT_MS }, options);
 }
 
-export async function cookieGetPlayHistory(limit = 20) {
-  return apiRequest("/api/v2/music/providers/netease/cookie/history?limit=" + Math.min(50, Math.max(1, number(limit, 20))), { timeoutMs: READ_TIMEOUT_MS });
+export async function cookieGetPlayHistory(limit = 20, options = {}) {
+  return musicRequest("/api/v2/music/providers/netease/cookie/history?limit=" + Math.min(50, Math.max(1, number(limit, 20))), { timeoutMs: READ_TIMEOUT_MS }, options);
 }
 
-export async function cookieLikeSong(songId, like) {
-  return apiRequest("/api/v2/music/providers/netease/cookie/like", {
+export async function cookieLikeSong(songId, like, options = {}) {
+  return musicRequest("/api/v2/music/providers/netease/cookie/like", {
     method: "POST",
     timeoutMs: WRITE_TIMEOUT_MS,
     body: JSON.stringify({ song_id: text(songId, 20), like: like !== false }),
-  });
+  }, options);
 }
 
-export async function cookieCreatePlaylist(name, privacy = false) {
-  return apiRequest("/api/v2/music/providers/netease/cookie/playlist", {
+export async function cookieCreatePlaylist(name, privacy = false, options = {}) {
+  return musicRequest("/api/v2/music/providers/netease/cookie/playlist", {
     method: "POST",
     timeoutMs: WRITE_TIMEOUT_MS,
     body: JSON.stringify({ name: text(name, 60), privacy: privacy === true }),
-  });
+  }, options);
 }
 
-export async function cookieAddToPlaylist(playlistId, trackIds) {
-  return apiRequest("/api/v2/music/providers/netease/cookie/playlist/tracks", {
+export async function cookieAddToPlaylist(playlistId, trackIds, options = {}) {
+  return musicRequest("/api/v2/music/providers/netease/cookie/playlist/tracks", {
     method: "POST",
     timeoutMs: WRITE_TIMEOUT_MS,
     body: JSON.stringify({ playlist_id: text(playlistId, 20), track_ids: (Array.isArray(trackIds) ? trackIds : [trackIds]).map((id) => text(id, 20)).slice(0, 100) }),
-  });
+  }, options);
 }
 
-export async function cookieRemoveFromPlaylist(playlistId, trackIds) {
-  return apiRequest("/api/v2/music/providers/netease/cookie/playlist/tracks", {
+export async function cookieRemoveFromPlaylist(playlistId, trackIds, options = {}) {
+  return musicRequest("/api/v2/music/providers/netease/cookie/playlist/tracks", {
     method: "DELETE",
     timeoutMs: WRITE_TIMEOUT_MS,
     body: JSON.stringify({ playlist_id: text(playlistId, 20), track_ids: (Array.isArray(trackIds) ? trackIds : [trackIds]).map((id) => text(id, 20)).slice(0, 100) }),
-  });
+  }, options);
 }
 
 export function parseMusicText(content, format = "auto") {
@@ -303,34 +337,37 @@ function resolveImportFormat(content, format) {
   return "text";
 }
 
-export async function importMusicPlaylist({ format = "auto", sourceName = "粘贴内容", name = "我的歌单", content }) {
+export async function importMusicPlaylist({ format = "auto", sourceName = "粘贴内容", name = "我的歌单", content }, options = {}) {
   if (detectNeteaseShare(content)) {
     throw new Error("这是网易云网页分享，请使用网易云导入操作。");
   }
   const resolvedFormat = resolveImportFormat(content, format);
   const items = parseMusicText(content, resolvedFormat);
   if (!items.length) throw new Error("没有解析到可播放曲目。");
-  return normalizeMusicPlaylist(await apiRequest("/api/v2/music/playlists/import", {
+  return importReceipt(await musicRequest("/api/v2/music/playlists/import", {
     method: "POST", timeoutMs: WRITE_TIMEOUT_MS,
     body: JSON.stringify({ format: resolvedFormat, source_name: text(sourceName, 180), name: text(name, 180), content: String(content || "") }),
-  }));
+  }, options));
 }
 
-export async function uploadLocalMusicFile(file) {
+export async function uploadLocalMusicFile(file, options = {}) {
+  options = captureMusicScope(options, authSession);
   if (!(file instanceof Blob)) throw new Error("请选择一个音频文件。");
   if (file.size === 0) throw new Error("音频文件是空的。");
   if (file.size > 20 * 1024 * 1024) throw new Error("单个音频不能超过 20MB。");
   const form = new FormData();
   form.append("file", file, file.name || "audio.mp3");
-  const response = await apiFetch("/api/v2/music/upload-audio", {
+  const response = await musicFetch("/api/v2/music/upload-audio", {
     method: "POST",
     timeoutMs: 60_000,
     body: form,
     retry: false,
-  });
+  }, options);
   const data = await response.json().catch(() => ({}));
+  assertMusicScope(options, authSession);
   if (!response.ok) {
-    throw new Error(data?.message || data?.error || "本机音频上传失败。");
+    const code = data?.code || "music_audio_upload_failed";
+    throw Object.assign(new Error(musicErrorMessage({ ...data, message: data?.message || data?.error, code, status: response.status }, "本机音频上传失败，请检查文件和网络后重试。")), { code, status: response.status, error_log_id: data?.error_log_id });
   }
   if (!data?.audio?.url) throw new Error("上传成功但没有返回音频地址。");
   return Object.freeze({
@@ -340,38 +377,38 @@ export async function uploadLocalMusicFile(file) {
 }
 
 export async function listMusicPlaylists(options = {}) {
-  const data = await apiRequest("/api/v2/music/playlists", { timeoutMs: READ_TIMEOUT_MS, ...coWatchRequestOptions(options, authSession) });
+  const data = await musicRequest("/api/v2/music/playlists", { timeoutMs: READ_TIMEOUT_MS }, options);
   return (Array.isArray(data?.playlists) ? data.playlists : []).map(normalizeMusicPlaylist);
 }
 
 export async function getMusicPlaylist(id, options = {}) {
-  return normalizeMusicPlaylist(await apiRequest(`/api/v2/music/playlists/${encodeURIComponent(id)}`, { timeoutMs: READ_TIMEOUT_MS, ...coWatchRequestOptions(options, authSession) }));
+  return normalizeMusicPlaylist(await musicRequest(`/api/v2/music/playlists/${encodeURIComponent(id)}`, { timeoutMs: READ_TIMEOUT_MS }, options));
 }
 
-export async function deleteMusicPlaylist(id) {
-  return apiRequest(`/api/v2/music/playlists/${encodeURIComponent(id)}`, { method: "DELETE", timeoutMs: WRITE_TIMEOUT_MS });
+export async function deleteMusicPlaylist(id, options = {}) {
+  return musicRequest(`/api/v2/music/playlists/${encodeURIComponent(id)}`, { method: "DELETE", timeoutMs: WRITE_TIMEOUT_MS }, options);
 }
 
-export async function listMusicFavorites() {
-  const data = await apiRequest("/api/v2/music/favorites", { timeoutMs: READ_TIMEOUT_MS });
+export async function listMusicFavorites(options = {}) {
+  const data = await musicRequest("/api/v2/music/favorites", { timeoutMs: READ_TIMEOUT_MS }, options);
   const favorites = Array.isArray(data?.favorites) ? data.favorites : Array.isArray(data) ? data : [];
   return Object.freeze(favorites.map(normalizeFavorite).filter((entry) => entry.itemId));
 }
 
-export async function putMusicFavorite(itemId) {
-  const data = await apiRequest(`/api/v2/music/favorites/${encodeURIComponent(itemId)}`, {
+export async function putMusicFavorite(itemId, options = {}) {
+  const data = await musicRequest(`/api/v2/music/favorites/${encodeURIComponent(itemId)}`, {
     method: "PUT",
     timeoutMs: WRITE_TIMEOUT_MS,
     body: "{}",
-  });
+  }, options);
   return normalizeFavorite(data?.favorite || data);
 }
 
-export async function deleteMusicFavorite(itemId) {
-  const data = await apiRequest(`/api/v2/music/favorites/${encodeURIComponent(itemId)}`, {
+export async function deleteMusicFavorite(itemId, options = {}) {
+  const data = await musicRequest(`/api/v2/music/favorites/${encodeURIComponent(itemId)}`, {
     method: "DELETE",
     timeoutMs: WRITE_TIMEOUT_MS,
-  });
+  }, options);
   return Object.freeze({
     itemId: text(data?.deleted?.item_id ?? itemId, 100),
     favorited: false,

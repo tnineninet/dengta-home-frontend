@@ -20,7 +20,7 @@ globalThis.__musicFixture={auth:{getSnapshot:()=>({user:{id:identity.accountScop
   if(path==='/api/v2/music/playlists/p')return {playlist};
   if(path.endsWith('/favorites'))return {favorites:[]};
   if(path.endsWith('/connections/manage'))return {connections:[]};
-  if(path.endsWith('/cookie-session'))return {session:null};
+  if(path.endsWith('/cookie-session'))return {session:{connected:false}};
   throw Error('unexpected fixture path '+path);
  }};
 const vite=await createServer({root:fileURLToPath(new URL('..',import.meta.url)),appType:'custom',logLevel:'silent',server:{middlewareMode:true},plugins:[{name:'music-api-fixture',enforce:'pre',load(id){
