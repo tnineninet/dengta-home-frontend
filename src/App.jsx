@@ -10,6 +10,7 @@ import {
 } from "react";
 import { resizeComposerInput } from "./composer-size.js";
 import { createCoWatchLifecycle } from "./co-watch-lifecycle.js";
+import { createScreenGlanceLifecycle } from "./screen-glance-lifecycle.js";
 import MemoryGatewayStatus from "./MemoryGatewayStatus.jsx";
 import { Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
@@ -237,6 +238,7 @@ import {
   readCoWatchPreview,
   readScreenGlanceState,
   screenGlanceCaptureToFile,
+  screenCaptureMatchesIdentity,
   screenGlancePluginAvailable,
 } from "./screen-glance";
 import {
@@ -1225,7 +1227,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     isBusy: () => coWatchBusyRef.current,
     createSession: createCoWatchSession,
     endSession: endCoWatchSession,
-    onBusy: setIsScreenGlanceBusy,
+    onBusy: (value) => { coWatchBusyRef.current = value; setIsScreenGlanceBusy(value); },
     onStarted: (next) => {
       coWatchSessionRef.current = next;
       setCoWatchSession(next); setCoWatchReceipt(null); setCoWatchDialog([]);
@@ -1235,6 +1237,35 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       setCoWatchSession(null); setCoWatchReceipt(ended); setCoWatchDialog([]);
       const identity = coWatchIdentityRef.current;
       clearDirectMediaSession(globalThis.sessionStorage, identity.accountScope, identity.companionScope);
+    },
+  });
+  const screenGlanceConfigRef = useRef(screenGlanceConfig);
+  screenGlanceConfigRef.current = screenGlanceConfig;
+  const screenGlanceLifecycleRef = useRef(null);
+  if (!screenGlanceLifecycleRef.current) screenGlanceLifecycleRef.current = createScreenGlanceLifecycle({
+    getIdentity: () => coWatchIdentityRef.current,
+    getSession: () => coWatchSessionRef.current,
+    getConfig: () => screenGlanceConfigRef.current,
+    isBusy: () => coWatchBusyRef.current,
+    plugin: {
+      getState: () => readScreenGlanceState(),
+      startSession: (options) => ScreenGlance.startSession(options),
+      configure: (config) => screenGlancePluginAvailable() ? ScreenGlance.configure(config) : Promise.resolve(config),
+      stopSession: (options) => screenGlancePluginAvailable() ? ScreenGlance.stopSession(options) : Promise.resolve({}),
+    },
+    preparePermission: prepareLocalNotificationPermission,
+    createSession: createCoWatchSession,
+    endSession: endCoWatchSession,
+    onBusy: (value) => { coWatchBusyRef.current = value; setIsScreenGlanceBusy(value); },
+    onState: (value) => applyScreenGlanceState(value),
+    onStarted: (next) => {
+      coWatchSessionRef.current = next; setCoWatchSession(next); setCoWatchReceipt(null);
+    },
+    onEnded: (ended) => {
+      coWatchSessionRef.current = null; setCoWatchSession(null); setCoWatchReceipt(ended); setCoWatchDialog([]);
+    },
+    onStopped: () => {
+      setCoWatchPreview(null); releasePendingScreenGlanceTurn(pendingScreenGlanceTurnRef);
     },
   });
   const [isCreatingSession, setIsCreatingSession] = useState(false);
@@ -1279,6 +1310,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   useEffect(
     () => () => {
       coWatchLifecycleRef.current.invalidate();
+      screenGlanceLifecycleRef.current.invalidate();
+      releasePendingScreenGlanceTurn(pendingScreenGlanceTurnRef);
       coWatchSessionRef.current = null;
       clearDirectMediaSession(globalThis.sessionStorage, accountStorageScope, companionScope);
       setCoWatchSession(null);
@@ -1609,12 +1642,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }, []);
 
   const refreshScreenGlanceState = useCallback(async () => {
+    const stamp = screenGlanceLifecycleRef.current.capture();
     if (!screenGlancePluginAvailable()) {
       return applyScreenGlanceState({});
     }
     try {
-      return applyScreenGlanceState(await readScreenGlanceState());
+      const state = await readScreenGlanceState();
+      if (!screenGlanceLifecycleRef.current.current(stamp)) return null;
+      return applyScreenGlanceState(state);
     } catch (error) {
+      if (!screenGlanceLifecycleRef.current.current(stamp)) return null;
       setScreenGlanceFeedback({
         status: "error",
         message: error?.message || "暂时无法读取屏幕共看状态。",
@@ -1672,7 +1709,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       const sessionMode = mode || resolveCoWatchSessionMode(togetherEntryMode);
       const [sessionResult, previewResult, stateResult] = await Promise.allSettled([
         readActiveCoWatchSession({ sessionMode }, identity),
-        readCoWatchPreview(),
+        readCoWatchPreview(identity),
         refreshScreenGlanceState(),
       ]);
       if (!lifecycle.current(stamp) || (coWatchSessionRef.current?.id || "") !== stamp.sessionId) return { session: null, state: null };
@@ -1729,6 +1766,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   const flushPendingScreenGlanceTurn = useCallback(() => {
     const pending = pendingScreenGlanceTurnRef.current;
+    if (pending && !screenGlanceLifecycleRef.current.current(pending.stamp)) {
+      releasePendingScreenGlanceTurn(pendingScreenGlanceTurnRef);
+      return false;
+    }
     if (
       !pending ||
       !hasLoadedSettingsRef.current ||
@@ -1758,7 +1799,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         preserveComposer: true,
       })
       .finally(() => {
-        if (!componentMountedRef.current) return;
+        if (!componentMountedRef.current || !screenGlanceLifecycleRef.current.current(pending.stamp)) return;
         setScreenGlanceFeedback({
           status: "success",
           message: `这次画面已交给${effectiveAiName}；原始截图没有保存在作品库或长期记忆中。`,
@@ -1774,9 +1815,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       return screenGlanceConsumeRunRef.current;
     }
 
+    const stamp = screenGlanceLifecycleRef.current.capture();
+    const isCurrent = () => componentMountedRef.current && screenGlanceLifecycleRef.current.current(stamp);
+    let preparedDraft = null;
     const run = (async () => {
       try {
         const capture = await ScreenGlance.consumeLatestCapture();
+        if (!isCurrent()) return null;
+        if (capture?.available === true && !screenCaptureMatchesIdentity(capture, coWatchIdentityRef.current)) return null;
         if (capture?.available !== true) {
           await refreshScreenGlanceState();
           return null;
@@ -1787,15 +1833,21 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           throw new Error(checked.rejected[0] || "这次屏幕画面无法作为图片附件发送。");
         }
         const prepared = await prepareChatAttachmentFile(checked.accepted[0]);
-        if (!componentMountedRef.current) return null;
+        if (!isCurrent()) return null;
         const attachment = createAttachmentDraft(prepared.file);
+        preparedDraft = attachment;
         releasePendingScreenGlanceTurn(pendingScreenGlanceTurnRef);
         pendingScreenGlanceTurnRef.current = {
-          attachment,
+          attachment, stamp,
           turn: buildScreenGlanceTurn(capture),
         };
+        const nativeState = await ScreenGlance.getState();
+        if (!isCurrent()) {
+          if (pendingScreenGlanceTurnRef.current?.attachment === attachment) releasePendingScreenGlanceTurn(pendingScreenGlanceTurnRef);
+          return null;
+        }
         applyScreenGlanceState({
-          ...(await ScreenGlance.getState()),
+          ...nativeState,
           pendingCapture: false,
         });
         if (prepared.warning) {
@@ -1807,6 +1859,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         flushPendingScreenGlanceTurn();
         return capture;
       } catch (error) {
+        if (pendingScreenGlanceTurnRef.current?.attachment === preparedDraft) releasePendingScreenGlanceTurn(pendingScreenGlanceTurnRef);
+        if (!isCurrent()) return null;
         setScreenGlanceFeedback({
           status: "error",
           message: error?.message || "刚才的屏幕画面读取失败，原图已经清除。",
@@ -5964,92 +6018,35 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   async function startScreenGlanceSession(options = {}) {
-    if (!screenGlancePluginAvailable() || isScreenGlanceBusy) return;
-    const watchTogether = options.watchTogether === true;
-    let createdSession = null;
-    let projectionStarted = false;
-    setIsScreenGlanceBusy(true);
-    setScreenGlanceFeedback({
-      status: "checking",
-      message: "正在交给 Android 系统确认共享范围…",
-    });
-    try {
-      let nextSession = coWatchSession?.status === "active"
-        ? coWatchSession
-        : null;
-      if (watchTogether && !nextSession) {
-        nextSession = await createCoWatchSession({
-          title: options.title,
-          mediaDurationSeconds: options.mediaDurationSeconds,
-          mediaPositionSeconds: options.mediaPositionSeconds,
-          cadenceSeconds: options.cadenceSeconds,
-        });
-        createdSession = nextSession;
-        setCoWatchSession(nextSession);
-        setCoWatchReceipt(null);
-      }
-      const nextConfig = normalizeScreenGlanceConfig({
-        ...screenGlanceConfig,
-        watchTogetherEnabled: watchTogether,
-        watchIntervalSeconds:
-          options.cadenceSeconds || screenGlanceConfig.watchIntervalSeconds,
-        coWatchSessionId: watchTogether ? nextSession?.id || "" : "",
-      });
-      setScreenGlanceConfig(nextConfig);
-      const notificationState = await prepareLocalNotificationPermission();
-      if (notificationState.status === "error") {
-        throw new Error(notificationState.message);
-      }
-      await ScreenGlance.configure(nextConfig);
-      const result = await ScreenGlance.startSession();
-      if (result?.consentDenied === true) {
-        if (nextSession?.id) {
-          const ended = await endCoWatchSession(nextSession.id, options).catch(
-            () => null,
-          );
-          if (ended) {
-            setCoWatchReceipt(ended);
-            setCoWatchSession(null);
-          }
-        }
-        applyScreenGlanceState(result);
-        setScreenGlanceFeedback({
-          status: "idle",
-          message: "系统屏幕共享没有开始，DengTa 无法取得任何画面。",
-        });
-        return;
-      }
-      projectionStarted = true;
-      await new Promise((resolve) => window.setTimeout(resolve, 700));
-      const state = await refreshScreenGlanceState();
-      if (nextConfig.watchTogetherEnabled) {
-        await refreshCoWatchExperience({ silent: true });
-      }
-      setScreenGlanceFeedback({
-        status: state?.active ? "success" : "error",
-        message: state?.active
-          ? nextConfig.watchTogetherEnabled
-            ? `已经开始一起看。共享会一直持续到你主动结束；画面明显变化时，${effectiveAiName}会主动说出感受。`
-            : "屏幕共看已开始。Android 常驻通知可随时看一眼、暂停或结束。"
-          : state?.lastError || "系统没有建立共享，请重新确认一次。",
-      });
-    } catch (error) {
-      if (createdSession?.id && !projectionStarted) {
-        await ScreenGlance.stopSession().catch(() => {});
-        const ended = await endCoWatchSession(
-          createdSession.id,
-          options,
-        ).catch(() => null);
-        if (ended) setCoWatchReceipt(ended);
-        setCoWatchSession(null);
-      }
-      setScreenGlanceFeedback({
-        status: "error",
-        message: error?.message || "无法开始屏幕共看。",
-      });
-    } finally {
-      setIsScreenGlanceBusy(false);
+    if (!screenGlancePluginAvailable()) return;
+    const stamp = screenGlanceLifecycleRef.current.capture();
+    setScreenGlanceFeedback({ status: "checking", message: "正在交给 Android 系统确认共享范围…" });
+    const result = await screenGlanceLifecycleRef.current.start(options);
+    if (result.code === "screen_glance_scope_changed" || stamp.scope !== screenGlanceLifecycleRef.current.capture().scope) return;
+    if (!result.ok) {
+      setScreenGlanceFeedback({ status: "error", message: `${result.message}（${result.code}）` });
+      return result;
     }
+    if (result.cancelled) {
+      setScreenGlanceFeedback({ status: "idle", message: "系统屏幕共享没有开始，原有听歌和共看记录仍保留。" });
+      return result;
+    }
+    const nextStamp = screenGlanceLifecycleRef.current.capture();
+    await new Promise((resolve) => window.setTimeout(resolve, 700));
+    if (stamp.scope !== nextStamp.scope || !screenGlanceLifecycleRef.current.current(nextStamp)) return;
+    const state = await refreshScreenGlanceState();
+    if (!screenGlanceLifecycleRef.current.current(nextStamp)) return;
+    if (options.watchTogether) await refreshCoWatchExperience({ silent: true });
+    if (!screenGlanceLifecycleRef.current.current(nextStamp)) return;
+    setScreenGlanceFeedback({
+      status: state?.active ? "success" : state?.lastError ? "error" : result.starting ? "checking" : "error",
+      message: state?.active
+        ? options.watchTogether
+          ? `已经开始一起看。共享会一直持续到你主动结束；画面明显变化时，${effectiveAiName}会主动说出感受。`
+          : "屏幕共看已开始。Android 常驻通知可随时看一眼、暂停或结束。"
+        : state?.lastError || (result.starting ? "系统正在建立共享，可查看 Android 的常驻通知。" : "系统没有建立共享，请重新确认一次。"),
+    });
+    return result;
   }
 
   async function startDirectMediaCoWatchSession(options = {}) {
@@ -6321,43 +6318,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   async function stopScreenGlanceSession(options = {}) {
-    if (isScreenGlanceBusy) return;
-    const stoppedConfig = normalizeScreenGlanceConfig({
-      ...screenGlanceConfig,
-      watchTogetherEnabled: false,
-      coWatchSessionId: "",
+    const stamp = screenGlanceLifecycleRef.current.capture();
+    const result = await screenGlanceLifecycleRef.current.stop(options);
+    if (result.code === "screen_glance_scope_changed" || stamp.scope !== screenGlanceLifecycleRef.current.capture().scope) return;
+    setScreenGlanceFeedback({
+      status: result.ok ? "idle" : "error",
+      message: result.ok ? "屏幕共看已结束，尚未发送的临时画面已经清除。" : `${result.message}（${result.code}）`,
     });
-    setScreenGlanceConfig(stoppedConfig);
-    setIsScreenGlanceBusy(true);
-    try {
-      if (screenGlancePluginAvailable()) {
-        await ScreenGlance.stopSession();
-        applyScreenGlanceState(await ScreenGlance.configure(stoppedConfig));
-      }
-      if (coWatchSession?.id) {
-        const ended = await endCoWatchSession(coWatchSession.id, options);
-        setCoWatchReceipt(ended);
-        setCoWatchSession(null);
-      }
-      setCoWatchPreview(null);
-      setCoWatchDialog([]);
-      const pending = pendingScreenGlanceTurnRef.current;
-      if (pending?.attachment) revokeAttachmentDraft(pending.attachment);
-      pendingScreenGlanceTurnRef.current = null;
-      await new Promise((resolve) => window.setTimeout(resolve, 180));
-      await refreshScreenGlanceState();
-      setScreenGlanceFeedback({
-        status: "idle",
-        message: "屏幕共看已结束，尚未发送的临时画面已经清除。",
-      });
-    } catch (error) {
-      setScreenGlanceFeedback({
-        status: "error",
-        message: error?.message || "暂时无法结束屏幕共看。",
-      });
-    } finally {
-      setIsScreenGlanceBusy(false);
-    }
+    return result;
   }
 
   function updateUnifiedPrompt(value) {

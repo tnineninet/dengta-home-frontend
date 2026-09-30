@@ -176,10 +176,13 @@ export async function readScreenGlanceState({
 export async function readCoWatchPreview({
   capacitor = Capacitor,
   plugin = ScreenGlance,
+  accountScope = "",
+  companionScope = "",
 } = {}) {
   if (!screenGlancePluginAvailable(capacitor)) return null;
   const preview = await plugin.readCoWatchPreview();
   if (preview?.available !== true || !preview.base64) return null;
+  if ((accountScope || companionScope) && !screenCaptureMatchesIdentity(preview, { accountScope, companionScope })) return null;
   const mimeType = SUPPORTED_CAPTURE_TYPES.has(preview.mimeType)
     ? preview.mimeType
     : "image/jpeg";
@@ -190,4 +193,8 @@ export async function readCoWatchPreview({
     width: boundedInteger(preview.width, 1, 4096, 1),
     height: boundedInteger(preview.height, 1, 4096, 1),
   });
+}
+
+export function screenCaptureMatchesIdentity(capture, identity) {
+  return !!identity?.accountScope && !!identity?.companionScope && capture?.scopeKey === `${identity.accountScope}:${identity.companionScope}`;
 }

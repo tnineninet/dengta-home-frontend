@@ -6,7 +6,13 @@ import {
   normalizeScreenGlanceConfig,
   normalizeScreenGlanceState,
   screenGlanceCaptureToFile,
+  screenCaptureMatchesIdentity,
 } from "../src/screen-glance.js";
+
+assert.equal(screenCaptureMatchesIdentity({ scopeKey: "a:one" }, { accountScope: "a", companionScope: "one" }), true);
+assert.equal(screenCaptureMatchesIdentity({ scopeKey: "a:one" }, { accountScope: "b", companionScope: "one" }), false);
+assert.equal(screenCaptureMatchesIdentity({ scopeKey: "a:one" }, { accountScope: "a", companionScope: "two" }), false);
+assert.equal(screenCaptureMatchesIdentity({}, { accountScope: "a", companionScope: "one" }), false);
 
 {
   const attachment = { previewUrl: "blob:screen-glance" };
@@ -186,8 +192,8 @@ assert.match(
 );
 assert.match(
   app,
-  /const prepared = await prepareChatAttachmentFile\([\s\S]*?if \(!componentMountedRef\.current\) return null;/,
-  "an async screen-glance conversion must not create a draft after unmount",
+  /const prepared = await prepareChatAttachmentFile\([\s\S]*?if \(!isCurrent\(\)\) return null;/,
+  "an async screen-glance conversion must not create a draft after unmount or scope change",
 );
 assert.match(
   app,

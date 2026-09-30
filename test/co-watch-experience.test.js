@@ -40,7 +40,7 @@ assert.match(
   service,
   /else if \(request\.mode == CaptureMode\.GLANCE\) \{\s*uploadGlanceFrame\(request, encoded, frameHash\);/,
 );
-assert.match(service, /else \{\s*saveCapture\(encoded, width, height\);/);
+assert.match(service, /else \{\s*saveCapture\(encoded, width, height, request\.scope\);/);
 assert.match(service, /nextRandomOverrideDelayMs/);
 assert.match(
   service,
@@ -133,16 +133,7 @@ const startScreenGlanceSource = app.slice(
   startScreenGlanceStart,
   startScreenGlanceEnd,
 );
-assert.match(
-  startScreenGlanceSource,
-  /watchTogetherEnabled:\s*watchTogether/,
-  "ordinary screen sharing must not inherit a previous Together toggle",
-);
-assert.match(
-  startScreenGlanceSource,
-  /coWatchSessionId:\s*watchTogether\s*\?\s*nextSession\?\.id\s*\|\|\s*""\s*:\s*""/,
-  "ordinary screen sharing must clear any stale co-watch session id",
-);
+assert.match(startScreenGlanceSource, /screenGlanceLifecycleRef\.current\.start\(options\)/, "App must use the runtime-tested screen consent lifecycle");
 
 const stopScreenGlanceStart = app.indexOf(
   "async function stopScreenGlanceSession",
@@ -155,16 +146,7 @@ const stopScreenGlanceSource = app.slice(
   stopScreenGlanceStart,
   stopScreenGlanceEnd,
 );
-assert.match(
-  stopScreenGlanceSource,
-  /normalizeScreenGlanceConfig\(\{[\s\S]*?\.\.\.screenGlanceConfig,[\s\S]*?watchTogetherEnabled:\s*false,[\s\S]*?coWatchSessionId:\s*""/,
-  "stopping Together must retain the random-glance settings while clearing the co-watch scope",
-);
-assert.match(
-  stopScreenGlanceSource,
-  /ScreenGlance\.stopSession\(\)[\s\S]*?ScreenGlance\.configure\([\s\S]*?endCoWatchSession\(/,
-  "local projection and co-watch config must be cleared before ending the remote session",
-);
+assert.match(stopScreenGlanceSource, /screenGlanceLifecycleRef\.current\.stop\(options\)/, "App must use the runtime-tested scoped stop sequence");
 
 const together = source("../src/Together.jsx");
 assert.match(

@@ -102,6 +102,9 @@ public final class ScreenGlanceService extends Service {
     private static final String LAST_GLANCE_HASH_KEY = "last_glance_hash";
     private static final String LAST_GLANCE_UPLOAD_AT_KEY = "last_glance_upload_at";
     private static final String LAST_USER_ACTIVE_AT_KEY = "last_user_active_at";
+    private static final String CAPTURE_SCOPE_KEY = "capture_scope";
+    private static final String REACTION_SCOPE_KEY = "reaction_scope";
+    private static final String PREVIEW_SCOPE_KEY = "preview_scope";
     private static final String CAPTURED_AT_KEY = "captured_at";
     private static final String CAPTURE_WIDTH_KEY = "capture_width";
     private static final String CAPTURE_HEIGHT_KEY = "capture_height";
@@ -378,7 +381,7 @@ public final class ScreenGlanceService extends Service {
             ? isoTimestamp(service.nextWatchCaptureAt)
             : "");
         state.put("lastReactionAt", prefs.getString(LAST_REACTION_AT_KEY, ""));
-        state.put("lastReaction", prefs.getString(LAST_REACTION_KEY, ""));
+        state.put("lastReaction", ScreenCaptureScope.matches(prefs.getString(REACTION_SCOPE_KEY, ""), BackgroundNotificationCredentials.currentScopeKey(context)) ? prefs.getString(LAST_REACTION_KEY, "") : "");
         state.put("lastError", prefs.getString(LAST_ERROR_KEY, ""));
         return state;
     }
@@ -387,9 +390,14 @@ public final class ScreenGlanceService extends Service {
         cleanupExpiredCapture(context);
         File file = latestCaptureFile(context);
         if (!file.isFile()) return null;
+        if (!ScreenCaptureScope.matches(preferences(context).getString(CAPTURE_SCOPE_KEY, ""), BackgroundNotificationCredentials.currentScopeKey(context))) {
+            deleteLatestCapture(context);
+            return null;
+        }
         byte[] bytes = java.nio.file.Files.readAllBytes(file.toPath());
         SharedPreferences prefs = preferences(context);
         String capturedAt = prefs.getString(CAPTURED_AT_KEY, "");
+        String scopeKey = prefs.getString(CAPTURE_SCOPE_KEY, "");
         int width = prefs.getInt(CAPTURE_WIDTH_KEY, 0);
         int height = prefs.getInt(CAPTURE_HEIGHT_KEY, 0);
         deleteLatestCapture(context);
@@ -400,6 +408,7 @@ public final class ScreenGlanceService extends Service {
         result.put("mimeType", "image/jpeg");
         result.put("base64", Base64.encodeToString(bytes, Base64.NO_WRAP));
         result.put("capturedAt", capturedAt);
+        result.put("scopeKey", scopeKey);
         result.put("width", width);
         result.put("height", height);
         return result;
@@ -412,6 +421,7 @@ public final class ScreenGlanceService extends Service {
         if (temporary.exists()) temporary.delete();
         preferences(context)
             .edit()
+            .remove(CAPTURE_SCOPE_KEY)
             .remove(CAPTURED_AT_KEY)
             .remove(CAPTURE_WIDTH_KEY)
             .remove(CAPTURE_HEIGHT_KEY)
@@ -422,6 +432,10 @@ public final class ScreenGlanceService extends Service {
         cleanupExpiredCoWatchPreview(context);
         File file = coWatchPreviewFile(context);
         if (!file.isFile()) return null;
+        if (!ScreenCaptureScope.matches(preferences(context).getString(PREVIEW_SCOPE_KEY, ""), BackgroundNotificationCredentials.currentScopeKey(context))) {
+            deleteCoWatchPreview(context);
+            return null;
+        }
         byte[] bytes = java.nio.file.Files.readAllBytes(file.toPath());
         if (bytes.length == 0 || bytes.length > MAX_CAPTURE_BYTES) {
             deleteCoWatchPreview(context);
@@ -436,6 +450,7 @@ public final class ScreenGlanceService extends Service {
             prefs.getString(CO_WATCH_PREVIEW_CAPTURED_AT_KEY, "")
         );
         result.put("width", prefs.getInt(CO_WATCH_PREVIEW_WIDTH_KEY, 0));
+        result.put("scopeKey", prefs.getString(PREVIEW_SCOPE_KEY, ""));
         result.put("height", prefs.getInt(CO_WATCH_PREVIEW_HEIGHT_KEY, 0));
         return result;
     }
@@ -447,6 +462,7 @@ public final class ScreenGlanceService extends Service {
         if (temporary.exists()) temporary.delete();
         preferences(context)
             .edit()
+            .remove(PREVIEW_SCOPE_KEY)
             .remove(CO_WATCH_PREVIEW_CAPTURED_AT_KEY)
             .remove(CO_WATCH_PREVIEW_WIDTH_KEY)
             .remove(CO_WATCH_PREVIEW_HEIGHT_KEY)
@@ -561,6 +577,7 @@ public final class ScreenGlanceService extends Service {
             );
             pendingCaptureRequest = new CaptureRequest(
                 mode,
+                BackgroundNotificationCredentials.currentScopeKey(this),
                 captureGeneration,
                 coWatchSessionId,
                 coWatchEpoch,
@@ -601,7 +618,7 @@ public final class ScreenGlanceService extends Service {
             } else if (request.mode == CaptureMode.GLANCE) {
                 uploadGlanceFrame(request, encoded, frameHash);
             } else {
-                saveCapture(encoded, width, height);
+                saveCapture(encoded, width, height, request.scope);
             }
             if (!isRequestCurrent(request)) return;
             recordError("");
@@ -681,6 +698,7 @@ public final class ScreenGlanceService extends Service {
         synchronized (captureLock) {
             if (request.generation != captureGeneration) return false;
         }
+        if (!ScreenCaptureScope.matches(request.scope, BackgroundNotificationCredentials.currentScopeKey(this))) return false;
         if (request.mode == CaptureMode.MANUAL) return true;
         BackgroundNotificationCredentials.Identity identity = request.identity;
         if (identity == null) return false;
@@ -755,7 +773,7 @@ public final class ScreenGlanceService extends Service {
         return result;
     }
 
-    private void saveCapture(byte[] value, int width, int height) throws Exception {
+    private void saveCapture(byte[] value, int width, int height, String scope) throws Exception {
         File directory = captureDirectory(this);
         if (!directory.exists() && !directory.mkdirs()) {
             throw new IllegalStateException("capture_directory_failed");
@@ -774,6 +792,7 @@ public final class ScreenGlanceService extends Service {
         }
         preferences(this)
             .edit()
+            .putString(CAPTURE_SCOPE_KEY, scope)
             .putString(CAPTURED_AT_KEY, isoTimestamp(System.currentTimeMillis()))
             .putInt(CAPTURE_WIDTH_KEY, width)
             .putInt(CAPTURE_HEIGHT_KEY, height)
@@ -784,7 +803,8 @@ public final class ScreenGlanceService extends Service {
         byte[] value,
         int width,
         int height,
-        String capturedAt
+        String capturedAt,
+        String scope
     ) throws Exception {
         File directory = captureDirectory(this);
         if (!directory.exists() && !directory.mkdirs()) {
@@ -804,6 +824,7 @@ public final class ScreenGlanceService extends Service {
         }
         preferences(this)
             .edit()
+            .putString(PREVIEW_SCOPE_KEY, scope)
             .putString(CO_WATCH_PREVIEW_CAPTURED_AT_KEY, capturedAt)
             .putInt(CO_WATCH_PREVIEW_WIDTH_KEY, width)
             .putInt(CO_WATCH_PREVIEW_HEIGHT_KEY, height)
@@ -989,7 +1010,8 @@ public final class ScreenGlanceService extends Service {
                 previewImage,
                 previewWidth,
                 previewHeight,
-                capturedAt
+                capturedAt,
+                request.scope
             );
         }
         String messageId = cleanText(response.optString("message_id", ""), 100);
@@ -1024,6 +1046,7 @@ public final class ScreenGlanceService extends Service {
         preferences(this)
             .edit()
             .putString(LAST_REACTION_AT_KEY, isoTimestamp(now))
+            .putString(REACTION_SCOPE_KEY, request.scope)
             .putString(LAST_REACTION_KEY, cleanText(reaction, 160))
             .apply();
         if (!isRequestCurrent(request)) return;
@@ -1576,6 +1599,7 @@ public final class ScreenGlanceService extends Service {
 
     private static final class CaptureRequest {
         final CaptureMode mode;
+        final String scope;
         final long generation;
         final String sessionId;
         final long epoch;
@@ -1586,6 +1610,7 @@ public final class ScreenGlanceService extends Service {
 
         CaptureRequest(
             CaptureMode mode,
+            String scope,
             long generation,
             String sessionId,
             long epoch,
@@ -1595,6 +1620,7 @@ public final class ScreenGlanceService extends Service {
             int maximumMinutes
         ) {
             this.mode = mode;
+            this.scope = scope;
             this.generation = generation;
             this.sessionId = sessionId;
             this.epoch = epoch;
