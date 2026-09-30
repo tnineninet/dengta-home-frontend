@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { requestDistill, distillDiagnostic } from "../src/style-distill.js";
+import { requestDistill, distillDiagnostic, DISTILL_ERROR_FEEDBACK } from "../src/style-distill.js";
 
 test("file import decodes HTTP response without forcing JSON multipart headers or retrying POST",async()=>{
   const form=new FormData();form.append("file",new Blob(["fictional material"]),"sample.txt");
@@ -29,4 +29,9 @@ test("deadline covers hanging authentication/fetch and hanging JSON body",async(
     const started=Date.now(); await assert.rejects(requestDistill("/distill",{},request,20),{code:"request_timeout"});
     assert.ok(Date.now()-started<1000);
   }
+});
+test("distillation log explains local file error with specific recovery steps",()=>{
+  assert.match(DISTILL_ERROR_FEEDBACK.style_distill_file_empty.reason,/文字/);
+  assert.match(DISTILL_ERROR_FEEDBACK.style_distill_file_empty.action,/40 字|20MB/);
+  assert.ok(DISTILL_ERROR_FEEDBACK.provider_model_unavailable);
 });

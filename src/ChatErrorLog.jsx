@@ -9,7 +9,7 @@ function failureLabel(error) {
   return "日志暂时无法读取，可以重试。下面仍保留本轮诊断。";
 }
 
-export default function ChatErrorLog({ logId, diagnostic = {}, loadLog = fetchErrorLogById }) {
+export default function ChatErrorLog({ logId, diagnostic = {}, loadLog = fetchErrorLogById, feedbackByCode = CHAT_ERROR_FEEDBACK }) {
   const [expanded, setExpanded] = useState(false);
   const [result, setResult] = useState({ loading: false, data: null, error: "" });
   const generation = useRef(0);
@@ -32,7 +32,7 @@ export default function ChatErrorLog({ logId, diagnostic = {}, loadLog = fetchEr
     if (!expanded && !result.data && !result.loading) void load();
   }
   const detail = result.data || diagnostic;
-  const feedback = CHAT_ERROR_FEEDBACK[detail.error_code] || {
+  const feedback = feedbackByCode[detail.error_code] || {
     reason: "具体原因尚未确认，请结合错误码、来源和上游 HTTP 状态检查。",
     action: "检查网络及接口设置后重试；持续失败时提供下面的脱敏诊断。",
   };

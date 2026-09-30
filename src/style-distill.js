@@ -1,4 +1,5 @@
 import { publicChatErrorMessage } from "./chat-errors.js";
+import { CHAT_ERROR_FEEDBACK } from "./chat-error-feedback.js";
 
 const LOCAL_ERRORS = {
   style_distill_source_short: "材料不足 40 字，请补充聊天记录后重试。",
@@ -10,6 +11,17 @@ const LOCAL_ERRORS = {
   style_distill_rate_limited: "提纯请求较频繁，请十分钟后重试。",
   style_distill_empty: "模型没有返回有效的提纯结果，请检查接口或补充材料后重试。",
   style_distill_model_unconfigured: "当前账号没有配置有效的模型或 API 密钥，请在「模型与服务」完成配置后重试。",
+};
+
+export const DISTILL_ERROR_FEEDBACK = {
+  ...CHAT_ERROR_FEEDBACK,
+  ...Object.fromEntries(Object.entries(LOCAL_ERRORS).map(([code, reason]) => [code, {
+    reason,
+    action: code.includes("file") ? "重新选择包含至少 40 字文字、大小不超过 20MB 的文件。原来的有效材料仍保留。"
+      : code === "style_distill_model_unconfigured" ? "打开「模型与服务」，检查当前接口的 API 密钥和默认模型，再返回提纯。"
+      : code === "style_distill_rate_limited" ? "等待十分钟后再点「开始提纯」，不要连续提交。"
+      : "调整材料或检查模型设置后，再点「开始提纯」。",
+  }])),
 };
 
 export function distillDiagnostic(error = {}) {

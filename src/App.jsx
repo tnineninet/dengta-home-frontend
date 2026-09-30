@@ -48,7 +48,7 @@ import CompanionStatus from "./CompanionStatus";
 import CompanionGenderFields from "./CompanionGenderFields";
 import ChatContextSettings from "./ChatContextSettings.jsx";
 import ChatErrorLog from "./ChatErrorLog.jsx";
-import { requestDistill, distillDiagnostic } from "./style-distill.js";
+import { requestDistill, distillDiagnostic, DISTILL_ERROR_FEEDBACK } from "./style-distill.js";
 import { companionPronoun } from "./companion-gender";
 import AmbientContextBadge from "./AmbientContextBadge";
 import ChatMessage from "./ChatMessage";
@@ -8357,7 +8357,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                     <p role="alert">{distillState.error}</p>
                     <p>材料仍然保留。检查模型与接口设置后，可再次点「开始提纯」。</p>
                     {distillState.diagnostic ? <ChatErrorLog key={distillState.diagnostic.error_log_id || distillState.error}
-                      logId={distillState.diagnostic.error_log_id} diagnostic={distillState.diagnostic} /> : null}
+                      logId={distillState.diagnostic.error_log_id} diagnostic={distillState.diagnostic} feedbackByCode={DISTILL_ERROR_FEEDBACK} /> : null}
                   </div>
                 ) : null}
               </div>
