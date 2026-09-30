@@ -25,15 +25,17 @@ import {
 import "./together.css";
 import TogetherMusic from "./TogetherMusic.jsx";
 import BilibiliQrLogin from "./BilibiliQrLogin.jsx";
+import { WatchQueryPanel } from "./ActivityQueryPanels.jsx";
 
 
-function webPageStorageKey(accountScope) {
-  return "dengta_together_web_page_v1" + (accountScope ? ":" + accountScope : "");
+function webPageStorageKey(accountScope, companionScope) {
+  return "dengta_together_web_page_v2:" + JSON.stringify([accountScope, companionScope]);
 }
 
-function readStoredWebPage(accountScope) {
+function readStoredWebPage(accountScope, companionScope) {
+  if (!accountScope || !companionScope) return null;
   try {
-    const raw = globalThis.sessionStorage?.getItem(webPageStorageKey(accountScope));
+    const raw = globalThis.sessionStorage?.getItem(webPageStorageKey(accountScope, companionScope));
     const parsed = raw ? JSON.parse(raw) : null;
     return parsed && parsed.page_url ? parsed : null;
   } catch {
@@ -41,15 +43,16 @@ function readStoredWebPage(accountScope) {
   }
 }
 
-function writeStoredWebPage(accountScope, page) {
+function writeStoredWebPage(accountScope, companionScope, page) {
+  if (!accountScope || !companionScope) return;
   try {
     if (page?.page_url) {
       globalThis.sessionStorage?.setItem(
-        webPageStorageKey(accountScope),
+        webPageStorageKey(accountScope, companionScope),
         JSON.stringify(page),
       );
     } else {
-      globalThis.sessionStorage?.removeItem(webPageStorageKey(accountScope));
+      globalThis.sessionStorage?.removeItem(webPageStorageKey(accountScope, companionScope));
     }
   } catch {
     // 存储不可用时仅影响切换页面后的恢复。
@@ -74,6 +77,8 @@ function finiteMediaSeconds(value) {
 export default function Together({
   aiName = "伴侣",
   accountScope = "",
+  companionScope = "",
+  watchRequest = null,
   session,
   receipt,
   screenState,
@@ -110,7 +115,7 @@ export default function Together({
       ? "external"
       : session?.sourceApp === WEB_PAGE_SOURCE_APP
       ? "web"
-      : readStoredWebPage(accountScope)?.page_url
+      : readStoredWebPage(accountScope, companionScope)?.page_url
       ? "web"
       : session?.sourceApp === DIRECT_MEDIA_SOURCE_APP || restoredDirectMedia?.url
       ? "direct"
@@ -200,9 +205,9 @@ export default function Together({
     message: "视频链接只用于本场直链播放与已配对的浏览器接收端，不会在投屏界面公开显示。",
   });
   const [webUrlInput, setWebUrlInput] = useState(() =>
-    readStoredWebPage(accountScope)?.page_url || "",
+    readStoredWebPage(accountScope, companionScope)?.page_url || "",
   );
-  const [webPage, setWebPage] = useState(() => readStoredWebPage(accountScope));
+  const [webPage, setWebPage] = useState(() => readStoredWebPage(accountScope, companionScope));
   const [webFeedback, setWebFeedback] = useState({
     status: "idle",
     message: "粘贴哔哩哔哩、爱奇艺等官方网页链接，先解析再开始一起看。",
@@ -427,7 +432,7 @@ export default function Together({
       if (pageRequestRef.current !== controller) return;
       if (!page?.embed_url) throw new Error("没有拿到可用的内嵌地址。");
       setWebPage(page);
-      writeStoredWebPage(accountScope, page);
+      writeStoredWebPage(accountScope, companionScope, page);
       if (page.title) setTitle(page.title);
       setWebFeedback({ status: "success", message: page.message || "网页已解析，可以开始一起看了。" });
     } catch (error) {
@@ -490,7 +495,7 @@ export default function Together({
         message: result.message || "这场网页一起看已经结束。",
       });
       if (result.ok !== false) {
-        writeStoredWebPage(accountScope, null);
+        writeStoredWebPage(accountScope, companionScope, null);
         setWebPage(null);
         setWebUrlInput("");
       }
@@ -551,6 +556,8 @@ export default function Together({
             : "未开始"}
         </span>
       </header>
+
+      {selectedMode !== "music" && <WatchQueryPanel key={watchRequest?.id || "watch-search"} initialQuery={watchRequest?.query || ""} active={selectedActive} />}
 
       {selectedMode !== "music" && <div className="together-mode-switch" role="tablist" aria-label="一起看方式">
         <button
@@ -617,21 +624,21 @@ export default function Together({
                   </div>
                 ) : (
                   <iframe
-                    src={webPage.embedUrl}
+                    src={webPage.embed_url}
                     title={webPage.title || "网页一起看"}
                     allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
                     referrerPolicy="no-referrer"
                     allowFullScreen
                   />
                 )}
-                {webPage.embedLikelyBlocked && webPage.provider !== "bilibili" && (
+                {webPage.embed_likely_blocked && webPage.provider !== "bilibili" && (
                   <p className="together-device-note">
                     若上方画面空白，可能是该网站自身不支持外部内嵌；DengTa 不做任何内嵌限制，也可改用视频直链或哔哩哔哩链接。
                   </p>
                 )}
                 <a
                   className="together-device-note together-web-open"
-                  href={webPage.embedUrl}
+                  href={webPage.page_url}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
@@ -994,6 +1001,7 @@ export default function Together({
             <RefreshCw aria-hidden="true" />
           </button>
         </header>
+
         {visibleDialog.length ? visibleDialog.map((item) => (
           <article key={item.key}>
             <span>{item.role === "user" ? "我" : aiName}</span>

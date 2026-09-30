@@ -36,7 +36,8 @@ import {
 import WebInstallButton from "./WebInstallButton.jsx";
 import TypewriterText from "./TypewriterText.jsx";
 import DlnaCastPlayer from "./DlnaCastPlayer.jsx";
-import { normalizeCompanionActivities } from "./companion-activities.js";
+import { activityRequestInScope, buildCompanionActivityRequest, normalizeCompanionActivities } from "./companion-activities.js";
+import { TakeoutQueryPanel } from "./ActivityQueryPanels.jsx";
 import {
   BackgroundNotifications,
   openReminderNotificationSettings,
@@ -1000,6 +1001,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [activeView, setActiveView] = useState("chat");
   const [togetherEntryMode, setTogetherEntryMode] = useState("external");
   const [musicActivityRequest, setMusicActivityRequest] = useState(null);
+  const [watchActivityRequest, setWatchActivityRequest] = useState(null);
+  const [takeoutActivityRequest, setTakeoutActivityRequest] = useState(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsCategory, setSettingsCategory] = useState(null);
   const [settingsFocusTarget, setSettingsFocusTarget] = useState("");
@@ -5616,7 +5619,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     description: "",
   });
 
-  const [pendingCoWatchPage, setPendingCoWatchPage] = useState("");
   const [coWatchDanmaku, setCoWatchDanmaku] = useState([]);
   const [discoverState, setDiscoverState] = useState({
     busy: false,
@@ -7411,11 +7413,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                     <button
                       type="button"
                       onClick={() => {
-                        setPendingCoWatchPage(
-                          "https://www.bilibili.com/video/" + video.bvid,
-                        );
-                        setTogetherEntryMode("external");
-                        changeView("together");
+                        openCompanionActivity({ id: "discover-" + video.bvid, kind: "watch", query: video.title, pageUrl: "https://www.bilibili.com/video/" + video.bvid });
                       }}
                     >
                       ▶ 一起看
@@ -7455,6 +7453,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           <h2>🛵 外卖点单</h2>
           <p>让 AI 帮你搜店、挑店、加购；付款永远由你在页面里亲自确认。</p>
         </header>
+        <TakeoutQueryPanel
+          key={JSON.stringify([accountStorageScope, companionScope, takeoutActivityRequest?.id || "takeout"])}
+          initialQuery={activityRequestInScope(takeoutActivityRequest, accountStorageScope, companionScope)?.query || ""}
+          onPrepare={query => {
+            setMessage(current => appendActivityDraft(current, "帮我搜索外卖店铺：" + query));
+            changeView("chat");
+          }}
+        />
         <div className="notification-feature-panel device-activity-panel">
           <div className="device-activity-heading">
             <div>
@@ -7471,9 +7477,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   }
                 >
                   {takeoutLoginState.loggedIn
-                    ? "✅ 已登录（登录态长期有效）"
+                    ? "检测到本机登录 Cookie"
                     : takeoutLoginState.hasCookie
-                      ? "⚠️ 有 Cookie 但未登录"
+                      ? "有 Cookie，登录状态待确认"
                       : "未登录"}
                 </em>
               )}
@@ -7497,7 +7503,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           </div>
           <small>
             {available
-              ? "已登录过的账号后续点单无需再次扫码；AI 只在你主动要求点单时才派发命令。"
+              ? "本机 Cookie 仅用于初步检测；平台可能要求重新登录或验证。AI 只在你主动要求点单时派发命令。"
               : "外卖扫码登录与点单由手机本地执行，仅 Android App 可用；网页版请使用聊天里的其它玩法。"}
           </small>
         </div>
@@ -7907,13 +7913,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   function openCompanionActivity(action) {
-    if (action.kind === "music") {
-      setMusicActivityRequest({ id: action.id, query: action.query, accountScope: accountStorageScope, companionScope });
+    const request = buildCompanionActivityRequest(action, accountStorageScope, companionScope);
+    if (!request) return;
+    if (request.kind === "music") {
+      setMusicActivityRequest(request);
       setTogetherEntryMode("music"); changeView("music");
-    } else if (action.kind === "watch") {
-      if (action.pageUrl && /^https:\/\/www\.bilibili\.com\/video\/BV[0-9A-Za-z]{10}$/.test(action.pageUrl)) setPendingCoWatchPage(action.pageUrl);
+    } else if (request.kind === "watch") {
+      setWatchActivityRequest(request);
       setTogetherEntryMode("external"); changeView("together");
-    } else if (action.kind === "takeout") changeView("takeout");
+    } else if (request.kind === "takeout") {
+      setTakeoutActivityRequest(request); changeView("takeout");
+    }
   }
 
   function renderDlnaCastPlayer() {
@@ -7939,6 +7949,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           musicRequest={musicActivityRequest?.accountScope === accountStorageScope && musicActivityRequest?.companionScope === companionScope ? musicActivityRequest : null}
           aiName={effectiveAiName}
           accountScope={accountStorageScope}
+          companionScope={companionScope}
+          watchRequest={activityRequestInScope(watchActivityRequest, accountStorageScope, companionScope)}
           session={coWatchSession}
           receipt={coWatchReceipt}
           screenState={screenGlanceState}
@@ -8024,7 +8036,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           }}
           viewKind={viewKind}
           danmaku={coWatchDanmaku}
-            externalPageUrl={pendingCoWatchPage}
+          externalPageUrl={activityRequestInScope(watchActivityRequest, accountStorageScope, companionScope)?.pageUrl || ""}
         />
       </Suspense>
     );

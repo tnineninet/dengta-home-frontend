@@ -1,7 +1,7 @@
 {
   "name": "dengta-home-react",
   "private": true,
-  "version": "2.10.41",
+  "version": "2.10.42",
   "type": "module",
   "scripts": {
     "test:workspace": "node test/workspace-cache.test.js && node test/workspace-manager.test.js",
@@ -73,7 +73,7 @@
     "test:cotton-pet": "node test/cotton-pet.test.js && node test/cotton-runtime.test.js && node test/cotton-dock.test.js",
     "test:style-distill": "node --test test/style-distill.test.js test/large-text-file.test.js",
     "test:interaction-runtime": "node --test test/watch-room.test.js && node test/duel-request.test.js && node test/api-stream-lifecycle.test.js && node test/together-requests.test.js",
-    "test:companion-activities": "node test/companion-activities.test.js && node test/music-import-flow.test.js",
+    "test:companion-activities": "node test/companion-activities.test.js && node test/music-import-flow.test.js && node test/activity-query-flow.test.js",
     "test:takeout": "node test/takeout-executor.test.js"
   },
   "engines": {

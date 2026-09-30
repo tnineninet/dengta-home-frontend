@@ -15,7 +15,7 @@ const vite = await createServer({ root: fileURLToPath(new URL('..', import.meta.
     if (id.replaceAll('\\', '/').endsWith('/src/api.js')) return 'export const apiRequest = (...args) => globalThis.__togetherRequest(...args); export const apiFetch = apiRequest; export const API_BASE_URL = "http://fixture.invalid";';
   } }] });
 let tree, healthTree;
-const props = { aiName: 'Fixture', accountScope: 'test-account', screenState: {}, feedback: {}, onStopDirect: async () => ({ ok: true }) };
+const props = { aiName: 'Fixture', accountScope: 'test-account', companionScope: 'test-companion', screenState: {}, feedback: {}, onStopDirect: async () => ({ ok: true }) };
 const settle = () => new Promise(resolve => setTimeout(resolve, 10));
 try {
   const { default: Together } = await vite.ssrLoadModule('/src/Together.jsx');
@@ -33,6 +33,8 @@ try {
   await act(async () => { newer.resolve({ page: { page_url: 'https://fixture.invalid/new', embed_url: 'https://fixture.invalid/embed', title: 'new fixture' } }); await settle(); });
   await act(async () => { old.resolve({ page: { page_url: 'https://fixture.invalid/old', embed_url: 'https://fixture.invalid/embed', title: 'old fixture' } }); await settle(); });
   assert.match([...storage.values()].join(''), /new fixture/); assert.doesNotMatch([...storage.values()].join(''), /old fixture/);
+  assert.ok(storage.has('dengta_together_web_page_v2:' + JSON.stringify(['test-account', 'test-companion'])));
+  assert.equal(tree.root.findByType('iframe').props.src, 'https://fixture.invalid/embed');
   await act(async () => tree.update(React.createElement(Together, { ...props, session: { id: 'fixture-session', status: 'active', sourceApp: 'dengta-web-page' } })));
   await act(async () => { button('结束本场').props.onClick(); await settle(); });
   assert.equal(storage.size, 0, 'ending the web session removes its restored page');

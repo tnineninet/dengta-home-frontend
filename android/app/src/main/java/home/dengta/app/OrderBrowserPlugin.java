@@ -63,7 +63,7 @@ public final class OrderBrowserPlugin extends Plugin {
         try {
             Intent browser = new Intent(getContext(), PersistentBrowserActivity.class);
             browser.putExtra("url", url);
-            browser.putExtra("title", "外卖登录（登录态长期有效）");
+            browser.putExtra("title", "外卖平台登录");
             browser.putExtra("site", "eleme");
             browser.putExtra("desktop", false);
             startActivityForResult(call, browser, "browserLoginResult");

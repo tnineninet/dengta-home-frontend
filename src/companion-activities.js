@@ -13,3 +13,16 @@ export function normalizeCompanionActivities(value) {
     return [{ id: action.id, kind: action.kind, query: String(action.query || "").slice(0, 120), videos }];
   });
 }
+
+export function buildCompanionActivityRequest(action, accountScope, companionScope) {
+  if (!accountScope || !companionScope) return null;
+  const normalized = normalizeCompanionActivities([action])[0];
+  if (!normalized || normalized.kind === "bilibili") return null;
+  const pageUrl = normalized.kind === "watch" && /^https:\/\/www\.bilibili\.com\/video\/BV[0-9A-Za-z]{10}$/.test(action.pageUrl || "") ? action.pageUrl : "";
+  return Object.freeze({ ...normalized, pageUrl, accountScope, companionScope });
+}
+
+export function activityRequestInScope(request, accountScope, companionScope) {
+  if (!accountScope || !companionScope) return null;
+  return request?.accountScope === accountScope && request?.companionScope === companionScope ? request : null;
+}
