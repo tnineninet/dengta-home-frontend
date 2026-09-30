@@ -2,6 +2,7 @@ const rows = new Map();
 const listeners = new Set();
 let sequence = 0;
 export const DIAGNOSTIC_OPERATIONS = [
+  { prefix: "/api/v2/takeout", code: "DT-TAKEOUT", label: "外卖", source: "takeout-executor.js · 原生执行 / 回执同步" },
   { prefix: "/api/v2/fun-labs/achievements", code: "DT-ACHIEVEMENTS", label: "成就", source: "App.jsx · refreshFunLabs / 成就操作" },
   { prefix: "/api/v2/fun-labs/onboarding", code: "DT-GUIDE", label: "入门纪念", source: "App.jsx · completeOnboarding" },
   { prefix: "/api/v2/sessions", code: "DT-SESSIONS", label: "聊天记录", source: "App.jsx · 会话加载" },
@@ -14,6 +15,7 @@ export const DIAGNOSTIC_OPERATIONS = [
 ];
 const FALLBACK = { code: "DT-API", label: "接口请求", source: "api.js · apiRequest" };
 const EMPTY = Object.freeze([]);
+const TAKEOUT_CODES = new Set(["takeout_login_expired", "takeout_verification_required", "takeout_shop_not_found", "takeout_budget_exceeded", "takeout_page_execution_failed", "takeout_search_incomplete", "takeout_native_result_invalid", "takeout_command_invalid", "takeout_native_execution_failed", "takeout_result_sync_failed", "takeout_previous_attempt_unknown"]);
 export const diagnosticScopeKey = (account, companion) => account && companion ? JSON.stringify([account, companion]) : "";
 export function recordOperationFailure(scope, endpoint, error, now = Date.now()) {
   if (!scope || error?.name === "AbortError") return null;
@@ -25,6 +27,7 @@ export function recordOperationFailure(scope, endpoint, error, now = Date.now())
     status: Number.isInteger(status) && status >= 400 && status <= 599 ? status : null,
     kind: error?.code === "request_timeout" ? "等待超时" : status >= 400 ? "接口返回错误" : "网络或请求异常",
     logId: /^[a-f0-9]{8}-[a-f0-9-]{27}$/i.test(error?.error_log_id || "") ? error.error_log_id : null,
+    ...(TAKEOUT_CODES.has(error?.code) ? { reasonCode: error.code } : {}),
   };
   rows.set(scope, Object.freeze([record, ...(rows.get(scope) || [])].slice(0, 50)));
   if (rows.size > 4) rows.delete(rows.keys().next().value);

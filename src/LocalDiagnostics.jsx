@@ -9,6 +9,7 @@ export default function LocalDiagnostics({ scope }) {
     <button type="button" disabled={!entries.length} onClick={() => clearOperationFailures(scope)}>清空本机诊断</button>
     {!entries.length ? <p>本次打开尚未记录接口失败。</p> : <ul className="error-logs-list">{entries.map(entry => <li className="error-log-item" key={entry.id}>
       <strong>{entry.code} · {entry.label}</strong><p>{entry.kind}{entry.status ? ` · HTTP ${entry.status}` : ""}</p>
+      {entry.reasonCode && <p>具体代码：{entry.reasonCode}</p>}
       <small>{new Date(entry.at).toLocaleTimeString("zh-CN")} · {entry.source}</small>
       {entry.logId && <p>服务端日志编号：{entry.logId}</p>}
     </li>)}</ul>}

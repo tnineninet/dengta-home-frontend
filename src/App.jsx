@@ -5397,8 +5397,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   useEffect(() => {
     if (!takeoutPluginAvailable()) return undefined;
-    return startTakeoutRunner();
-  }, []);
+    setTakeoutLoginFeedback({ status: "idle", message: "" });
+    return startTakeoutRunner({
+      scope: diagnosticScopeKey(accountStorageScope, companionScope),
+      onCommandDone: (_command, outcome) => setTakeoutLoginFeedback({
+        status: outcome.ok && outcome.receipt_synced ? "success" : "error",
+        message: outcome.message ? `${outcome.message}（代码：${outcome.code}）` : "外卖页面操作完成，结果已同步。请在外卖页面确认商品和支付。",
+      }),
+    });
+  }, [accountStorageScope, companionScope]);
   const [xhsState, setXhsState] = useState({
     status: "idle",
     qr: "",
