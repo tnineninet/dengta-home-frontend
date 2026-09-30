@@ -7928,7 +7928,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     return (
       <Suspense fallback={<DeferredFeature label="正在打开一起看…" />}>
         <Together
-          key={`together-${togetherEntryMode}`}
+          key={JSON.stringify(["together", accountStorageScope, companionScope, togetherEntryMode])}
           musicRequest={musicActivityRequest?.accountScope === accountStorageScope && musicActivityRequest?.companionScope === companionScope ? musicActivityRequest : null}
           aiName={effectiveAiName}
           accountScope={accountStorageScope}

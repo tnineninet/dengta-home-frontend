@@ -18,6 +18,7 @@ import {
 import { MAX_PLAYLIST_TEXT_LENGTH, readPlaylistTextFile } from "./playlist-file.js";
 import { resolveMusicPlayback, MUSIC_PLAYBACK_MODES } from "./music-playback.js";
 import { openNeteasePlayback } from "./netease-playback.js";
+import MusicPagedList from "./MusicPagedList.jsx";
 
 const PROVIDERS = [
   ["local_playlist", "本地歌单", "ready", "可用"],
@@ -127,8 +128,8 @@ export default function MusicSettings({ providerStatus = null, onOpenMcpDeviceCe
         const imported = await importNeteaseShare(connectionId, content);
         setContent(""); setFileName(""); setSelected(imported);
         setMessage(`已导入“${imported.name}”，共 ${imported.itemCount} 首。可播放方式由歌曲的实际回执决定。`);
-        await refresh({ quiet: true });
         await notifyImported(imported);
+        if (!compact) void refresh({ quiet: true });
       } catch (caught) { setError(caught?.message || "网易云分享链接导入失败。"); }
       finally { importBusyRef.current = false; setBusy(false); }
       return;
@@ -288,6 +289,6 @@ export default function MusicSettings({ providerStatus = null, onOpenMcpDeviceCe
     {localAudio && <section className="music-local-audio" aria-label="本机音频播放器"><strong>{localAudio.name}</strong><audio src={localAudio.url} controls playsInline preload="metadata" /><p>仅本机播放，不能投屏/跨设备同步；文件不会上传、发送后端或交给 AI。</p></section>}
     {error && <p className="music-feedback is-error" role="alert">{error}</p>}{message && <p className="music-feedback" role="status">{message}</p>}
     {!compact && <div className="music-playlist-list"><h4>已保存歌单</h4>{playlists.length ? playlists.map((playlist) => <article key={playlist.id}><button type="button" className="music-playlist-summary" aria-expanded={selected?.id === playlist.id} onClick={async () => setSelected(selected?.id === playlist.id ? null : await getMusicPlaylist(playlist.id))}><strong>{playlist.name}</strong><span>{playlist.itemCount} 首 · 来源：{playlist.provider}</span></button><button type="button" className="danger" disabled={busy} onClick={() => void removePlaylist(playlist.id)}>删除</button></article>) : <p>还没有导入歌单。</p>}</div>}
-    {!compact && selected && <section className="music-playlist-detail" aria-label="歌单详情"><h4>{selected.name}</h4><p>来源：{selected.provider} · {selected.itemCount} 首</p>{selected.providerPlaylistId && <button type="button" onClick={() => void openExternal({}, "playlist", selected.providerPlaylistId)}>在网易云打开歌单</button>}{selected.items.length ? selected.items.map((item, index) => { const playback = resolveMusicPlayback(item); return <div key={item.id || index}><span>{index + 1}</span><span><strong>{item.title}</strong><small>{item.artist || "未知艺术家"} · 播放模式：{playback.mode}</small></span>{playback.mode === MUSIC_PLAYBACK_MODES.external ? <button type="button" onClick={() => void openExternal(item)}>在网易云打开</button> : <audio src={playback.url} controls preload="none" aria-label={`播放 ${item.title}`} />}</div>; }) : <p>此歌单已保存链接元数据，尚无曲目；可在网易云打开，或连接 MCP 后重新导入补全。</p>}</section>}
+    {!compact && selected && <section className="music-playlist-detail" aria-label="歌单详情"><h4>{selected.name}</h4><p>来源：{selected.provider} · {selected.itemCount} 首</p>{selected.providerPlaylistId && <button type="button" onClick={() => void openExternal({}, "playlist", selected.providerPlaylistId)}>在网易云打开歌单</button>}{selected.items.length ? <MusicPagedList key={selected.id} items={selected.items} label="歌单详情" renderItem={(item, index) => { const playback = resolveMusicPlayback(item); return <div key={item.id || index}><span>{index + 1}</span><span><strong>{item.title}</strong><small>{item.artist || "未知艺术家"} · 播放模式：{playback.mode}</small></span>{playback.mode === MUSIC_PLAYBACK_MODES.external ? <button type="button" onClick={() => void openExternal(item)}>在网易云打开</button> : <audio src={playback.url} controls preload="none" aria-label={`播放 ${item.title}`} />}</div>; }} /> : <p>此歌单已保存链接元数据，尚无曲目；可在网易云打开，或连接 MCP 后重新导入补全。</p>}</section>}
   </section>;
 }

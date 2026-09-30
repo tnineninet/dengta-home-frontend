@@ -47,6 +47,7 @@ import { browserLauncherAvailable, openBuiltInBrowser, readBrowserCookie } from 
 
 import MusicSettings from "./MusicSettings.jsx";
 import MusicImportDialog from "./MusicImportDialog.jsx";
+import MusicPagedList from "./MusicPagedList.jsx";
 
 const ERROR_MESSAGE = "音频无法播放。链接可能已过期、需要登录、受到防盗链限制，或使用了 DRM。DengTa 不会绕过这些限制。";
 const REPEAT_LABELS = Object.freeze({ off: "不循环", all: "列表循环", one: "单曲循环" });
@@ -111,7 +112,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   const [cookieBusy, setCookieBusy] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
-  const importRequestRef = useRef(0);
+  const playlistSelectionRef = useRef(0);
 
   const active = session?.status === "active" && session?.sessionMode === "listening";
   const sessionPlaylist = active ? loadedPlaylists[session?.musicPlaylistId] || null : null;
@@ -332,23 +333,26 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   };
 
   const selectPlaylist = async (id) => {
+    const selection = ++playlistSelectionRef.current;
     if (!id) {
       setPlaylist(null);
+      setLoading(false);
       return;
     }
     setLoading(true);
     setError("");
     try {
       const next = await getMusicPlaylist(id);
+      if (!mountedRef.current || selection !== playlistSelectionRef.current) return;
       setPlaylist(next);
       rememberPlaylist(next);
       setLocalIndex(0);
       setPosition(0);
       setStatus(`${next.name} · ${next.itemCount} 首`);
     } catch (caught) {
-      setError(caught?.message || "歌单暂时无法读取。");
+      if (mountedRef.current && selection === playlistSelectionRef.current) setError(caught?.message || "歌单暂时无法读取。");
     } finally {
-      setLoading(false);
+      if (mountedRef.current && selection === playlistSelectionRef.current) setLoading(false);
     }
   };
 
@@ -681,14 +685,18 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   };
 
   const acceptImportedPlaylist = async (imported) => {
-    const request = ++importRequestRef.current;
-    const selected = await getMusicPlaylist(imported.id);
-    if (!mountedRef.current || request !== importRequestRef.current) return;
-    rememberPlaylist(selected);
-    setPlaylist(selected); setLocalIndex(0); setPosition(0);
-    setPlaylists(current => [selected, ...current.filter(entry => entry.id !== selected.id)]);
-    setStatus(`已准备“${selected.name}”，选择曲目后开始一起听。`);
-    setImportOpen(false);
+    const request = ++playlistSelectionRef.current;
+    try {
+      const selected = await getMusicPlaylist(imported.id);
+      if (!mountedRef.current || request !== playlistSelectionRef.current) return;
+      rememberPlaylist(selected);
+      setPlaylist(selected); setLocalIndex(0); setPosition(0);
+      setPlaylists(current => [selected, ...current.filter(entry => entry.id !== selected.id)]);
+      setStatus(`已准备“${selected.name}”，选择曲目后开始一起听。`);
+      setImportOpen(false);
+    } finally {
+      if (mountedRef.current && request === playlistSelectionRef.current) setLoading(false);
+    }
   };
 
   const updateExternalPosition = (nextPosition) => {
@@ -990,7 +998,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
       <button type="button" className={favorite ? "is-favorite" : ""} aria-label={favorite ? "取消收藏当前曲目" : "收藏当前曲目"} aria-pressed={favorite} disabled={!item || favoriteBusy} onClick={() => void toggleFavorite()}><Heart aria-hidden="true" /></button>
       <button type="button" aria-label="刷新音乐资料" disabled={refreshing} onClick={() => void refreshLibrary()}><RefreshCw aria-hidden="true" />{refreshing ? "刷新中" : "刷新"}</button>
     </div>
-    <label>{active ? "加入曲目的来源歌单" : "歌单"}<select value={playlist?.id || ""} disabled={loading} onChange={(event) => void selectPlaylist(event.target.value)}><option value="">选择已导入歌单</option>{playlists.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} · {entry.itemCount} 首</option>)}</select></label>
+    <label>{active ? "加入曲目的来源歌单" : "歌单"}<select value={playlist?.id || ""} disabled={busy} onChange={(event) => void selectPlaylist(event.target.value)}><option value="">选择已导入歌单</option>{playlists.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} · {entry.itemCount} 首</option>)}</select></label>
     {!active && playlist && <label>曲目<select value={localIndex} onChange={(event) => setLocalIndex(Number(event.target.value))}>{playlist.items.map((entry, itemIndex) => <option key={entry.id || itemIndex} value={itemIndex}>{itemIndex + 1}. {entry.title}{entry.artist ? ` · ${entry.artist}` : ""}</option>)}</select></label>}
     <audio
       ref={audioRef}
@@ -1020,16 +1028,16 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
       </div>
       <section className="music-queue" aria-labelledby="music-queue-title">
         <header><div><ListMusic aria-hidden="true" /><strong id="music-queue-title">本场队列</strong></div><span>{queue?.items.length || 0} 首 · revision {queue?.revision || 0}</span></header>
-        {queue?.items.length ? <ol>{queue.items.map((entry, entryIndex) => <li key={entry.id} className={entry.id === queue.currentQueueItemId ? "is-current" : ""}>
+        {queue?.items.length ? <MusicPagedList key={queue.sessionId} items={queue.items} label="本场队列" listTag="ol" renderItem={(entry, entryIndex) => <li key={entry.id} className={entry.id === queue.currentQueueItemId ? "is-current" : ""}>
           <div><span>{entry.id === queue.currentQueueItemId ? "正在播放" : `第 ${entryIndex + 1} 首`}</span><strong>{entry.title || "未命名曲目"}</strong><small>{entry.artist || "未知艺术家"}</small></div>
           <div className="music-queue-actions">
             <button type="button" aria-label={`上移 ${entry.title}`} disabled={controlsBusy || entryIndex === 0} onClick={() => void runQueueOperation({ type: "move", queue_item_id: entry.id, position: entryIndex - 1 }, { retryConflict: true }).catch(() => {})}><ArrowUp aria-hidden="true" /></button>
             <button type="button" aria-label={`下移 ${entry.title}`} disabled={controlsBusy || entryIndex === queue.items.length - 1} onClick={() => void runQueueOperation({ type: "move", queue_item_id: entry.id, position: entryIndex + 1 }, { retryConflict: true }).catch(() => {})}><ArrowDown aria-hidden="true" /></button>
             <button type="button" aria-label={`移除 ${entry.title}`} disabled={controlsBusy} onClick={() => void runQueueOperation({ type: "remove", queue_item_id: entry.id }, { retryConflict: true }).catch(() => {})}><Trash2 aria-hidden="true" /></button>
           </div>
-        </li>)}</ol> : <p>队列是空的，可以从下面的歌单加入曲目。</p>}
+        </li>} /> : <p>队列是空的，可以从下面的歌单加入曲目。</p>}
       </section>
-      {playlist && <section className="music-queue-picker" aria-label="从当前歌单加入队列"><strong>{playlist.name}</strong>{playlist.items.map((entry) => { const entryPlayback = resolveMusicPlayback(entry); const external = entryPlayback.mode === MUSIC_PLAYBACK_MODES.external; return <div key={entry.id}><span>{entry.title}{external && <small> · Together 元数据队列</small>}</span><button type="button" disabled={controlsBusy} onClick={() => void runQueueOperation({ type: "add", item_id: entry.id, position: Math.max(0, currentQueueIndex + 1) }, { retryConflict: true }).catch(() => {})}><Play aria-hidden="true" />下一首播放</button><button type="button" disabled={controlsBusy} onClick={() => void runQueueOperation({ type: "add", item_id: entry.id }, { retryConflict: true }).catch(() => {})}><ListPlus aria-hidden="true" />加入队尾</button>{external && <button type="button" onClick={() => { void Promise.all([requestExternalMusicPlayback(entryPlayback.resourceType, entryPlayback.resourceId), openNeteasePlayback(entryPlayback.resourceType, entryPlayback.resourceId)]).catch((caught) => setError(caught?.message || "无法打开网易云播放。")); }}><Play aria-hidden="true" />在网易云播放</button>}</div>; })}</section>}
+      {playlist && <section className="music-queue-picker" aria-label="从当前歌单加入队列"><strong>{playlist.name}</strong>{<MusicPagedList key={playlist.id} items={playlist.items} label="歌单曲目" renderItem={(entry) => { const entryPlayback = resolveMusicPlayback(entry); const external = entryPlayback.mode === MUSIC_PLAYBACK_MODES.external; return <div key={entry.id}><span>{entry.title}{external && <small> · Together 元数据队列</small>}</span><button type="button" disabled={controlsBusy} onClick={() => void runQueueOperation({ type: "add", item_id: entry.id, position: Math.max(0, currentQueueIndex + 1) }, { retryConflict: true }).catch(() => {})}><Play aria-hidden="true" />下一首播放</button><button type="button" disabled={controlsBusy} onClick={() => void runQueueOperation({ type: "add", item_id: entry.id }, { retryConflict: true }).catch(() => {})}><ListPlus aria-hidden="true" />加入队尾</button>{external && <button type="button" onClick={() => { void Promise.all([requestExternalMusicPlayback(entryPlayback.resourceType, entryPlayback.resourceId), openNeteasePlayback(entryPlayback.resourceType, entryPlayback.resourceId)]).catch((caught) => setError(caught?.message || "无法打开网易云播放。")); }}><Play aria-hidden="true" />在网易云播放</button>}</div>; }} />}</section>}
     </>}
     {active && <button type="button" disabled={busy} onClick={() => void onEnd?.({ title: item?.title, mediaPositionSeconds: position, musicPlaylistId: itemPlaylistId, musicPlaylistItemId: itemId })}><CircleStop aria-hidden="true" />结束本场</button>}
     <p className="together-device-note">{formatMediaTime(position)} / {duration ? formatMediaTime(duration) : "等待媒体信息"}。{playback.mode === MUSIC_PLAYBACK_MODES.external ? "只进入 Together 元数据队列，不进入 App audio；切歌后请点击在网易云播放" : "队列不保存音频 URL，播放地址仅从本机已加载歌单解析；不代理、不下载、不绕过 DRM。"}</p>

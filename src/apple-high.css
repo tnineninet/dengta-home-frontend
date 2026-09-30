@@ -463,17 +463,17 @@
   -webkit-backdrop-filter: blur(16px) saturate(170%);
 }
 .music-queue-picker > strong { display: block; font-family: var(--apple-font-display, -apple-system, sans-serif); font-size: 15px; font-weight: 600; color: #1d1d1f; margin-bottom: 10px; }
-.music-queue-picker > div {
+.music-queue-picker .music-paged-items > div {
   display: flex; align-items: center; gap: 8px; padding: 8px 0;
   border-bottom: 1px solid rgb(0 0 0 / 0.06);
 }
-.music-queue-picker > div:last-child { border-bottom: 0; }
-.music-queue-picker > div > span { flex: 1; min-width: 0; font-size: 13px; color: #1d1d1f; }
-.music-queue-picker > div button {
+.music-queue-picker .music-paged-items > div:last-child { border-bottom: 0; }
+.music-queue-picker .music-paged-items > div > span { flex: 1; min-width: 0; font-size: 13px; color: #1d1d1f; }
+.music-queue-picker .music-paged-items > div button {
   min-height: 30px; padding: 0 12px; border: 1px solid rgb(0 0 0 / 0.08); border-radius: 9999px;
   color: #1d1d1f; background: rgb(255 255 255 / 0.72); font-size: 11px; cursor: pointer;
 }
-.music-queue-picker > div button:active { transform: scale(0.95); }
+.music-queue-picker .music-paged-items > div button:active { transform: scale(0.95); }
 
 /* 音乐导入网格 */
 .music-import-grid,
