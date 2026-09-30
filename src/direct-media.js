@@ -6,7 +6,11 @@ import {
 
 export const DIRECT_MEDIA_SOURCE_APP = "dengta-direct-media";
 export const WEB_PAGE_SOURCE_APP = "dengta-web-page";
-export const DIRECT_MEDIA_SESSION_KEY = "dengta.together.direct-media.v1";
+export const DIRECT_MEDIA_SESSION_KEY = "dengta.together.direct-media.v2";
+
+function mediaScope(accountScope, companionScope) {
+  return accountScope && companionScope ? JSON.stringify([accountScope, companionScope]) : "";
+}
 
 const MAX_MEDIA_URL_LENGTH = 4096;
 
@@ -154,18 +158,20 @@ function cleanPlaybackNumber(value) {
   return Math.min(604800, Math.max(0, number));
 }
 
-export function readDirectMediaSession(storage, accountScope = "") {
+export function readDirectMediaSession(storage, accountScope = "", companionScope = "") {
+  const scope = mediaScope(accountScope, companionScope);
+  if (!scope) return null;
   try {
     const stored = readAccountStorage(
       storage,
       DIRECT_MEDIA_SESSION_KEY,
-      accountScope,
+      scope,
     );
     if (!stored) return null;
     const value = JSON.parse(stored);
     const validation = validateDirectMediaUrl(value?.url);
     if (!validation.ok) {
-      storage?.removeItem(accountStorageKey(DIRECT_MEDIA_SESSION_KEY, accountScope));
+      storage?.removeItem(accountStorageKey(DIRECT_MEDIA_SESSION_KEY, scope));
       return null;
     }
     return Object.freeze({
@@ -183,14 +189,17 @@ export function storeDirectMediaSession(
   storage,
   accountScope = "",
   value = {},
+  companionScope = "",
 ) {
+  const scope = mediaScope(accountScope, companionScope);
+  if (!scope) return invalid("scope_required", "请先选择账号和伴侣。");
   const validation = validateDirectMediaUrl(value.url);
   if (!validation.ok) return validation;
   try {
     writeAccountStorage(
       storage,
       DIRECT_MEDIA_SESSION_KEY,
-      accountScope,
+      scope,
       JSON.stringify({
         url: validation.url,
         title: String(value.title || "").trim().slice(0, 180),
@@ -204,9 +213,11 @@ export function storeDirectMediaSession(
   return validation;
 }
 
-export function clearDirectMediaSession(storage, accountScope = "") {
+export function clearDirectMediaSession(storage, accountScope = "", companionScope = "") {
+  const scope = mediaScope(accountScope, companionScope);
+  if (!scope) return;
   try {
-    storage?.removeItem(accountStorageKey(DIRECT_MEDIA_SESSION_KEY, accountScope));
+    storage?.removeItem(accountStorageKey(DIRECT_MEDIA_SESSION_KEY, scope));
   } catch {
     // The in-memory player can still be cleared when storage is unavailable.
   }

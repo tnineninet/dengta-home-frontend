@@ -1254,7 +1254,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   useEffect(
     () => () => {
-      clearDirectMediaSession(globalThis.sessionStorage, accountStorageScope);
+      clearDirectMediaSession(globalThis.sessionStorage, accountStorageScope, companionScope);
       setCoWatchSession(null);
       setCoWatchDialog([]);
     },
@@ -6301,7 +6301,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       }
       setCoWatchSession(null);
       setCoWatchDialog([]);
-      clearDirectMediaSession(globalThis.sessionStorage, accountStorageScope);
+      clearDirectMediaSession(globalThis.sessionStorage, accountStorageScope, companionScope);
       return { ok: true, message: "这场视频直链共看已经结束。" };
     } catch (error) {
       return {

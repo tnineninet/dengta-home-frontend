@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { formatMediaTime, resolveCoWatchPage } from "./co-watch";
 import { API_BASE_URL } from "./api.js";
+import { mediaPlaybackFeedback } from "./media-playback-errors.js";
 import { detectPlannedCastProviders } from "./receiver-playback.js";
 import {
   clearDirectMediaSession,
@@ -106,7 +107,7 @@ export default function Together({
   danmaku = [],
 }) {
   const [restoredDirectMedia] = useState(() =>
-    readDirectMediaSession(globalThis.sessionStorage, accountScope),
+    readDirectMediaSession(globalThis.sessionStorage, accountScope, companionScope),
   );
   const [mode, setMode] = useState(() =>
     viewKind === "music"
@@ -277,7 +278,7 @@ export default function Together({
       title,
       positionSeconds,
       durationSeconds,
-    });
+    }, companionScope);
   };
 
   const reportDirectPlayback = (video, immediate = false) => {
@@ -322,7 +323,7 @@ export default function Together({
       title,
       positionSeconds: changed ? 0 : directPositionSeconds,
       durationSeconds: changed ? 0 : directDurationSeconds,
-    });
+    }, companionScope);
     setDirectFeedback({
       status: "success",
       message: "视频直链已载入。若播放器仍失败，通常是地址已过期、需要登录或来源网站禁止外部播放。",
@@ -402,7 +403,7 @@ export default function Together({
         message: result.message || "这场视频直链共看已经结束。",
       });
       if (result.ok !== false) {
-        clearDirectMediaSession(globalThis.sessionStorage, accountScope);
+        clearDirectMediaSession(globalThis.sessionStorage, accountScope, companionScope);
         setDirectMediaUrl("");
         setDirectUrlInput("");
         setDirectPositionSeconds(0);
@@ -610,7 +611,13 @@ export default function Together({
                       playsInline
                       poster={webPage.poster || ""}
                       src={`${API_BASE_URL}/api/v2/co-watch/bilibili-stream?bvid=${encodeURIComponent(webPage.bvid)}`}
+                      preload="metadata"
+                      onError={(event) => setWebFeedback(mediaPlaybackFeedback(event.currentTarget.error))}
                     />
+                    {webFeedback.status === "error" && <button type="button" onClick={() => {
+                      setWebFeedback({ status: "checking", message: "正在重新载入视频，请准备好后手动播放。" });
+                      webVideoRef.current?.load();
+                    }}><RefreshCw aria-hidden="true" />重新载入视频</button>}
                     <div className="together-danmaku-layer">
                       {activeDanmaku.map((item) => (
                         <div
@@ -687,13 +694,9 @@ export default function Together({
                 onPause={(event) => { setDirectPlaying(false); reportDirectPlayback(event.currentTarget, true); }}
                 onSeeked={(event) => reportDirectPlayback(event.currentTarget, true)}
                 onEnded={() => setDirectPlaying(false)}
-                onError={() => {
+                onError={(event) => {
                   setDirectPlaying(false);
-                  setDirectFeedback({
-                    status: "error",
-                    message:
-                      "视频无法播放。请检查它是否为可直接访问的 HTTPS 媒体文件，以及链接是否过期或受登录、防盗链限制。",
-                  });
+                  setDirectFeedback(mediaPlaybackFeedback(event.currentTarget.error));
                 }}
               >
                 当前浏览器不支持 HTML5 视频播放。
@@ -815,6 +818,10 @@ export default function Together({
                     />
                   </label>
                   <div className="together-direct-actions">
+                    {directFeedback.status === "error" && directMediaUrl && <button type="button" onClick={() => {
+                      setDirectFeedback({ status: "checking", message: "正在重新载入视频，请准备好后手动播放。" });
+                      videoRef.current?.load();
+                    }}><RefreshCw aria-hidden="true" />重新载入视频</button>}
                     <button type="button" disabled={busy} onClick={loadDirectMedia}>
                       <Link2 aria-hidden="true" />
                       载入播放器
@@ -847,6 +854,10 @@ export default function Together({
               )}
               {directActive && (
                 <div className="together-session-actions">
+                  {directFeedback.status === "error" && <button type="button" onClick={() => {
+                    setDirectFeedback({ status: "checking", message: "正在重新载入视频，请准备好后手动播放。" });
+                    videoRef.current?.load();
+                  }}><RefreshCw aria-hidden="true" />重新载入视频</button>}
                   <button type="button" disabled={busy} onClick={stopDirect}>
                     <CircleStop aria-hidden="true" />
                     结束本场

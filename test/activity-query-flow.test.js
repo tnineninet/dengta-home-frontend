@@ -5,6 +5,8 @@ import TestRenderer from 'react-test-renderer';
 import { createServer } from 'vite';
 import { activityRequestInScope, buildCompanionActivityRequest } from '../src/companion-activities.js';
 import { appendActivityDraft } from '../src/chat-activities.js';
+import { storeDirectMediaSession } from '../src/direct-media.js';
+import { mediaPlaybackFeedback } from '../src/media-playback-errors.js';
 
 const action={id:'fixture-activity',kind:'watch',query:'虚构电影 & ? 中文',pageUrl:'https://www.bilibili.com/video/BV1234567890'};
 const request=buildCompanionActivityRequest(action,'account-a','companion-a');
@@ -31,8 +33,8 @@ const vite=await createServer({root:fileURLToPath(new URL('..',import.meta.url))
     if(id==='\0virtual:watch-placeholder')return 'export default function Placeholder(){return null;}';
   },
 }]});
-let tree;
-async function mount(Component,props){await act(async()=>{tree=TestRenderer.create(React.createElement(Component,props));});}
+let tree, reloads=0;
+async function mount(Component,props){await act(async()=>{tree=TestRenderer.create(React.createElement(Component,props),{createNodeMock: node=>node.type==='video'?{load(){reloads++;},pause(){},currentTime:0,duration:120,paused:true}:null});});}
 async function unmount(){if(tree){await act(async()=>tree.unmount());tree=null;}}
 try{
   const {WatchQueryPanel,TakeoutQueryPanel}=await vite.ssrLoadModule('/src/ActivityQueryPanels.jsx');
@@ -72,7 +74,28 @@ try{
   await act(async()=>urlInput.props.onChange({target:{value:page.page_url}}));
   await act(async()=>tree.root.findAllByType('button').find(node=>node.children.some(child=>child==='解析并载入')).props.onClick());
   await unmount();assert.equal(signal.aborted,true);await act(async()=>release(page));assert.equal(storage.has(key),false);
-  console.log('Activity query flow passed: actual frame/link fields, keyword links, preserved drafts, no autoplay and companion-scoped page recovery');
+  storage.clear();
+  storeDirectMediaSession(globalThis.sessionStorage,'account-a',{url:'https://media.example.test/video.mp4',positionSeconds:42,durationSeconds:120},'companion-a');
+  await mount(Together,props);
+  assert.equal(tree.root.findByType('video').props.src,'https://media.example.test/video.mp4');
+  for(const code of [1,2,3,4,0]) {
+    await act(async()=>tree.root.findByType('video').props.onError({currentTarget:{error:{code,message:'PRIVATE_MEDIA_URL'}}}));
+    assert.ok(JSON.stringify(tree.toJSON()).includes(mediaPlaybackFeedback({code}).code));
+    assert.ok(!JSON.stringify(tree.toJSON()).includes('PRIVATE_MEDIA_URL'));
+    const before=reloads;
+    await act(async()=>tree.root.findAllByType('button').find(node=>node.children.some(child=>child==='重新载入视频')).props.onClick());
+    assert.equal(reloads,before+1);
+  }
+  await unmount();await mount(Together,{...props,companionScope:'companion-b'});
+  assert.equal(tree.root.findAllByType('video').length,0);await unmount();
+  storage.set(key,JSON.stringify({...page,provider:'bilibili',bvid:'BV1234567890'}));
+  await mount(Together,props);
+  await act(async()=>tree.root.findByType('video').props.onError({currentTarget:{error:{code:2}}}));
+  assert.ok(JSON.stringify(tree.toJSON()).includes('media_network'));
+  const before=reloads;
+  await act(async()=>tree.root.findAllByType('button').find(node=>node.children.some(child=>child==='重新载入视频')).props.onClick());
+  assert.equal(reloads,before+1);assert.equal(starts,1);
+  console.log('Activity query and playback flow passed: scoped recovery, media error codes, manual reload, no automatic session or playback');
 }finally{
   await unmount();await vite.close();
   for(const [name,descriptor]of descriptors){if(descriptor)Object.defineProperty(globalThis,name,descriptor);else delete globalThis[name];}

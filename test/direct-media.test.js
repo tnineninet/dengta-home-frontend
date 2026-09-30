@@ -106,10 +106,10 @@ const stored = storeDirectMediaSession(sessionStorage, "account-a", {
   title: "测试影片",
   positionSeconds: 42.8,
   durationSeconds: 180,
-});
+}, "companion-a");
 assert.equal(stored.ok, true);
-assert.equal(readDirectMediaSession(sessionStorage, "account-b"), null);
-assert.deepEqual(readDirectMediaSession(sessionStorage, "account-a"), {
+assert.equal(readDirectMediaSession(sessionStorage, "account-b", "companion-a"), null);
+assert.deepEqual(readDirectMediaSession(sessionStorage, "account-a", "companion-a"), {
   url: "https://media.example.com/a.mp4?token=one",
   title: "测试影片",
   positionSeconds: 42.8,
@@ -119,8 +119,14 @@ assert.equal(
   [...sessionStorage.values.keys()].some((key) => key.startsWith(DIRECT_MEDIA_SESSION_KEY)),
   true,
 );
-clearDirectMediaSession(sessionStorage, "account-a");
+assert.equal(readDirectMediaSession(sessionStorage, "account-a", "companion-b"), null);
 assert.equal(readDirectMediaSession(sessionStorage, "account-a"), null);
+assert.equal(storeDirectMediaSession(sessionStorage, "account-a", {url:"https://media.example.test/b.mp4"}).code, "scope_required");
+sessionStorage.setItem("dengta.together.direct-media.v1:account-a", JSON.stringify({url:"https://media.example.test/legacy.mp4"}));
+assert.equal(readDirectMediaSession(sessionStorage, "account-a", "companion-b"), null);
+assert.ok(sessionStorage.getItem("dengta.together.direct-media.v1:account-a"));
+clearDirectMediaSession(sessionStorage, "account-a", "companion-a");
+assert.equal(readDirectMediaSession(sessionStorage, "account-a", "companion-a"), null);
 
 const together = source("../src/Together.jsx");
 assert.match(together, /globalThis\.sessionStorage/);
@@ -172,7 +178,7 @@ assert.match(
 );
 assert.match(directStart, /sessionMode: pageMode \? "web_page" : "direct_media"/);
 assert.match(directStart, /mediaUrl:\s*options\.mediaUrl/);
-assert.match(app, /clearDirectMediaSession\(globalThis\.sessionStorage, accountStorageScope\)/);
+assert.match(app, /clearDirectMediaSession\(globalThis\.sessionStorage, accountStorageScope, companionScope\)/);
 assert.match(
   app,
   /playbackPositionSeconds \?\? coWatchSession\.mediaPositionSeconds/,
