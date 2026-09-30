@@ -24,6 +24,8 @@ globalThis.__musicScopeFixture={auth,request:async(path,options)=>{
  if(path.endsWith('/cookie-session'))return {session:{connected:options.method==='POST'}};
  if(path.endsWith('/connections/provision'))return {connection:{id:'connection-a',name:'Fixture'}};
  if(path.endsWith('/status'))return {status:{logged_in:true,account_name:'Fixture account'}};
+ if(path.endsWith('/ai-play-requests'))return {requests:[]};
+ if(path.includes('/ai-play-requests/'))return {ok:true};
  if(path.includes('/favorites/'))return {favorite:{item_id:'track-a'},deleted:{item_id:'track-a'}};
  return {playlist:{id:'playlist-a',name:'Fixture',items:[]},playlists:[],items:[],favorites:[]};
 },fetch:async(path,options)=>{
@@ -39,7 +41,8 @@ try{
  const api=await vite.ssrLoadModule('/src/music-listening.js');const controller=new AbortController(),options={...identity(),signal:controller.signal};
  const operations=[['listNeteaseConnections',[]],['connectNeteaseMcp',[{name:'Fixture',endpoint:'https://mcp.example.test'}]],['getNeteaseConnectionStatus',['connection-a']],['listNeteasePlaylists',['connection-a']],['getNeteasePlaylist',['connection-a','1']],['searchNeteaseMusic',['connection-a','Fixture']],['importNeteaseShare',['connection-a','https://music.163.com/#/song?id=1']],['readNeteaseCookieSession',[]],['saveNeteaseCookieSession',['fictional-cookie']],['clearNeteaseCookieSession',[]],['requestExternalMusicPlayback',['song','1']],['cookieSearchNetease',['Fixture',10]],['cookieGetMyPlaylists',[]],['cookieGetPlaylistTracks',['1']],['cookieGetDailyRecommend',[]],['cookieGetPlayHistory',[20]],['cookieLikeSong',['1',true]],['cookieCreatePlaylist',['Fixture',false]],['cookieAddToPlaylist',['1',['2']]],['cookieRemoveFromPlaylist',['1',['2']]],['importMusicPlaylist',[{content:'https://media.example.test/audio.mp3'}]],['uploadLocalMusicFile',[new File(['fixture'],'fixture.mp3',{type:'audio/mpeg'})]],['listMusicPlaylists',[]],['getMusicPlaylist',['playlist-a']],['deleteMusicPlaylist',['playlist-a']],['listMusicFavorites',[]],['putMusicFavorite',['track-a']],['deleteMusicFavorite',['track-a']]];
  for(const [name,args]of operations)await api[name](...args,options);
- assert.equal(calls.length,28);assert.ok(calls.every(c=>c.options.signal===controller.signal&&c.options.authSession&&c.companion==='companion-a'));
+ await api.listAiMusicPlayRequests(options);await api.reportAiMusicPlayResult('fixture-request',{status:'played'},options);
+ assert.equal(calls.length,30);assert.ok(calls.every(c=>c.options.signal===controller.signal&&c.options.authSession&&c.companion==='companion-a'));
  assert.equal((await api.getNeteaseConnectionStatus('connection-a',options)).account_name,'Fixture account','unwrap server status envelope');
  const pending=deferred();handler=()=>pending.promise;const old=api.listMusicFavorites();await new Promise(resolve=>setTimeout(resolve,0));snapshot={user:{id:'account-b'},activeCompanionId:'companion-b'};pending.resolve({favorites:[{item_id:'old-private-item'}]});await assert.rejects(old,{code:'music_scope_changed'});
  const count=calls.length;await assert.rejects(api.putMusicFavorite('track-a',options),{code:'music_scope_changed'});assert.equal(calls.length,count,'stale writes cannot dispatch');
@@ -47,11 +50,13 @@ try{
  await assert.rejects(api.importNeteaseShare('', 'https://music.163.com/#/song?id=1',options),{code:'music_import_receipt_invalid'});
  await assert.rejects(api.clearNeteaseCookieSession(options),{code:'music_cookie_receipt_invalid'});
  await assert.rejects(api.connectNeteaseMcp({},options),{code:'music_connection_receipt_invalid'});
+ await assert.rejects(api.listAiMusicPlayRequests(options),{code:'music_ai_requests_receipt_invalid'});
+ await assert.rejects(api.reportAiMusicPlayResult('fixture-request',{status:'played'},options),{code:'music_ai_result_receipt_invalid'});
  controller.abort();await assert.rejects(api.deleteMusicFavorite('track-a',options),{name:'AbortError'});
  const message=musicErrorMessage({message:'Authorization: Bearer fictional-secret-token-000000',code:'fixture_failure',status:502,error_log_id:'fixture-log'},'连接失败，请重试。');
  assert.doesNotMatch(message,/fictional-secret|Authorization|Bearer/);assert.match(message,/fixture_failure/);assert.match(message,/502/);assert.match(message,/Logged|日志/);
  assert.doesNotMatch(message,/Source: dengta/,'an unknown error source must not be attributed to DengTa');
  assert.match(musicErrorMessage({message:'保存回执缺失',code:'music_import_receipt_invalid'},'请刷新。'),/music_import_receipt_invalid/,'local receipt errors must show their code without HTTP metadata');
  assert.equal((musicErrorMessage({message,code:'fixture_failure',status:502},'请刷新。').match(/错误代码 \/ Code:/g)||[]).length,1,'already formatted errors must not repeat the diagnostic');
- console.log('Music scope: all 28 exported API methods, fixed authentication, cancelled/stale writes, status unwrap, exact receipts, task locks and redacted diagnostics passed');
+ console.log('Music scope: all 30 exported API methods, fixed authentication, cancelled/stale writes, status unwrap, exact receipts, task locks and redacted diagnostics passed');
 }finally{await vite.close();delete globalThis.__musicScopeFixture;}

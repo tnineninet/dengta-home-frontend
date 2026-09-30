@@ -21,6 +21,7 @@ import { openNeteasePlayback } from "./netease-playback.js";
 import MusicPagedList from "./MusicPagedList.jsx";
 import { useMusicScope } from "./use-music-scope.js";
 import { runMusicTask, musicErrorMessage } from "./music-operation-feedback.js";
+import { launchExternalMusic, externalMusicFeedback } from "./music-external-launch.js";
 
 const PROVIDERS = [
   ["local_playlist", "本地歌单", "ready", "可用"],
@@ -155,7 +156,9 @@ export default function MusicSettings({ providerStatus = null, onOpenMcpDeviceCe
   }
   async function openExternal(item, resourceType = "song", fallbackId = "") {
     const playback = resolveMusicPlayback(item), resourceId = playback.resourceId || fallbackId;
-    await runMusicTask(musicScope, "external-playback", (token) => Promise.all([openNeteasePlayback(resourceType, resourceId), requestExternalMusicPlayback(resourceType, resourceId, token.options)]), {
+    await runMusicTask(musicScope, "external-playback", (token) => launchExternalMusic({ scope: musicScope, token, resourceType, resourceId, open: openNeteasePlayback, request: requestExternalMusicPlayback }), {
+      onStart: () => { setError(""); setMessage(""); },
+      onSuccess: (result) => setMessage(externalMusicFeedback(result)),
       onError: (caught) => setError(musicErrorMessage(caught, "无法打开网易云播放，请检查设备和连接后重试。")),
     });
   }

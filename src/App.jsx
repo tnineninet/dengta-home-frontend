@@ -13,7 +13,9 @@ import { createCoWatchLifecycle } from "./co-watch-lifecycle.js";
 import { createScreenGlanceLifecycle } from "./screen-glance-lifecycle.js";
 import { createMusicPlaybackSync } from "./music-playback-sync.js";
 import { createNowPlayingSync } from "./music-now-playing-sync.js";
-import { getMusicPlaylist } from "./music-listening.js";
+import { getMusicPlaylist, listAiMusicPlayRequests, reportAiMusicPlayResult } from "./music-listening.js";
+import { useMusicScope } from "./use-music-scope.js";
+import { createAiMusicConsumer } from "./ai-music-consumer.js";
 import MemoryGatewayStatus from "./MemoryGatewayStatus.jsx";
 import { Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
@@ -1065,87 +1067,62 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [dlnaBusy, setDlnaBusy] = useState(false);
   const [nowPlaying, setNowPlaying] = useState(null);
   const nowPlayingDismissedRef = useRef(false);
-  const nowPlayingPollRef = useRef(null);
   const lastNowPlayingRef = useRef(null);
   const randomPlayAudioRef = useRef(null);
 
   const [notificationAccess, setNotificationAccess] = useState({ granted: false, checking: true });
 
-  // 活动感知-音乐识别：需要"通知使用权"才能读取系统媒体通知。
-  // 轮询 NowPlayingListenerService 缓存的媒体通知（网易云/后台/本 App 播放都能感知）。
+  const aiMusicScope = useMusicScope(accountStorageScope, companionScope);
   useEffect(() => {
+    if (!Capacitor.isNativePlatform() || visualPreview || !accountStorageScope || !companionScope) return;
+    const consumer = createAiMusicConsumer({ scope: aiMusicScope, list: listAiMusicPlayRequests, report: reportAiMusicPlayResult, open: playNeteaseSilent, storage: globalThis.sessionStorage, onFeedback: message => setNotice(message) });
+    void consumer.drain();
+    const timer = window.setInterval(() => void consumer.drain(), 5000);
+    return () => { window.clearInterval(timer); consumer.cancel(); };
+  }, [aiMusicScope, accountStorageScope, companionScope, visualPreview]);
+
+  useEffect(() => {
+    let alive = true;
     if (!deviceActivityPluginAvailable()) {
       setNotificationAccess({ granted: false, checking: false });
       setNowPlaying(null);
       return undefined;
     }
-    const checkAccess = async () => {
-      const state = await readNotificationAccessState().catch(() => ({ granted: false }));
-      setNotificationAccess({ granted: state?.granted === true, checking: false });
-      return state?.granted === true;
-    };
-    // AI 放歌：消费待播放请求，静默调起网易云播放并回报结果。
-    const drainAiPlayRequests = async (nowSong) => {
-      try {
-        const data = await apiRequest("/api/v2/music/providers/netease/ai-play-requests", { timeoutMs: 10000 }).catch(() => null);
-        const requests = Array.isArray(data?.requests) ? data.requests : [];
-        for (const request of requests.slice(0, 3)) {
-          const id = String(request?.id || "");
-          const songId = String(request?.song_id || "");
-          if (!id || !/^\d{1,20}$/.test(songId)) continue;
-          const alreadyPlaying =
-            nowSong?.title &&
-            String(request?.title || "") &&
-            (nowSong.title === request.title || nowSong.title.includes(request.title) || request.title.includes(nowSong.title));
-          let opened = null;
-          if (!alreadyPlaying) {
-            opened = await playNeteaseSilent("song", songId).catch(() => null);
-          }
-          await apiRequest(`/api/v2/music/providers/netease/ai-play-requests/${encodeURIComponent(id)}/result`, {
-            method: "POST",
-            timeoutMs: 10000,
-            body: JSON.stringify({
-              status: alreadyPlaying || opened?.opened === true ? "played" : "failed",
-              error: alreadyPlaying || opened?.opened === true ? "" : "打开网易云播放失败",
-            }),
-          }).catch(() => {});
-        }
-      } catch {
-        // 播放请求消费失败不影响主流程
-      }
-    };
-    const poll = async () => {
-      const song = await readNowPlaying().catch(() => null);
-      if (song?.title) {
-        nowPlayingDismissedRef.current = false;
-        setNowPlaying(song);
-        // 切歌感知：系统播放的歌曲变化时，同步到一起听会话（AI 就能记住最新歌曲）
-        const previous = lastNowPlayingRef.current;
-        const changed =
-          !previous ||
-          previous.title !== song.title ||
-          previous.artist !== song.artist;
-        lastNowPlayingRef.current = song;
-        if (changed) {
-          void syncNowPlayingToSession(song);
-        }
-      } else if (!nowPlayingDismissedRef.current) {
-        setNowPlaying((current) => (current?.source === "dengta" ? current : null));
-      }
-      if (Capacitor.isNativePlatform()) {
-        void drainAiPlayRequests(song);
-      }
-    };
-    void (async () => {
-      const granted = await checkAccess();
-      if (granted) {
-        void poll();
-        nowPlayingPollRef.current = window.setInterval(() => void poll(), 5000);
-      }
-    })();
-    return () => window.clearInterval(nowPlayingPollRef.current ?? undefined);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    readNotificationAccessState().catch(() => ({ granted: false })).then(state => {
+      if (alive) setNotificationAccess({ granted: state?.granted === true, checking: false });
+    });
+    return () => { alive = false; };
   }, []);
+
+  // Listening to system media notifications is separate from consuming explicit AI song requests.
+  useEffect(() => {
+    if (!deviceActivityPluginAvailable() || !notificationAccess.granted) return;
+    let alive = true, busy = false;
+    const token = aiMusicScope.capture();
+    const poll = async () => {
+      if (busy || !alive || !aiMusicScope.current(token)) return;
+      busy = true;
+      try {
+        const song = await readNowPlaying().catch(() => null);
+        if (!alive || !aiMusicScope.current(token)) return;
+        if (song?.title) {
+          nowPlayingDismissedRef.current = false;
+          setNowPlaying(song);
+          const previous = lastNowPlayingRef.current;
+          const changed = !previous || previous.title !== song.title || previous.artist !== song.artist;
+          lastNowPlayingRef.current = song;
+          if (changed) void syncNowPlayingToSession(song);
+        } else if (!nowPlayingDismissedRef.current) {
+          setNowPlaying(current => current?.source === "dengta" ? current : null);
+        }
+      } finally { busy = false; }
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), 5000);
+    return () => { alive = false; window.clearInterval(timer); lastNowPlayingRef.current = null; };
+    // syncNowPlayingToSession is a stable callback declared after this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiMusicScope, accountStorageScope, companionScope, notificationAccess.granted]);
 
   const requestNotificationAccess = useCallback(async () => {
     setNotificationAccess((previous) => ({ ...previous, checking: true }));

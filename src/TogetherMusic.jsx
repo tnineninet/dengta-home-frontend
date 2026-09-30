@@ -48,6 +48,7 @@ import { browserLauncherAvailable, openBuiltInBrowser, readBrowserCookie } from 
 import { createMusicQueueRequests } from "./music-queue-requests.js";
 import { useMusicScope } from "./use-music-scope.js";
 import { runMusicTask, musicErrorMessage } from "./music-operation-feedback.js";
+import { launchExternalMusic, externalMusicFeedback } from "./music-external-launch.js";
 
 import MusicSettings from "./MusicSettings.jsx";
 import MusicImportDialog from "./MusicImportDialog.jsx";
@@ -396,12 +397,9 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   };
 
   const launchExternalTrack = async (resourceType, resourceId, cookie = false) => {
-    await runMusicTask(musicScope, "external-playback", (token) => Promise.all([
-      requestExternalMusicPlayback(resourceType, resourceId, token.options),
-      openNeteasePlayback(resourceType, resourceId),
-    ]), {
+    await runMusicTask(musicScope, "external-playback", (token) => launchExternalMusic({ scope: musicScope, token, resourceType, resourceId, open: openNeteasePlayback, request: requestExternalMusicPlayback }), {
       onStart: () => { setError(""); if (cookie) setCookieOpStatus("正在交给网易云打开…"); },
-      onSuccess: () => { if (cookie) setCookieOpStatus("已交给网易云打开这首，实际播放由网易云决定。"); else setStatus("已交给网易云打开；外部播放进度需手动同步，歌曲可用性由网易云判断。"); },
+      onSuccess: (result) => { if (cookie) setCookieOpStatus(externalMusicFeedback(result)); else setStatus(externalMusicFeedback(result)); },
       onError: (caught) => { const message = musicErrorMessage(caught, "无法打开网易云，请检查设备和连接后重试。"); if (cookie) setCookieOpStatus(message); else setError(message); },
     });
   };

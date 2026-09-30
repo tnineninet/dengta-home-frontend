@@ -31,7 +31,7 @@ const vite=await createServer({root:fileURLToPath(new URL('..',import.meta.url))
  if(normalized.endsWith('/src/api.js'))return 'export const apiRequest=(...args)=>globalThis.__musicUiFixture.request(...args);export const apiFetch=(...args)=>globalThis.__musicUiFixture.fetch(...args);';
  if(normalized.endsWith('/src/auth-session.js'))return 'export const authSession=globalThis.__musicUiFixture.auth;';
  if(normalized.endsWith('/src/browser-launcher.js'))return 'export const browserLauncherAvailable=()=>true;export const openBuiltInBrowser=()=>globalThis.__musicUiFixture.open();export const readBrowserCookie=()=>globalThis.__musicUiFixture.cookie();';
- if(normalized.endsWith('/src/netease-playback.js'))return 'export const openNeteasePlayback=async()=>({ok:true});';
+ if(normalized.endsWith('/src/netease-playback.js'))return 'export const openNeteasePlayback=async()=>({opened:true});export const validateNeteaseResource=(resourceType,resourceId)=>({resourceType,resourceId});';
 }}]});
 let tree,notified=0;
 const button=text=>tree.root.findAllByType('button').find(node=>node.children.includes(text));

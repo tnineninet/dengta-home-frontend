@@ -230,6 +230,20 @@ export async function requestExternalMusicPlayback(resourceType, resourceId, opt
   }, options);
 }
 
+export async function listAiMusicPlayRequests(options = {}) {
+  const data = await musicRequest("/api/v2/music/providers/netease/ai-play-requests", { timeoutMs: READ_TIMEOUT_MS }, options);
+  if (!Array.isArray(data?.requests)) throw Object.assign(new Error("服务器未返回有效点歌列表，请稍后重试。"), { code: "music_ai_requests_receipt_invalid" });
+  return data.requests;
+}
+
+export async function reportAiMusicPlayResult(id, result, options = {}) {
+  const data = await musicRequest(`/api/v2/music/providers/netease/ai-play-requests/${encodeURIComponent(id)}/result`, {
+    method: "POST", timeoutMs: WRITE_TIMEOUT_MS, retry: false, body: JSON.stringify(result),
+  }, options);
+  if (data?.ok !== true || (data.request && (data.request.id !== id || data.request.status !== result.status))) throw Object.assign(new Error("服务器未确认点歌结果，稍后只重传结果，不重复打开歌曲。"), { code: "music_ai_result_receipt_invalid" });
+  return data;
+}
+
 
 // ---------- 网易云 Cookie 版音乐操作（App 内一键登录后可用） ----------
 
