@@ -277,10 +277,11 @@ export async function sendCoWatchReply(sessionId, text, positionSeconds = 0) {
   });
 }
 
-export async function resolveCoWatchPage(pageUrl) {
+export async function resolveCoWatchPage(pageUrl, { signal } = {}) {
   const query = new URLSearchParams({ url: cleanText(pageUrl, 4096) });
   const data = await apiRequest(`/api/v2/co-watch/page-resolve?${query}`, {
     timeoutMs: 15_000,
+    signal,
   });
   return data?.page || null;
 }

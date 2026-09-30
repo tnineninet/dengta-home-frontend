@@ -308,6 +308,7 @@ function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode }) 
     const loop = createVisualLoop(paint, { animated: hasVisibleMotion, interval: () => {
       if (document.documentElement.dataset.timeScrubbing === "true") return 120;
       if (document.querySelector(".settings-sheet, .message-list.is-scrolling")) return 180;
+      if (document.querySelector('[data-chat-streaming="true"]')) return 100;
       return 33;
     } });
     loopRef.current = loop;

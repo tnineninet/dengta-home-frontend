@@ -68,7 +68,13 @@ async function fetchFromApi(path, options = {}) {
     let timeoutId;
     let timedOut = false;
     const controller =
-      timeoutMs > 0 && !requestOptions.signal ? new AbortController() : null;
+      timeoutMs > 0 ? new AbortController() : null;
+    const forwardAbort = () => controller?.abort(requestOptions.signal?.reason);
+    if (controller && requestOptions.signal) {
+      if (requestOptions.signal.aborted) forwardAbort();
+      else requestOptions.signal.addEventListener("abort", forwardAbort, { once: true });
+    }
+    const effectiveSignal = controller?.signal || requestOptions.signal;
 
     try {
       if (controller) {
@@ -79,7 +85,7 @@ async function fetchFromApi(path, options = {}) {
       }
       const authContext = await awaitWithAbortSignal(
         authSession?.getRequestContext?.(),
-        controller?.signal,
+        effectiveSignal,
       );
       const headers = new Headers(requestOptions.headers || {});
       if (authContext?.accessToken) {
@@ -94,7 +100,7 @@ async function fetchFromApi(path, options = {}) {
           headers,
           ...(controller ? { signal: controller.signal } : {}),
         }),
-        controller?.signal,
+        effectiveSignal,
       );
       authSession?.captureCompanionFromResponse?.(response);
       if (
@@ -119,6 +125,7 @@ async function fetchFromApi(path, options = {}) {
       if (attempt === retryDelays.length - 1) break;
     } finally {
       window.clearTimeout(timeoutId);
+      requestOptions.signal?.removeEventListener("abort", forwardAbort);
     }
   }
 

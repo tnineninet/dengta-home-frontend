@@ -1,0 +1,52 @@
+import assert from 'node:assert/strict';
+import React, { act } from 'react';
+import TestRenderer from 'react-test-renderer';
+import { createServer } from 'vite';
+import { fileURLToPath } from 'node:url';
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+globalThis.window = { setInterval, clearInterval, setTimeout, clearTimeout };
+globalThis.document = { hidden: false };
+const storage = new Map();
+globalThis.sessionStorage = { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) };
+const requests = [];
+globalThis.__togetherRequest = (path, options = {}) => new Promise(resolve => requests.push({ path, options, resolve }));
+const vite = await createServer({ root: fileURLToPath(new URL('..', import.meta.url)), appType: 'custom', logLevel: 'silent', server: { middlewareMode: true },
+  plugins: [{ name: 'together-api-fixture', enforce: 'pre', load(id) {
+    if (id.replaceAll('\\', '/').endsWith('/src/api.js')) return 'export const apiRequest = (...args) => globalThis.__togetherRequest(...args); export const apiFetch = apiRequest; export const API_BASE_URL = "http://fixture.invalid";';
+  } }] });
+let tree, healthTree;
+const props = { aiName: 'Fixture', accountScope: 'test-account', screenState: {}, feedback: {}, onStopDirect: async () => ({ ok: true }) };
+const settle = () => new Promise(resolve => setTimeout(resolve, 10));
+try {
+  const { default: Together } = await vite.ssrLoadModule('/src/Together.jsx');
+  await act(async () => { tree = TestRenderer.create(React.createElement(Together, props)); });
+  const button = text => tree.root.findAllByType('button').find(node => node.children.includes(text));
+  await act(async () => button('网页一起看').props.onClick());
+  const url = () => tree.root.findAllByType('input').find(node => node.props.type === 'url');
+  await act(async () => url().props.onChange({ target: { value: 'https://fixture.invalid/old' } }));
+  await act(async () => { button('解析并载入').props.onClick(); await settle(); });
+  const old = requests.find(item => item.path.includes('/page-resolve'));
+  await act(async () => url().props.onChange({ target: { value: 'https://fixture.invalid/new' } }));
+  await act(async () => { button('解析并载入').props.onClick(); await settle(); });
+  const newer = requests.filter(item => item.path.includes('/page-resolve')).at(-1);
+  assert.equal(old.options.signal.aborted, true);
+  await act(async () => { newer.resolve({ page: { page_url: 'https://fixture.invalid/new', embed_url: 'https://fixture.invalid/embed', title: 'new fixture' } }); await settle(); });
+  await act(async () => { old.resolve({ page: { page_url: 'https://fixture.invalid/old', embed_url: 'https://fixture.invalid/embed', title: 'old fixture' } }); await settle(); });
+  assert.match([...storage.values()].join(''), /new fixture/); assert.doesNotMatch([...storage.values()].join(''), /old fixture/);
+  await act(async () => tree.update(React.createElement(Together, { ...props, session: { id: 'fixture-session', status: 'active', sourceApp: 'dengta-web-page' } })));
+  await act(async () => { button('结束本场').props.onClick(); await settle(); });
+  assert.equal(storage.size, 0, 'ending the web session removes its restored page');
+  await act(async () => tree.unmount());
+
+  const { default: Health } = await vite.ssrLoadModule('/src/MemoryGatewayStatus.jsx');
+  await act(async () => { healthTree = TestRenderer.create(React.createElement(Health)); });
+  await act(async () => { const check = healthTree.root.findByType('button').props.onClick; check(); check(); await settle(); });
+  const checks = requests.filter(item => item.path === '/api/v2/memory/health'); assert.equal(checks.length, 1);
+  await act(async () => { checks[0].resolve({ error: 'kiwi_mem_tenant_unverified' }); await settle(); });
+  assert.match(JSON.stringify(healthTree.toJSON()), /X-Tenant-Id/);
+  await act(async () => { healthTree.root.findByType('button').props.onClick(); await settle(); });
+  const late = requests.at(-1);
+  await act(async () => healthTree.unmount()); assert.equal(late.options.signal.aborted, true);
+  late.resolve({ reachable: true, tenant_verified: true });
+  console.log('Together and memory health lifecycle passed: stale resolve, cache clear, double click, unmount');
+} finally { await vite.close(); delete globalThis.__togetherRequest; }

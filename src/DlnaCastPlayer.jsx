@@ -300,7 +300,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
       roomEpochRef.current += 1;
       setRoom(created); roomRef.current = created;
       await syncRoomData(created.id);
-    } catch { if (lifetime?.active) setRoomError("创建放映厅失败，请稍后再试。"); }
+    } catch (error) { if (lifetime?.active) setRoomError(error?.message || "创建放映厅失败，请稍后再试。"); }
     finally { if (lifetime?.active) setRoomBusy(false); }
   };
 
@@ -316,7 +316,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
       roomEpochRef.current += 1;
       setRoom(joined); roomRef.current = joined;
       await syncRoomData(joined.id);
-    } catch { if (lifetime?.active) setRoomError("加入失败：邀请码可能无效或放映厅已结束。"); }
+    } catch (error) { if (lifetime?.active) setRoomError(error?.message || "加入失败：邀请码可能无效或放映厅已结束。"); }
     finally { if (lifetime?.active) setRoomBusy(false); }
   };
 
@@ -343,6 +343,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
     const stop = subscribeRoomEvents(id, {
       onPlaybackSync: (updated) => {
         if (!valid()) return;
+        setRoomError("");
         roomRef.current = { ...roomRef.current, ...updated };
         setRoom(roomRef.current);
       },
@@ -360,7 +361,8 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
         roomRef.current = null; participantsRef.current = [];
         setRoom(null); setParticipants([]);
       },
-      onError: () => { if (valid()) setRoomError("放映厅连接中断，正在重连。"); },
+      onError: (error) => { if (valid()) setRoomError(error?.message || "放映厅连接中断，正在重连。"); },
+      onDisconnect: () => { if (valid()) setRoomError(current => current ? `${current} 正在重连。` : "放映厅连接中断，正在重连。"); },
     });
     return () => { active = false; stop(); };
   }, [room?.id]);
@@ -577,7 +579,6 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
                     {roomBusy ? "加入中…" : "加入"}
                   </button>
                 </div>
-                {roomError && <p className="cast-room-error">{roomError}</p>}
               </>
             ) : (
               <div className="cast-room-code-area">
@@ -588,6 +589,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
                 <button type="button" className="cast-room-leave-btn" onClick={handleLeaveRoom}>退出放映厅</button>
               </div>
             )}
+            {roomError && <p role="alert" className="cast-room-error">{roomError}</p>}
           </div>);
 
   if (showWaitingOnly) {
@@ -633,7 +635,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
      ================================================================ */
   return (
     <div className="cast-root">
-      <div className="cast-player-body">
+          <div className="cast-player-body">
         {inviteDialog}
         {/* 顶部标题 */}
         <div className="cast-player-header">

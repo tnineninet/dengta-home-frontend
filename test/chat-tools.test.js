@@ -932,6 +932,8 @@ await assert.rejects(
   const originalWindow = globalThis.window;
   let cancelled = false;
   let released = false;
+  let notifyReaderStarted;
+  const readerStarted = new Promise(resolve => { notifyReaderStarted = resolve; });
 
   globalThis.window = {
     setTimeout: globalThis.setTimeout,
@@ -945,6 +947,7 @@ await assert.rejects(
       getReader() {
         return {
           read() {
+            notifyReaderStarted();
             return new Promise((resolve, reject) => {
               if (options.signal.aborted) {
                 reject(options.signal.reason);
@@ -971,7 +974,7 @@ await assert.rejects(
   try {
     const controller = new AbortController();
     const promise = streamChat({}, () => {}, { signal: controller.signal });
-    await Promise.resolve();
+    await readerStarted;
     controller.abort(new DOMException("页面已离开", "AbortError"));
     await assert.rejects(promise, { name: "AbortError" });
     assert.equal(cancelled, true);

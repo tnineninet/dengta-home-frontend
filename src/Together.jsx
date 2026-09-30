@@ -119,17 +119,25 @@ export default function Together({
   const [activeDanmaku, setActiveDanmaku] = useState([]);
   const danmakuCursorRef = useRef(0);
   const danmakuSpawnedRef = useRef(new Set());
+  const pageRequestRef = useRef(null);
+  const replyPendingRef = useRef(false);
+  useEffect(() => () => {
+    pageRequestRef.current?.abort();
+    pageRequestRef.current = null;
+  }, []);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
+      if (document.hidden) return;
       const video = webVideoRef.current || videoRef.current;
       const current =
         video && Number.isFinite(video.currentTime) ? video.currentTime : -1;
       const now = Date.now();
       if (current < 0) return;
-      setActiveDanmaku((prev) =>
-        prev.filter((item) => now - item.spawnedAt < 9000),
-      );
+      setActiveDanmaku((prev) => {
+        const next = prev.filter((item) => now - item.spawnedAt < 9000);
+        return next.length === prev.length ? prev : next;
+      });
       const items = Array.isArray(danmaku) ? danmaku : [];
       for (
         let index = danmakuCursorRef.current;
@@ -409,16 +417,23 @@ export default function Together({
       return;
     }
     if (explicitUrl) setWebUrlInput(explicitUrl);
+    pageRequestRef.current?.abort();
+    const controller = new AbortController();
+    pageRequestRef.current = controller;
     setWebFeedback({ status: "checking", message: "正在解析网页链接…" });
     try {
-      const page = await resolveCoWatchPage(input);
+      const page = await resolveCoWatchPage(input, { signal: controller.signal });
+      if (pageRequestRef.current !== controller) return;
       if (!page?.embed_url) throw new Error("没有拿到可用的内嵌地址。");
       setWebPage(page);
       writeStoredWebPage(accountScope, page);
       if (page.title) setTitle(page.title);
       setWebFeedback({ status: "success", message: page.message || "网页已解析，可以开始一起看了。" });
     } catch (error) {
+      if (pageRequestRef.current !== controller || controller.signal.aborted) return;
       setWebFeedback({ status: "error", message: error?.message || "网页链接解析失败。" });
+    } finally {
+      if (pageRequestRef.current === controller) pageRequestRef.current = null;
     }
   };
 
@@ -474,6 +489,7 @@ export default function Together({
         message: result.message || "这场网页一起看已经结束。",
       });
       if (result.ok !== false) {
+        writeStoredWebPage(accountScope, null);
         setWebPage(null);
         setWebUrlInput("");
       }
@@ -482,18 +498,22 @@ export default function Together({
     }
   };
 
-  const submitReply = (event) => {
+  const submitReply = async (event) => {
     event.preventDefault();
     const text = reply.trim();
-    if (!text || busy || !session?.id) return;
-    Promise.resolve(
-      onReply?.(
+    if (!text || busy || replyPendingRef.current || !session?.id || !onReply) return;
+    replyPendingRef.current = true;
+    try {
+      const sent = await onReply(
         text,
         selectedMode === "music" ? musicPositionSeconds : selectedMode === "direct" ? directPositionSeconds : undefined,
-      ),
-    ).then((sent) => {
-      if (sent !== false) setReply("");
-    });
+      );
+      if (sent !== false) setReply(current => current.trim() === text ? "" : current);
+    } catch (error) {
+      const message = error?.message || "这条共看消息未发送，可以重试。";
+      if (selectedMode === "web") setWebFeedback({ status: "error", message });
+      else setDirectFeedback({ status: "error", message });
+    } finally { replyPendingRef.current = false; }
   };
 
   const currentFeedback =

@@ -1,5 +1,4 @@
-import { apiRequest } from "./api.js";
-import { authSession } from "./auth-session.js";
+import { apiRequest, apiFetch } from "./api.js";
 
 /**
  * 放映厅（多人联机一起看房间）前端 API。
@@ -10,7 +9,7 @@ import { authSession } from "./auth-session.js";
 export async function createWatchRoom(input = {}) {
   const data = await apiRequest("/api/v2/co-watch/rooms", {
     method: "POST",
-    body: input,
+    body: JSON.stringify({ ...input, display_name: input.display_name ?? input.displayName ?? input.userName }),
     timeoutMs: 10_000,
   });
   return data?.room || null;
@@ -19,7 +18,7 @@ export async function createWatchRoom(input = {}) {
 export async function joinWatchRoom(joinCode, input = {}) {
   const data = await apiRequest("/api/v2/co-watch/rooms/join", {
     method: "POST",
-    body: { join_code: joinCode, ...input },
+    body: JSON.stringify({ ...input, display_name: input.display_name ?? input.displayName ?? input.userName, join_code: String(joinCode || "").trim().toUpperCase() }),
     timeoutMs: 10_000,
   });
   return data?.room || null;
@@ -35,7 +34,7 @@ export async function readWatchRoom(roomId) {
 export async function updateRoomPlayback(roomId, input = {}) {
   const data = await apiRequest(`/api/v2/co-watch/rooms/${encodeURIComponent(roomId)}/playback`, {
     method: "PATCH",
-    body: input,
+    body: JSON.stringify(input),
     timeoutMs: 10_000,
   });
   return data?.room || null;
@@ -44,7 +43,7 @@ export async function updateRoomPlayback(roomId, input = {}) {
 export async function sendRoomMessage(roomId, content, mediaPositionSeconds = 0) {
   const data = await apiRequest(`/api/v2/co-watch/rooms/${encodeURIComponent(roomId)}/messages`, {
     method: "POST",
-    body: { content, media_position_seconds: mediaPositionSeconds },
+    body: JSON.stringify({ content, media_position_seconds: mediaPositionSeconds }),
     timeoutMs: 10_000,
   });
   return data?.message || null;
@@ -53,7 +52,7 @@ export async function sendRoomMessage(roomId, content, mediaPositionSeconds = 0)
 export async function sendRoomAiMessage(roomId, content, mediaPositionSeconds = 0, aiName = "") {
   const data = await apiRequest(`/api/v2/co-watch/rooms/${encodeURIComponent(roomId)}/ai-messages`, {
     method: "POST",
-    body: { content, media_position_seconds: mediaPositionSeconds, ai_name: aiName },
+    body: JSON.stringify({ content, media_position_seconds: mediaPositionSeconds, ai_name: aiName }),
     timeoutMs: 10_000,
   });
   return data?.message || null;
@@ -124,36 +123,41 @@ export function subscribeRoomEvents(roomId, handlers = {}) {
     buffer = "";
     currentEvent = "";
     try {
-      const authContext = await authSession?.getRequestContext?.();
-      const headers = {};
-      if (authContext?.accessToken) {
-        headers.Authorization = `Bearer ${authContext.accessToken}`;
-      }
-      if (authContext?.companionId) {
-        headers["X-DengTa-Companion-Id"] = authContext.companionId;
-      }
-      const response = await fetch(url, {
+      const response = await apiFetch(url, {
         signal: controller.signal,
-        headers,
+        retry: false,
       });
+      if (stopped || controller.signal.aborted) return;
       if (!response.ok) {
-        handlers.onError?.(new Error(`SSE HTTP ${response.status}`));
+        const reason = { 401: "登录已失效，请重新登录", 403: "当前账号没有访问权限，请核对房间邀请", 404: "房间不存在或已结束，请退出当前房间后重新加入", 410: "房间已结束，请退出后加入新的房间" }[response.status] || "服务暂时不可用，将自动重连";
+        const error = new Error(`${reason}（HTTP ${response.status}）。`);
+        error.code = `room_stream_http_${response.status}`;
+        handlers.onError?.(error);
+        if ([401, 403, 404, 410].includes(response.status)) { stopped = true; return; }
         scheduleReconnect();
+        return;
+      }
+      if (!response.body || !response.headers.get("content-type")?.includes("text/event-stream")) {
+        const error = new Error("放映厅接口未返回实时事件流，请检查服务器版本。");
+        error.code = "room_stream_invalid_response";
+        handlers.onError?.(error);
+        stopped = true;
         return;
       }
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
+      try {
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
+        if (done || stopped || controller.signal.aborted) break;
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split("\n");
         buffer = lines.pop() || "";
         for (const line of lines) {
-          if (line.startsWith("event: ")) {
-            currentEvent = line.slice(7).trim();
-          } else if (line.startsWith("data: ")) {
-            const data = line.slice(6);
+          if (line.startsWith("event:")) {
+            currentEvent = line.slice(6).trim();
+          } else if (line.startsWith("data:")) {
+            const data = line.slice(5).trim();
             try {
               const parsed = JSON.parse(data);
               switch (currentEvent) {
@@ -161,17 +165,22 @@ export function subscribeRoomEvents(roomId, handlers = {}) {
                 case "message": handlers.onMessage?.(parsed); break;
                 case "participant_join": handlers.onParticipantJoin?.(parsed); break;
                 case "participant_leave": handlers.onParticipantLeave?.(parsed); break;
-                case "room_ended": handlers.onRoomEnded?.(parsed); break;
+                case "room_ended": stopped = true; handlers.onRoomEnded?.(parsed); break;
               }
               // 成功送达事件说明连接健康，重置退避
               attempt = 0;
-            } catch (err) {
-              console.warn("[watch-room] SSE JSON 解析失败，原始数据：", data, err);
+            } catch {
+              console.warn("[watch-room] room_stream_event_invalid");
             }
             // SSE 规范：每个事件处理完即清空事件名，漏写 event: 的 data 不会错分到上一个事件
             currentEvent = "";
           }
         }
+        if (stopped) break;
+      }
+      } finally {
+        await reader.cancel().catch(() => {});
+        reader.releaseLock();
       }
       // 流正常结束（服务端关闭/重启）→ 自动重连
       scheduleReconnect();

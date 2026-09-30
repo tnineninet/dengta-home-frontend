@@ -8,6 +8,8 @@ import {
   useRef,
   useState,
 } from "react";
+import { resizeComposerInput } from "./composer-size.js";
+import MemoryGatewayStatus from "./MemoryGatewayStatus.jsx";
 import { Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { App as CapacitorApp } from "@capacitor/app";
@@ -1309,6 +1311,22 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const settingsScrollRef = useRef(null);
   const settingsScrollIdleTimerRef = useRef(null);
   const messageInputRef = useRef(null);
+  useLayoutEffect(() => {
+    resizeComposerInput(messageInputRef.current);
+  }, [message, activeView]);
+  useLayoutEffect(() => {
+    const input = messageInputRef.current;
+    if (!input) return undefined;
+    // Observe available width so rotation and the desktop sidebar reflow wrapped text.
+    let previousWidth = input.parentElement.clientWidth;
+    const widthObserver = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width === previousWidth) return;
+      previousWidth = entry.contentRect.width;
+      resizeComposerInput(input);
+    });
+    widthObserver.observe(input.parentElement);
+    return () => widthObserver.disconnect();
+  }, [activeView]);
   const composerMenuTriggerRef = useRef(null);
   const shouldAutoScrollRef = useRef(true);
   const chatFileInputRef = useRef(null);
@@ -4558,7 +4576,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         return next;
       });
 
-      await deviceActivityRefresh;
+      // Device context refresh is optional; an unresponsive native plugin must not hold the message.
+      await Promise.race([
+        deviceActivityRefresh,
+        new Promise((resolve) => window.setTimeout(resolve, 250)),
+      ]);
 
       await streamChat(
         {
@@ -7729,6 +7751,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           <h2>留在家里的事情</h2>
           <p>这些摘要会作为真实模型回复时的长期背景。</p>
         </div>
+        <MemoryGatewayStatus key={JSON.stringify([accountStorageScope, companionScope])} />
         <Suspense fallback={<DeferredFeature label="正在打开记忆档案…" />}>
           <OmbreMemories onManageConnections={openExternalMemorySettings} />
         </Suspense>
@@ -7860,10 +7883,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     return (
       <Suspense fallback={<DeferredFeature label="正在打开双人对战…" />}>
         <IntimateDuel
+          key={JSON.stringify([accountStorageScope, companionScope])}
           aiName={effectiveAiName}
           userName={effectiveUserName}
           conversationId={activeSessionId}
           accountScope={accountStorageScope}
+          companionScope={companionScope}
         />
       </Suspense>
     );
@@ -9284,6 +9309,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       }${isSettingsOpen ? " is-settings-open" : ""}`}
       data-chat-skin={chatSkinPreferences.skin}
       data-ornament-activity={chatSkinPreferences.ornamentActivity}
+      data-chat-streaming={isSending ? "true" : "false"}
     >
       <CelestialBackdrop
         snapshot={celestialSnapshot}

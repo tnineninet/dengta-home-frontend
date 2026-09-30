@@ -12,6 +12,7 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.window = { setTimeout, confirm: () => true };
 const apiNames = ["workspaceTree", "workspaceStats", "workspaceReadFile", "workspaceWriteFile", "workspaceDeleteFile", "workspaceAgentsMd"];
 let online = false, pending = null, currentContent = "cloud fixture", truncated = false;
+let notifyPendingRead;
 const reads = [];
 globalThis.__workspaceTestApi = {
   async workspaceTree() {
@@ -21,7 +22,7 @@ globalThis.__workspaceTestApi = {
   async workspaceStats() { return { ok: true, files: 2, bytes: 2 }; },
   async workspaceReadFile(path) {
     reads.push(path);
-    if (pending) { const value = pending; pending = null; return value; }
+    if (pending) { const value = pending; pending = null; notifyPendingRead?.(); return value; }
     if (!online) throw new TypeError("fictional offline");
     return { ok: true, content: currentContent, truncated };
   },
@@ -56,8 +57,9 @@ try {
   online = true;
   await click(button("刷新"));
   let release;
+  const pendingReadStarted = new Promise(resolve => { notifyPendingRead = resolve; });
   pending = new Promise(resolve => { release = resolve; });
-  await act(async () => { void fileButton("empty.txt").props.onClick(); await settle(); });
+  await act(async () => { void fileButton("empty.txt").props.onClick(); await pendingReadStarted; });
   await click(fileButton("second.txt"));
   await act(async () => { release({ ok: true, content: "stale fixture" }); await settle(); });
   assert.equal(tree.root.findByType("textarea").props.value, "cloud fixture");
@@ -65,6 +67,10 @@ try {
   await click(fileButton("empty.txt"));
   assert.equal(tree.root.findByType("textarea").props.readOnly, true);
   assert.equal(button("保存").props.disabled, true);
+  await act(async () => {
+    const deadline = Date.now() + 3000;
+    while ((await workspaceCacheList("manager-a")).some(item => item.path === "empty.txt") && Date.now() < deadline) await settle();
+  });
   assert.equal((await workspaceCacheList("manager-a")).some(item => item.path === "empty.txt"), false);
   assert.deepEqual(reads.slice(-3), ["empty.txt", "second.txt", "empty.txt"]);
   console.log("Workspace UI: scoped offline tree, empty cached file, root paths, stale response isolation and truncated preview protection passed");

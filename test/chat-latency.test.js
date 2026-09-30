@@ -42,7 +42,7 @@ assert.match(
 );
 assert.ok(
   sendHandler.indexOf("setMessages((current) =>") <
-    sendHandler.indexOf("await deviceActivityRefresh"),
+    sendHandler.indexOf("await Promise.race("),
   "the visible assistant draft must render before the native device refresh finishes",
 );
 

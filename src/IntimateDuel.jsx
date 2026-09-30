@@ -13,14 +13,14 @@ import {
 
 const STORAGE_KEY = "dengta_intimate_duel_v3";
 
-function duelStorageKey(accountScope = "") {
+function duelStorageKey(accountScope = "", companionScope = "") {
   const scope = String(accountScope || "").trim();
-  return scope ? `${STORAGE_KEY}:${scope}` : STORAGE_KEY;
+  return scope && companionScope ? `${STORAGE_KEY}:${JSON.stringify([scope, companionScope])}` : null;
 }
 
-function readStoredDuel(names, accountScope) {
+function readStoredDuel(names, storageKey) {
   try {
-    const stored = localStorage.getItem(duelStorageKey(accountScope));
+    const stored = storageKey ? localStorage.getItem(storageKey) : null;
     return stored ? normalizeDuelState(JSON.parse(stored), names) : createDuelState(names);
   } catch {
     return createDuelState(names);
@@ -62,7 +62,9 @@ export default function IntimateDuel({
   userName,
   conversationId,
   accountScope = "",
+  companionScope = "",
 }) {
+  const storageKey = duelStorageKey(accountScope, companionScope);
   const names = useMemo(
     () => ({
       playerName: String(userName || "你").trim() || "你",
@@ -70,25 +72,33 @@ export default function IntimateDuel({
     }),
     [aiName, userName],
   );
-  const [duel, setDuel] = useState(() => readStoredDuel(names, accountScope));
+  const [duel, setDuel] = useState(() => readStoredDuel(names, storageKey));
   const [isNarrating, setIsNarrating] = useState(false);
   const [notice, setNotice] = useState("");
   const [typingEntryId, setTypingEntryId] = useState(null);
   const logRef = useRef(null);
+  const requestRef = useRef(null);
+
+  useEffect(() => () => {
+    requestRef.current?.abort();
+    requestRef.current = null;
+  }, []);
 
   useEffect(() => {
     try {
-      localStorage.setItem(duelStorageKey(accountScope), JSON.stringify(duel));
+      if (storageKey && !isNarrating) localStorage.setItem(storageKey, JSON.stringify(duel));
     } catch {
       // A full local store must not interrupt an active round.
     }
-  }, [accountScope, duel]);
+  }, [storageKey, duel, isNarrating]);
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
   }, [duel.logs, isNarrating]);
 
   function restart() {
+    requestRef.current?.abort();
+    requestRef.current = null;
     setDuel(createDuelState(names));
     setIsNarrating(false);
     setNotice("");
@@ -96,7 +106,10 @@ export default function IntimateDuel({
   }
 
   async function handleSkill(skill) {
-    if (isNarrating || duel.status !== "active") return;
+    if (requestRef.current || isNarrating || duel.status !== "active") return;
+    const controller = new AbortController();
+    requestRef.current = controller;
+    const timeout = window.setTimeout(() => controller.abort(), 90_000);
     let pending;
     try {
       pending = beginDuelRound(duel, skill.id);
@@ -106,6 +119,7 @@ export default function IntimateDuel({
       const turn = pending.turn;
       const data = await apiRequest("/api/v2/intimate-duel/narrate", {
         method: "POST",
+        signal: controller.signal,
         body: JSON.stringify({
           conversation_id: conversationId || undefined,
           duel_id: pending.current.id,
@@ -128,11 +142,13 @@ export default function IntimateDuel({
           winner: turn.winner,
         }),
       });
+      if (requestRef.current !== controller) return;
       if (data?.refused === true) {
         // 上游/模型拒绝了成人内容：不显示空白回合，提示用户原因。
         setNotice(
           `${names.companionName}没有完成这一招（上游模型拒绝输出成人内容）。`,
         );
+        setDuel(pending.current);
         return;
       }
       const result = completeDuelRound(pending, {
@@ -143,6 +159,12 @@ export default function IntimateDuel({
       setDuel(result.state);
       setTypingEntryId(result.state.logs.at(-1)?.id || null);
     } catch (error) {
+      if (requestRef.current !== controller) return;
+      if (controller.signal.aborted) {
+        setDuel(pending?.current || duel);
+        setNotice("本回合等待模型超过 90 秒，状态已恢复，可以重新选择招式。（duel_request_timeout）");
+        return;
+      }
       if (pending) {
         const fallback = completeDuelRound(pending);
         setDuel(fallback.state);
@@ -154,7 +176,11 @@ export default function IntimateDuel({
         setNotice(error.message);
       }
     } finally {
-      setIsNarrating(false);
+      window.clearTimeout(timeout);
+      if (requestRef.current === controller) {
+        requestRef.current = null;
+        setIsNarrating(false);
+      }
     }
   }
 
