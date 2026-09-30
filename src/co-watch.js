@@ -187,18 +187,18 @@ export async function patchCoWatchPlayback(sessionId, input = {}, options = {}) 
   return normalizeCoWatchSession(data?.session || data);
 }
 
-export async function readCoWatchMusicQueue(sessionId) {
+export async function readCoWatchMusicQueue(sessionId, options = {}) {
   try {
     return normalizeMusicQueue(await apiRequest(
       `/api/v2/co-watch/sessions/${encodeURIComponent(sessionId)}/queue`,
-      { timeoutMs: 12_000 },
+      { timeoutMs: 12_000, ...coWatchRequestOptions(options, authSession) },
     ));
   } catch (error) {
     throw stableQueueError(error);
   }
 }
 
-export async function applyCoWatchMusicQueueOperation(sessionId, input = {}) {
+export async function applyCoWatchMusicQueueOperation(sessionId, input = {}, options = {}) {
   const requestId = input.requestId || queueRequestId();
   try {
     const data = await apiRequest(
@@ -206,6 +206,7 @@ export async function applyCoWatchMusicQueueOperation(sessionId, input = {}) {
       {
         method: "POST",
         timeoutMs: 15_000,
+        ...coWatchRequestOptions(options, authSession),
         body: JSON.stringify({
           request_id: requestId,
           expected_revision: cleanNumber(input.expectedRevision, 1_000_000_000),

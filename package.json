@@ -1,7 +1,7 @@
 {
   "name": "dengta-home-react",
   "private": true,
-  "version": "2.10.45",
+  "version": "2.10.46",
   "type": "module",
   "scripts": {
     "test:workspace": "node test/workspace-cache.test.js && node test/workspace-manager.test.js",
@@ -44,7 +44,7 @@
     "test:ambient-context": "node test/ambient-context.test.js",
     "test:device-activity": "node test/device-activity.test.js",
     "test:screen-glance": "node test/screen-glance.test.js && node test/screen-glance-lifecycle.test.js",
-    "test:co-watch-experience": "node --test test/cast-receipt.test.js && node test/dlna-player-lifecycle.test.js && node test/co-watch-experience.test.js && node test/co-watch-reply-worker.test.js && node test/direct-media.test.js && node --test --experimental-test-coverage --test-coverage-include=src/cast-receiver-api.js --test-coverage-include=src/receiver-playback.js test/cast-receiver.test.js && node test/co-watch-lifecycle.test.js",
+    "test:co-watch-experience": "node --test test/cast-receipt.test.js && node test/dlna-player-lifecycle.test.js && node test/co-watch-experience.test.js && node test/co-watch-reply-worker.test.js && node test/direct-media.test.js && node --test --experimental-test-coverage --test-coverage-include=src/cast-receiver-api.js --test-coverage-include=src/receiver-playback.js test/cast-receiver.test.js && node test/co-watch-lifecycle.test.js && node test/co-watch-lock-release.test.js",
     "test:chat-stickers": "node test/chat-stickers.test.js",
     "test:chat-skin": "node test/chat-skin.test.js",
     "test:companion-creative": "node test/companion-creative.test.js",
@@ -68,7 +68,7 @@
     "test:cc-switch-bridge": "node test/cc-switch-bridge.test.js",
     "test:pwa-install": "node test/pwa-install.test.js",
     "test:content-import": "node --test --experimental-test-coverage --test-coverage-include=src/content-import-api.js test/content-import-api.test.js test/content-import.test.js test/content-import-paging.test.js",
-    "test:music-listening": "node test/music-listening.test.js",
+    "test:music-listening": "node test/music-listening.test.js && node test/music-sync-lifecycle.test.js && node test/together-music-lifecycle.test.js",
     "preview": "vite preview",
     "test:cotton-pet": "node test/cotton-pet.test.js && node test/cotton-runtime.test.js && node test/cotton-dock.test.js",
     "test:style-distill": "node --test test/style-distill.test.js test/large-text-file.test.js",

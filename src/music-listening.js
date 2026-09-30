@@ -1,4 +1,6 @@
 import { apiFetch, apiRequest } from "./api.js";
+import { authSession } from "./auth-session.js";
+import { coWatchRequestOptions } from "./co-watch-request-scope.js";
 import { isPrivateMediaHostname } from "./direct-media.js";
 
 const MAX_TEXT = 500;
@@ -337,13 +339,13 @@ export async function uploadLocalMusicFile(file) {
   });
 }
 
-export async function listMusicPlaylists() {
-  const data = await apiRequest("/api/v2/music/playlists", { timeoutMs: READ_TIMEOUT_MS });
+export async function listMusicPlaylists(options = {}) {
+  const data = await apiRequest("/api/v2/music/playlists", { timeoutMs: READ_TIMEOUT_MS, ...coWatchRequestOptions(options, authSession) });
   return (Array.isArray(data?.playlists) ? data.playlists : []).map(normalizeMusicPlaylist);
 }
 
-export async function getMusicPlaylist(id) {
-  return normalizeMusicPlaylist(await apiRequest(`/api/v2/music/playlists/${encodeURIComponent(id)}`, { timeoutMs: READ_TIMEOUT_MS }));
+export async function getMusicPlaylist(id, options = {}) {
+  return normalizeMusicPlaylist(await apiRequest(`/api/v2/music/playlists/${encodeURIComponent(id)}`, { timeoutMs: READ_TIMEOUT_MS, ...coWatchRequestOptions(options, authSession) }));
 }
 
 export async function deleteMusicPlaylist(id) {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -45,6 +45,8 @@ import { MUSIC_PLAYBACK_MODES, musicPlaybackIsInternal, resolveMusicPlayback } f
 import { openNeteasePlayback } from "./netease-playback.js";
 import { browserLauncherAvailable, openBuiltInBrowser, readBrowserCookie } from "./browser-launcher.js";
 
+import { createMusicQueueRequests } from "./music-queue-requests.js";
+
 import MusicSettings from "./MusicSettings.jsx";
 import MusicImportDialog from "./MusicImportDialog.jsx";
 import MusicPagedList from "./MusicPagedList.jsx";
@@ -52,16 +54,15 @@ import MusicPagedList from "./MusicPagedList.jsx";
 const ERROR_MESSAGE = "音频无法播放。链接可能已过期、需要登录、受到防盗链限制，或使用了 DRM。DengTa 不会绕过这些限制。";
 const REPEAT_LABELS = Object.freeze({ off: "不循环", all: "列表循环", one: "单曲循环" });
 
-function queueConflict(error) {
-  return error?.status === 409 && error?.code === "music_queue_revision_conflict";
-}
-
-export default function TogetherMusic({ session, busy = false, onStart, onEnd, onPlaybackChange, onPositionChange, request = null }) {
+export default function TogetherMusic({ session, busy = false, onStart, onEnd, onPlaybackChange, onPositionChange, request = null, accountScope = "", companionScope = "" }) {
   const audioRef = useRef(null);
   const mountedRef = useRef(true);
   const queueRef = useRef(null);
   const loadedPlaylistsRef = useRef({});
-  const queueRunRef = useRef(Promise.resolve());
+  const operationRef = useRef(null);
+  const libraryControllerRef = useRef(new AbortController());
+  const musicRequestOptions = useCallback(() => ({ accountScope, companionScope, signal: libraryControllerRef.current.signal }), [accountScope, companionScope]);
+  const [retryQueue, setRetryQueue] = useState(null);
   const lastReportRef = useRef(0);
   const autoPlayNextRef = useRef(false);
   const [playlists, setPlaylists] = useState([]);
@@ -147,7 +148,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
     const ids = new Set((nextQueue?.items || []).map((entry) => entry.playlistId).filter(Boolean));
     if (preferredPlaylist?.id) ids.delete(preferredPlaylist.id);
     const missing = Array.from(ids).filter((id) => !loadedPlaylistsRef.current[id]);
-    const results = await Promise.allSettled(missing.map((id) => getMusicPlaylist(id)));
+    const results = await Promise.allSettled(missing.map((id) => getMusicPlaylist(id, musicRequestOptions())));
     if (!mountedRef.current) return;
     const nextLoaded = {};
     if (preferredPlaylist?.id) nextLoaded[preferredPlaylist.id] = preferredPlaylist;
@@ -161,67 +162,37 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
         return updated;
       });
     }
-  }, []);
+  }, [musicRequestOptions]);
 
-  const refreshQueue = async (sessionId = session?.id) => {
-    if (!sessionId) return null;
-    const next = await readCoWatchMusicQueue(sessionId);
-    if (mountedRef.current) {
-      queueRef.current = next;
-      setQueue(next);
-      await loadQueuePlaylists(next);
-    }
-    return next;
-  };
-
-  const runQueueOperation = (operation, { retryConflict = false, sessionId = session?.id } = {}) => {
-    const run = async () => {
-      if (!sessionId) throw new Error("请先开始一起听歌。");
-      setQueueBusy(true);
-      setError("");
-      try {
-        let current = queueRef.current;
-        if (!current || current.sessionId !== sessionId) current = await refreshQueue(sessionId);
-        try {
-          const result = await applyCoWatchMusicQueueOperation(sessionId, {
-            expectedRevision: current?.revision || 0,
-            operation,
-          });
-          queueRef.current = result.queue;
-          setQueue(result.queue);
-          await loadQueuePlaylists(result.queue, playlist);
-          return result.queue;
-        } catch (caught) {
-          if (!queueConflict(caught)) throw caught;
-          const refreshed = await refreshQueue(sessionId);
-          if (!retryConflict) throw caught;
-          const retried = await applyCoWatchMusicQueueOperation(sessionId, {
-            expectedRevision: refreshed?.revision || 0,
-            operation,
-          });
-          queueRef.current = retried.queue;
-          setQueue(retried.queue);
-          await loadQueuePlaylists(retried.queue, playlist);
-          return retried.queue;
-        }
-      } finally {
-        if (mountedRef.current) setQueueBusy(false);
-      }
-    };
-    const nextRun = queueRunRef.current.then(run, run);
-    queueRunRef.current = nextRun.catch(() => {});
-    return nextRun.catch((caught) => {
-      if (mountedRef.current) setError(caught?.message || "播放队列同步失败。");
-      throw caught;
+  const queueRequestsRef = useRef(null);
+  useLayoutEffect(() => {
+    const requests = createMusicQueueRequests({
+    getIdentity: () => ({ accountScope, companionScope }),
+    readQueue: readCoWatchMusicQueue,
+    applyOperation: applyCoWatchMusicQueueOperation,
+    onBusy: setQueueBusy,
+    onQueue: async (next) => {
+      if (!mountedRef.current) return;
+      queueRef.current = next; setQueue(next); await loadQueuePlaylists(next);
+    },
     });
-  };
+    queueRequestsRef.current = requests;
+    return () => { requests.invalidate(); if (queueRequestsRef.current === requests) queueRequestsRef.current = null; };
+  }, [accountScope, companionScope, loadQueuePlaylists]);
+  useLayoutEffect(() => {
+    queueRequestsRef.current.bind(session?.id || "");
+  }, [session?.id, accountScope, companionScope, loadQueuePlaylists]);
+  const runQueueOperation = (operation, options) => queueRequestsRef.current.operate(operation, options).catch((caught) => {
+    if (mountedRef.current && caught?.code !== "music_queue_scope_changed") setError(`${caught?.message || "播放队列同步失败。"}（${caught?.code || "music_queue_operation_failed"}）`);
+    throw caught;
+  });
 
   const refreshLibrary = useCallback(async ({ initial = false } = {}) => {
     if (initial) setLoading(true);
     else setRefreshing(true);
     setError("");
     try {
-      const [playlistResult, favoriteResult, connectionResult] = await Promise.allSettled([listMusicPlaylists(), listMusicFavorites(), listNeteaseConnections()]);
+      const [playlistResult, favoriteResult, connectionResult] = await Promise.allSettled([listMusicPlaylists(musicRequestOptions()), listMusicFavorites(), listNeteaseConnections()]);
       if (!mountedRef.current) return;
       if (playlistResult.status === "fulfilled") {
         setPlaylists(playlistResult.value);
@@ -238,24 +209,25 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
     } finally {
       if (mountedRef.current) { setLoading(false); setRefreshing(false); }
     }
-  }, []);
+  }, [musicRequestOptions]);
 
   useEffect(() => {
     mountedRef.current = true;
+    if (libraryControllerRef.current.signal.aborted) libraryControllerRef.current = new AbortController();
     void Promise.resolve().then(() => refreshLibrary({ initial: true }));
-    return () => { mountedRef.current = false; };
+    return () => { mountedRef.current = false; operationRef.current = null; libraryControllerRef.current.abort(); };
   }, [refreshLibrary]);
 
   useEffect(() => {
     if (!active || !session?.musicPlaylistId || loadedPlaylistsRef.current[session.musicPlaylistId]) return;
     let cancelled = false;
-    getMusicPlaylist(session.musicPlaylistId).then((next) => {
+    getMusicPlaylist(session.musicPlaylistId, musicRequestOptions()).then((next) => {
       if (!cancelled && mountedRef.current) rememberPlaylist(next);
     }).catch((caught) => {
       if (!cancelled) setError(caught?.message || "本场歌曲暂时无法读取。");
     });
     return () => { cancelled = true; };
-  }, [active, session?.musicPlaylistId]);
+  }, [active, session?.musicPlaylistId, musicRequestOptions]);
 
 
   useEffect(() => {
@@ -265,17 +237,13 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
     }
     let cancelled = false;
     Promise.resolve().then(() => {
-      if (!cancelled) {
-        setLoading(true);
-        setStatus("正在同步这场一起听的队列…");
-      }
-      return readCoWatchMusicQueue(session.id);
-    }).then(async (next) => {
       if (cancelled || !mountedRef.current) return;
-      queueRef.current = next;
-      setQueue(next);
-      await loadQueuePlaylists(next);
-      if (!cancelled) setStatus("队列已与服务端同步。");
+      setLoading(true);
+      setStatus("正在同步这场一起听的队列…");
+      return queueRequestsRef.current.read(session.id);
+    }).then(() => {
+      if (cancelled || !mountedRef.current) return;
+      setStatus("队列已与服务端同步。");
     }).catch((caught) => {
       if (!cancelled) setError(caught?.message || "播放队列暂时无法读取。");
     }).finally(() => {
@@ -321,6 +289,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
     if (immediate || Date.now() - lastReportRef.current >= 15_000) {
       lastReportRef.current = Date.now();
       onPlaybackChange?.({
+        accountScope, companionScope,
         sessionId: session.id,
         playbackState: audio.paused ? "paused" : "playing",
         mediaPositionSeconds: nextPosition,
@@ -342,7 +311,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
     setLoading(true);
     setError("");
     try {
-      const next = await getMusicPlaylist(id);
+      const next = await getMusicPlaylist(id, musicRequestOptions());
       if (!mountedRef.current || selection !== playlistSelectionRef.current) return;
       setPlaylist(next);
       rememberPlaylist(next);
@@ -381,53 +350,45 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   };
   const advanceFromMediaSession = useEffectEvent(() => void advance(true));
 
+  const seedQueue = async (intent) => {
+    await runQueueOperation(intent.operation, { retryConflict: true, sessionId: intent.sessionId });
+    if (!mountedRef.current) return;
+    setRetryQueue(null);
+    setStatus("一起听歌已开始，队列已保存。请点击播放开始聆听。");
+  };
   const start = async () => {
-    if (!item || !playlist) return;
-    const validation = internalPlayback ? playback.validation || { ok: true, message: "" } : { ok: true, message: "" };
-    if (internalPlayback && !validation.ok) {
-      setError(validation.message);
-      return;
-    }
-    setLoading(true);
-    setError("");
+    if (!item || !playlist || operationRef.current || busy) return;
+    const validation = internalPlayback ? playback.validation || { ok: true } : { ok: true };
+    if (!validation.ok) { setError(validation.message); return; }
+    const token = {}; operationRef.current = token; setLoading(true); setError("");
     try {
-      const started = await onStart?.({
-        title: item.title,
-        sessionMode: "listening",
-        musicPlaylistId: playlist.id,
-        musicPlaylistItemId: item.id,
-        mediaDurationSeconds: item.durationSeconds,
-        mediaPositionSeconds: 0,
-      });
-      if (!started) return;
-      const sessionId = started?.id || session?.id;
-      const emptyQueue = await readCoWatchMusicQueue(sessionId);
-      queueRef.current = emptyQueue;
-      setQueue(emptyQueue);
-      autoPlayNextRef.current = internalPlayback;
-      const playbackOrder = [
-        ...playlist.items.slice(localIndex),
-        ...playlist.items.slice(0, localIndex),
-      ];
-      await runQueueOperation(
-        { type: "replace", item_ids: playbackOrder.map((entry) => entry.id) },
-        { retryConflict: true, sessionId },
-      );
-      if (internalPlayback) {
-        void audioRef.current?.play().catch(() => setStatus("队列已保存，请点击播放开始聆听。"));
-        setStatus("一起听歌已开始，队列已保存到服务端。音频仍由本机浏览器直连播放。");
-      } else {
-        setPlaying(false);
-        setPosition(0);
-        setDuration(item.durationSeconds || 0);
-        setStatus("只进入 Together 元数据队列，不进入 App audio；切歌后请点击在网易云播放");
-      }
+      const started = await onStart?.({ accountScope, companionScope, title: item.title, sessionMode: "listening", musicPlaylistId: playlist.id, musicPlaylistItemId: item.id, mediaDurationSeconds: item.durationSeconds, mediaPositionSeconds: 0 });
+      if (!mountedRef.current || operationRef.current !== token) return;
+      if (!started || started.ok === false || !started.id) { setError(`${started?.message || "服务器未确认一起听歌开始。"}（${started?.code || "music_start_failed"}）`); return; }
+      const intent = { sessionId: started.id, operation: { type: "replace", item_ids: [...playlist.items.slice(localIndex), ...playlist.items.slice(0, localIndex)].map(entry => entry.id) } };
+      queueRequestsRef.current.bind(started.id); setRetryQueue(intent);
+      await seedQueue(intent);
     } catch (caught) {
-      autoPlayNextRef.current = false;
-      setError(caught?.message || "暂时无法开始一起听歌。");
-    } finally {
-      setLoading(false);
-    }
+      if (mountedRef.current) setError(`${caught?.message || "暂时无法开始一起听歌。"}（${caught?.code || "music_start_failed"}）`);
+    } finally { if (operationRef.current === token) { operationRef.current = null; if (mountedRef.current) setLoading(false); } }
+  };
+  const retrySeedQueue = async () => {
+    if (!retryQueue || retryQueue.sessionId !== session?.id || operationRef.current || busy) return;
+    const token = {}; operationRef.current = token; setLoading(true); setError("");
+    try { await seedQueue(retryQueue); }
+    catch (caught) { if (mountedRef.current) setError(`${caught?.message || "载入队列失败，请重试。"}（${caught?.code || "music_queue_operation_failed"}）`); }
+    finally { if (operationRef.current === token) { operationRef.current = null; if (mountedRef.current) setLoading(false); } }
+  };
+  const end = async () => {
+    if (operationRef.current || busy) return;
+    const token = {}; operationRef.current = token; setLoading(true); setError("");
+    try {
+      const result = await onEnd?.({ accountScope, companionScope, sessionId: session?.id, title: item?.title, mediaPositionSeconds: position, musicPlaylistId: itemPlaylistId, musicPlaylistItemId: itemId });
+      if (!mountedRef.current || operationRef.current !== token) return;
+      if (!result || result.ok === false) { setError(`${result?.message || "服务器未确认结束，本机播放和队列仍保留。"}（${result?.code || "music_stop_failed"}）`); return; }
+      audioRef.current?.pause(); setPlaying(false); setRetryQueue(null); queueRequestsRef.current.bind(""); setQueue(null);
+    } catch (caught) { if (mountedRef.current) setError(`${caught?.message || "暂时无法结束一起听歌。"}（${caught?.code || "music_stop_failed"}）`); }
+    finally { if (operationRef.current === token) { operationRef.current = null; if (mountedRef.current) setLoading(false); } }
   };
 
   const openExternal = async () => {
@@ -1039,8 +1000,9 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
       </section>
       {playlist && <section className="music-queue-picker" aria-label="从当前歌单加入队列"><strong>{playlist.name}</strong>{<MusicPagedList key={playlist.id} items={playlist.items} label="歌单曲目" renderItem={(entry) => { const entryPlayback = resolveMusicPlayback(entry); const external = entryPlayback.mode === MUSIC_PLAYBACK_MODES.external; return <div key={entry.id}><span>{entry.title}{external && <small> · Together 元数据队列</small>}</span><button type="button" disabled={controlsBusy} onClick={() => void runQueueOperation({ type: "add", item_id: entry.id, position: Math.max(0, currentQueueIndex + 1) }, { retryConflict: true }).catch(() => {})}><Play aria-hidden="true" />下一首播放</button><button type="button" disabled={controlsBusy} onClick={() => void runQueueOperation({ type: "add", item_id: entry.id }, { retryConflict: true }).catch(() => {})}><ListPlus aria-hidden="true" />加入队尾</button>{external && <button type="button" onClick={() => { void Promise.all([requestExternalMusicPlayback(entryPlayback.resourceType, entryPlayback.resourceId), openNeteasePlayback(entryPlayback.resourceType, entryPlayback.resourceId)]).catch((caught) => setError(caught?.message || "无法打开网易云播放。")); }}><Play aria-hidden="true" />在网易云播放</button>}</div>; }} />}</section>}
     </>}
-    {active && <button type="button" disabled={busy} onClick={() => void onEnd?.({ title: item?.title, mediaPositionSeconds: position, musicPlaylistId: itemPlaylistId, musicPlaylistItemId: itemId })}><CircleStop aria-hidden="true" />结束本场</button>}
+    {active && <button type="button" disabled={controlsBusy} onClick={() => void end()}><CircleStop aria-hidden="true" />结束本场</button>}
     <p className="together-device-note">{formatMediaTime(position)} / {duration ? formatMediaTime(duration) : "等待媒体信息"}。{playback.mode === MUSIC_PLAYBACK_MODES.external ? "只进入 Together 元数据队列，不进入 App audio；切歌后请点击在网易云播放" : "队列不保存音频 URL，播放地址仅从本机已加载歌单解析；不代理、不下载、不绕过 DRM。"}</p>
+    {active && retryQueue?.sessionId === session.id && <button type="button" className="together-primary" disabled={controlsBusy} onClick={() => void retrySeedQueue()}><RefreshCw aria-hidden="true" />重试载入队列</button>}
     {status && <p className="together-feedback" role="status">{loading || queueBusy ? "正在处理 · " : ""}{status}</p>}
     {error && <p className="together-feedback is-error" role="alert">{error}</p>}
   </div>;

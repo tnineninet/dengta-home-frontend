@@ -19,7 +19,7 @@ export function createScreenGlanceLifecycle({ getIdentity, getSession, getConfig
   const requestOptions = token => ({ ...token.identity, signal: token.controller.signal });
   function finish(token) {
     if (pending !== token) return;
-    pending = null; if (current(token)) onBusy(false);
+    pending = null; onBusy(false);
   }
   const stoppedConfig = config => normalizeScreenGlanceConfig({ ...config, watchTogetherEnabled: false, coWatchSessionId: "" });
   return {

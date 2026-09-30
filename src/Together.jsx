@@ -720,7 +720,9 @@ export default function Together({
         <div className="together-controls">
           {selectedMode === "music" ? (
             <TogetherMusic
-              key={musicRequest?.id || "music"}
+              key={JSON.stringify([accountScope, companionScope, musicRequest?.id || "music"])}
+              accountScope={accountScope}
+              companionScope={companionScope}
               request={musicRequest}
               session={musicActive ? session : null}
               busy={busy}

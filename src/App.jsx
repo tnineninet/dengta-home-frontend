@@ -11,6 +11,9 @@ import {
 import { resizeComposerInput } from "./composer-size.js";
 import { createCoWatchLifecycle } from "./co-watch-lifecycle.js";
 import { createScreenGlanceLifecycle } from "./screen-glance-lifecycle.js";
+import { createMusicPlaybackSync } from "./music-playback-sync.js";
+import { createNowPlayingSync } from "./music-now-playing-sync.js";
+import { getMusicPlaylist } from "./music-listening.js";
 import MemoryGatewayStatus from "./MemoryGatewayStatus.jsx";
 import { Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
@@ -1229,10 +1232,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     endSession: endCoWatchSession,
     onBusy: (value) => { coWatchBusyRef.current = value; setIsScreenGlanceBusy(value); },
     onStarted: (next) => {
+      musicPlaybackSyncRef.current?.invalidate(); nowPlayingSyncRef.current?.invalidate();
       coWatchSessionRef.current = next;
       setCoWatchSession(next); setCoWatchReceipt(null); setCoWatchDialog([]);
     },
     onEnded: (ended) => {
+      musicPlaybackSyncRef.current?.invalidate(); nowPlayingSyncRef.current?.invalidate();
       coWatchSessionRef.current = null;
       setCoWatchSession(null); setCoWatchReceipt(ended); setCoWatchDialog([]);
       const identity = coWatchIdentityRef.current;
@@ -1259,9 +1264,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     onBusy: (value) => { coWatchBusyRef.current = value; setIsScreenGlanceBusy(value); },
     onState: (value) => applyScreenGlanceState(value),
     onStarted: (next) => {
+      musicPlaybackSyncRef.current?.invalidate(); nowPlayingSyncRef.current?.invalidate();
       coWatchSessionRef.current = next; setCoWatchSession(next); setCoWatchReceipt(null);
     },
     onEnded: (ended) => {
+      musicPlaybackSyncRef.current?.invalidate(); nowPlayingSyncRef.current?.invalidate();
       coWatchSessionRef.current = null; setCoWatchSession(null); setCoWatchReceipt(ended); setCoWatchDialog([]);
     },
     onStopped: () => {
@@ -1310,6 +1317,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   useEffect(
     () => () => {
       coWatchLifecycleRef.current.invalidate();
+      musicPlaybackSyncRef.current?.invalidate(); nowPlayingSyncRef.current?.invalidate();
       screenGlanceLifecycleRef.current.invalidate();
       releasePendingScreenGlanceTurn(pendingScreenGlanceTurnRef);
       coWatchSessionRef.current = null;
@@ -1462,11 +1470,26 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const settingsLifecycleFlushPendingRef = useRef(false);
   const flushLatestSettingsDraftRef = useRef(() => Promise.resolve(true));
   const componentMountedRef = useRef(true);
-  const musicPlaybackSyncRef = useRef({
-    sessionId: "",
-    revision: 0,
-    inFlight: false,
-    pending: null,
+  const musicPlaybackSyncRef = useRef(null);
+  if (!musicPlaybackSyncRef.current) musicPlaybackSyncRef.current = createMusicPlaybackSync({
+    getIdentity: () => coWatchIdentityRef.current,
+    getSession: () => coWatchSessionRef.current,
+    capture: () => coWatchLifecycleRef.current.capture(),
+    current: (stamp) => coWatchLifecycleRef.current.current(stamp),
+    patchPlayback: patchCoWatchPlayback,
+    readSession: readActiveCoWatchSession,
+    onApplied: (next) => { coWatchSessionRef.current = next; setCoWatchSession(next); },
+    onError: (error) => setScreenGlanceFeedback({ status: "error", message: `${error?.message || "播放状态同步失败，播放器仍可在本机使用。"}（${error?.code || "music_playback_sync_failed"}）` }),
+  });
+  const nowPlayingSyncRef = useRef(null);
+  if (!nowPlayingSyncRef.current) nowPlayingSyncRef.current = createNowPlayingSync({
+    getIdentity: () => coWatchIdentityRef.current,
+    getSession: () => coWatchSessionRef.current,
+    capture: () => coWatchLifecycleRef.current.capture(),
+    current: (stamp) => coWatchLifecycleRef.current.current(stamp),
+    readPlaylist: getMusicPlaylist,
+    submit: (snapshot) => musicPlaybackSyncRef.current.submit(snapshot),
+    onUnmatched: () => setScreenGlanceFeedback({ status: "idle", message: "当前歌单没有唯一匹配的曲目，请在一起听中选择已导入的歌曲。（music_now_playing_unmatched）" }),
   });
   const startupReconnectRef = useRef(null);
   const sessionModelSaveQueueRef = useRef(Promise.resolve());
@@ -6063,156 +6086,18 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   async function startMusicCoWatchSession(options = {}) {
-    if (isScreenGlanceBusy) return false;
-    if (coWatchSession?.status === "active" && coWatchSession.sessionMode !== "listening") {
-      setScreenGlanceFeedback({ status: "error", message: "已有一场屏幕或视频共看，请先结束后再一起听歌。" });
-      return false;
-    }
-    setIsScreenGlanceBusy(true);
-    try {
-      const next = coWatchSession?.sessionMode === "listening" ? coWatchSession : await createCoWatchSession({ ...options, sessionMode: "listening", sourceApp: "local_playlist", cadenceSeconds: 90 });
-      setCoWatchSession(next); setCoWatchReceipt(null); setCoWatchDialog([]);
-      musicPlaybackSyncRef.current = {
-        sessionId: next?.id || "",
-        revision: next?.revision || 0,
-        inFlight: false,
-        pending: null,
-      };
-      return next;
-    } catch (error) {
-      setScreenGlanceFeedback({ status: "error", message: error?.message || "暂时无法开始一起听歌。" });
-      return false;
-    } finally { setIsScreenGlanceBusy(false); }
+    const result = await coWatchLifecycleRef.current.start({ ...options, sessionMode: "listening", sourceApp: "local_playlist", cadenceSeconds: 90, reuseActiveMode: true });
+    return result.ok ? { ...result.session, ok: true } : result;
   }
 
-  // 切歌感知：系统正在播放的歌曲变化时，把它同步到当前一起听会话。
-  // 这样 AI 的记忆、本场回应和音乐理解都会跟随最新歌曲（类似一起看切视频）。
-  const syncNowPlayingToSession = useCallback(async (song) => {
-    if (!song?.title) return;
-    const active = coWatchSessionRef.current;
-    if (!active || active.status !== "active" || active.sessionMode !== "listening") return;
-    const currentTitle = String(active.title || "").trim();
-    if (currentTitle && (currentTitle === song.title || currentTitle.includes(song.title) || song.title.includes(currentTitle))) {
-      return; // 没切歌
-    }
-    try {
-      // 尝试匹配本地歌单（按标题+歌手），拿到 item_id 上报；匹配不到则导入单曲
-      const playlistsData = await apiRequest("/api/v2/music/playlists", { timeoutMs: 12000 }).catch(() => ({ playlists: [] }));
-      const playlists = Array.isArray(playlistsData?.playlists) ? playlistsData.playlists : [];
-      let matchedPlaylistId = "";
-      let matchedItemId = "";
-      for (const playlist of playlists) {
-        const rawItems = playlist.items || playlist.playlist_items || [];
-        const match = rawItems.find(
-          (item) =>
-            String(item.title || item.name || "").toLowerCase() === song.title.toLowerCase() &&
-            (!song.artist || String(item.artist || "").toLowerCase().includes(song.artist.toLowerCase()))
-        );
-        if (match) {
-          matchedPlaylistId = playlist.id || playlist.playlist_id;
-          matchedItemId = match.id || match.item_id;
-          break;
-        }
-      }
-      if (!matchedItemId) {
-        // 没有匹配：把当前播放的歌曲导入为单曲歌单（用网易云分享链接）
-        const shareUrl = "https://music.163.com/#/song?id=" + encodeURIComponent(song.title);
-        const imported = await apiRequest("/api/v2/music/providers/netease/imports/share", {
-          method: "POST",
-          timeoutMs: 20000,
-          body: JSON.stringify({ connection_id: "", share_url: shareUrl }),
-        }).catch(() => null);
-        const importedPlaylist = imported?.playlist || imported;
-        if (importedPlaylist?.id) {
-          const importedItems = importedPlaylist.items || [];
-          matchedPlaylistId = importedPlaylist.id;
-          matchedItemId = importedItems[0]?.id || "";
-        }
-      }
-      if (matchedItemId) {
-        await patchCoWatchPlayback(active.id, {
-          playbackState: "playing",
-          mediaPositionSeconds: song.positionSeconds || 0,
-          mediaDurationSeconds: song.durationSeconds || 0,
-          musicPlaylistId: matchedPlaylistId,
-          musicPlaylistItemId: matchedItemId,
-          revision: active.playbackRevision || 0,
-        }).catch(() => {});
-        setCoWatchSession((current) =>
-          current
-            ? { ...current, title: song.title, playlistId: matchedPlaylistId, playlistItemId: matchedItemId }
-            : current
-        );
-      }
-    } catch {
-      // 同步失败不影响主流程
-    }
-  }, []);
+  const syncNowPlayingToSession = useCallback((song) => nowPlayingSyncRef.current.sync(song), []);
 
-  async function updateMusicCoWatchPlayback(snapshot = {}) {
-    if (!snapshot.sessionId) return;
-    const sync = musicPlaybackSyncRef.current;
-    if (sync.sessionId !== snapshot.sessionId) {
-      sync.sessionId = snapshot.sessionId;
-      sync.revision = snapshot.revision || 0;
-      sync.pending = null;
-    } else {
-      sync.revision = Math.max(sync.revision, snapshot.revision || 0);
-    }
-    sync.pending = { ...snapshot, conflictRetried: false };
-    if (sync.inFlight) return;
-    sync.inFlight = true;
-    try {
-      while (sync.pending && sync.sessionId === snapshot.sessionId) {
-        const nextSnapshot = sync.pending;
-        sync.pending = null;
-        try {
-          const next = await patchCoWatchPlayback(sync.sessionId, {
-            ...nextSnapshot,
-            revision: sync.revision,
-          });
-          if (next) {
-            sync.revision = next.revision;
-            setCoWatchSession(next);
-          }
-        } catch (error) {
-          if (
-            error?.status === 409 &&
-            error?.code === "co_watch_playback_revision_conflict" &&
-            !nextSnapshot.conflictRetried
-          ) {
-            const refreshed = await refreshCoWatchExperience({ silent: true });
-            if (refreshed.session?.id === sync.sessionId) {
-              sync.revision = refreshed.session.revision;
-              sync.pending = sync.pending || { ...nextSnapshot, conflictRetried: true };
-            } else {
-              setScreenGlanceFeedback({ status: "error", message: "一起听会话已结束，播放状态未再提交。" });
-            }
-            continue;
-          }
-          setScreenGlanceFeedback({ status: "error", message: error?.message || "播放状态同步失败，播放器仍可在本机使用。" });
-        }
-      }
-    } finally {
-      sync.inFlight = false;
-      if (sync.pending && sync.sessionId === snapshot.sessionId) {
-        void updateMusicCoWatchPlayback(sync.pending);
-      }
-    }
+  function updateMusicCoWatchPlayback(snapshot = {}) {
+    return musicPlaybackSyncRef.current.submit(snapshot);
   }
 
   async function stopMusicCoWatchSession(options = {}) {
-    if (isScreenGlanceBusy) return false;
-    setIsScreenGlanceBusy(true);
-    try {
-      if (coWatchSession?.id) setCoWatchReceipt(await endCoWatchSession(coWatchSession.id, options));
-      setCoWatchSession(null); setCoWatchDialog([]);
-      musicPlaybackSyncRef.current = { sessionId: "", revision: 0, inFlight: false, pending: null };
-      return true;
-    } catch (error) {
-      setScreenGlanceFeedback({ status: "error", message: error?.message || "暂时无法结束一起听歌。" });
-      return false;
-    } finally { setIsScreenGlanceBusy(false); }
+    return coWatchLifecycleRef.current.stop({ ...options, sessionMode: "listening" });
   }
 
   async function updateDirectMediaCoWatchPlayback(snapshot = {}) {
