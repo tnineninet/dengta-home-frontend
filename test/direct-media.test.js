@@ -159,7 +159,7 @@ const stopDirect = together.slice(
 );
 assert.match(
   stopDirect,
-  /if \(result\.ok !== false\) \{[\s\S]*?clearDirectMediaSession/,
+  /runMediaOperation\([\s\S]*?clearDirectMediaSession/,
   "a failed backend end request must retain the local URL and playback state for retry",
 );
 assert.match(together, /AI 不会抓取或自动观看视频/);

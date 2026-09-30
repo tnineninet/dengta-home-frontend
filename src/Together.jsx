@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   CircleStop,
   Clock3,
@@ -85,7 +85,7 @@ export default function Together({
   screenState,
   preview,
   feedback,
-  busy = false,
+  busy: externalBusy = false,
   onStart,
   onStartDirect,
   onPause,
@@ -128,9 +128,13 @@ export default function Together({
   const danmakuSpawnedRef = useRef(new Set());
   const pageRequestRef = useRef(null);
   const replyPendingRef = useRef(false);
+  const mediaPendingRef = useRef(null);
+  const [mediaPending, setMediaPending] = useState(false);
+  const busy = externalBusy || mediaPending;
   useEffect(() => () => {
     pageRequestRef.current?.abort();
     pageRequestRef.current = null;
+    mediaPendingRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -209,11 +213,16 @@ export default function Together({
     readStoredWebPage(accountScope, companionScope)?.page_url || "",
   );
   const [webPage, setWebPage] = useState(() => readStoredWebPage(accountScope, companionScope));
+  const loadedWebInputRef = useRef(webUrlInput);
   const [webFeedback, setWebFeedback] = useState({
     status: "idle",
     message: "粘贴哔哩哔哩、爱奇艺等官方网页链接，先解析再开始一起看。",
   });
   const videoRef = useRef(null);
+  const mediaSelectionRef = useRef("");
+  useLayoutEffect(() => {
+    mediaSelectionRef.current = JSON.stringify([directMediaUrl, webPage?.page_url || ""]);
+  }, [directMediaUrl, webPage?.page_url]);
   const resumedUrlRef = useRef("");
   const restoredResumeRef = useRef(
     restoredDirectMedia?.url
@@ -304,6 +313,7 @@ export default function Together({
   };
 
   const loadDirectMedia = () => {
+    if (busy || mediaPendingRef.current) return "";
     const validation = validateDirectMediaUrl(directUrlInput);
     if (!validation.ok) {
       setDirectFeedback({ status: "error", message: validation.message });
@@ -342,6 +352,29 @@ export default function Together({
       ),
     });
 
+  const runMediaOperation = async (invoke, setFeedback, fallback, onSuccess) => {
+    if (busy || mediaPendingRef.current) return;
+    pageRequestRef.current?.abort();
+    pageRequestRef.current = null;
+    const token = { selection: mediaSelectionRef.current };
+    mediaPendingRef.current = token;
+    setMediaPending(true);
+    const accepted = () => mediaPendingRef.current === token && mediaSelectionRef.current === token.selection;
+    try {
+      const result = await invoke();
+      if (!accepted()) return;
+      if (!result) throw new Error(fallback);
+      const localCodes = ["co_watch_operation_busy", "co_watch_scope_changed", "co_watch_receipt_invalid", "co_watch_session_changed", "co_watch_active_conflict", "co_watch_start_failed", "co_watch_stop_failed"];
+      const suffix = result.ok === false && localCodes.includes(result.code) ? `（错误代码：${result.code}）` : "";
+      setFeedback({ status: result.ok === false ? "error" : "success", message: (result.message || fallback) + suffix });
+      if (result.ok !== false) onSuccess?.();
+    } catch (error) {
+      if (accepted()) setFeedback({ status: "error", message: error?.message || fallback });
+    } finally {
+      if (mediaPendingRef.current === token) { mediaPendingRef.current = null; setMediaPending(false); }
+    }
+  };
+
   const startDirect = async () => {
     const validation = validateDirectMediaUrl(directUrlInput);
     if (!validation.ok) {
@@ -360,25 +393,11 @@ export default function Together({
     const durationSeconds = finiteMediaSeconds(video?.duration);
     persistDirectPlayback(positionSeconds, durationSeconds);
     setDirectFeedback({ status: "checking", message: "正在建立直链共看会话…" });
-    try {
-      const result = await onStartDirect?.({
-        title,
-        sessionMode: "direct_media",
-        mediaUrl: validation.url,
-        mediaDurationSeconds: durationSeconds,
-        mediaPositionSeconds: positionSeconds,
-      });
-      if (!result) return;
-      setDirectFeedback({
-        status: result.ok === false ? "error" : "success",
-        message: result.message || "直链共看已经开始。",
-      });
-    } catch (error) {
-      setDirectFeedback({
-        status: "error",
-        message: error?.message || "暂时无法开始视频直链共看。",
-      });
-    }
+    await runMediaOperation(() => onStartDirect?.({
+      title, sessionMode: "direct_media", mediaUrl: validation.url,
+      accountScope, companionScope,
+      mediaDurationSeconds: durationSeconds, mediaPositionSeconds: positionSeconds,
+    }), setDirectFeedback, "暂时无法开始视频直链共看。");
   };
 
   const stopExternal = () =>
@@ -392,32 +411,18 @@ export default function Together({
     const positionSeconds = finiteMediaSeconds(video?.currentTime);
     video?.pause();
     setDirectFeedback({ status: "checking", message: "正在结束这场共看…" });
-    try {
-      const result = await onStopDirect?.({
-        title,
-        mediaPositionSeconds: positionSeconds,
-      });
-      if (!result) return;
-      setDirectFeedback({
-        status: result.ok === false ? "error" : "idle",
-        message: result.message || "这场视频直链共看已经结束。",
-      });
-      if (result.ok !== false) {
-        clearDirectMediaSession(globalThis.sessionStorage, accountScope, companionScope);
-        setDirectMediaUrl("");
-        setDirectUrlInput("");
-        setDirectPositionSeconds(0);
-        setDirectDurationSeconds(0);
-      }
-    } catch (error) {
-      setDirectFeedback({
-        status: "error",
-        message: error?.message || "暂时无法结束视频直链共看，可以稍后重试。",
-      });
-    }
+    await runMediaOperation(() => onStopDirect?.({
+      title, sessionId: session?.id, accountScope, companionScope, mediaPositionSeconds: positionSeconds,
+    }), setDirectFeedback, "暂时无法结束视频直链共看，可以稍后重试。", () => {
+      clearDirectMediaSession(globalThis.sessionStorage, accountScope, companionScope);
+      setDirectMediaUrl("");
+      setDirectUrlInput(current => current === directUrlInput ? "" : current);
+      setDirectPositionSeconds(0); setDirectDurationSeconds(0);
+    });
   };
 
   const loadWebPage = async (explicitUrl = "") => {
+    if (busy || mediaPendingRef.current) return;
     const input = explicitUrl || webUrlInput;
     if (!input.trim()) {
       setWebFeedback({ status: "error", message: "请先粘贴网页链接。" });
@@ -432,6 +437,7 @@ export default function Together({
       const page = await resolveCoWatchPage(input, { signal: controller.signal });
       if (pageRequestRef.current !== controller) return;
       if (!page?.embed_url) throw new Error("没有拿到可用的内嵌地址。");
+      loadedWebInputRef.current = input.trim();
       setWebPage(page);
       writeStoredWebPage(accountScope, companionScope, page);
       if (page.title) setTitle(page.title);
@@ -467,42 +473,26 @@ export default function Together({
       setWebFeedback({ status: "error", message: "请先解析网页链接。" });
       return;
     }
-    setWebFeedback({ status: "checking", message: "正在建立网页共看会话…" });
-    try {
-      const result = await onStartDirect?.({
-        title: webPage.title || title,
-        sessionMode: "web_page",
-        mediaUrl: webPage.page_url,
-        mediaDurationSeconds: 0,
-        mediaPositionSeconds: 0,
-      });
-      if (!result) return;
-      setWebFeedback({
-        status: result.ok === false ? "error" : "success",
-        message: result.message || "网页一起看已经开始。",
-      });
-    } catch (error) {
-      setWebFeedback({ status: "error", message: error?.message || "暂时无法开始网页一起看。" });
+    if (webUrlInput.trim() !== loadedWebInputRef.current) {
+      setWebFeedback({ status: "error", message: "网页链接已改变，请先解析并载入新链接，再开始一起看。" });
+      return;
     }
+    setWebFeedback({ status: "checking", message: "正在建立网页共看会话…" });
+    await runMediaOperation(() => onStartDirect?.({
+      title: webPage.title || title, sessionMode: "web_page", mediaUrl: webPage.page_url,
+      accountScope, companionScope, mediaDurationSeconds: 0, mediaPositionSeconds: 0,
+    }), setWebFeedback, "暂时无法开始网页一起看。");
   };
 
   const stopWebPage = async () => {
     setWebFeedback({ status: "checking", message: "正在结束这场共看…" });
-    try {
-      const result = await onStopDirect?.({ title, mediaPositionSeconds: 0 });
-      if (!result) return;
-      setWebFeedback({
-        status: result.ok === false ? "error" : "idle",
-        message: result.message || "这场网页一起看已经结束。",
-      });
-      if (result.ok !== false) {
-        writeStoredWebPage(accountScope, companionScope, null);
-        setWebPage(null);
-        setWebUrlInput("");
-      }
-    } catch (error) {
-      setWebFeedback({ status: "error", message: error?.message || "暂时无法结束网页一起看。" });
-    }
+    await runMediaOperation(() => onStopDirect?.({
+      title, sessionId: session?.id, accountScope, companionScope, mediaPositionSeconds: 0,
+    }), setWebFeedback, "暂时无法结束网页一起看。", () => {
+      writeStoredWebPage(accountScope, companionScope, null);
+      setWebPage(null);
+      setWebUrlInput(current => current === webUrlInput ? "" : current);
+    });
   };
 
   const submitReply = async (event) => {

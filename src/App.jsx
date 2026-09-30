@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import { resizeComposerInput } from "./composer-size.js";
+import { createCoWatchLifecycle } from "./co-watch-lifecycle.js";
 import MemoryGatewayStatus from "./MemoryGatewayStatus.jsx";
 import { Capacitor } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
@@ -1213,6 +1214,29 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [coWatchPreview, setCoWatchPreview] = useState(null);
   const [coWatchDialog, setCoWatchDialog] = useState([]);
   const [castPairing, setCastPairing] = useState(null);
+  const coWatchIdentityRef = useRef(null);
+  coWatchIdentityRef.current = { accountScope: accountStorageScope, companionScope };
+  const coWatchBusyRef = useRef(false);
+  coWatchBusyRef.current = isScreenGlanceBusy;
+  const coWatchLifecycleRef = useRef(null);
+  if (!coWatchLifecycleRef.current) coWatchLifecycleRef.current = createCoWatchLifecycle({
+    getIdentity: () => coWatchIdentityRef.current,
+    getSession: () => coWatchSessionRef.current,
+    isBusy: () => coWatchBusyRef.current,
+    createSession: createCoWatchSession,
+    endSession: endCoWatchSession,
+    onBusy: setIsScreenGlanceBusy,
+    onStarted: (next) => {
+      coWatchSessionRef.current = next;
+      setCoWatchSession(next); setCoWatchReceipt(null); setCoWatchDialog([]);
+    },
+    onEnded: (ended) => {
+      coWatchSessionRef.current = null;
+      setCoWatchSession(null); setCoWatchReceipt(ended); setCoWatchDialog([]);
+      const identity = coWatchIdentityRef.current;
+      clearDirectMediaSession(globalThis.sessionStorage, identity.accountScope, identity.companionScope);
+    },
+  });
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [isPostingMoment, setIsPostingMoment] = useState(false);
   const [pendingMomentLikes, setPendingMomentLikes] = useState({});
@@ -1254,6 +1278,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   useEffect(
     () => () => {
+      coWatchLifecycleRef.current.invalidate();
+      coWatchSessionRef.current = null;
       clearDirectMediaSession(globalThis.sessionStorage, accountStorageScope, companionScope);
       setCoWatchSession(null);
       setCoWatchDialog([]);
@@ -1640,14 +1666,19 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   const refreshCoWatchExperience = useCallback(
     async ({ silent = false, mode = "" } = {}) => {
+      const lifecycle = coWatchLifecycleRef.current;
+      const stamp = lifecycle.capture();
+      const identity = coWatchIdentityRef.current;
       const sessionMode = mode || resolveCoWatchSessionMode(togetherEntryMode);
       const [sessionResult, previewResult, stateResult] = await Promise.allSettled([
-        readActiveCoWatchSession({ sessionMode }),
+        readActiveCoWatchSession({ sessionMode }, identity),
         readCoWatchPreview(),
         refreshScreenGlanceState(),
       ]);
+      if (!lifecycle.current(stamp) || (coWatchSessionRef.current?.id || "") !== stamp.sessionId) return { session: null, state: null };
       if (sessionResult.status === "fulfilled") {
-        setCoWatchSession((current) => {
+        const next = (() => {
+          const current = coWatchSessionRef.current;
           const remote = sessionResult.value;
           if (!remote) return null;
           if (
@@ -1663,11 +1694,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             });
           }
           return remote;
-        });
+        })();
+        coWatchSessionRef.current = next;
+        setCoWatchSession(next);
         if (sessionResult.value) {
           const currentDialog = await readCoWatchDialog(
             sessionResult.value,
+            identity,
           ).catch(() => null);
+          if (!lifecycle.current(stamp) || coWatchSessionRef.current?.id !== sessionResult.value.id) return { session: null, state: null };
           if (currentDialog) {
             setCoWatchDialog(
               currentDialog.map((item) => ({ ...item, key: item.id })),
@@ -6018,53 +6053,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   async function startDirectMediaCoWatchSession(options = {}) {
-    if (isScreenGlanceBusy) {
-      return { ok: false, message: "另一项共看操作正在进行，请稍候。" };
-    }
-    setIsScreenGlanceBusy(true);
-    try {
-      let nextSession =
-        coWatchSession?.status === "active" ? coWatchSession : null;
-      const pageMode = options.sessionMode === "web_page";
-      const sourceApp = pageMode ? WEB_PAGE_SOURCE_APP : DIRECT_MEDIA_SOURCE_APP;
-      if (
-        nextSession &&
-        nextSession.sourceApp !== DIRECT_MEDIA_SOURCE_APP &&
-        nextSession.sourceApp !== WEB_PAGE_SOURCE_APP
-      ) {
-        return {
-          ok: false,
-          message: "已有一场其它方式的共看，请先结束后再开始。",
-        };
-      }
-      if (!nextSession) {
-        nextSession = await createCoWatchSession({
-          title: options.title,
-          sessionMode: pageMode ? "web_page" : "direct_media",
-          mediaUrl: options.mediaUrl,
-          sourceApp,
-          mediaDurationSeconds: options.mediaDurationSeconds,
-          mediaPositionSeconds: options.mediaPositionSeconds,
-          cadenceSeconds: 60,
-        });
-      }
-      setCoWatchSession(nextSession);
-      setCoWatchReceipt(null);
-      setCoWatchDialog([]);
-      return {
-        ok: true,
-        message: pageMode
-          ? "网页一起看已经开始。网页地址仅用于本场会话，不会在投屏控制界面公开显示。"
-          : "直链共看已经开始。媒体地址用于本场接收端播放，不会显示在投屏控制界面。",
-      };
-    } catch (error) {
-      return {
-        ok: false,
-        message: error?.message || "暂时无法开始视频直链共看。",
-      };
-    } finally {
-      setIsScreenGlanceBusy(false);
-    }
+    const pageMode = options.sessionMode === "web_page";
+    const sourceApp = pageMode ? WEB_PAGE_SOURCE_APP : DIRECT_MEDIA_SOURCE_APP;
+    const result = await coWatchLifecycleRef.current.start({
+      ...options,
+      sessionMode: pageMode ? "web_page" : "direct_media",
+      sourceApp,
+      mediaUrl: options.mediaUrl,
+      cadenceSeconds: 60,
+    });
+    return result.ok ? { ...result, message: pageMode ? "网页一起看已经开始。" : "直链共看已经开始。" } : result;
   }
 
   async function startMusicCoWatchSession(options = {}) {
@@ -6229,7 +6227,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       0,
       Math.min(604800, Number(snapshot.mediaDurationSeconds) || 0),
     );
-    const current = coWatchSession;
+    const lifecycle = coWatchLifecycleRef.current;
+    const stamp = lifecycle.capture();
+    const identity = coWatchIdentityRef.current;
+    const current = coWatchSessionRef.current;
     if (
       !current?.id ||
       (current.sourceApp !== DIRECT_MEDIA_SOURCE_APP &&
@@ -6266,9 +6267,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         revision: target.revision,
         mediaPositionSeconds: position,
         mediaDurationSeconds: duration || target.mediaDurationSeconds,
-      });
-      if (next) setCoWatchSession(next);
+      }, identity);
+      if (!lifecycle.current(stamp) || coWatchSessionRef.current?.id !== target.id) return;
+      if (next) { coWatchSessionRef.current = next; setCoWatchSession(next); }
     } catch (error) {
+      if (!lifecycle.current(stamp) || coWatchSessionRef.current?.id !== target.id) return;
       if (error?.status === 409 || error?.code === "revision_conflict") {
         await refreshCoWatchExperience({ silent: true });
         return;
@@ -6290,27 +6293,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   async function stopDirectMediaCoWatchSession(options = {}) {
-    if (isScreenGlanceBusy) {
-      return { ok: false, message: "另一项共看操作正在进行，请稍候。" };
-    }
-    setIsScreenGlanceBusy(true);
-    try {
-      if (coWatchSession?.id) {
-        const ended = await endCoWatchSession(coWatchSession.id, options);
-        setCoWatchReceipt(ended);
-      }
-      setCoWatchSession(null);
-      setCoWatchDialog([]);
-      clearDirectMediaSession(globalThis.sessionStorage, accountStorageScope, companionScope);
-      return { ok: true, message: "这场视频直链共看已经结束。" };
-    } catch (error) {
-      return {
-        ok: false,
-        message: error?.message || "暂时无法结束视频直链共看。",
-      };
-    } finally {
-      setIsScreenGlanceBusy(false);
-    }
+    const result = await coWatchLifecycleRef.current.stop(options);
+    return result.ok ? { ...result, message: "这场共看已经结束。" } : result;
   }
 
   async function setScreenGlancePaused(paused) {

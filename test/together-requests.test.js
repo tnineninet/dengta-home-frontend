@@ -3,6 +3,7 @@ import React, { act } from 'react';
 import TestRenderer from 'react-test-renderer';
 import { createServer } from 'vite';
 import { fileURLToPath } from 'node:url';
+import { storeDirectMediaSession, readDirectMediaSession } from '../src/direct-media.js';
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.window = { setInterval, clearInterval, setTimeout, clearTimeout };
 globalThis.document = { hidden: false };
@@ -39,6 +40,27 @@ try {
   await act(async () => { button('结束本场').props.onClick(); await settle(); });
   assert.equal(storage.size, 0, 'ending the web session removes its restored page');
   await act(async () => tree.unmount());
+
+  storeDirectMediaSession(globalThis.sessionStorage,props.accountScope,{url:'https://media.example.test/old.mp4'},props.companionScope);
+  let starts=0,startResolve;
+  await act(async()=>{tree=TestRenderer.create(React.createElement(Together,{...props,onStartDirect:()=>{starts++;return new Promise(resolve=>{startResolve=resolve;});}}));});
+  await act(async()=>{const click=button('开始直链共看').props.onClick;void click();void click();});
+  assert.equal(starts,1);assert.equal(button('载入播放器').props.disabled,true);
+  await act(async()=>startResolve({ok:false,message:'测试启动失败'}));
+  assert.match(JSON.stringify(tree.toJSON()),/测试启动失败/);assert.ok(readDirectMediaSession(globalThis.sessionStorage,props.accountScope,props.companionScope));
+  await act(async()=>tree.unmount());
+  let stopped=0,stopResolve;
+  const active={id:'direct-fixture',status:'active',sourceApp:'dengta-direct-media'};
+  await act(async()=>{tree=TestRenderer.create(React.createElement(Together,{...props,session:active,onStopDirect:()=>{stopped++;return new Promise(resolve=>{stopResolve=resolve;});}}));});
+  await act(async()=>{const click=button('结束本场').props.onClick;void click();void click();});assert.equal(stopped,1);
+  await act(async()=>tree.unmount());
+  storeDirectMediaSession(globalThis.sessionStorage,props.accountScope,{url:'https://media.example.test/new.mp4'},props.companionScope);
+  await act(async()=>stopResolve({ok:true}));
+  assert.equal(readDirectMediaSession(globalThis.sessionStorage,props.accountScope,props.companionScope).url,'https://media.example.test/new.mp4','late stop must not clear the reopened player');
+  await act(async()=>{tree=TestRenderer.create(React.createElement(Together,{...props,session:active,onStopDirect:async()=>({ok:false,message:'测试结束失败'})}));});
+  await act(async()=>button('结束本场').props.onClick());assert.match(JSON.stringify(tree.toJSON()),/测试结束失败/);
+  assert.equal(readDirectMediaSession(globalThis.sessionStorage,props.accountScope,props.companionScope).url,'https://media.example.test/new.mp4');
+  await act(async()=>tree.unmount());
 
   const { default: Health } = await vite.ssrLoadModule('/src/MemoryGatewayStatus.jsx');
   await act(async () => { healthTree = TestRenderer.create(React.createElement(Health)); });

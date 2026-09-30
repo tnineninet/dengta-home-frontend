@@ -1,4 +1,6 @@
 import { apiRequest } from "./api.js";
+import { authSession } from "./auth-session.js";
+import { coWatchRequestOptions } from "./co-watch-request-scope.js";
 
 function cleanText(value, maximum = 180) {
   return Array.from(String(value || "").trim()).slice(0, maximum).join("");
@@ -117,22 +119,24 @@ export function normalizeCoWatchSession(value) {
   });
 }
 
-export async function readActiveCoWatchSession({ sessionMode = "" } = {}) {
+export async function readActiveCoWatchSession({ sessionMode = "" } = {}, options = {}) {
   const query = sessionMode
     ? `?mode=${encodeURIComponent(sessionMode)}`
     : "";
   const data = await apiRequest(
     `/api/v2/co-watch/sessions/active${query}`,
-    { timeoutMs: 12_000 },
+    { timeoutMs: 12_000, ...coWatchRequestOptions(options, authSession) },
   );
   return normalizeCoWatchSession(data?.session);
 }
 
-export async function createCoWatchSession(input = {}) {
+export async function createCoWatchSession(input = {}, options = {}) {
   const data = await apiRequest("/api/v2/co-watch/sessions", {
     method: "POST",
     timeoutMs: 15_000,
+    ...coWatchRequestOptions(options, authSession),
     body: JSON.stringify({
+      session_id: input.sessionId || undefined,
       title: cleanText(input.title),
       session_mode: ["screen", "direct_media", "listening", "web_page"].includes(input.sessionMode) ? input.sessionMode : "screen",
       media_url: ["direct_media", "web_page"].includes(input.sessionMode) ? cleanText(input.mediaUrl, 4096) : "",
@@ -150,12 +154,13 @@ export async function createCoWatchSession(input = {}) {
   return normalizeCoWatchSession(data?.session);
 }
 
-export async function endCoWatchSession(sessionId, input = {}) {
+export async function endCoWatchSession(sessionId, input = {}, options = {}) {
   const data = await apiRequest(
     `/api/v2/co-watch/sessions/${encodeURIComponent(sessionId)}`,
     {
       method: "PATCH",
       timeoutMs: 15_000,
+      ...coWatchRequestOptions(options, authSession),
       body: JSON.stringify({
         status: "ended",
         title: cleanText(input.title),
@@ -166,9 +171,10 @@ export async function endCoWatchSession(sessionId, input = {}) {
   return normalizeCoWatchSession(data?.session);
 }
 
-export async function patchCoWatchPlayback(sessionId, input = {}) {
+export async function patchCoWatchPlayback(sessionId, input = {}, options = {}) {
   const data = await apiRequest(`/api/v2/co-watch/sessions/${encodeURIComponent(sessionId)}/playback`, {
     method: "PATCH", timeoutMs: 15_000,
+    ...coWatchRequestOptions(options, authSession),
     body: JSON.stringify({
       playback_revision: cleanNumber(input.revision, 1_000_000_000),
       playback_state: input.playbackState === "playing" ? "playing" : "paused",
@@ -230,11 +236,11 @@ export async function createCoWatchPairingCode(sessionId) {
   });
 }
 
-export async function readCoWatchDialog(session) {
+export async function readCoWatchDialog(session, options = {}) {
   if (!session?.conversationId || !session?.id) return [];
   const data = await apiRequest(
     `/api/v2/sessions/${encodeURIComponent(session.conversationId)}/messages`,
-    { timeoutMs: 12_000 },
+    { timeoutMs: 12_000, ...coWatchRequestOptions(options, authSession) },
   );
   return (Array.isArray(data?.messages) ? data.messages : [])
     .filter((message) => {
