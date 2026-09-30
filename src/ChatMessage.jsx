@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DeviceActionReceipts from "./DeviceActionReceipts";
+import CompanionActivityCards from "./CompanionActivityCards.jsx";
 import { MessageAttachments, ThinkingPanel } from "./ChatMessageExtras";
 import { AuthenticatedImage } from "./PrivateMedia";
 import {
@@ -33,6 +34,7 @@ function ChatMessage({
   onPreview,
   onReference,
   onDismissError,
+  onOpenActivity,
   innerMonologue,
   innerMonologuePending = false,
   innerMonologueError = "",
@@ -346,6 +348,7 @@ function ChatMessage({
                 />
               )}
               <DeviceActionReceipts actions={item.tool_calls?.mcp_actions} />
+              <CompanionActivityCards actions={item.tool_calls?.activity_actions} onOpen={onOpenActivity} />
             </>
           )}
           {item.chatError === true && (

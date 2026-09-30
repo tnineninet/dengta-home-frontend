@@ -529,6 +529,23 @@
 
 .music-cookie-connect-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .music-cookie-connect-primary { }
+.music-import-backdrop { position: fixed; inset: 0; z-index: 1100; display: grid; place-items: center; padding: 20px; background: rgba(35, 29, 24, .42); }
+.music-import-dialog { width: min(680px, 100%); max-height: min(88dvh, 900px); display: flex; flex-direction: column; min-height: 0; border: 1px solid rgba(120, 87, 67, .16); border-radius: 22px; background: #fffaf3; color: #5c3f30; box-shadow: 0 18px 60px rgba(35,29,24,.18); overflow: hidden; animation: music-sheet-enter .18s ease-out; }
+.music-import-dialog > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px; border-bottom: 1px solid rgba(120,87,67,.12); }
+.music-import-dialog h2 { margin: 3px 0 0; font-size: 22px; }
+.music-import-dialog > header button { display: grid; place-items: center; width: 40px; height: 40px; flex: none; border: 0; border-radius: 50%; background: #f0e6db; color: inherit; cursor: pointer; }
+.music-import-dialog-body { overflow-y: auto; overscroll-behavior: contain; padding: 0 20px 20px; min-height: 0; }
+.music-import-dialog .is-import-sheet { border: 0; padding: 0; box-shadow: none; background: transparent; }
+.music-import-dialog .settings-card-heading { padding-top: 12px; }
+.music-import-dialog button:focus-visible { outline: 2px solid #8b5e49; outline-offset: 3px; }
+.music-import-dialog .music-netease-library { margin: 12px 0; }
+.music-import-dialog .music-netease-library summary { cursor: pointer; font-size: 13px; padding: 10px 0; }
+.music-import-dialog label { min-width: 0; }
+.music-import-dialog input, .music-import-dialog textarea, .music-import-dialog select { max-width: 100%; box-sizing: border-box; }
+.together-music-setup button { touch-action: manipulation; }
+@keyframes music-sheet-enter { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 600px) { .music-import-backdrop { padding: 12px; align-items: end; } .music-import-dialog { max-height: 90dvh; border-radius: 20px; } .music-import-entry { flex-wrap: wrap; } .music-import-entry > button { width: 100%; justify-content: center; } }
+@media (prefers-reduced-motion: reduce) { .music-import-dialog { animation: none; } }
 .music-cookie-desktop-hint { margin: 8px 0 0; font-size: 12px; line-height: 1.6; color: #8a6a58; background: rgba(169,104,84,.08); padding: 8px 10px; border-radius: 8px; }
 
 .takeout-login-state { font-style: normal; font-size: 12px; padding: 4px 10px; border-radius: 999px; background: rgba(120,120,120,.12); color: #7a6a5a; }

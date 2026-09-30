@@ -36,6 +36,7 @@ import {
 import WebInstallButton from "./WebInstallButton.jsx";
 import TypewriterText from "./TypewriterText.jsx";
 import DlnaCastPlayer from "./DlnaCastPlayer.jsx";
+import { normalizeCompanionActivities } from "./companion-activities.js";
 import {
   BackgroundNotifications,
   openReminderNotificationSettings,
@@ -998,6 +999,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     String(settings.ai_name || "").trim() || "伴侣";
   const [activeView, setActiveView] = useState("chat");
   const [togetherEntryMode, setTogetherEntryMode] = useState("external");
+  const [musicActivityRequest, setMusicActivityRequest] = useState(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsCategory, setSettingsCategory] = useState(null);
   const [settingsFocusTarget, setSettingsFocusTarget] = useState("");
@@ -4768,6 +4770,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   : item,
               ),
             );
+            const activity = normalizeCompanionActivities(event.assistant_message?.tool_calls?.activity_actions).find(action => action.kind !== "bilibili");
+            if (activity) openCompanionActivity(activity);
             if (
               voiceAutoSpeakEnabled &&
               event.assistant_message?.content
@@ -6722,6 +6726,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 onPreview={handleImagePreview}
                 onReference={selectMessageForReference}
                 onDismissError={dismissChatError}
+                onOpenActivity={openCompanionActivity}
                 innerMonologue={
                   (visibleMonologueForMessage(item)?.text
                     ? visibleMonologueForMessage(item)
@@ -7894,6 +7899,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     );
   }
 
+  function openCompanionActivity(action) {
+    if (action.kind === "music") {
+      setMusicActivityRequest({ id: action.id, query: action.query, accountScope: accountStorageScope, companionScope });
+      setTogetherEntryMode("music"); changeView("music");
+    } else if (action.kind === "watch") {
+      if (action.pageUrl && /^https:\/\/www\.bilibili\.com\/video\/BV[0-9A-Za-z]{10}$/.test(action.pageUrl)) setPendingCoWatchPage(action.pageUrl);
+      setTogetherEntryMode("external"); changeView("together");
+    } else if (action.kind === "takeout") changeView("takeout");
+  }
+
   function renderDlnaCastPlayer() {
     return (
       <DlnaCastPlayer
@@ -7914,6 +7929,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       <Suspense fallback={<DeferredFeature label="正在打开一起看…" />}>
         <Together
           key={`together-${togetherEntryMode}`}
+          musicRequest={musicActivityRequest?.accountScope === accountStorageScope && musicActivityRequest?.companionScope === companionScope ? musicActivityRequest : null}
           aiName={effectiveAiName}
           accountScope={accountStorageScope}
           session={coWatchSession}

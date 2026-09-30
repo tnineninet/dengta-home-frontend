@@ -97,6 +97,7 @@ export default function Together({
   onReply,
   viewKind = "together",
   externalPageUrl = "",
+  musicRequest = null,
   danmaku = [],
 }) {
   const [restoredDirectMedia] = useState(() =>
@@ -719,6 +720,8 @@ export default function Together({
         <div className="together-controls">
           {selectedMode === "music" ? (
             <TogetherMusic
+              key={musicRequest?.id || "music"}
+              request={musicRequest}
               session={musicActive ? session : null}
               busy={busy}
               onStart={onStartMusic}

@@ -29,7 +29,7 @@ const PLAYLIST_ACCEPT = ".json,.m3u,.m3u8,.txt,application/json,text/plain,audio
 const AUDIO_ACCEPT = ".mp3,.m4a,.aac,.wav,.ogg,.opus,.flac,audio/mpeg,audio/mp4,audio/aac,audio/wav,audio/ogg,audio/opus,audio/flac";
 const AUDIO_EXTENSION = /\.(?:mp3|m4a|aac|wav|ogg|opus|flac)$/i;
 
-export default function MusicSettings({ providerStatus = null, onOpenMcpDeviceCenter }) {
+export default function MusicSettings({ providerStatus = null, onOpenMcpDeviceCenter, onImported, onBusyChange, compact = false }) {
   const [playlists, setPlaylists] = useState([]);
   const [selected, setSelected] = useState(null);
   const [format, setFormat] = useState("auto");
@@ -53,8 +53,10 @@ export default function MusicSettings({ providerStatus = null, onOpenMcpDeviceCe
   const [neteaseBusy, setNeteaseBusy] = useState("");
 
   const localAudioUrlRef = useRef("");
+  const importBusyRef = useRef(false);
   const neteaseShare = detectNeteaseShare(content);
   const canImport = Boolean(content.trim()) && !busy;
+  useEffect(() => { onBusyChange?.(busy || fileBusy); }, [busy, fileBusy, onBusyChange]);
 
   async function refresh({ quiet = false } = {}) {
     setRefreshing(true);
@@ -117,25 +119,35 @@ export default function MusicSettings({ providerStatus = null, onOpenMcpDeviceCe
   }, []);
 
   async function importPlaylist() {
+    if (importBusyRef.current) return;
+    importBusyRef.current = true;
     if (neteaseShare) {
       setBusy(true); setError(""); setMessage("");
       try {
         const imported = await importNeteaseShare(connectionId, content);
         setContent(""); setFileName(""); setSelected(imported);
-        setMessage(connectionId ? "网易云内容已导入，可在下方查看曲目。" : "已保存网易云链接元数据；连接 MCP 后可补全歌单曲目，也可直接跳转网易云。音频可用性由网易云判断。");
+        setMessage(`已导入“${imported.name}”，共 ${imported.itemCount} 首。可播放方式由歌曲的实际回执决定。`);
         await refresh({ quiet: true });
+        await notifyImported(imported);
       } catch (caught) { setError(caught?.message || "网易云分享链接导入失败。"); }
-      finally { setBusy(false); }
+      finally { importBusyRef.current = false; setBusy(false); }
       return;
     }
     setBusy(true); setError(""); setMessage("");
     try {
-      await importMusicPlaylist({ format, sourceName: fileName || "粘贴内容", name, content });
+      const imported = await importMusicPlaylist({ format, sourceName: fileName || "粘贴内容", name, content });
       setContent(""); setFileName(""); setMessage("歌单已导入。曲目地址仍由浏览器直接访问，不经过 DengTa 后端代理。");
       void refresh({ quiet: true }).then((ok) => {
         if (!ok) setMessage("歌单已导入；列表刷新失败，可稍后手动刷新，页面仍可继续使用。");
       });
-    } catch (caught) { setError(caught?.message || "歌单导入失败。"); } finally { setBusy(false); }
+      await notifyImported(imported);
+    } catch (caught) { setError(caught?.message || "歌单导入失败。"); } finally { importBusyRef.current = false; setBusy(false); }
+  }
+
+  async function notifyImported(imported) {
+    if (typeof onImported !== "function") return;
+    try { await onImported(imported); }
+    catch { setMessage("歌单已保存；播放器刷新失败，可关闭此面板后手动刷新，无需重复导入。"); }
   }
 
   async function searchNetease() {
@@ -217,6 +229,8 @@ export default function MusicSettings({ providerStatus = null, onOpenMcpDeviceCe
 
   async function importLocalAudio(event) {
     const input = event.currentTarget;
+    if (importBusyRef.current) return;
+    importBusyRef.current = true;
     setFileBusy(true); setError("");
     try {
       const file = input.files?.[0];
@@ -232,32 +246,34 @@ export default function MusicSettings({ providerStatus = null, onOpenMcpDeviceCe
       setSelected(imported);
       setMessage(`已把「${audio.title}」上传并导入歌单「${imported.name}」，可以在一起听里播放了。`);
       void refresh({ quiet: true });
+      await notifyImported(imported);
     } catch (caught) {
       setError(caught?.message || "本机音频导入失败，请重试。");
     } finally {
       input.value = "";
       setFileBusy(false);
+      importBusyRef.current = false;
     }
   }
 
-  return <section className="music-settings settings-card" aria-labelledby="music-settings-title">
-    <div className="settings-card-heading"><div><span className="settings-kicker">LISTENING</span><h3 id="music-settings-title">一起听歌</h3><p>只播放你提供的公开音频地址，不下载、不代理、不绕过 DRM。</p></div><button type="button" onClick={() => void refresh()} disabled={refreshing}>{refreshing ? "刷新中…" : "刷新"}</button></div>
-    <div className="music-provider-grid" aria-label="音乐 Provider 状态">
+  return <section className={`music-settings settings-card${compact ? " is-import-sheet" : ""}`} aria-labelledby="music-settings-title">
+    <div className="settings-card-heading"><div><span className="settings-kicker">LISTENING</span><h3 id="music-settings-title">一起听歌</h3><p>分享链接、歌单文件、本机音频都可以导入；能否播放以歌曲实际回执为准。</p></div><button type="button" onClick={() => void refresh()} disabled={refreshing}>{refreshing ? "刷新中…" : "刷新"}</button></div>
+    {!compact && <div className="music-provider-grid" aria-label="音乐 Provider 状态">
       {PROVIDERS.map(([id, label, fallbackStatus, fallbackText]) => {
         const remote = Array.isArray(providerStatus?.providers) ? providerStatus.providers.find((item) => item?.id === id) : null;
         const status = remote?.status || fallbackStatus;
         return <div className="music-provider-status" key={id}><strong>{label}</strong><span className={`provider-dot ${status}`}>{remote?.display_name || fallbackText}</span>{id === "netease" && <><small>通过用户自托管的 Code-MonkeyZhang/cloud-music-mcp 接入：元数据/歌单管理可用，Together 音频不可用。</small><button type="button" onClick={onOpenMcpDeviceCenter}>去连接网易云 MCP</button></>}</div>;
       })}
-    </div>
-    <section className="music-netease-library" aria-label="网易云音乐连接与曲库">
-      <h4>网易云音乐</h4>
+    </div>}
+    <details className="music-netease-library" open={compact ? undefined : true} aria-label="网易云音乐连接与曲库">
+      <summary>高级来源：自托管网易云 MCP</summary>
       <label>已保存 MCP 连接<select value={connectionId} onChange={(event) => selectNeteaseConnection(event.target.value)}><option value="">选择 provider_profile=netease_cloud_music 的连接</option>{neteaseConnections.map((connection) => <option key={connection.id} value={connection.id}>{connection.name}</option>)}</select></label>
       {!neteaseConnections.length && <p>尚未保存网易云 Provider 连接。<button type="button" onClick={onOpenMcpDeviceCenter}>去 MCP 设备中心</button></p>}
       {connectionId && <div className="music-netease-status"><strong>账号状态</strong><span>{neteaseStatus?.display_name || neteaseStatus?.account_name || neteaseStatus?.status || (neteaseBusy === "loading" ? "读取中…" : "未知")}</span><small>登录只可在自托管管理页完成；DengTa 不调用 cloud_music_login，也不接收 Cookie。</small></div>}
       {connectionId && <><div className="music-remote-playlists"><strong>远端歌单</strong>{remotePlaylists.length ? remotePlaylists.map((playlist) => <button type="button" key={playlist.providerPlaylistId || playlist.id} onClick={async () => { setNeteaseBusy("playlist"); setError(""); try { setRemoteSelected(await getNeteasePlaylist(connectionId, playlist.providerPlaylistId || playlist.id)); } catch (caught) { setError(caught?.message || "远端歌单读取失败。"); } finally { setNeteaseBusy(""); } }}><span>{playlist.name}</span><small>{playlist.itemCount} 首</small></button>) : <p>{neteaseBusy === "loading" ? "正在读取远端歌单…" : "没有可显示的远端歌单。"}</p>}</div>
       <div className="music-netease-search"><label>搜索网易云曲目<input value={searchQuery} maxLength={500} onChange={(event) => setSearchQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void searchNetease(); } }} /></label><button type="button" disabled={!searchQuery.trim() || Boolean(neteaseBusy)} onClick={() => void searchNetease()}>{neteaseBusy === "search" ? "搜索中…" : "搜索"}</button></div></>}
       {(remoteSelected || searchResults.length > 0) && <div className="music-external-results"><strong>{remoteSelected ? remoteSelected.name : "搜索结果"}</strong>{(remoteSelected?.items || searchResults).map((item, index) => <div key={item.id || item.providerTrackId || index}><span><b>{item.title}</b><small>{item.artist || "未知艺术家"}</small></span><button type="button" onClick={() => void openExternal(item)}>在网易云播放</button></div>)}<p>普通歌曲、VIP 歌曲和版权可用性均由网易云判断。</p></div>}
-    </section>
+    </details>
     <div className="music-import-grid">
       <label>歌单名称<input value={name} maxLength={180} onChange={(event) => setName(event.target.value)} /></label>
       <label>格式<select value={format} onChange={(event) => setFormat(event.target.value)}><option value="auto">自动识别</option><option value="json">JSON</option><option value="m3u">M3U / M3U8</option><option value="txt">TXT</option></select></label>
@@ -271,7 +287,7 @@ export default function MusicSettings({ providerStatus = null, onOpenMcpDeviceCe
     <button type="button" className="together-primary" disabled={!canImport} onClick={() => void importPlaylist()}>{busy ? "正在导入…" : neteaseShare ? `导入网易云${neteaseShare.resourceType === "song" ? "单曲" : "歌单"}` : "导入歌单"}</button>
     {localAudio && <section className="music-local-audio" aria-label="本机音频播放器"><strong>{localAudio.name}</strong><audio src={localAudio.url} controls playsInline preload="metadata" /><p>仅本机播放，不能投屏/跨设备同步；文件不会上传、发送后端或交给 AI。</p></section>}
     {error && <p className="music-feedback is-error" role="alert">{error}</p>}{message && <p className="music-feedback" role="status">{message}</p>}
-    <div className="music-playlist-list"><h4>已保存歌单</h4>{playlists.length ? playlists.map((playlist) => <article key={playlist.id}><button type="button" className="music-playlist-summary" aria-expanded={selected?.id === playlist.id} onClick={async () => setSelected(selected?.id === playlist.id ? null : await getMusicPlaylist(playlist.id))}><strong>{playlist.name}</strong><span>{playlist.itemCount} 首 · 来源：{playlist.provider}</span></button><button type="button" className="danger" disabled={busy} onClick={() => void removePlaylist(playlist.id)}>删除</button></article>) : <p>还没有导入歌单。</p>}</div>
-    {selected && <section className="music-playlist-detail" aria-label="歌单详情"><h4>{selected.name}</h4><p>来源：{selected.provider} · {selected.itemCount} 首</p>{selected.providerPlaylistId && <button type="button" onClick={() => void openExternal({}, "playlist", selected.providerPlaylistId)}>在网易云打开歌单</button>}{selected.items.length ? selected.items.map((item, index) => { const playback = resolveMusicPlayback(item); return <div key={item.id || index}><span>{index + 1}</span><span><strong>{item.title}</strong><small>{item.artist || "未知艺术家"} · 播放模式：{playback.mode}</small></span>{playback.mode === MUSIC_PLAYBACK_MODES.external ? <button type="button" onClick={() => void openExternal(item)}>在网易云打开</button> : <audio src={playback.url} controls preload="none" aria-label={`播放 ${item.title}`} />}</div>; }) : <p>此歌单已保存链接元数据，尚无曲目；可在网易云打开，或连接 MCP 后重新导入补全。</p>}</section>}
+    {!compact && <div className="music-playlist-list"><h4>已保存歌单</h4>{playlists.length ? playlists.map((playlist) => <article key={playlist.id}><button type="button" className="music-playlist-summary" aria-expanded={selected?.id === playlist.id} onClick={async () => setSelected(selected?.id === playlist.id ? null : await getMusicPlaylist(playlist.id))}><strong>{playlist.name}</strong><span>{playlist.itemCount} 首 · 来源：{playlist.provider}</span></button><button type="button" className="danger" disabled={busy} onClick={() => void removePlaylist(playlist.id)}>删除</button></article>) : <p>还没有导入歌单。</p>}</div>}
+    {!compact && selected && <section className="music-playlist-detail" aria-label="歌单详情"><h4>{selected.name}</h4><p>来源：{selected.provider} · {selected.itemCount} 首</p>{selected.providerPlaylistId && <button type="button" onClick={() => void openExternal({}, "playlist", selected.providerPlaylistId)}>在网易云打开歌单</button>}{selected.items.length ? selected.items.map((item, index) => { const playback = resolveMusicPlayback(item); return <div key={item.id || index}><span>{index + 1}</span><span><strong>{item.title}</strong><small>{item.artist || "未知艺术家"} · 播放模式：{playback.mode}</small></span>{playback.mode === MUSIC_PLAYBACK_MODES.external ? <button type="button" onClick={() => void openExternal(item)}>在网易云打开</button> : <audio src={playback.url} controls preload="none" aria-label={`播放 ${item.title}`} />}</div>; }) : <p>此歌单已保存链接元数据，尚无曲目；可在网易云打开，或连接 MCP 后重新导入补全。</p>}</section>}
   </section>;
 }
