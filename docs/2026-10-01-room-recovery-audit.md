@@ -1,6 +1,6 @@
 # 放映厅操作、消息恢复与权限回归记录
 
-本轮前端2.10.37 / Android85，后端0.29.14；开始时前后端main工作树干净，基线分别为08b9f35与bab4388。本轮延续软件全功能优化目标，优先补齐上一轮放映厅的实际读取、消息与状态恢复链路。发布授权沿用用户“做完全套……需要推送就推送”。
+本轮前端2.10.37 / Android85，后端0.29.15；开始时前后端main工作树干净，基线分别为08b9f35与bab4388。本轮延续软件全功能优化目标，优先补齐上一轮放映厅的实际读取、消息与状态恢复链路。发布授权沿用用户“做完全套……需要推送就推送”。
 
 ## 根因、变更和使用行为
 
@@ -26,7 +26,7 @@
 
 路由使用原admin数据库；service_role能绕过RLS，因此应用层的成员检查必要，不能只把登录当作房间权限。依据：[Supabase RLS文档](https://supabase.com/docs/guides/database/postgres/row-level-security)。已查看官方changelog，没有升级依赖或更改SQL架构。
 
-冻结文件ai-service、persistent-memory-filter、provider-output-guard、chat-stream-contract、settings-store、chat-request、prompt-security及前端chat-errors/chat-idempotency保持基线原文；api.js/server.js本轮也未改。提示词顺序继续沿用现有agents.md最高个性化块、记忆与知识块、原位置的格式/运行时块及独立历史/动态/工具上下文。没有修改模板、排序、成人内容处理或供应商拒答识别。具体SHA和规范化对照存入本轮inventory.json；登记文件的旧哈希不被当作本轮基线。
+冻结文件ai-service、persistent-memory-filter、provider-output-guard、chat-stream-contract、settings-store、chat-request、prompt-security及前端chat-errors/chat-idempotency保持基线原文；api.js本轮未改；server.js仅把邀请摘要路由移到全局登录校验前，其他API认证仍保留。提示词顺序继续沿用现有agents.md最高个性化块、记忆与知识块、原位置的格式/运行时块及独立历史/动态/工具上下文。没有修改模板、排序、成人内容处理或供应商拒答识别。具体SHA和规范化对照存入本轮inventory.json；登记文件的旧哈希不被当作本轮基线。
 
 ## 验证命令与证据
 
@@ -34,7 +34,7 @@
 | --- | --- |
 | 前端npm test | 退出0，含原生命周期及扩展的连点、回显、历史排序、失败退出、草稿保留行为 |
 | 后端npm test | 退出0，新co-watch-room-access进入test:co-watch可达链路 |
-| node --test test/co-watch-room-access.test.js | 3组通过；实际Express/HTTP与虚构查询数据，覆盖正常成员读写、异账号/异伴侣/已离开拒绝读取、拒绝AI写入、结束房间410、真实HTTP离开关闭SSE、暂停进度和revision约束 |
+| node --test test/co-watch-room-access.test.js | 4组通过；实际Express/HTTP与虚构查询数据，覆盖正常成员读写、异账号/异伴侣/已离开拒绝读取、拒绝AI写入、结束房间410、真实HTTP离开关闭SSE、暂停进度和revision约束 |
 | node test/dlna-player-lifecycle.test.js | 最终退出0；真实React组件，虚构原生桥与接口；重连历史、去重、真实成员姓名、失败回执、旧结果隔离及原有媒体生命周期通过 |
 | node --test test/watch-room.test.js | 包含原4组及新增网络异常脱敏/重连，完整测试链路通过 |
 | 前端npm run lint | 最终退出0；首次发现未使用catch参数并移除，不改变流程 |
@@ -53,6 +53,8 @@
 
 APK签名校验退出0：home.dengta.app，2.10.37 / 85，最低Android12/API31，稳定debug签名。89个assets/public文件与最终dist一致，公开认证配置和生产后端匹配，秘密模式检查未命中。APK为36,264,940字节，SHA256：1ed23f5402f172a46eb59f5f29bbd76a9491e9ed4500e680caeda8af0eac5f44。
 
+生产路由烟测首次退出1：三个成员接口匿名401符合预期，公开邀请预览也401不符合预期。定位到server.js注册顺序，修正后新增实际服务器prelude顺序的HTTP回归，覆盖公开摘要200、无效码404及成员接口仍401。最终生产回执存入production-route-smoke.json。
+
 ## 精确变更定位
 
 以下为最终工作树的新行号，配合上方逐项目的查看；新增文件从第1行开始。
@@ -63,10 +65,11 @@ APK签名校验退出0：home.dengta.app，2.10.37 / 85，最低Android12/API31�
 - `frontend/src/watch-room.js:99,151,189`
 - `frontend/test/android-release.test.js:75`
 - `frontend/test/dlna-player-lifecycle.test.js:26,30,61,63,84,224,248`
-- `frontend/test/watch-room.test.js:30,32,36`
 - `frontend/test/watch-room-recovery-preview.html:1`
 - `frontend/test/watch-room-recovery-preview.jsx:1`
+- `frontend/test/watch-room.test.js:30,32,36`
 - `backend/routes/co-watch-rooms.js:10,80,95,133,193,215,253,266`
+- `backend/server.js:586,780`
 - `backend/services/co-watch-rooms.js:13,21,24,31,73,75,90,136,295,386,401,403,406,411,428,459,466,502,580,591,599`
 - `backend/services/memory-import-feedback.js:16`
 - `backend/test/co-watch-room-access.test.js:1`
