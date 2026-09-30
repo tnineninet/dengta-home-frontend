@@ -23,10 +23,11 @@ stub('window', events);
 stub('document', doc);
 stub('localStorage', { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) });
 stub('IS_REACT_ACT_ENVIRONMENT', true);
-let calls, listeners, inviteRequests, launches, activeRead, replyRead, frameRead, roomRead, roomEvents, listenerDelay, playbackResult, playbackRead, captureResult;
+let calls, listeners, inviteRequests, launches, activeRead, replyRead, frameRead, roomRead, roomEvents, listenerDelay, playbackResult, playbackRead, captureResult, roomJoinRead, roomLeaveRead, roomUserRead, roomHistoryRead, messageSequence;
 function reset() {
   calls = []; listeners = []; inviteRequests = []; launches = [];
   captureResult = null;
+  roomJoinRead = null; roomLeaveRead = null; roomUserRead = null; roomHistoryRead = null; messageSequence = 0;
   activeRead = null; replyRead = null; frameRead = null; roomRead = null; roomEvents = null; listenerDelay = false; playbackResult = null; playbackRead = null; doc.visibilityState = 'visible';
   storage.clear();
 }
@@ -57,11 +58,12 @@ stub('__castFixture', {
   createCoWatchSession(input) { calls.push(['createSession', input]); return Promise.resolve({ id: 'session-fixture' }); },
   sendCoWatchReply(...args) { calls.push(['reply', ...args]); return replyRead?.promise || Promise.resolve({ reaction: '真实接口模拟回应' }); },
   createWatchRoom() { return Promise.resolve({ id: 'room-fixture', joinCode: 'ROOMAA', mediaUrl: 'https://example.test/video' }); },
-  joinWatchRoom(code) { calls.push(['join', code]); return Promise.resolve({ id: code, joinCode: code, mediaUrl: 'https://example.test/video' }); },
+  joinWatchRoom(code) { calls.push(['join', code]); return roomJoinRead?.promise || Promise.resolve({ id: code, joinCode: code, mediaUrl: 'https://example.test/video' }); },
   readWatchRoom(id) { calls.push(['readRoom', id]); return roomRead?.promise || Promise.resolve({ participants: [] }); },
-  sendRoomMessage(...args) { calls.push(['roomUser', ...args]); return Promise.resolve(); },
-  sendRoomAiMessage(...args) { calls.push(['roomAi', ...args]); return Promise.resolve(); },
-  leaveWatchRoom(id) { calls.push(['leave', id]); return Promise.resolve(); },
+  readRoomMessages(id) { calls.push(['roomHistory', id]); return roomHistoryRead?.promise || Promise.resolve([]); },
+  sendRoomMessage(...args) { calls.push(['roomUser', ...args]); if (roomUserRead) return roomUserRead.promise; const saved = { id: ++messageSequence, senderType: 'user', content: args[1], senderName: '测试成员' }; roomEvents?.onMessage(saved); return Promise.resolve(saved); },
+  sendRoomAiMessage(...args) { calls.push(['roomAi', ...args]); const saved = { id: ++messageSequence, senderType: 'ai', content: args[1], senderName: '测试伴侣' }; roomEvents?.onMessage(saved); return Promise.resolve(saved); },
+  leaveWatchRoom(id) { calls.push(['leave', id]); return roomLeaveRead?.promise || Promise.resolve(); },
   subscribeRoomEvents(id, handlers) { roomEvents = handlers; calls.push(['subscribe', id]); return () => calls.push(['unsubscribe', id]); },
 });
 const vite = await createServer({ root: fileURLToPath(new URL('..', import.meta.url)), appType: 'custom', logLevel: 'silent', server: { middlewareMode: true }, plugins: [{
@@ -79,7 +81,7 @@ const vite = await createServer({ root: fileURLToPath(new URL('..', import.meta.
     const names = {
       api: ['apiFetch', 'apiRequest'],
       'co-watch': ['readActiveCoWatchSession', 'createCoWatchSession', 'sendCoWatchReply'],
-      room: ['createWatchRoom', 'joinWatchRoom', 'readWatchRoom', 'sendRoomMessage', 'sendRoomAiMessage', 'subscribeRoomEvents', 'leaveWatchRoom'],
+      room: ['createWatchRoom', 'joinWatchRoom', 'readWatchRoom', 'readRoomMessages', 'sendRoomMessage', 'sendRoomAiMessage', 'subscribeRoomEvents', 'leaveWatchRoom'],
     }[id.slice(prefix.length)];
     if (id === prefix + 'native') return 'export const DlnaReceiver=globalThis.__castFixture.plugin;';
     return names.map(name => `export const ${name}=(...args)=>globalThis.__castFixture.${name}(...args);`).join('\n');
@@ -219,7 +221,7 @@ try {
   reset(); replyRead = deferred();
   await mount(Player, { info: { uri: 'https://example.test/a' } });
   await act(async () => input('输入消息…').props.onChange({ target: { value: '网页问题' } }));
-  await act(async () => button('发送').props.onClick());
+  await act(async () => { void button('发送').props.onClick(); });
   assert.equal(count('reply'), 1, 'web chat reaches the real co-watch reply API without an unavailable native method');
   await unmount();
   await act(async () => replyRead.resolve({ reaction: '迟到聊天' }));
@@ -242,6 +244,53 @@ try {
   assert.equal(count('roomAi'), 0, 'late AI reply is not sent to a departed room');
   assert.ok(!text().includes('旧房间事件'));
   assert.ok(button('加入'), 'late room refresh does not resurrect a departed room');
+  await unmount();
+
+  reset(); roomJoinRead = deferred();
+  await mount(Player);
+  await act(async () => input('输入邀请码加入…').props.onChange({ target: { value: 'ROOMAA' } }));
+  const join = button('加入');
+  await act(async () => { void join.props.onClick(); void join.props.onClick(); });
+  assert.equal(count('join'), 1, 'same-tick joins share a synchronous action lock');
+  await act(async () => roomJoinRead.resolve({ id: 'ROOMAA', joinCode: 'ROOMAA', mediaUrl: 'https://example.test/a' }));
+  await act(async () => roomEvents.onError(new Error('fixture HTTP 403')));
+  assert.ok(text().includes('fixture HTTP 403'), 'room errors remain visible after joining in player view');
+  roomHistoryRead = deferred();
+  await act(async () => { roomEvents.onConnected(); roomEvents.onMessage({ id: 31, senderName: '其他成员', senderType: 'user', content: '实时新消息', createdAt: '2026-09-30T12:01:00Z' }); });
+  await act(async () => roomHistoryRead.resolve([{ id: 30, senderName: '其他成员', senderType: 'user', content: '较早历史', createdAt: '2026-09-30T12:00:00Z' }, { id: 31, senderName: '其他成员', senderType: 'user', content: '实时新消息', createdAt: '2026-09-30T12:01:00Z' }]));
+  assert.equal(tree.root.findAll(node => node.props.className === 'cast-message-bubble' && node.children[0] === '实时新消息').length, 1);
+  assert.ok(text().indexOf('较早历史') < text().indexOf('实时新消息'), 'history arriving after live frames is merged chronologically');
+  assert.ok(text().includes('其他成员'), 'room sender names are not relabeled as the local account');
+  roomLeaveRead = deferred();
+  const leave = button('退出');
+  await act(async () => { void leave.props.onClick(); void leave.props.onClick(); });
+  assert.equal(count('leave'), 1);
+  await act(async () => roomLeaveRead.reject(new Error('fixture leave unavailable')));
+  assert.ok(button('退出'), 'failed leave retains membership and a retry button');
+  assert.ok(text().includes('fixture leave unavailable'));
+  roomLeaveRead = null;
+  await act(async () => button('退出').props.onClick());
+  assert.ok(button('加入')); await unmount();
+
+  reset(); replyRead = deferred();
+  await mount(Player);
+  await act(async () => input('输入邀请码加入…').props.onChange({ target: { value: 'ROOMAA' } }));
+  await act(async () => button('加入').props.onClick());
+  await act(async () => input('输入消息…').props.onChange({ target: { value: '一条房间消息' } }));
+  const send = button('发送');
+  await act(async () => { void send.props.onClick(); void send.props.onClick(); });
+  assert.equal(count('roomUser'), 1); assert.equal(count('reply'), 1);
+  assert.equal(tree.root.findAll(node => node.props.className === 'cast-message-bubble' && node.children[0] === '一条房间消息').length, 1, 'SSE and HTTP acknowledgement render one message');
+  await act(async () => input('输入消息…').props.onChange({ target: { value: '等待时新输入' } }));
+  await act(async () => replyRead.resolve({ reaction: '房间AI回应' }));
+  assert.equal(tree.root.findAll(node => node.props.className === 'cast-message-bubble' && node.children[0] === '房间AI回应').length, 1);
+  assert.equal(input('输入消息…').props.value, '等待时新输入');
+  roomUserRead = deferred();
+  await act(async () => { void button('发送').props.onClick(); });
+  await act(async () => roomUserRead.reject(new Error('fixture message not saved')));
+  assert.equal(input('输入消息…').props.value, '等待时新输入', 'failed room save preserves draft');
+  assert.equal(count('reply'), 1, 'failed room save does not trigger another AI generation');
+  assert.ok(text().includes('fixture message not saved'));
   await unmount();
   console.log('DLNA lifecycle passed: late listener cleanup, StrictMode/retry, real progress, truthful controls, invitation race, current props, shared session, frame backpressure, web chat and departed-room isolation.');
 } finally {

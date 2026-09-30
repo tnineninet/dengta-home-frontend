@@ -96,6 +96,7 @@ export async function endWatchRoom(roomId) {
  *   onParticipantJoin(info) — 有人加入
  *   onParticipantLeave(info)- 有人离开
  *   onRoomEnded({roomId})   — 放映厅结束
+ *   onConnected()          — 已建立事件流，可重新读取状态与近期消息
  *   onError(error)          — 连接出错
  *   onDisconnect()          — 连接断开、进入重连前触发（主动 abort 不触发）
  */
@@ -147,6 +148,7 @@ export function subscribeRoomEvents(roomId, handlers = {}) {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       try {
+      handlers.onConnected?.();
       while (true) {
         const { done, value } = await reader.read();
         if (done || stopped || controller.signal.aborted) break;
@@ -184,9 +186,11 @@ export function subscribeRoomEvents(roomId, handlers = {}) {
       }
       // 流正常结束（服务端关闭/重启）→ 自动重连
       scheduleReconnect();
-    } catch (err) {
-      if (err.name === "AbortError") return; // 用户主动 stop，不再重连
-      handlers.onError?.(err);
+    } catch {
+      if (stopped || controller.signal.aborted) return;
+      const error = new Error("放映厅实时连接中断，请检查网络；将自动重连。");
+      error.code = "room_stream_network_error";
+      handlers.onError?.(error);
       scheduleReconnect();
     }
   }

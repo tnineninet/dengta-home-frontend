@@ -27,11 +27,23 @@ test('room operations send JSON bodies with the selected code protected from ove
 });
 test('room stream uses the configured authenticated API and handles CRLF fragmented events', async () => {
   const events = [], frames = ['event:message\r\ndata:{"content":"syn', 'thetic"}\r\n\r\nevent:room_ended\r\ndata:{"roomId":"fixture"}\r\n\r\n'];
+  let connected = 0;
   const { api, fetches, timers } = fixture(() => new Response(new ReadableStream({ start(c) { for (const frame of frames) c.enqueue(new TextEncoder().encode(frame)); c.close(); } }), { headers: { 'Content-Type': 'text/event-stream' } }));
-  const stop = api.subscribeRoomEvents('fixture', { onMessage: value => events.push(value), onRoomEnded: value => events.push(value) });
+  const stop = api.subscribeRoomEvents('fixture', { onConnected: () => connected++, onMessage: value => events.push(value), onRoomEnded: value => events.push(value) });
   await settle(); stop();
   assert.equal(fetches.length, 1); assert.equal(fetches[0].options.retry, false);
   assert.equal(events[0].content, 'synthetic'); assert.equal(events[1].roomId, 'fixture'); assert.equal(timers.length, 0);
+  assert.equal(connected, 1);
+});
+
+test('network failures expose safe causes and allow reconnection without treating a transport abort as user cancellation', async () => {
+  const errors = [];
+  const f = fixture(() => { throw Object.assign(new Error('private-endpoint-token-fixture'), { name: 'AbortError' }); });
+  const stop = f.api.subscribeRoomEvents('fixture', { onError: error => errors.push(error) });
+  await settle();
+  assert.equal(errors[0].code, 'room_stream_network_error');
+  assert.doesNotMatch(errors[0].message, /private-endpoint-token-fixture/);
+  assert.equal(f.timers.length, 1); stop();
 });
 test('permanent HTTP failure does not reconnect; invalid protocol is reported precisely', async () => {
   for (const status of [401, 403, 404, 410, 200]) {

@@ -792,6 +792,48 @@
   color: #FF6B6B;
   text-align: center;
   margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+.cast-nav-back,
+.cast-control-speed,
+.cast-control-fullscreen,
+.cast-chat-danmaku-toggle,
+.cast-player-header-more {
+  border: 0;
+  font-family: inherit;
+  touch-action: manipulation;
+}
+.cast-nav-back,
+.cast-control-speed,
+.cast-control-fullscreen { background: transparent; }
+.cast-root button:focus-visible {
+  outline: 2px solid var(--cast-text-accent);
+  outline-offset: 3px;
+}
+.cast-sync-label.is-error { color: #ff9890; }
+.cast-sync-label.is-error::before { color: #ff9890; }
+.cast-sync-label.is-pending::before { color: var(--cast-text-accent); }
+.cast-retry-button {
+  display: block;
+  margin: 0 auto 12px;
+  padding: 9px 16px;
+  border: 1px solid var(--cast-border-strong);
+  border-radius: var(--cast-radius-md);
+  background: var(--cast-control-bg);
+  color: var(--cast-text-accent);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.cast-retry-button:hover { background: var(--cast-control-hover); }
+.cast-player-body > .cast-room-error {
+  margin: 8px 16px 12px;
+  padding: 8px 12px;
+  line-height: 1.6;
+  border-radius: var(--cast-radius-md);
+  background: rgba(255,107,107,0.06);
 }
 
 /* ─── 邀请弹窗 ─── */
