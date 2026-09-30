@@ -47,6 +47,8 @@ import {
 import CompanionStatus from "./CompanionStatus";
 import CompanionGenderFields from "./CompanionGenderFields";
 import ChatContextSettings from "./ChatContextSettings.jsx";
+import ChatErrorLog from "./ChatErrorLog.jsx";
+import { requestDistill, distillDiagnostic } from "./style-distill.js";
 import { companionPronoun } from "./companion-gender";
 import AmbientContextBadge from "./AmbientContextBadge";
 import ChatMessage from "./ChatMessage";
@@ -5627,6 +5629,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     edited: "",
     modalOpen: false,
     fileInfo: null,
+    model: "",
+    diagnostic: null,
   });
 
   async function runDistill() {
@@ -5636,19 +5640,21 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       ...previous,
       busy: true,
       error: "",
+      diagnostic: null,
       result: null,
       modalOpen: false,
     }));
     try {
-      const data = await apiRequest("/api/v2/style-distill", {
+      const data = await requestDistill("/api/v2/style-distill", {
         method: "POST",
-        timeoutMs: 180_000,
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           source_text: source,
           name: distillState.name.trim(),
           kind: "聊天记录",
+          model: distillState.model,
         }),
-      });
+      }, apiFetch);
       const distilled = data?.result?.distilled || "";
       if (!distilled) throw new Error("提纯结果为空，请换一段更清晰的聊天记录。");
       setDistillState((previous) => ({
@@ -5663,6 +5669,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         ...previous,
         busy: false,
         error: error?.message || "提纯失败，请稍后再试。",
+        diagnostic: distillDiagnostic(error),
       }));
     }
   }
@@ -5672,7 +5679,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     if (!text) return;
     updateUnifiedPrompt(text);
     setDistillState((previous) => ({ ...previous, modalOpen: false }));
-    setNotice("已填入「个性化指令」，记得点保存。");
+    setNotice("已应用到「个性化指令」，正在自动保存。");
   }
   async function parseDistillFile(event) {
     const file = event.target.files?.[0];
@@ -5682,16 +5689,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       setDistillState((previous) => ({ ...previous, error: "文件不能超过 20MB，请换一个。" }));
       return;
     }
-    setDistillState((previous) => ({ ...previous, busy: true, error: "", fileBusy: true }));
+    setDistillState((previous) => ({ ...previous, busy: true, error: "", diagnostic: null, fileBusy: true }));
     try {
       const formData = new FormData();
       formData.append("file", file, file.name);
-      const data = await apiFetch("/api/v2/style-distill/parse-file", {
+      const data = await requestDistill("/api/v2/style-distill/parse-file", {
         method: "POST",
-        timeoutMs: 60_000,
         body: formData,
-        retry: false,
-      });
+      }, apiFetch, 60_000);
       const parsed = data?.parsed;
       if (!parsed?.text) throw new Error("文件里没有解析出可用文字。");
       setDistillState((previous) => ({
@@ -5700,15 +5705,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         fileBusy: false,
         error: "",
         source: parsed.text,
-        fileInfo: { filename: parsed.filename, format: parsed.format, characters: parsed.characters },
+        fileInfo: { filename: parsed.filename, format: parsed.format, characters: parsed.text.length, truncated: parsed.truncated },
       }));
-      setNotice(`已解析「${parsed.filename}」（${parsed.format}，${parsed.characters} 字），可直接开始提纯。`);
+      setNotice(`已解析「${parsed.filename}」（${parsed.format}，本次导入 ${parsed.text.length} 字）。${parsed.truncated ? "文件较长，只导入前 6 万字，请分批处理剩余内容。" : "可直接开始提纯。"}`);
     } catch (caught) {
       setDistillState((previous) => ({
         ...previous,
         busy: false,
         fileBusy: false,
         error: caught?.message || "文件解析失败，请换一个文件。",
+        diagnostic: distillDiagnostic(caught),
       }));
     }
   }
@@ -8295,7 +8301,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   }
                   placeholder="目标角色名字(可选)，如：小灯"
                   aria-label="目标角色名字"
+                  disabled={distillState.busy}
                 />
+                <label>
+                  提纯使用的模型
+                  <select aria-label="提纯使用的模型" value={distillState.model}
+                    disabled={distillState.busy}
+                    onChange={(event) => setDistillState((previous) => ({ ...previous, model: event.target.value }))}>
+                    <option value="">当前账号默认模型（{settings.model || "由服务器解析"}）</option>
+                    {availableModels.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
+                  </select>
+                </label>
                 <label className="style-distill-file-row">
                   <input
                     type="file"
@@ -8308,6 +8324,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 {distillState.fileInfo ? (
                   <p className="style-distill-file-info" role="status">
                     已导入：{distillState.fileInfo.filename}（{distillState.fileInfo.format} · {distillState.fileInfo.characters} 字），可直接提纯或继续编辑。
+                    {distillState.fileInfo.truncated ? "文件较长，本次只导入前 6 万字，请分批处理剩余材料。" : ""}
                   </p>
                 ) : null}
                 <textarea
@@ -8320,6 +8337,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   }
                   placeholder="粘贴聊天记录，或先导入文件……（至少 40 字，最多 6 万字）"
                   rows="6"
+                  disabled={distillState.busy}
                 />
                 <div className="device-activity-actions">
                   <button
@@ -8335,9 +8353,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   </button>
                 </div>
                 {distillState.error ? (
-                  <p className="notification-feature-feedback error" role="alert">
-                    {distillState.error}
-                  </p>
+                  <div className="notification-feature-feedback error">
+                    <p role="alert">{distillState.error}</p>
+                    <p>材料仍然保留。检查模型与接口设置后，可再次点「开始提纯」。</p>
+                    {distillState.diagnostic ? <ChatErrorLog key={distillState.diagnostic.error_log_id || distillState.error}
+                      logId={distillState.diagnostic.error_log_id} diagnostic={distillState.diagnostic} /> : null}
+                  </div>
                 ) : null}
               </div>
 
@@ -9405,6 +9426,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             className="achievement-popup-backdrop distill-modal-backdrop"
             role="dialog"
             aria-modal="true"
+            aria-label="风格提纯结果"
             onClick={() => setDistillState((previous) => ({ ...previous, modalOpen: false }))}
           >
             <div className="distill-modal-card" onClick={(event) => event.stopPropagation()}>
@@ -9420,6 +9442,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               </header>
               <p className="distill-modal-hint">
                 这是蒸馏出的「个性化指令」文档，可直接修改。满意后点「应用到个性化指令」一键填入设置。
+                {distillState.result?.model ? ` 本次模型：${distillState.result.model}。` : ""}
               </p>
               <textarea
                 className="distill-modal-editor"
@@ -9437,13 +9460,24 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 <button
                   type="button"
                   className="is-secondary"
-                  onClick={() => {
-                    void navigator.clipboard?.writeText(distillState.edited).catch(() => {});
-                    setNotice("已复制到剪贴板。");
+                  onClick={async () => {
+                    try {
+                      if (!navigator.clipboard?.writeText) throw new Error();
+                      await navigator.clipboard.writeText(distillState.edited);
+                      setNotice("已复制到剪贴板。");
+                    } catch { setNotice("复制失败，请手动选择文字复制，或下载文档。"); }
                   }}
                 >
                   复制全文
                 </button>
+                <button type="button" className="is-secondary" onClick={() => {
+                  const url = URL.createObjectURL(new Blob([distillState.edited], { type: "text/markdown;charset=utf-8" }));
+                  const link = document.createElement("a");
+                  link.href = url;
+                  link.download = "灯塔-风格提纯.md";
+                  link.click();
+                  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+                }}>下载 Markdown</button>
                 <button type="button" onClick={applyDistilledToPrompt}>
                   应用到个性化指令
                 </button>
