@@ -1,7 +1,7 @@
 {
   "name": "dengta-home-react",
   "private": true,
-  "version": "2.10.37",
+  "version": "2.10.38",
   "type": "module",
   "scripts": {
     "test:workspace": "node test/workspace-cache.test.js && node test/workspace-manager.test.js",
@@ -44,7 +44,7 @@
     "test:ambient-context": "node test/ambient-context.test.js",
     "test:device-activity": "node test/device-activity.test.js",
     "test:screen-glance": "node test/screen-glance.test.js",
-    "test:co-watch-experience": "node test/dlna-player-lifecycle.test.js && node test/co-watch-experience.test.js && node test/co-watch-reply-worker.test.js && node test/direct-media.test.js && node --test --experimental-test-coverage --test-coverage-include=src/cast-receiver-api.js --test-coverage-include=src/receiver-playback.js test/cast-receiver.test.js",
+    "test:co-watch-experience": "node --test test/cast-receipt.test.js && node test/dlna-player-lifecycle.test.js && node test/co-watch-experience.test.js && node test/co-watch-reply-worker.test.js && node test/direct-media.test.js && node --test --experimental-test-coverage --test-coverage-include=src/cast-receiver-api.js --test-coverage-include=src/receiver-playback.js test/cast-receiver.test.js",
     "test:chat-stickers": "node test/chat-stickers.test.js",
     "test:chat-skin": "node test/chat-skin.test.js",
     "test:companion-creative": "node test/companion-creative.test.js",

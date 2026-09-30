@@ -46,6 +46,7 @@ public final class CastPlaybackService extends Service {
     private static final String ACTION_STOP = "home.dengta.app.action.STOP";
     private static final String EXTRA_URI = "extra_uri";
     private static final String EXTRA_TITLE = "extra_title";
+    private static final String EXTRA_EXPECTED_URI = "extra_expected_uri";
     private static final String CHANNEL_ID = "cast_playback";
     private static final int NOTIFICATION_ID = 42;
 
@@ -114,7 +115,12 @@ public final class CastPlaybackService extends Service {
 
     /** 前端插件调用：停止播放并让服务退出。 */
     public static void stop(Context context) {
-        Intent intent = new Intent(context, CastPlaybackService.class).setAction(ACTION_STOP);
+        stop(context, "");
+    }
+
+    public static void stop(Context context, String expectedUri) {
+        Intent intent = new Intent(context, CastPlaybackService.class).setAction(ACTION_STOP)
+            .putExtra(EXTRA_EXPECTED_URI, expectedUri);
         context.startService(intent);
     }
 
@@ -136,6 +142,10 @@ public final class CastPlaybackService extends Service {
         }
         String action = intent.getAction();
         if (ACTION_STOP.equals(action)) {
+            if (!CastMediaScope.matches(intent.getStringExtra(EXTRA_EXPECTED_URI), originalUri)) {
+                if (originalUri.isEmpty()) stopSelf(startId);
+                return START_NOT_STICKY;
+            }
             stopForegroundCompat();
             if (player != null) {
                 player.stop();

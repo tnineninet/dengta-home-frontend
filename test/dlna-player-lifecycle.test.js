@@ -23,10 +23,11 @@ stub('window', events);
 stub('document', doc);
 stub('localStorage', { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) });
 stub('IS_REACT_ACT_ENVIRONMENT', true);
-let calls, listeners, inviteRequests, launches, activeRead, replyRead, frameRead, roomRead, roomEvents, listenerDelay, playbackResult, playbackRead, captureResult, roomJoinRead, roomLeaveRead, roomUserRead, roomHistoryRead, messageSequence;
+let calls, listeners, inviteRequests, launches, activeRead, replyRead, frameRead, roomRead, roomEvents, listenerDelay, playbackResult, playbackRead, captureResult, roomJoinRead, roomLeaveRead, roomUserRead, roomHistoryRead, messageSequence, stopRead;
 function reset() {
   calls = []; listeners = []; inviteRequests = []; launches = [];
   captureResult = null;
+  stopRead = null;
   roomJoinRead = null; roomLeaveRead = null; roomUserRead = null; roomHistoryRead = null; messageSequence = 0;
   activeRead = null; replyRead = null; frameRead = null; roomRead = null; roomEvents = null; listenerDelay = false; playbackResult = null; playbackRead = null; doc.visibilityState = 'visible';
   storage.clear();
@@ -47,12 +48,12 @@ stub('__castFixture', {
     showCastReply(input) { calls.push(['showReply', input]); return Promise.resolve(); },
     showCastReaction(input) { calls.push(['showReaction', input]); return Promise.resolve(); },
     showCastDanmaku(input) { calls.push(['danmaku', input]); return Promise.resolve(); },
-    stopPlayback() { calls.push(['stop']); return Promise.resolve(); },
+    stopPlayback(input) { calls.push(['stop', input]); return stopRead?.promise || Promise.resolve(); },
     sendPlaybackCommand(input) { calls.push(['control', input]); return playbackResult?.promise || Promise.reject(new Error('UNIMPLEMENTED')); },
     getPlaybackState() { calls.push(['playbackState']); return playbackRead?.promise || Promise.reject(Object.assign(new Error('fixture old bridge'), { code: 'UNIMPLEMENTED' })); },
     captureFrame() { calls.push(['capture']); return captureResult?.promise || Promise.reject(new Error('UNIMPLEMENTED')); },
   },
-  apiFetch() { calls.push(['frame']); return frameRead?.promise || Promise.resolve({ ok: true, json: async () => ({ reaction: '画面回应' }) }); },
+  apiFetch(url, options) { calls.push(['frame', url, options]); return frameRead?.promise || Promise.resolve({ ok: true, json: async () => ({ reaction: '画面回应' }) }); },
   apiRequest(url) { const request = deferred(); inviteRequests.push({ url, ...request }); return request.promise; },
   readActiveCoWatchSession() { calls.push(['readSession']); return activeRead?.promise || Promise.resolve(null); },
   createCoWatchSession(input) { calls.push(['createSession', input]); return Promise.resolve({ id: 'session-fixture' }); },
@@ -291,6 +292,59 @@ try {
   assert.equal(input('输入消息…').props.value, '等待时新输入', 'failed room save preserves draft');
   assert.equal(count('reply'), 1, 'failed room save does not trigger another AI generation');
   assert.ok(text().includes('fixture message not saved'));
+  await unmount();
+  reset(); frameRead = deferred(); replyRead = deferred(); playbackResult = deferred(); captureResult = deferred();
+  await mount(Player, { info: { uri: 'https://example.test/a' } });
+  await act(async () => launches[0].resolve());
+  await emit('castFrame', { frameBase64: 'YQ==' });
+  await emit('castChat', { text: '第一部影片的问题' });
+  await act(async () => tree.root.findAllByType('button').find(node => node.props.title === '暂停').props.onClick());
+  await act(async () => { void tree.root.findAllByType('button').find(node => node.props.title === '截帧').props.onClick(); });
+  const oldFrame = frameRead, oldReply = replyRead, oldControl = playbackResult, oldCapture = captureResult;
+  const oldSignal = calls.find(call => call[0] === 'frame')[2].signal;
+  assert.equal(calls.find(call => call[0] === 'control')[1].expectedUri, 'https://example.test/a');
+  await act(async () => tree.update(React.createElement(Player, { info: { uri: 'https://example.test/b' } })));
+  assert.equal(oldSignal.aborted, true, 'media change cancels the network frame');
+  await act(async () => launches[1].resolve());
+  frameRead = deferred();
+  await emit('castFrame', { frameBase64: 'Yg==' });
+  assert.equal(count('frame'), 2, 'new media does not wait for the abandoned frame');
+  await act(async () => {
+    oldFrame.resolve({ ok: true, json: async () => ({ reaction: '旧视频画面' }) });
+    oldReply.resolve({ reaction: '旧视频聊天' });
+    oldControl.resolve({ playWhenReady: false, speed: 2, positionMs: 99000, durationMs: 120000 });
+    oldCapture.resolve({ completed: true, saved: true });
+  });
+  await emit('castFrame', { frameBase64: 'Yw==' });
+  assert.equal(count('frame'), 2, 'old finally cannot unlock the new frame');
+  assert.equal(count('showReaction'), 0); assert.equal(count('showReply'), 0);
+  assert.ok(!text().includes('旧视频画面') && !text().includes('截帧已保存'));
+  assert.ok(tree.root.findAllByType('button').some(node => node.props.title === '暂停'), 'old control does not pause the replacement media UI');
+  await act(async () => frameRead.resolve({ ok: true, json: async () => ({ reaction: '当前视频画面' }) }));
+  assert.equal(count('showReaction'), 1);
+  await unmount();
+
+  reset(); stopRead = deferred();
+  let closes = 0;
+  await mount(Player, { info: { uri: 'https://example.test/a' }, onClose: () => { closes++; } });
+  const close = button('结束放映');
+  await act(async () => { void close.props.onClick(); void close.props.onClick(); });
+  assert.equal(count('stop'), 1, 'same-tick close invokes one native stop');
+  assert.equal(calls.find(call => call[0] === 'stop')[1].expectedUri, 'https://example.test/a');
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 3100)); });
+  assert.equal(closes, 0, 'timeout cannot masquerade as confirmed stop');
+  assert.ok(text().includes('cast_stop_timeout') && button('返回聊天'));
+  await act(async () => stopRead.resolve());
+  assert.equal(closes, 0, 'late receipt cannot unexpectedly close the page');
+  stopRead = null;
+  await act(async () => button('结束放映').props.onClick());
+  assert.equal(closes, 1, 'user can retry after timeout');
+  await unmount();
+
+  reset();
+  await mount(Player, { onClose: () => { closes++; } });
+  await act(async () => button('← 返回').props.onClick());
+  assert.equal(count('stop'), 0, 'waiting page must not stop unrelated background playback');
   await unmount();
   console.log('DLNA lifecycle passed: late listener cleanup, StrictMode/retry, real progress, truthful controls, invitation race, current props, shared session, frame backpressure, web chat and departed-room isolation.');
 } finally {

@@ -219,8 +219,19 @@ public final class DlnaReceiverPlugin extends Plugin {
     /** 停止投屏播放（前端"结束投屏"按钮）。 */
     @PluginMethod
     public void stopPlayback(PluginCall call) {
-        CastPlaybackService.stop(getContext());
-        call.resolve();
+        getBridge().executeOnMainThread(() -> {
+            CastPlaybackService service = CastPlaybackService.getActiveService();
+            if (service == null) { call.resolve(); return; }
+            if (!matchesMedia(call, service)) return;
+            CastPlaybackService.stop(getContext(), call.getString("expectedUri", ""));
+            call.resolve();
+        });
+    }
+
+    private boolean matchesMedia(PluginCall call, CastPlaybackService service) {
+        if (CastMediaScope.matches(call.getString("expectedUri", ""), service.getOriginalUri())) return true;
+        call.reject("媒体已切换，请在当前播放器重新操作。", "playback_media_changed");
+        return false;
     }
 
     /** Controls the already-running ExoPlayer; resolve only after the command is applied. */
@@ -238,6 +249,7 @@ public final class DlnaReceiverPlugin extends Plugin {
                 call.reject("播放服务尚未就绪。", "playback_not_active");
                 return;
             }
+            if (!matchesMedia(call, service)) return;
             try {
                 service.executePlaybackCommand(action, value);
                 call.resolve(playbackState(service));
@@ -262,6 +274,7 @@ public final class DlnaReceiverPlugin extends Plugin {
             call.reject("播放器尚未就绪，请先打开视频。", "playback_not_active");
             return;
         }
+        if (!matchesMedia(call, service)) return;
         String id = UUID.randomUUID().toString();
         if (!windowRequests.begin(id, (errorCode, fileName) -> {
             windowHandler.removeCallbacksAndMessages(null);
@@ -301,6 +314,7 @@ public final class DlnaReceiverPlugin extends Plugin {
                 call.reject("播放器尚未就绪。", "playback_not_active");
                 return;
             }
+            if (!matchesMedia(call, service)) return;
             try { call.resolve(playbackState(service)); }
             catch (Exception error) { call.reject("播放状态读取失败。", "playback_state_failed"); }
         });
@@ -308,6 +322,7 @@ public final class DlnaReceiverPlugin extends Plugin {
 
     private static JSObject playbackState(CastPlaybackService service) {
         JSObject result = new JSObject();
+        result.put("mediaUri", service.getOriginalUri());
         result.put("playWhenReady", service.player.getPlayWhenReady());
         result.put("isPlaying", service.player.isPlaying());
         result.put("speed", service.player.getPlaybackParameters().speed);

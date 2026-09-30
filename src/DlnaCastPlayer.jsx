@@ -1,5 +1,6 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { DlnaReceiver } from "./dlna-receiver";
+import { awaitCastReceipt } from "./cast-receipt";
 import { apiFetch } from "./api.js";
 import {
   createCoWatchSession,
@@ -29,6 +30,9 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
   const [playbackError, setPlaybackError] = useState("");
   const [captureNotice, setCaptureNotice] = useState("");
   const [capturing, setCapturing] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const closingRef = useRef(false);
+  const mediaContextRef = useRef(null);
   const captureBusyRef = useRef(false);
   const [urlInput, setUrlInput] = useState("");
   const [extracting, setExtracting] = useState(false);
@@ -143,7 +147,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
 
   /* ─── 接受/拒绝邀请 ─── */
   const handleAcceptInvite = async () => {
-    if (!inviteCode || roomBusyRef.current || roomRef.current) return;
+    if (!inviteCode || roomBusyRef.current || roomRef.current || closingRef.current) return;
     roomBusyRef.current = true;
     const lifetime = lifetimeRef.current;
     setInviteBusy(true);
@@ -184,14 +188,15 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
     if (sessionRef.current) return sessionRef.current;
     if (sessionPromiseRef.current) return sessionPromiseRef.current;
     const lifetime = lifetimeRef.current;
+    const context = mediaContextRef.current;
     const pending = (async () => {
       try {
         const existing = await readActiveCoWatchSession({ sessionMode: "screen" });
-        if (!lifetime?.active) return "";
+        if (!lifetime?.active || !context?.active) return "";
         if (existing?.id) { sessionRef.current = existing.id; return existing.id; }
         const created = await createCoWatchSession({ title, sourceApp, sessionMode: "screen", mediaDurationSeconds: durationSeconds, mediaPositionSeconds: 0 });
         if (!created?.id) throw new Error("no_session");
-        if (!lifetime.active) return "";
+        if (!lifetime.active || !context.active) return "";
         sessionRef.current = created.id;
         return created.id;
       } catch { return ""; }
@@ -223,9 +228,12 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
   };
 
   const handleCastChat = async (event) => {
+    if (closingRef.current) return false;
     const text = String(event?.text || "").trim();
     if (!text) return false;
     const lifetime = lifetimeRef.current;
+    const mediaContext = mediaContextRef.current;
+    const currentMedia = () => lifetime?.active && mediaContext?.active && !closingRef.current;
     const originRoom = roomRef.current;
     const originRoomEpoch = roomEpochRef.current;
     const positionSeconds = Math.round((Number(event?.positionMs) || 0) / 1000);
@@ -233,16 +241,16 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
     try {
       if (originRoom?.id) {
         const saved = await sendRoomMessage(originRoom.id, text, positionSeconds);
-        if (!lifetime?.active || roomRef.current?.id !== originRoom.id || roomEpochRef.current !== originRoomEpoch) return false;
+        if (!currentMedia() || roomRef.current?.id !== originRoom.id || roomEpochRef.current !== originRoomEpoch) return Boolean(saved?.id != null);
         if (saved?.id == null) throw new Error("房间未返回消息保存回执，请核对消息后再重试。");
         addMessage("user", saved.content, saved.senderName || userName, saved);
       } else addMessage("user", text, userName);
       userSaved = true;
       const session = await ensureSession();
-      if (!lifetime?.active) return;
+      if (!currentMedia()) return userSaved;
       if (!session) throw new Error("no_session");
-      const reply = await sendCoWatchReply(session, text, positionSeconds);
-      if (!lifetime.active) return;
+      const reply = await awaitCastReceipt(sendCoWatchReply(session, text, positionSeconds), { timeoutMs: 90_000, code: "cast_reply_timeout", signal: mediaContext.controller.signal });
+      if (!currentMedia()) return userSaved;
       const replyText = String(reply?.reaction || "").trim();
       if (!replyText) throw new Error("empty_reply");
       if (roomEpochRef.current !== originRoomEpoch) return false;
@@ -250,18 +258,18 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
       if (originRoom?.id && roomRef.current?.id === originRoom.id && roomEpochRef.current === originRoomEpoch) {
         try {
           const saved = await sendRoomAiMessage(originRoom.id, replyText, positionSeconds, aiName);
-          if (!lifetime.active || roomEpochRef.current !== originRoomEpoch) return false;
+          if (!currentMedia() || roomEpochRef.current !== originRoomEpoch) return userSaved;
           if (saved?.id == null) throw new Error("房间未返回消息保存回执。");
           addMessage("ai", saved.content, saved.senderName || aiName, saved);
         } catch (error) {
-          if (!lifetime.active || roomEpochRef.current !== originRoomEpoch) return false;
+          if (!currentMedia() || roomEpochRef.current !== originRoomEpoch) return userSaved;
           addMessage("ai", replyText, aiName);
           setRoomError(`回复仅在当前设备显示，房间同步未确认：${error?.message || "请检查网络并核对房间消息。"}`);
         }
       } else addMessage("ai", replyText, aiName);
       return true;
     } catch (error) {
-      if (!lifetime?.active) return;
+      if (!currentMedia()) return userSaved;
       if (roomEpochRef.current === originRoomEpoch) setPlaybackError(error?.message || "回复获取失败，请稍后再试。");
       return userSaved;
     }
@@ -270,18 +278,22 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
   /* 同一时刻只分析一帧，避免原生周期事件积压请求。 */
   const handleCastFrame = useEffectEvent(async (event) => {
     const base64 = String(event?.frameBase64 || "");
-    if (!base64 || frameBusyRef.current) return;
+    if (!base64 || frameBusyRef.current || closingRef.current) return;
     const lifetime = lifetimeRef.current;
-    frameBusyRef.current = true;
+    const mediaContext = mediaContextRef.current;
+    if (!mediaContext?.active) return;
+    const job = new AbortController();
+    frameBusyRef.current = job;
+    const current = () => lifetime?.active && mediaContext.active && !job.signal.aborted && !closingRef.current;
     setAnalysisState("loading");
     try {
       const session = await ensureSession();
-      if (!lifetime?.active) return;
+      if (!current()) return;
       if (!session) throw new Error("no_session");
       const query = new URLSearchParams({ session_id: session, mode: "screen", epoch: "cast-renderer", sequence: String(Date.now()), captured_at: new Date().toISOString() });
-      const response = await apiFetch('/api/v2/co-watch/frame?' + query.toString(), { method: "POST", timeoutMs: 90_000, headers: { "Content-Type": "image/jpeg" }, body: base64ToBytes(base64), retry: false });
+      const response = await apiFetch('/api/v2/co-watch/frame?' + query.toString(), { method: "POST", signal: job.signal, timeoutMs: 90_000, headers: { "Content-Type": "image/jpeg" }, body: base64ToBytes(base64), retry: false });
       const data = await response.json();
-      if (!lifetime.active) return;
+      if (!current()) return;
       if (!response.ok) throw new Error("frame_failed");
       const reaction = String(data?.reaction || "").trim();
       if (reaction) {
@@ -292,25 +304,27 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
       }
       setAnalysisState("complete");
     } catch {
-      if (!lifetime?.active) return;
+      if (!current()) return;
       setAnalysisState("error");
       const now = Date.now();
       if (now - lastFrameWarnRef.current > 60_000) {
         lastFrameWarnRef.current = now;
         console.warn("[DlnaCastPlayer] frame_failed");
       }
-    } finally { frameBusyRef.current = false; }
+    } finally { if (frameBusyRef.current === job) frameBusyRef.current = false; }
   });
 
   const handleSendMessage = async () => {
     const text = chatInput.trim();
-    if (!text || chatBusyRef.current) return;
-    chatBusyRef.current = true; setChatBusy(true);
+    if (!text || chatBusyRef.current || closingRef.current) return;
+    const context = mediaContextRef.current;
+    const job = {};
+    chatBusyRef.current = job; setChatBusy(true);
     setPlaybackError("");
     try {
       const success = await handleCastChat({ text, positionMs: position.positionMs });
-      if (success && lifetimeRef.current?.active) setChatInput(current => current.trim() === text ? "" : current);
-    } finally { chatBusyRef.current = false; if (lifetimeRef.current?.active) setChatBusy(false); }
+      if (success && lifetimeRef.current?.active && context?.active) setChatInput(current => current.trim() === text ? "" : current);
+    } finally { if (chatBusyRef.current === job) { chatBusyRef.current = false; if (lifetimeRef.current?.active) setChatBusy(false); } }
   };
 
   const syncRoomData = async (roomId) => {
@@ -330,7 +344,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
   };
 
   const handleCreateRoom = async () => {
-    if (roomBusyRef.current || roomRef.current) return;
+    if (roomBusyRef.current || roomRef.current || closingRef.current) return;
     roomBusyRef.current = true;
     const lifetime = lifetimeRef.current;
     setRoomBusy(true);
@@ -349,7 +363,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
 
   const handleJoinRoom = async () => {
     const code = joinCodeInput.trim().toUpperCase();
-    if (!code || roomBusyRef.current || roomRef.current) return;
+    if (!code || roomBusyRef.current || roomRef.current || closingRef.current) return;
     roomBusyRef.current = true;
     const lifetime = lifetimeRef.current;
     setRoomBusy(true); setRoomError("");
@@ -450,6 +464,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
     });
     return () => {
       lifetime.active = false;
+      frameBusyRef.current?.abort?.();
       handles.forEach(remove);
       clearTimeout(controlTimerRef.current);
       clearTimeout(scrollTimerRef.current);
@@ -457,11 +472,51 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
     };
   }, []);
 
+  const resetMediaFeedback = useEffectEvent(() => {
+    setAnalysisState("never");
+    setPosition({ positionMs: 0, durationMs: 0 });
+    setPlaybackSpeed(1);
+    setCaptureNotice("");
+    setPlaybackError("");
+    setCapturing(false);
+    setChatBusy(false);
+  });
+  useEffect(() => {
+    const context = { active: true, uri: mediaUrl, controller: new AbortController() };
+    mediaContextRef.current = context;
+    queueMicrotask(() => { if (context.active && lifetimeRef.current?.active) resetMediaFeedback(); });
+    return () => {
+      context.active = false;
+      context.controller.abort();
+      sessionRef.current = "";
+      sessionPromiseRef.current = null;
+      frameBusyRef.current?.abort?.();
+      frameBusyRef.current = false;
+      playbackCommandBusyRef.current = false;
+      captureBusyRef.current = false;
+      chatBusyRef.current = false;
+    };
+  }, [mediaUrl, room?.id]);
+
   async function handleClose() {
-    if (lifetimeRef.current) lifetimeRef.current.active = false;
-    try { await DlnaReceiver.stopPlayback(); }
-    catch { /* 关闭页面仍需完成。 */ }
-    onClose?.();
+    if (closingRef.current) return;
+    if (!mediaUrl) { onClose?.(); return; }
+    closingRef.current = true; setClosing(true);
+    const lifetime = lifetimeRef.current;
+    const context = mediaContextRef.current;
+    frameBusyRef.current?.abort?.();
+    setAnalysisState("never");
+    try {
+      await awaitCastReceipt(DlnaReceiver.stopPlayback({ expectedUri: mediaUrl }), { timeoutMs: 3000, code: "cast_stop_timeout", signal: context?.controller.signal });
+      if (!lifetime?.active || !context?.active) return;
+      lifetime.active = false;
+      onClose?.();
+    } catch (error) {
+      if (lifetime?.active && context?.active && error?.name !== "AbortError") setPlaybackError(`停止播放未确认（${error?.code === "cast_stop_timeout" ? "cast_stop_timeout" : "cast_stop_failed"}）。可重试结束，或返回聊天后在原生播放器中停止。`);
+    } finally {
+      closingRef.current = false;
+      if (lifetime?.active) setClosing(false);
+    }
   }
 
   const showControls = () => {
@@ -471,13 +526,16 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
   };
 
   const runPlaybackCommand = async (command, onSuccess) => {
-    if (playbackCommandBusyRef.current) return;
-    playbackCommandBusyRef.current = true;
+    if (playbackCommandBusyRef.current || closingRef.current) return;
+    const context = mediaContextRef.current;
+    if (!context?.active) return;
+    const job = {};
+    playbackCommandBusyRef.current = job;
     playbackRevisionRef.current += 1;
     const lifetime = lifetimeRef.current;
     try {
-      const result = await DlnaReceiver.sendPlaybackCommand(command);
-      if (lifetime?.active) {
+      const result = await awaitCastReceipt(DlnaReceiver.sendPlaybackCommand({ ...command, expectedUri: context.uri }), { timeoutMs: command.action === "fullscreen" ? 35_000 : 5000, signal: context.controller.signal });
+      if (lifetime?.active && context.active && !closingRef.current) {
         onSuccess?.(result);
         if (typeof result?.playWhenReady === "boolean") setIsPlaying(result.playWhenReady);
         if (Number.isFinite(result?.speed) && result.speed >= 0.5 && result.speed <= 2) setPlaybackSpeed(result.speed);
@@ -487,30 +545,32 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
         setPlaybackError("");
       }
     } catch (error) {
-      if (lifetime?.active) setPlaybackError(error?.code === "playback_not_active"
+      if (lifetime?.active && context.active && error?.name !== "AbortError") setPlaybackError(error?.code === "cast_command_timeout" ? "播放操作回执超时（cast_command_timeout），请核对原生播放器；未自动重发。" : error?.code === "playback_not_active"
         ? "播放器尚未就绪，请先打开视频。"
         : "播放操作未完成，请在原生播放器内操作或稍后重试。");
-    } finally { playbackCommandBusyRef.current = false; playbackRevisionRef.current += 1; }
-    if (lifetime?.active) showControls();
+    } finally { if (playbackCommandBusyRef.current === job) { playbackCommandBusyRef.current = false; playbackRevisionRef.current += 1; } }
+    if (lifetime?.active && context.active) showControls();
   };
   const handlePlayPause = () => { void runPlaybackCommand({ action: isPlaying ? "pause" : "play" }, () => setIsPlaying(!isPlaying)); };
   const handleToggleFullscreen = () => { void runPlaybackCommand({ action: "fullscreen" }); };
   const handleScreenshot = async () => {
-    if (captureBusyRef.current) return;
-    captureBusyRef.current = true;
+    if (captureBusyRef.current || closingRef.current) return;
+    const context = mediaContextRef.current;
+    if (!context?.active) return;
+    const job = {};
+    captureBusyRef.current = job;
     setCapturing(true);
     setCaptureNotice("");
     setPlaybackError("");
     const lifetime = lifetimeRef.current;
     try {
-      const result = await DlnaReceiver.captureFrame();
+      const result = await awaitCastReceipt(DlnaReceiver.captureFrame({ expectedUri: context.uri }), { timeoutMs: 35_000, code: "cast_capture_timeout", signal: context.controller.signal });
       if (result?.saved !== true || result?.completed !== true) throw new Error("capture_incomplete");
-      if (lifetime?.active) setCaptureNotice("截帧已保存到应用图片目录。");
+      if (lifetime?.active && context.active && !closingRef.current) setCaptureNotice("截帧已保存到应用图片目录。");
     } catch {
-      if (lifetime?.active) setPlaybackError("截帧未完成，请在画面就绪后重试；旧版客户端可在原生播放器内截帧。");
+      if (lifetime?.active && context.active && !closingRef.current) setPlaybackError("截帧未完成，请在画面就绪后重试；旧版客户端可在原生播放器内截帧。");
     } finally {
-      captureBusyRef.current = false;
-      if (lifetime?.active) setCapturing(false);
+      if (captureBusyRef.current === job) { captureBusyRef.current = false; if (lifetime?.active) setCapturing(false); }
     }
   };
   const handleCycleSpeed = () => {
@@ -535,7 +595,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
       busy = true;
       const revision = playbackRevisionRef.current;
       try {
-        const result = await DlnaReceiver.getPlaybackState();
+        const result = await awaitCastReceipt(DlnaReceiver.getPlaybackState({ expectedUri: mediaUrl }), { timeoutMs: 3000, code: "cast_state_timeout" });
         if (active && lifetimeRef.current?.active && revision === playbackRevisionRef.current && document.visibilityState !== "hidden") onPlaybackSnapshot(result);
       } catch (error) {
         unsupported = error?.code === "UNIMPLEMENTED" || error?.code === "UNAVAILABLE";
@@ -702,13 +762,14 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
         {/* 顶部标题 */}
         <div className="cast-player-header">
           <span className="cast-player-header-title">{title || "当前播放内容"}</span>
-          <button type="button" className="cast-player-header-more" onClick={handleClose}>结束放映</button>
+          <button type="button" className="cast-player-header-more" onClick={handleClose} disabled={closing}>{closing ? "正在结束…" : "结束放映"}</button>
         </div>
 
         {/* 同步标签 */}
         <div className={`cast-sync-label${launchFailed ? " is-error" : launching ? " is-pending" : ""}`}>{launching ? "正在打开播放器…" : launchFailed ? "播放器打开失败" : "已打开原生播放器"}</div>
         {launchFailed && <button type="button" className="cast-retry-button" onClick={() => setLaunchAttempt((value) => value + 1)}>重试打开播放器</button>}
         {playbackError && <p role="alert" className="cast-room-error">{playbackError}</p>}
+        {playbackError.includes("停止播放未确认") && <button type="button" className="cast-retry-button" onClick={() => onClose?.()}>返回聊天</button>}
         {captureNotice && <p role="status" className="cast-sync-label">{captureNotice}</p>}
 
         {/* 视频播放器 */}
