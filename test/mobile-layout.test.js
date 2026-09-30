@@ -114,6 +114,7 @@ assert.deepEqual(
     "typography.css",
     "apple-high.css",
     "room-invite.css",
+    "settings-media-polish.css",
   ],
   "layout tests must use the same stylesheet order as the application entrypoint",
 );
@@ -136,6 +137,7 @@ assert.deepEqual(
     "typography.css",
     "apple-high.css",
     "room-invite.css",
+    "settings-media-polish.css",
   ],
   "the 280px regression must use the complete application stylesheet cascade",
 );

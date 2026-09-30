@@ -1,6 +1,13 @@
 ﻿const SETTINGS_SERVICE_ERROR_MESSAGES = Object.freeze({
   AI_PROVIDER_CREDENTIAL_INVALID:
     "已保存的接口密钥无法由当前后端解密。请在对应接口卡片重新粘贴 API Key，保存修改后再检查模型目录 / The saved provider key cannot be decrypted by this backend. Re-enter the API key, save the profile, then check the model catalog.",
+  OMBRE_MCP_UPSTREAM_ERROR: "记忆服务返回 HTTP 错误。检查 HTTPS 地址和 /mcp 路径；旧 /mcp-extra 已停用。401/403 请重新检查令牌。",
+  OMBRE_MCP_TIMEOUT: "记忆服务响应超时。检查服务是否启动及网络，再点击测试连接。",
+  OMBRE_MCP_UNAVAILABLE: "无法连接记忆服务。检查公网 HTTPS 地址与服务状态，再点击测试连接。",
+  MCP_PROTOCOL_UNSUPPORTED: "记忆服务使用的 MCP 协议版本不兼容，请检查服务版本。",
+  EXTERNAL_MEMORY_READ_TOOL_MISSING: "已连上 MCP，但没有识别出记忆读取工具。检查工具清单与服务版本。",
+  private_media_preference_clear_failed: "未能清除图片的使用设置，文件尚未删除，请重试。",
+  private_media_remove_failed: "存储服务未能删除图片，请检查服务状态后重试。",
   AI_PROVIDER_CREDENTIAL_REQUIRED:
     "请先填写接口 API Key / Enter the provider API key before continuing.",
   AI_PROVIDER_MODEL_REQUIRED:

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { settingsServiceErrorDetail } from "./settings-service-errors.js";
 import { AuthenticatedImage } from "./PrivateMedia";
 import {
   archivePrivateMediaAsset,
@@ -146,10 +147,17 @@ export default function MediaSettings({
     setLocalError("");
     try {
       await action();
+      if (key.startsWith('delete:') || key.startsWith('archive:')) {
+        const id = key.slice(key.indexOf(':') + 1);
+        onCatalogChange?.({ ...normalized,
+          assets: normalized.assets.filter(asset => asset.id !== id),
+          preferences: Object.fromEntries(Object.entries(normalized.preferences).filter(([, selected]) => selected !== id)),
+        });
+      }
       const fresh = await getPrivateMediaCatalog();
       onCatalogChange?.(fresh);
     } catch (caught) {
-      setLocalError(caught?.message || "私密媒体操作失败，请稍后重试。");
+      setLocalError(settingsServiceErrorDetail(caught, "私密媒体操作失败，请稍后重试。"));
     } finally {
       setBusy("");
     }
@@ -252,13 +260,7 @@ export default function MediaSettings({
                             disabled={Boolean(busy)}
                             onClick={() => {
                               if (!window.confirm(`确认删除此${label}？删除后不可恢复。`)) return;
-                              void perform(`delete:${asset.id}`, async () => {
-                                await archivePrivateMediaAsset(asset.id, true);
-                                // 如果正好是选中项，清除偏好
-                                if (selectedId === asset.id) {
-                                  await updatePrivateMediaPreferences({ [preferenceKey(purpose)]: null });
-                                }
-                              });
+                              void perform(`delete:${asset.id}`, () => archivePrivateMediaAsset(asset.id, true));
                             }}
                           >
                             删除
@@ -274,7 +276,7 @@ export default function MediaSettings({
                       disabled={Boolean(busy) || !selectedId}
                       onClick={() => void choose(purpose, null)}
                     >
-                      {selectedId ? "回到默认天空" : "默认天空·太阳轨迹·银河"}
+                      {purpose === "chat_background" ? (selectedId ? "移除背景，恢复默认" : "默认天空·太阳轨迹·银河") : (selectedId ? "移除头像，恢复默认" : "默认头像")}
                     </button>
                     {purpose === "chat_background" && !selectedId && (
                       <small className="media-default-hint">日出日落、夜晚银河正在显示</small>

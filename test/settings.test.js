@@ -75,6 +75,10 @@ assert.equal(
   "你的详情在前端加载时不得 trim 或解析",
 );
 const personalizedPayload = createSettingsPayload(personalized);
+const deferredGender = createSettingsPayload({ ...personalized, companion_gender_available: false, ai_gender: "male", ai_pronouns: "他", ai_gender_label: "测试" });
+for (const field of ["companion_gender_available", "ai_gender", "ai_pronouns", "ai_gender_label"]) assert.equal(field in deferredGender, false);
+assert.equal(deferredGender.unified_system_prompt, exactCustomInstructions);
+assert.equal(deferredGender.user_details, exactUserDetails);
 assert.equal(personalizedPayload.user_display_name, "桃桃");
 assert.equal(
   personalizedPayload.unified_system_prompt,

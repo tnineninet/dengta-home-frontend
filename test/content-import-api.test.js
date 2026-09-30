@@ -82,10 +82,10 @@ test("list, detail and commit use exact import endpoints and decision payload", 
 test("file validation and backend failures have explicit translated errors", async () => {
   assert.throws(
     () => validateImportFile({ name: "archive.exe", size: 2 }),
-    /仅支持 JSON、TXT 或 Markdown/,
+    /此入口不支持该格式/,
   );
   assert.throws(
-    () => validateImportFile({ name: "large.md", size: CONTENT_IMPORT_MAX_BYTES + 1 }),
+    () => validateImportFile({ name: "large.json", size: CONTENT_IMPORT_MAX_BYTES + 1 }),
     /超过 100MB/,
   );
   assert.equal(translatedImportError({ code: "invalid_json" }), "JSON 内容无法解析，请检查格式是否完整。");

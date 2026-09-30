@@ -11,6 +11,7 @@ import "./sun-glass-chat.css";
 import "./typography.css";
 import "./apple-high.css";
 import "./room-invite.css";
+import "./settings-media-polish.css";
 import LoadedApp from "./LoadedApp.jsx";
 import AuthGate from "./AuthGate.jsx";
 import { authSession } from "./auth-session.js";

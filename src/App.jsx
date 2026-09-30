@@ -50,6 +50,8 @@ import ChatContextSettings from "./ChatContextSettings.jsx";
 import ChatErrorLog from "./ChatErrorLog.jsx";
 import { requestDistill, distillDiagnostic, DISTILL_ERROR_FEEDBACK } from "./style-distill.js";
 import { companionPronoun } from "./companion-gender";
+import { isTextFile } from "./large-text-file.js";
+import { readLargeTextSample } from "./large-text-reader.js";
 import AmbientContextBadge from "./AmbientContextBadge";
 import ChatMessage from "./ChatMessage";
 import ChatActivities from "./ChatActivities.jsx";
@@ -514,13 +516,16 @@ function MemoryImportCard() {
   const [historyBusy, setHistoryBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState('');
+  const [diagnostic, setDiagnostic] = useState(null);
 
   async function runImport() {
     if (!file || busy) return;
     setBusy(true);
     setError('');
     setResult(null);
+    setDiagnostic(null);
     try {
+      if (file.size > 20 * 1024 * 1024) throw new Error('旧记忆直传最大 20MB；大文本请打开设置中的「数据导入」，可分段处理至 1GB。');
       const form = new FormData();
       form.append('file', file);
       const response = await apiFetch('/api/v2/memory/import-file', {
@@ -530,12 +535,13 @@ function MemoryImportCard() {
         timeoutMs: 90000,
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw Object.assign(new Error(data?.message || '导入失败，请稍后重试。'), { status: response.status, code: data?.code });
+      if (!response.ok || data.ok !== true) {
+        throw Object.assign(new Error(data?.message || '导入未完成，请先核对记忆库再重试，避免重复保存。'), { status: response.status, code: data?.code, logId: data?.error_log_id, source: data?.error_source, upstreamStatus: data?.upstream_status });
       }
       setResult(data);
     } catch (importError) {
       setError(importError?.message || '导入失败，请稍后重试。');
+      setDiagnostic({error_code:importError.code,error_log_id:importError.logId,error_source:importError.source,upstream_status:importError.upstreamStatus});
     } finally {
       setBusy(false);
     }
@@ -546,6 +552,7 @@ function MemoryImportCard() {
     setHistoryBusy(true);
     setError('');
     setResult(null);
+    setDiagnostic(null);
     try {
       const response = await apiFetch('/api/v2/memory/import-history', {
         method: 'POST',
@@ -553,12 +560,13 @@ function MemoryImportCard() {
         timeoutMs: 300000,
       });
       const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw Object.assign(new Error(data?.message || '导入历史失败，请稍后重试。'), { status: response.status, code: data?.code });
+      if (!response.ok || data.ok !== true) {
+        throw Object.assign(new Error(data?.message || '导入历史未完成，请先检查记忆服务状态。'), { status: response.status, code: data?.code, logId: data?.error_log_id, source: data?.error_source, upstreamStatus: data?.upstream_status });
       }
       setResult(data);
     } catch (importError) {
       setError(importError?.message || '导入历史失败，请稍后重试。');
+      setDiagnostic({error_code:importError.code,error_log_id:importError.logId,error_source:importError.source,upstream_status:importError.upstreamStatus});
     } finally {
       setHistoryBusy(false);
     }
@@ -571,6 +579,7 @@ function MemoryImportCard() {
         把你以前和 AI 聊过的内容导入到这个账号自己的长期记忆库（与其他用户隔离）。
         支持 txt / md / json / csv / pdf / docx / xlsx / zip 文件；
         服务器会自动提取文字并整理成记忆（AI 可用时智能提炼，否则按段落保存）。
+        此旧版入口最大 20MB，可能只整理部分内容；大记录建议使用「数据导入」的分段预览与确认。
       </p>
       <div className="memory-import-actions">
         <input
@@ -597,10 +606,11 @@ function MemoryImportCard() {
           disabled={historyBusy}
           onClick={() => void runHistoryImport()}
         >
-          {historyBusy ? '整理中…' : '从灯塔历史导入（注册至今全部对话）'}
+          {historyBusy ? '整理中…' : '从灯塔历史导入（最多 5000 条、30 万字）'}
         </button>
       </div>
       {error && <p className="memory-import-error">{error}</p>}
+      {error && diagnostic && <ChatErrorLog key={diagnostic.error_log_id || error} logId={diagnostic.error_log_id} diagnostic={diagnostic} />}
       {result && result.ok === true && (
         <div className="memory-import-result">
           <strong>导入完成</strong>
@@ -609,6 +619,7 @@ function MemoryImportCard() {
             记忆库现有 {result.total ?? '?'} 条
             {result.mode === 'ai' ? '（AI 智能整理）' : '（按段落保存）'}
           </span>
+          {result.coverage_notice && <small>{result.coverage_notice}</small>}
         </div>
       )}
       {result && result.ok !== true && !error && (
@@ -5632,6 +5643,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     model: "",
     diagnostic: null,
   });
+  const distillFileControllerRef = useRef(null);
+  useEffect(() => () => distillFileControllerRef.current?.abort(), [accountScope, companionScope]);
 
   async function runDistill() {
     const source = distillState.source.trim();
@@ -5685,19 +5698,28 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (file.size > 20 * 1024 * 1024) {
-      setDistillState((previous) => ({ ...previous, error: "文件不能超过 20MB，请换一个。" }));
+    if (file.size > 20 * 1024 * 1024 && !isTextFile(file)) {
+      setDistillState((previous) => ({ ...previous, error: "PDF、DOCX 和邮件文件直传最多 20MB；纯文本可分块读取至 1GB。" }));
       return;
     }
-    setDistillState((previous) => ({ ...previous, busy: true, error: "", diagnostic: null, fileBusy: true }));
+    const controller = new AbortController();
+    distillFileControllerRef.current = controller;
+    setDistillState((previous) => ({ ...previous, busy: true, error: "", diagnostic: null, fileBusy: true, readPercent: 0 }));
     try {
-      const formData = new FormData();
-      formData.append("file", file, file.name);
-      const data = await requestDistill("/api/v2/style-distill/parse-file", {
-        method: "POST",
-        body: formData,
-      }, apiFetch, 60_000);
-      const parsed = data?.parsed;
+      let parsed;
+      if (file.size > 20 * 1024 * 1024) {
+        if (["eml", "mbox"].includes(file.name.split('.').pop().toLowerCase())) throw new Error("大邮件文件请先导出为纯文本；邮件编码需要服务器解析，直传最多 20MB。");
+        parsed = await readLargeTextSample(file, { signal: controller.signal, onProgress: progress =>
+          setDistillState(previous => ({ ...previous, readPercent: Math.floor(progress.readBytes / progress.totalBytes * 100) })) });
+      } else {
+        const formData = new FormData();
+        formData.append("file", file, file.name);
+        const data = await requestDistill("/api/v2/style-distill/parse-file", {
+          method: "POST", body: formData,
+        }, apiFetch, 60_000);
+        parsed = data?.parsed;
+      }
+      if (controller.signal.aborted) throw new Error("文件读取已取消，原材料仍保留。");
       if (!parsed?.text) throw new Error("文件里没有解析出可用文字。");
       setDistillState((previous) => ({
         ...previous,
@@ -5705,9 +5727,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         fileBusy: false,
         error: "",
         source: parsed.text,
-        fileInfo: { filename: parsed.filename, format: parsed.format, characters: parsed.text.length, truncated: parsed.truncated },
+        fileInfo: { filename: parsed.filename, format: parsed.format, characters: parsed.text.length, truncated: parsed.truncated, sampled: parsed.sampled, totalCharacters: parsed.characters },
       }));
-      setNotice(`已解析「${parsed.filename}」（${parsed.format}，本次导入 ${parsed.text.length} 字）。${parsed.truncated ? "文件较长，只导入前 6 万字，请分批处理剩余内容。" : "可直接开始提纯。"}`);
+      setNotice(`已解析「${parsed.filename}」（${parsed.format}，本次导入 ${parsed.text.length} 字）。${parsed.sampled ? "已扫描全文件，按位置取样；模型仅分析这些样本。" : parsed.truncated ? "文件较长，只导入前 6 万字，请分批处理剩余内容。" : "可直接开始提纯。"}`);
     } catch (caught) {
       setDistillState((previous) => ({
         ...previous,
@@ -8315,16 +8337,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 <label className="style-distill-file-row">
                   <input
                     type="file"
-                    accept=".md,.markdown,.txt,.text,.json,.jsonl,.html,.htm,.csv,.log,.srt,.vtt,.eml,.pdf,.docx,.doc,.xml,.yaml,.yml"
+                    accept=".md,.markdown,.txt,.text,.json,.jsonl,.ndjson,.html,.htm,.csv,.tsv,.log,.srt,.vtt,.eml,.pdf,.docx,.xml,.yaml,.yml,.ini,.conf"
                     onChange={(event) => void parseDistillFile(event)}
                     disabled={distillState.busy}
                   />
                   <span>导入聊天记录文件（自动识别 md / txt / json / html / csv / srt / eml / pdf / docx）</span>
+                  <small>纯文本最大 1GB，超过 20MB 分块扫描取样；文档直传最大 20MB。提纯一次分析最多 6 万字。</small>
                 </label>
                 {distillState.fileInfo ? (
                   <p className="style-distill-file-info" role="status">
                     已导入：{distillState.fileInfo.filename}（{distillState.fileInfo.format} · {distillState.fileInfo.characters} 字），可直接提纯或继续编辑。
-                    {distillState.fileInfo.truncated ? "文件较长，本次只导入前 6 万字，请分批处理剩余材料。" : ""}
+                    {distillState.fileInfo.sampled ? `已扫描约 ${distillState.fileInfo.totalCharacters} 字，当前为位置取样；模型只分析样本。` : distillState.fileInfo.truncated ? "文件较长，本次只导入前 6 万字，请分批处理剩余材料。" : ""}
                   </p>
                 ) : null}
                 <textarea
@@ -8340,6 +8363,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   disabled={distillState.busy}
                 />
                 <div className="device-activity-actions">
+                  {distillState.fileBusy && <button type="button" onClick={() => distillFileControllerRef.current?.abort()}>取消读取（{distillState.readPercent || 0}%）</button>}
                   <button
                     type="button"
                     disabled={distillState.busy || distillState.source.trim().length < 40}

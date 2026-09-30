@@ -102,12 +102,16 @@ export function normalizeSettingsDraft(value) {
 export function createSettingsPayload(value) {
   const normalized = normalizeSettingsDraft(value);
   const readOnlyFields = new Set([
+    "companion_gender_available",
     "context_reset_at",
     "account_role",
     "account_status",
     "storage_used_bytes",
     "storage_quota_bytes",
   ]);
+  if (normalized.companion_gender_available === false) {
+    for (const field of ["ai_gender", "ai_pronouns", "ai_gender_label"]) readOnlyFields.add(field);
+  }
   const editableSettings = Object.fromEntries(
     Object.entries(normalized).filter(([key]) => !readOnlyFields.has(key)),
   );

@@ -1,23 +1,33 @@
 import { apiFetch, apiRequest } from "./api.js";
+import { readTextFileBatches } from "./large-text-file.js";
 
 export const CONTENT_IMPORT_MAX_BYTES = 100 * 1024 * 1024;
+export const CONTENT_IMPORT_PAGED_MAX_BYTES = 1024 ** 3;
+export const CONTENT_IMPORT_PAGED_EXTENSIONS = /\.(txt|text|md|markdown|log|csv|tsv|jsonl|ndjson)$/i;
 
 const IMPORT_ERROR_MESSAGES = Object.freeze({
   payload_too_large: "导入文件超过 100MB，请拆分后重试。",
   file_too_large: "导入文件超过 100MB，请拆分后重试。",
+  import_paged_file_too_large: "文本文件超过 1GB，请拆分后重试。",
+  import_paged_preview_required: "此文件需要在数据导入面板分段预览，不能整份上传。",
+  import_record_too_large: "单条 CSV 或 JSONL 记录超过 1MB，请拆分该记录或导出为纯文本。",
   import_file_too_large: "导入文件超过 100MB，请拆分后重试。",
-  unsupported_file_type: "仅支持 JSON、TXT 或 Markdown 文件。",
-  import_file_type_unsupported: "仅支持 JSON、TXT 或 Markdown 文件。",
+  unsupported_file_type: "此入口不支持该格式，请选择 TXT、Markdown、JSON、CSV、TSV、JSONL、HTML、字幕、邮件、PDF 或 DOCX。",
+  import_file_type_unsupported: "此格式不能作为文本读取；旧 DOC 请另存为 DOCX，表格或压缩包请先导出文本。",
   import_media_type_unsupported: "仅支持 JSON、TXT 或 Markdown 文件。",
   import_media_type_mismatch: "文件扩展名与内容格式不匹配，请检查后重试。",
   unsupported_format: "无法识别所选格式，请更换格式后重试。",
   invalid_json: "JSON 内容无法解析，请检查格式是否完整。",
   import_json_invalid: "JSON 内容无法解析，请检查格式是否完整。",
+  import_json_too_large: "JSON 结构超过单次解析容量，请导出为 JSONL 或拆成完整的 JSON 文件；系统没有截断或保存这份文件。",
+  import_document_too_large: "PDF、DOCX 和邮件直传最多 20MB，请拆分或导出文本后重试。",
+  import_csv_invalid: "CSV 的引号未闭合，请检查导出是否完整。",
+  import_pdf_no_text: "扫描版 PDF 没有可提取的文字，请先进行 OCR 再导入。",
   invalid_import: "导入内容无法生成候选项，请检查文件或粘贴文本。",
   import_empty: "导入内容不能为空。",
   import_content_required: "请粘贴要导入的文本。",
   import_source_type_invalid: "请选择世界书或聊天记录后重试。",
-  import_invalid_encoding: "文件必须使用 UTF-8 编码。",
+  import_invalid_encoding: "无法识别文本编码，支持 UTF-8、带 BOM 的 UTF-16 和 GB18030；请另存为 UTF-8 后重试。",
   import_not_found: "这次导入预览已失效，请重新预览。",
   decisions_required: "每个候选项都必须明确选择接受或拒绝。",
   import_decision_invalid: "每个候选项都必须明确选择接受或拒绝。",
@@ -81,13 +91,39 @@ function mediaTypeFor(format, content = "") {
 
 export function validateImportFile(file) {
   if (!file) throw importError({}, "请选择要导入的文件。");
-  if (Number(file.size) > CONTENT_IMPORT_MAX_BYTES) {
-    throw importError({ code: "file_too_large" });
+  const limit = CONTENT_IMPORT_PAGED_EXTENSIONS.test(file.name) ? CONTENT_IMPORT_PAGED_MAX_BYTES : CONTENT_IMPORT_MAX_BYTES;
+  if (Number(file.size) > limit) {
+    throw importError({ code: limit === CONTENT_IMPORT_PAGED_MAX_BYTES ? "import_paged_file_too_large" : "file_too_large" });
   }
-  if (!/\.(json|txt|text|md|markdown|log|csv)$/i.test(String(file.name || ""))) {
+  if (!/\.(json|txt|text|md|markdown|log|csv|tsv|jsonl|ndjson|html|htm|srt|vtt|eml|pdf|docx|xml|yaml|yml|ini|conf)$/i.test(String(file.name || ""))) {
     throw importError({ code: "unsupported_file_type" });
   }
   return file;
+}
+
+export async function previewContentImportPage({ file, kind, startByte = 0 }, client = defaultClient) {
+  validateImportFile(file);
+  if (!CONTENT_IMPORT_PAGED_EXTENSIONS.test(file.name)) throw importError({code:'unsupported_file_type'});
+  let text = '';
+  const suffix = file.name.split('.').pop().toLowerCase();
+  for await (const batch of readTextFileBatches(file, { startByte, chunkBytes: 64 * 1024 })) {
+    text += batch.text;
+    if (text.length > 1024 * 1024) throw importError({code:'import_record_too_large'});
+    if (batch.endByte < file.size) {
+      if (['jsonl','ndjson'].includes(suffix) && !/\r?\n$/.test(text)) continue;
+      if (suffix === 'csv') {
+        let quoted = false;
+        for (let index=0;index<text.length;index++) if (text[index] === '"') {
+          if (quoted && text[index+1] === '"') index++; else quoted = !quoted;
+        }
+        if (quoted || !/\r?\n$/.test(text)) continue;
+      }
+    }
+    const part = new File([text], `part-${startByte}-${batch.endByte}.${suffix}`, { type: 'text/plain' });
+    const data = await previewContentImport({ file: part, kind }, client);
+    return { data, page: { startByte, endByte: batch.endByte, totalBytes: file.size } };
+  }
+  throw importError({code:'import_empty'});
 }
 
 export function listContentImports(client = defaultClient) {
@@ -104,6 +140,7 @@ export function previewContentImport(
 ) {
   if (file) {
     validateImportFile(file);
+    if (file.size > CONTENT_IMPORT_MAX_BYTES) throw importError({code:'import_paged_preview_required'});
     const formData = new FormData();
     formData.append("file", file, file.name);
     formData.append("kind", kind);

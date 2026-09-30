@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest } from "./api";
-import { settingsServiceErrorMessage } from "./settings-service-errors";
+import { settingsServiceErrorDetail } from "./settings-service-errors";
 
 const CONNECTION_TYPES = Object.freeze({
   supabase_memory: {
@@ -84,7 +84,7 @@ async function memoryConnectionRequest(path, { method = "GET", body } = {}) {
     });
   } catch (error) {
     throw new Error(
-      settingsServiceErrorMessage(
+      settingsServiceErrorDetail(
         error,
         "无法连接外部记忆服务，请稍后再试 / Unable to reach the external memory service. Try again shortly."
       ),

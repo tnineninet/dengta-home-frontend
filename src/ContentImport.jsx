@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { commitContentImport, listContentImports, previewContentImport } from "./content-import-api.js";
+import { commitContentImport, listContentImports, previewContentImport, previewContentImportPage, CONTENT_IMPORT_PAGED_EXTENSIONS } from "./content-import-api.js";
 import WorldBookManager from "./WorldBookManager.jsx";
 
 const TYPE_META = Object.freeze({
@@ -100,6 +100,7 @@ export default function ContentImport({ api }) {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
+  const [page, setPage] = useState(null);
 
   async function refreshRecent() {
     try {
@@ -147,17 +148,25 @@ export default function ContentImport({ api }) {
     }));
   }
 
-  async function handlePreview() {
+  async function handlePreview(startByte = 0) {
     setBusy("preview");
     setError("");
     setResult(null);
     try {
-      const data = await previewContentImport({
+      let data;
+      if (inputMode === "file" && file?.size > 1024 * 1024 && CONTENT_IMPORT_PAGED_EXTENSIONS.test(file.name)) {
+        const paged = await previewContentImportPage({ file, kind, startByte }, client);
+        data = paged.data;
+        setPage(paged.page);
+      } else {
+        data = await previewContentImport({
         kind,
         format,
         file: inputMode === "file" ? file : null,
         content: inputMode === "paste" ? content : "",
       }, client);
+        setPage(null);
+      }
       setPreview(normalizeImportPreview(data));
     } catch (previewError) {
       setPreview(null);
@@ -225,19 +234,23 @@ export default function ContentImport({ api }) {
         <div className="content-import-source settings-card">
         <fieldset className="content-import-segments">
           <legend>导入内容类型</legend>
-          <button type="button" aria-pressed={kind === "world_book"} onClick={() => setKind("world_book")}>世界书</button>
-          <button type="button" aria-pressed={kind === "chat_history"} onClick={() => setKind("chat_history")}>聊天记录</button>
+          <button type="button" disabled={Boolean(busy)} aria-pressed={kind === "world_book"} onClick={() => {setKind("world_book");setPage(null);setPreview(null);setResult(null);}}>世界书</button>
+          <button type="button" disabled={Boolean(busy)} aria-pressed={kind === "chat_history"} onClick={() => {setKind("chat_history");setPage(null);setPreview(null);setResult(null);}}>聊天记录</button>
         </fieldset>
         <div className="content-import-fields">
-          <label><span>输入方式</span><select aria-label="输入方式" value={inputMode} onChange={(event) => setInputMode(event.target.value)}><option value="file">上传文件</option><option value="paste">粘贴文本</option></select></label>
-          <label><span>内容格式</span><select aria-label="内容格式" value={format} onChange={(event) => setFormat(event.target.value)}><option value="auto">自动识别</option><option value="sillytavern">SillyTavern</option><option value="generic_json">通用 JSON</option><option value="plain_text">纯文本</option></select></label>
+          <label><span>输入方式</span><select aria-label="输入方式" disabled={Boolean(busy)} value={inputMode} onChange={(event) => {setInputMode(event.target.value);setPage(null);setPreview(null);setResult(null);}}><option value="file">上传文件</option><option value="paste">粘贴文本</option></select></label>
+          <label><span>内容格式</span><select aria-label="内容格式" disabled={Boolean(busy)} value={format} onChange={(event) => {setFormat(event.target.value);setPage(null);setPreview(null);setResult(null);}}><option value="auto">自动识别</option><option value="sillytavern">SillyTavern</option><option value="generic_json">通用 JSON</option><option value="plain_text">纯文本</option></select></label>
         </div>
         {inputMode === "file" ? (
-          <label className="content-import-dropzone"><span>{file ? file.name : "选择 JSON、TXT、CSV、Markdown 等文本文件"}</span><small>最大 100MB，文件只用于本次预览与导入；其他文本后缀也会自动识别。</small><input aria-label="选择导入文件" type="file" accept=".json,.txt,.text,.md,.markdown,.log,.csv,application/json,text/plain,text/markdown,text/csv" onChange={(event) => setFile(event.target.files?.[0] || null)} /></label>
+          <label className="content-import-dropzone"><span>{file ? file.name : "选择聊天记录、世界书或文档"}</span><small>TXT、Markdown、日志、CSV、TSV、JSONL 最大 1GB，分段预览并逐段确认；完整 JSON 最大 100MB（解析最多 100 万字），PDF、DOCX、邮件最大 20MB。模型上下文仍由所选接口决定。</small><input aria-label="选择导入文件" type="file" accept=".json,.txt,.text,.md,.markdown,.log,.csv,.tsv,.jsonl,.ndjson,.html,.htm,.srt,.vtt,.eml,.pdf,.docx,.xml,.yaml,.yml,.ini,.conf" disabled={Boolean(busy)} onChange={(event) => {setFile(event.target.files?.[0] || null);setPage(null);setPreview(null);setResult(null);}} /></label>
         ) : (
           <label className="content-import-paste"><span>粘贴原始内容</span><textarea aria-label="粘贴导入内容" value={content} onChange={(event) => setContent(event.target.value)} rows={8} placeholder="内容会按原文发送，不进行关键词过滤。" /></label>
         )}
         <button className="content-import-primary" type="button" disabled={Boolean(busy) || (inputMode === "file" ? !file : !content)} onClick={() => void handlePreview()}>{busy === "preview" ? "正在读入故事…" : "生成导入预览"}</button>
+        {page && <div role="status"><p>本段：{page.startByte.toLocaleString()}–{page.endByte.toLocaleString()} 字节 / 共 {page.totalBytes.toLocaleString()} 字节。预览不会自动写入记忆。</p>
+          {page.endByte < page.totalBytes && <button type="button" disabled={Boolean(busy) || Boolean(preview)} onClick={() => void handlePreview(page.endByte)}>读取下一段</button>}
+          {preview && <button type="button" disabled={Boolean(busy)} onClick={() => {setPreview(null);setResult(null);}}>放弃本段候选</button>}
+        </div>}
         </div>
 
       {error && <div className="content-import-error" role="alert">{error}</div>}

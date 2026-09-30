@@ -16,13 +16,15 @@ export function usePrivateMediaSource(source) {
 
     let active = true;
     let objectUrl = "";
-    apiFetch(requestPath, { retry: false })
+    const controller = new AbortController();
+    apiFetch(requestPath, { retry: false, signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) {
           const payload = await response.json().catch(() => ({}));
           throw new Error(payload.message || "媒体暂时无法读取。");
         }
         const blob = await response.blob();
+        if (!active) return;
         if (!blob.size) throw new Error("媒体内容为空。");
         objectUrl = URL.createObjectURL(blob);
         if (active) {
@@ -41,6 +43,7 @@ export function usePrivateMediaSource(source) {
 
     return () => {
       active = false;
+      controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [requestPath, value]);
