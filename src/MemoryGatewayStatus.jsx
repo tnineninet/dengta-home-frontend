@@ -11,6 +11,7 @@ const ACTIONS = {
   kiwi_mem_timeout: "Kiwi 响应超时，请检查网关是否休眠或网络是否可达，再点击检测。",
   kiwi_mem_network_error: "无法连接 Kiwi，请检查服务器到网关的网络连接，再点击检测。",
   kiwi_mem_invalid_response: "Kiwi 未返回可用状态，请检查网关日志和记忆功能开关。",
+  kiwi_mem_memory_disabled: "Kiwi 的记忆功能已关闭，请在网关管理面板开启后重新检测。",
 };
 
 export default function MemoryGatewayStatus() {

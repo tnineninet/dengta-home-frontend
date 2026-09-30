@@ -1,6 +1,6 @@
 # 灯塔聊天、战斗、共看与 Kiwi 检查记录
 
-本轮目标：战斗与共看实际操作恢复、多行输入、按钮反馈和动画减负、检查流式首段显示、检查记忆账号/伴侣隔离。前端 2.10.36 / Android 84；后端 0.29.12。基线前端 `9fb58fdfab2eb607b9bcafafccd1f803aa9b6a70`，后端 `8288f80edc28de8b60cd60371b607269d2a0f057`。
+本轮目标：战斗与共看实际操作恢复、多行输入、按钮反馈和动画减负、检查流式首段显示、检查记忆账号/伴侣隔离。前端 2.10.36 / Android 84；后端 0.29.13（含导入错误联调补充修复）。基线前端 `9fb58fdfab2eb607b9bcafafccd1f803aa9b6a70`，后端 `8288f80edc28de8b60cd60371b607269d2a0f057`。
 
 ## 根因和修复
 
@@ -17,6 +17,7 @@
 | `src/CelestialBackdrop.jsx` / 交互样式 | 背景与装饰绘制可能争抢回复渲染时间 | 流式回复期间降低天气画布刷新频率，滑动/流式回复期间暂停聊天装饰入场动画；弹幕无变化时不创建新状态，隐藏页面不处理弹幕。日月、星空、天气及装饰原设计保留 |
 | 后端 `services/kiwi-memory-client.js` | 缺账号/伴侣时仍发送无租户请求；HTTP200逻辑失败被视为成功；HTTP错误被静默吞掉；不确定提交成功时自动重发 | 所有记忆接口缺有效租户时停止请求；要求网关返回匹配的X-Tenant-Id；不接受未经确认的召回；错误只记录稳定代码/HTTP状态；删除非幂等写入的自动重发 |
 | 后端 `server.js` | 失败半轮先上报用户消息，成功重试时再次上报；启动检查读取公共库统计 | 失败消息继续保留在灯塔，Kiwi仅接收成功提交的完整回合；无租户启动时只标记已配置/未验证，不检查公共记忆库 |
+| 后端 `server.js` 批量记忆导入 / `services/memory-import-feedback.js` | JSON记忆导入曾用HTTP200返回失败，与文件/历史导入错误链路不一致；新增租户回执错误缺少操作提示 | 统一三类导入的错误、诊断日志与状态码；租户缺失409、回执未确认502、鉴权失败502并附上游状态、功能关闭503；不把未确认结果显示成已保存 |
 | `src/MemoryGatewayStatus.jsx` | 软件没有明确的服务器记忆隔离检查入口 | 记忆页可检测连接和当前账号/伴侣范围，区分鉴权、404、超时和租户回执错误，给出对应操作；检查不读取记忆正文，不把连接成功当作召回验收 |
 
 ## 记忆与提示词边界
@@ -48,7 +49,7 @@ HTTP请求头和回执测试不能证明生产数据库历史上没有混杂。�
 | Kiwi原生隔离脚本 | 已尝试，无网络部分因本机缺asyncpg无法启动（退出1）；真实PostgreSQL守卫未运行。没有把客户端mock结果当成原生数据库验证 |
 | adb devices | 没有已连接设备，Android真机安装/帧率/投屏及真实账号聊天未验收 |
 
-构建产物：`E:\chatgpt\artifacts\dengta-interaction-memory-20260930\DengTa-2.10.36-84.apk`，36,235,949字节，SHA256 `9fbacdc99144bda8c87e21b6654b242ab1110a883e8203c91469784d339aed05`。稳定debug证书SHA256 `38a03ab2815c285bef17521d7fc7d4cd6ea4c85d6f14e337ef7391af9b2bb4c6`。
+构建产物：`E:\chatgpt\artifacts\dengta-interaction-memory-20260930\DengTa-2.10.36-84.apk`，36,263,727字节，SHA256 `739faa667be4697c7640d9878556b20922ba6ce1cdce5fdc291d92065470bf74`。稳定debug证书SHA256 `38a03ab2815c285bef17521d7fc7d4cd6ea4c85d6f14e337ef7391af9b2bb4c6`。
 
 ## 验收与发布状态的范围
 
@@ -65,25 +66,27 @@ HTTP请求头和回执测试不能证明生产数据库历史上没有混杂。�
 - `frontend/src/CelestialBackdrop.jsx:311`
 - `frontend/src/DlnaCastPlayer.jsx:303,319,346,364,581,592,638`
 - `frontend/src/IntimateDuel.jsx:16,18,21,23,65,67,75,80,89,93,100,109,122,145,151,162,179`
+- `frontend/src/MemoryGatewayStatus.jsx:1`
 - `frontend/src/Together.jsx:122,131,137,420,425,433,435,492,501,504,510`
 - `frontend/src/api.js:71,88,103,128`
 - `frontend/src/co-watch.js:280,284`
+- `frontend/src/composer-size.js:1`
+- `frontend/src/interaction-polish.css:1`
 - `frontend/src/main.jsx:15`
 - `frontend/src/watch-room.js:1,12,21,37,46,55,126,128,130,132,140,149,152,157,168,172,179,200`
 - `frontend/test/android-release.test.js:75`
+- `frontend/test/api-stream-lifecycle.test.js:1`
 - `frontend/test/chat-latency.test.js:45`
 - `frontend/test/chat-tools.test.js:935,950,977`
-- `frontend/test/mobile-layout.test.js:118,142`
-- `frontend/test/workspace-manager.test.js:15,25,60,62,70`
-- `frontend/src/MemoryGatewayStatus.jsx:1`
-- `frontend/src/composer-size.js:1`
-- `frontend/src/interaction-polish.css:1`
-- `frontend/test/api-stream-lifecycle.test.js:1`
 - `frontend/test/duel-request.test.js:1`
 - `frontend/test/interaction-runtime-preview.html:1`
 - `frontend/test/interaction-runtime-preview.jsx:1`
+- `frontend/test/mobile-layout.test.js:118,142`
 - `frontend/test/together-requests.test.js:1`
 - `frontend/test/watch-room.test.js:1`
-- `backend/server.js:4980,5026,6566,6577`
+- `frontend/test/workspace-manager.test.js:15,25,60,62,70`
+- `backend/server.js:651,4979,5025,6565,6576`
 - `backend/services/kiwi-memory-client.js:19,45,57,64,71,87,97,103,110,125,132,176,178,259,274,281,288,310,313,321,335,342`
+- `backend/services/memory-import-feedback.js:10,14,20`
 - `backend/test/kiwi-memory-client.test.js:1`
+- `backend/test/memory-import-feedback.test.js:4,20`
