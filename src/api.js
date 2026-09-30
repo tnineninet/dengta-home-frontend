@@ -1,4 +1,5 @@
 import { diagnosticScopeKey, recordOperationFailure } from "./operation-diagnostics.js";
+import { requestErrorLog } from "./error-log-request.js";
 import { isChatGenerationInProgress } from "./chat-idempotency.js";
 import { authSession as defaultAuthSession } from "./auth-session.js";
 import {
@@ -152,11 +153,7 @@ export async function fetchErrorLogs(limit = 50) {
 }
 
 export async function fetchErrorLogById(logId) {
-  const data = await apiRequest(
-    `/api/errors/${encodeURIComponent(logId)}`,
-    { retry: false, timeoutMs: 15000 },
-  );
-  return data?.log || null;
+  return requestErrorLog(logId, apiRequest);
 }
 
 export async function apiRequest(path, options = {}) {

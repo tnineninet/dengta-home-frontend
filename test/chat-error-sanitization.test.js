@@ -41,14 +41,14 @@ assert.equal(
     code: "MODEL_NOT_AVAILABLE",
     message: "request model unavailable",
   }),
-  "请求的模型不在当前接口可用列表中 / The requested model is not available from the current API.",
+  "请求的模型不在当前接口可用列表中 / The requested model is not available from the current API.（错误代码 / Code: MODEL_NOT_AVAILABLE；来源 / Source: dengta）",
 );
 assert.equal(
   publicChatErrorMessage({
     code: "provider_error_document",
     message: "raw upstream html",
   }),
-  "模型接口返回了错误文档，本轮回复未保存 / The model API returned an error document; this reply was not saved.",
+  "模型接口返回了错误文档，尚未确认更具体原因；本轮回复未保存。 查看错误码及上游 HTTP 日志，检查接口设置或稍后重试。 / The model API returned an error document; this reply was not saved.（错误代码 / Code: provider_error_document；来源 / Source: dengta）",
 );
 assert.equal(
   publicChatErrorMessage(
@@ -63,7 +63,7 @@ assert.equal(
     error_source: "upstream_provider_or_gateway",
     message: "raw upstream message must not be displayed",
   }),
-  "输入内容未通过模型接口的内容检查 / The input did not pass the model provider's content inspection.（错误代码 / Code: data_inspection_failed；来源 / Source: upstream_provider_or_gateway；日志已记录 / Logged）",
+  "输入内容未通过模型接口的内容检查 / The input did not pass the model provider's content inspection.（错误代码 / Code: data_inspection_failed；来源 / Source: upstream_provider_or_gateway）",
 );
 assert.equal(
   sanitizeChatErrorEvent({

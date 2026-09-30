@@ -1,7 +1,7 @@
 {
   "name": "dengta-home-react",
   "private": true,
-  "version": "2.10.28",
+  "version": "2.10.29",
   "type": "module",
   "scripts": {
     "test:interaction-polish": "node test/interaction-polish.test.js",
@@ -38,7 +38,7 @@
     "test:chat-latency": "node test/chat-latency.test.js",
     "test:inner-monologue": "node test/inner-monologue.test.js && node test/monologue-recovery-ui.test.js",
     "test:inner-monologue-sync": "node test/inner-monologue-sync.test.js",
-    "test:chat-errors": "node test/chat-error-sanitization.test.js",
+    "test:chat-errors": "node test/chat-error-sanitization.test.js && node test/chat-error-feedback.test.js",
     "test:ambient-context": "node test/ambient-context.test.js",
     "test:device-activity": "node test/device-activity.test.js",
     "test:screen-glance": "node test/screen-glance.test.js",
@@ -53,7 +53,7 @@
     "test:instant-feedback": "node test/instant-feedback.test.js",
     "test:mobile-layout": "node test/mobile-layout.test.js",
     "test:sun-glass-chat": "node --test test/sun-glass-chat.test.js",
-    "test:chat-scroll-state": "node test/chat-scroll-state.test.js && node test/chat-error-log.test.js",
+    "test:chat-scroll-state": "node test/chat-scroll-state.test.js && node test/chat-error-log.test.js && node test/error-log-request.test.js",
     "test:native-motion": "node test/native-motion.test.js",
     "test:dengta-theme": "node test/dengta-theme.test.js",
     "test:typography": "node test/typography.test.js",

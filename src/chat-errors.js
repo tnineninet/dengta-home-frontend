@@ -1,3 +1,4 @@
+import { CHAT_ERROR_MESSAGES } from "./chat-error-feedback.js";
 const CHAT_ERROR_FALLBACK = "模型服务暂时无法完成这次回复，请稍后重试。";
 const COMMITTED_CHAT_ERROR_FALLBACK =
   "AI 回复没有完成，但你的消息已经保存，可以稍后重试。";
@@ -17,6 +18,7 @@ const PUBLIC_ERROR_BY_CODE = Object.freeze({
     "模型接口返回了错误文档，本轮回复未保存 / The model API returned an error document; this reply was not saved.",
   provider_boundary_residue:
     "模型回复被识别为拒答残留，拒答正文未保存 / The model response was identified as refusal residue; the refusal text was not saved.",
+  ...CHAT_ERROR_MESSAGES,
 });
 
 const MARKUP_OR_DOCUMENT_PATTERN =
@@ -68,24 +70,28 @@ function publicErrorLocation(source) {
 }
 
 function withDiagnostic(message, source) {
+  if (source?.code === "CHAT_GENERATION_IN_PROGRESS") return message;
   const providerCode = publicDiagnosticCode(source);
   const errorSource = publicDiagnosticSource(source);
   const location = publicErrorLocation(source);
   const hasMetadata = Boolean(
-    providerCode ||
+    PUBLIC_ERROR_BY_CODE[source?.code] || providerCode ||
       errorSource ||
       source?.provider_phase ||
       source?.upstream_status !== undefined ||
       location,
   );
   if (!hasMetadata) return message;
-  const visibleCode = providerCode || String(source?.code || "").trim();
+  const localCode = String(source?.code || "").trim();
+  const visibleCode = /^[A-Za-z][A-Za-z0-9_.-]{0,63}$/.test(localCode) ? localCode : providerCode || "request_failed";
+  const providerText = providerCode && providerCode !== visibleCode ? `；上游代码 / Provider code: ${providerCode}` : "";
   const status = Number(source?.upstream_status);
   const statusText = Number.isInteger(status) && status >= 100 && status <= 599
     ? `；HTTP / HTTP: ${status}`
     : "";
   const locationText = location ? `；位置 / At: ${location}` : "";
-  return `${message}（错误代码 / Code: ${visibleCode || "unknown"}；来源 / Source: ${errorSource || "dengta"}${statusText}${locationText}；日志已记录 / Logged）`;
+  const logText = source?.error_log_id ? "；日志已记录 / Logged" : "";
+  return `${message}（错误代码 / Code: ${visibleCode}；来源 / Source: ${errorSource || "dengta"}${providerText}${statusText}${locationText}${logText}）`;
 }
 
 export function isProviderErrorDocument(value) {
@@ -112,7 +118,10 @@ export function sanitizeStoredChatMessage(message = {}) {
 
 export function publicChatErrorMessage(source, fallback = CHAT_ERROR_FALLBACK) {
   const code = String(source?.code || "");
-  const safeFallback = PUBLIC_ERROR_BY_CODE[code] || fallback;
+  const committed = source?.user_message_committed === true || source?.userMessageCommitted === true || fallback === COMMITTED_CHAT_ERROR_FALLBACK;
+  const safeFallback = PUBLIC_ERROR_BY_CODE[code]
+    ? PUBLIC_ERROR_BY_CODE[code] + (committed && code !== "CHAT_GENERATION_IN_PROGRESS" ? " 你的消息已经保存，AI 回复尚未完成。" : "")
+    : fallback;
   if (code && code !== "CHAT_GENERATION_IN_PROGRESS" && PUBLIC_ERROR_BY_CODE[code]) {
     return withDiagnostic(safeFallback, source);
   }
