@@ -46,6 +46,7 @@ import {
 } from "./account-storage";
 import CompanionStatus from "./CompanionStatus";
 import CompanionGenderFields from "./CompanionGenderFields";
+import ChatContextSettings from "./ChatContextSettings.jsx";
 import { companionPronoun } from "./companion-gender";
 import AmbientContextBadge from "./AmbientContextBadge";
 import ChatMessage from "./ChatMessage";
@@ -8507,6 +8508,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             </p>
             {settingsCategory === "persona" && (
               <>
+            <ChatContextSettings settings={draftSettings} onChange={updateDraft} />
             <div className="settings-grid">
               <label>
                 所在时区
@@ -8531,13 +8533,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 </select>
               </label>
               <label>
-                触发记忆压缩的 token 阈值
+                记忆压缩阈值（0 为自动）
                 <input
                   type="number"
-                  min="1000"
-                  max="200000"
+                  min="0"
+                  max="10000000"
                   step="1000"
-                  value={draftSettings.compression_threshold ?? 32000}
+                  value={draftSettings.compression_threshold ?? 0}
                   onChange={(event) =>
                     updateDraft("compression_threshold", event.target.value)
                   }
@@ -8548,7 +8550,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 <input
                   type="number"
                   min="1"
-                  max="200"
+                  max="1000000"
                   value={draftSettings.compression_keep ?? 40}
                   onChange={(event) =>
                     updateDraft("compression_keep", event.target.value)

@@ -15,7 +15,7 @@ export const emptySettings = {
   model: "",
   reasoning_effort: "",
   temperature: 0.7,
-  context_turns: 50,
+  context_turns: 0,
   max_tokens: 0,
   compression_threshold: 8000,
   compression_keep: 20,

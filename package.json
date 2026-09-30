@@ -1,7 +1,7 @@
 {
   "name": "dengta-home-react",
   "private": true,
-  "version": "2.10.29",
+  "version": "2.10.30",
   "type": "module",
   "scripts": {
     "test:interaction-polish": "node test/interaction-polish.test.js",
@@ -19,7 +19,7 @@
     "test:companion-gender": "node test/companion-gender.test.js",
     "test:intimate-duel": "node test/intimate-duel.test.js",
     "test:reply-suggestions": "node test/chat-reply-suggestions.test.js",
-    "test:settings": "node test/settings.test.js",
+    "test:settings": "node test/settings.test.js && node test/chat-context-settings.test.js",
     "test:account-storage": "node test/account-storage.test.js",
     "test:persona-reset": "node test/persona-reset.test.js",
     "test:memory-management": "node test/memory-management.test.js",

@@ -10433,3 +10433,11 @@ body,
   color: rgba(242, 233, 220, 0.35);
   text-align: center;
 }
+.chat-context-settings {
+  margin-bottom: 20px;
+  padding: 16px;
+  border: 1px solid var(--border-color, rgba(110, 91, 126, 0.16));
+  border-radius: 18px;
+}
+.chat-context-settings > button { margin-bottom: 14px; }
+.chat-context-settings > .card-hint { margin: 12px 0 16px; line-height: 1.6; }
