@@ -5,7 +5,7 @@ import { createServer } from "vite";
 import { fileURLToPath } from "node:url";
 import { createVisualLoop } from "../src/visual-loop.js";
 import { recordOperationFailure, readOperationFailures, diagnosticScopeKey, clearOperationFailures } from "../src/operation-diagnostics.js";
-import { FEATURE_GROUPS, FEATURE_LABELS, QUICK_FEATURES } from "../src/feature-navigation.js";
+import { FEATURE_GROUPS, FEATURE_LABELS, QUICK_FEATURES, FEATURE_DETAILS, filterFeatures } from "../src/feature-navigation.js";
 import { pickActivity } from "../src/chat-activities.js";
 
 const doc = Object.assign(new EventTarget(), { hidden: false });
@@ -44,6 +44,13 @@ recordOperationFailure(scope, "/unknown", { name: "AbortError" }); assert.equal(
 assert.notEqual(pickActivity("rain-bookshop", () => 0).id, "rain-bookshop");
 assert.equal(new Set(FEATURE_GROUPS.flatMap(group => group.ids)).size, 13);
 assert.ok(QUICK_FEATURES.every(id => FEATURE_LABELS[id]));
+const searchItems = Object.keys(FEATURE_LABELS).map(id => ({ id, label: FEATURE_LABELS[id] }));
+assert.deepEqual(filterFeatures(searchItems, "电影").map(item => item.id), ["together"]);
+assert.deepEqual(filterFeatures(searchItems, "ＭＣＰ").map(item => item.id), ["memories"]);
+assert.deepEqual(filterFeatures(searchItems, " 离线 文件 ").map(item => item.id), ["workspace"]);
+assert.deepEqual(filterFeatures(searchItems, "新手").map(item => item.id), ["achievements"]);
+assert.equal(filterFeatures(searchItems, "").length, 13);
+assert.ok(Object.keys(FEATURE_LABELS).every(id => FEATURE_DETAILS[id]?.hint));
 
 const old = globalThis.IS_REACT_ACT_ENVIRONMENT;
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;

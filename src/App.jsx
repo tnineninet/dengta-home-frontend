@@ -9610,7 +9610,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           {activeView === "workspace" && (
             <div className="workspace-page">
               <Suspense fallback={<DeferredFeature label="正在打开工作区…" />}>
-                <WorkspaceManager />
+                <WorkspaceManager key={JSON.stringify([accountStorageScope, companionScope])} accountScope={accountStorageScope} />
               </Suspense>
             </div>
           )}

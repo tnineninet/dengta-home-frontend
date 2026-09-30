@@ -31,8 +31,10 @@ const cards = buildServiceStatusCards({
 
 assert.equal(cards.find((item) => item.id === "backend").status, "online");
 assert.equal(cards.find((item) => item.id === "database").status, "online");
-assert.equal(cards.find((item) => item.id === "provider").status, "online");
-assert.equal(cards.find((item) => item.id === "groq").status, "online");
+assert.equal(cards.find((item) => item.id === "provider").status, "pending");
+assert.equal(cards.find((item) => item.id === "groq").status, "pending");
+assert.equal(cards.find((item) => item.id === "database").summary, "应用设置已读取");
+assert.match(cards.find((item) => item.id === "database").detail, /没有执行写入测试/);
 assert.equal(cards.find((item) => item.id === "voice-output").status, "pending");
 assert.equal(
   cards.find((item) => item.id === "voice-output").summary,
@@ -65,6 +67,23 @@ const providerCenterCard = providerCenterCards.find(
 );
 assert.equal(providerCenterCard.status, "online");
 assert.equal(providerCenterCard.summary, "我的 GPT 接口 · gpt-5.6-sol");
+assert.match(providerCenterCard.detail, /不代表聊天生成请求一定成功/);
+
+for (const [state, expected] of [["catalog_error", "error"], ["untested", "pending"], ["expired", "pending"]]) {
+  const card = buildServiceStatusCards({
+    health: { ok: true, features: { ai_provider_center: true } },
+    providerStatus: { active_profile: { name: "fixture", default_model: "test-model", health: { state } } },
+    settings: {}, hasLoadedSettings: true, isOnline: true,
+  }).find(item => item.id === "provider");
+  assert.equal(card.status, expected);
+  if (state === "expired") assert.equal(card.summary, "活动接口已到期");
+}
+const disconnected = buildServiceStatusCards({
+  health: { ok: true, features: { expressive_tts_configured: true, ombre_mcp_configured: true } },
+  settings: {}, hasLoadedSettings: true, isOnline: false,
+});
+assert.equal(disconnected.find(item => item.id === "voice-output").status, "pending");
+assert.equal(disconnected.find(item => item.id === "ombre-mcp").status, "pending");
 
 const missingProviderCenterModel = buildServiceStatusCards({
   health: {

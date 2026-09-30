@@ -1,0 +1,14 @@
+.workspace-view .workspace-editor-heading { flex-wrap: wrap; }
+.workspace-view .workspace-editor-heading > div:first-child { min-width: 0; flex: 1 1 150px; }
+.workspace-view .workspace-editor-heading strong,
+.workspace-view .workspace-editor-heading small { display: block; overflow-wrap: anywhere; }
+.workspace-view .workspace-editor-actions { min-width: 0; max-width: 100%; flex-wrap: wrap; }
+.workspace-view .workspace-file-name { min-width: 0; }
+.workspace-view .workspace-file-name strong { overflow-wrap: anywhere; }
+.workspace-view .workspace-file-name small { flex-shrink: 0; }
+.workspace-view .workspace-toolbar-path { white-space: normal; overflow-wrap: anywhere; }
+@media (max-width: 680px) {
+  .workspace-view .workspace-editor-actions { flex-basis: 100%; }
+  .workspace-view .workspace-editor-actions button,
+  .workspace-view .workspace-file-actions button { min-height: 40px; }
+}

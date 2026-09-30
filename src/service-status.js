@@ -1,3 +1,5 @@
+import { providerHealthView } from "./ai-provider-health.js";
+
 export const GROQ_EXPIRY_STORAGE_KEY = "dengta_groq_key_expires_at";
 
 export const SERVICE_LINKS = Object.freeze({
@@ -155,11 +157,11 @@ export function buildServiceStatusCards({
     ? providerStatus.active_profile || null
     : features.ai_provider_active_profile || null;
   const activeProfileModel = String(activeProfile?.default_model || "").trim();
-  const activeProfileHealth = activeProfile?.health?.state || "";
+  const activeProfileHealth = providerHealthView(activeProfile || {});
   const providerReady = providerCenterAuthoritative
     ? backendOnline &&
       Boolean(activeProfile && activeProfileModel) &&
-      activeProfileHealth !== "expired"
+      activeProfileHealth.state !== "expired"
     : backendOnline &&
       Boolean(settings?.api_url && settings?.model);
   const providerName = providerCenterAuthoritative
@@ -190,9 +192,9 @@ export function buildServiceStatusCards({
       "database",
       "Supabase 数据库",
       backendOnline && hasLoadedSettings ? "online" : "checking",
-      backendOnline && hasLoadedSettings ? "读写链路可用" : "等待应用数据回读",
+      backendOnline && hasLoadedSettings ? "应用设置已读取" : "等待应用数据回读",
       hasLoadedSettings
-        ? "服务器设置和会话列表已成功读取；本页面不会显示数据库密钥。"
+        ? "已读取应用设置；这次检查没有执行写入测试。"
         : "如果这里长期停留在等待状态，请检查 Supabase 项目和后端环境变量。",
       SERVICE_LINKS.database,
       "打开 Supabase",
@@ -200,16 +202,21 @@ export function buildServiceStatusCards({
     statusCard(
       "provider",
       "当前聊天模型",
-      providerReady ? "online" : "pending",
+      providerReady
+        ? activeProfileHealth.state === "catalog_error" ? "error"
+          : providerCenterAuthoritative && activeProfileHealth.state === "catalog_ok" ? "online" : "pending"
+        : "pending",
       providerReady
         ? `${providerName} · ${providerModel}`
         : providerCenterAuthoritative
           ? activeProfile
-            ? "活动接口尚未填写模型"
+            ? activeProfileHealth.state === "expired" ? "活动接口已到期" : !backendOnline ? "等待后端连接" : "活动接口尚未填写模型"
             : "尚未选择活动接口"
           : "接口或模型尚未完整填写",
       providerReady
-        ? "模型调用仍按实际供应商额度计费；这里不会读取或显示 API Key。"
+        ? providerCenterAuthoritative
+          ? `${activeProfileHealth.summary}。${activeProfileHealth.detail} 聊天生成仍需实际调用确认。`
+          : "接口和模型已填写，尚未验证生成请求；可以去聊天发送一条消息确认。"
         : providerCenterAuthoritative
           ? "到“多供应商 API 控制台”中添加、测试并启用一个接口。"
           : "请检查 API 地址和模型名称。",
@@ -219,12 +226,12 @@ export function buildServiceStatusCards({
     statusCard(
       "groq",
       "Groq 语音理解",
-      features.hervoice_proxy_configured === true ? "online" : "pending",
+      "pending",
       features.hervoice_proxy_configured === true
-        ? "Voice 代理已连接"
+        ? "Voice 代理已配置"
         : "尚未连接 Voice 代理",
       features.hervoice_proxy_configured === true
-        ? "可使用麦克风转写和声音情绪线索；免费额度或密钥到期仍需在 Groq 控制台查看。"
+        ? "后端报告了代理配置；转写是否成功需实际录音验证，免费额度或密钥到期可在 Groq 控制台查看。"
         : "需要在 Render 配置 Voice 地址与内部密钥。",
       SERVICE_LINKS.groq,
       "管理 Groq 密钥",
@@ -232,7 +239,7 @@ export function buildServiceStatusCards({
     statusCard(
       "voice-output",
       `${expressiveTts.providerName} 自然语音`,
-      expressiveTts.status,
+      backendOnline ? expressiveTts.status : "pending",
       expressiveTts.summary,
       expressiveTts.detail,
       expressiveTts.provider === "deepgram"
@@ -246,7 +253,7 @@ export function buildServiceStatusCards({
       "ombre-mcp",
       "Ombre MCP 记忆",
       features.ombre_mcp_configured === true
-        ? "online"
+        ? "pending"
         : features.ombre_mcp_client === true
           ? "pending"
           : "checking",
@@ -257,7 +264,7 @@ export function buildServiceStatusCards({
           : "等待后端更新",
       features.ombre_mcp_configured === true
         ? "请到“记忆”页面查看真实握手结果和服务器工具目录。"
-        : "以后只需在后端填写 OMBRE_BRAIN_URL；令牌只保存在 Render，不会进入手机或网页。",
+        : "可以在“连接设置 → 外部记忆”中自行添加地址并测试；凭据由后端加密保存。",
       "",
       "",
     ),

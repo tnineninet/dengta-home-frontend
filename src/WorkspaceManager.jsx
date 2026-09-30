@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import "./workspace-polish.css";
 import {
   workspaceAgentsMd,
   workspaceDeleteFile,
@@ -9,9 +10,11 @@ import {
 } from "./workspace-api.js";
 import {
   workspaceCacheClear,
+  workspaceCacheDelete,
   workspaceCacheList,
   workspaceCacheRead,
   workspaceCacheWrite,
+  cachedWorkspaceEntries,
 } from "./workspace-cache.js";
 
 function formatBytes(value) {
@@ -47,7 +50,7 @@ function downloadTextFile(name, text) {
   window.setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
-export default function WorkspaceManager() {
+export default function WorkspaceManager({ accountScope = "" }) {
   const [path, setPath] = useState("");
   const [entries, setEntries] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -62,6 +65,10 @@ export default function WorkspaceManager() {
   const [agentsMd, setAgentsMd] = useState(null);
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
+  const [offline, setOffline] = useState(false);
+  const [readOnly, setReadOnly] = useState(false);
+  const fileRequestRef = useRef(0);
+  const treeRequestRef = useRef(0);
   const fileInputRef = useRef(null);
   const editorRef = useRef(null);
 
@@ -86,42 +93,52 @@ export default function WorkspaceManager() {
   }, []);
 
   const refreshCacheInfo = useCallback(() => {
-    workspaceCacheList()
+    workspaceCacheList(accountScope)
       .then((items) => {
         const files = Array.isArray(items) ? items.length : 0;
         const totalBytes = Array.isArray(items)
-          ? items.reduce((sum, item) => sum + String(item.content || "").length, 0)
+          ? items.reduce((sum, item) => sum + new Blob([item.content || ""]).size, 0)
           : 0;
         setCacheInfo({ files, totalBytes });
       })
       .catch(() => setCacheInfo({ files: 0, totalBytes: 0 }));
-  }, []);
+  }, [accountScope]);
 
   const loadTree = useCallback(async (targetPath) => {
+    const request = ++treeRequestRef.current;
     setLoading(true);
     setError("");
     try {
       const data = await workspaceTree(targetPath);
+      if (request !== treeRequestRef.current) return;
       if (!data?.ok) throw new Error(data?.error || "读取失败。");
       setEntries(data.entries || []);
-      setPath(data.path || targetPath || "");
-    } catch (caught) {
-      setError(caught?.message || "工作区读取失败，请稍后重试。");
-      setEntries(null);
+      setPath(data.path === "/" ? "" : data.path || targetPath || "");
+      setOffline(false);
+    } catch {
+      if (request !== treeRequestRef.current) return;
+      const cached = await workspaceCacheList(accountScope).catch(() => []);
+      if (request !== treeRequestRef.current) return;
+      setPath(targetPath);
+      setEntries(cachedWorkspaceEntries(cached, targetPath));
+      setOffline(true);
+      setError("云端暂时无法读取；当前显示本账号的离线副本。恢复连接后点“刷新”重试。");
     } finally {
-      setLoading(false);
+      if (request === treeRequestRef.current) setLoading(false);
     }
-  }, []);
+  }, [accountScope]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadTree("");
     refreshStats();
     refreshCacheInfo();
+    return () => { fileRequestRef.current += 1; treeRequestRef.current += 1; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const navigate = useCallback((target) => {
+    fileRequestRef.current += 1;
     setOpenPath("");
     setDirty(false);
     void loadTree(target);
@@ -131,6 +148,8 @@ export default function WorkspaceManager() {
     const name = fileLabel(entry);
     if (!name) return;
     const full = path ? `${path}/${name}` : name;
+    const request = ++fileRequestRef.current;
+    setReadOnly(true);
     setOpenPath(full);
     setContent("");
     setCachedAt("");
@@ -139,24 +158,42 @@ export default function WorkspaceManager() {
     setBusy(`open:${full}`);
     setError("");
     try {
-      const cached = await workspaceCacheRead(full).catch(() => null);
+      const cached = await workspaceCacheRead(accountScope, full).catch(() => null);
+      if (request !== fileRequestRef.current) return;
       if (cached?.content != null) {
         setContent(String(cached.content));
         setCachedAt(cached.savedAt ? `（本地缓存 ${new Date(cached.savedAt).toLocaleString()}）` : "（本地缓存）");
       }
-      const data = await workspaceReadFile(full);
+      let data;
+      try { data = await workspaceReadFile(full); }
+      catch (caught) {
+        if (cached?.content == null) throw caught;
+        if (request !== fileRequestRef.current) return null;
+        setError("已打开本账号的离线副本；云端暂不可用，恢复连接后可重新打开。");
+        return { path: full, content: String(cached.content), truncated: false };
+      }
+      if (request !== fileRequestRef.current) return;
       if (data?.ok) {
         setContent(data.content || "");
         setCachedAt("");
-        void workspaceCacheWrite(full, String(data.content || "")).catch(() => undefined);
-        refreshCacheInfo();
+        if (data.truncated) {
+          setReadOnly(true);
+          setError("文件较长，当前只显示前 200,000 字符；编辑已停用，避免覆盖完整文件。");
+          void workspaceCacheDelete(accountScope, full).then(refreshCacheInfo).catch(() => undefined);
+        } else {
+          setReadOnly(false);
+          void workspaceCacheWrite(accountScope, full, String(data.content || "")).then(refreshCacheInfo).catch(() => undefined);
+        }
+        return { path: full, content: String(data.content || ""), truncated: data.truncated === true };
       } else {
-        if (!cached?.content) throw new Error(data?.error || "文件读取失败。");
+        if (cached?.content == null) throw new Error(data?.error || "文件读取失败。");
+        setError("已打开本账号的离线副本；云端暂不可用，恢复连接后可重新打开。");
+        return { path: full, content: String(cached.content), truncated: false };
       }
     } catch (caught) {
-      setError(caught?.message || "文件读取失败。");
+      if (request === fileRequestRef.current) setError(caught?.message || "文件读取失败。");
     } finally {
-      setBusy("");
+      if (request === fileRequestRef.current) setBusy("");
     }
   }
 
@@ -166,6 +203,8 @@ export default function WorkspaceManager() {
     const name = safeFileName(raw);
     if (!name) return;
     const full = path ? `${path}/${name}` : name;
+    fileRequestRef.current += 1;
+    setReadOnly(false);
     setOpenPath(full);
     setContent("");
     setCachedAt("（新文件）");
@@ -176,7 +215,7 @@ export default function WorkspaceManager() {
   }
 
   async function saveFile() {
-    if (!openPath) return;
+    if (!openPath || readOnly || busy) return;
     setBusy("save");
     setError("");
     try {
@@ -184,8 +223,7 @@ export default function WorkspaceManager() {
       if (data?.ok) {
         setDirty(false);
         toast(`已保存 ${openPath}（${formatBytes(data.chars)}）`);
-        void workspaceCacheWrite(openPath, content).catch(() => undefined);
-        refreshCacheInfo();
+        void workspaceCacheWrite(accountScope, openPath, content).then(refreshCacheInfo).catch(() => undefined);
         refreshStats();
         void loadTree(path);
       } else {
@@ -196,8 +234,7 @@ export default function WorkspaceManager() {
           if (confirmed?.ok) {
             setDirty(false);
             toast(`已覆盖保存 ${openPath}。`);
-            void workspaceCacheWrite(openPath, content).catch(() => undefined);
-            refreshCacheInfo();
+            void workspaceCacheWrite(accountScope, openPath, content).then(refreshCacheInfo).catch(() => undefined);
             refreshStats();
             void loadTree(path);
           } else {
@@ -228,7 +265,7 @@ export default function WorkspaceManager() {
           setContent("");
           setDirty(false);
         }
-        void workspaceCacheWrite(target, "").catch(() => undefined);
+        await workspaceCacheDelete(accountScope, target).catch(() => undefined);
         refreshCacheInfo();
         await loadTree(path);
       } else {
@@ -242,10 +279,10 @@ export default function WorkspaceManager() {
   }
 
   async function clearLocalCache() {
-    if (!window.confirm("确认清理工作区本地缓存？云端文件不会被删除，只是移除手机本地的离线副本。")) return;
+    if (!window.confirm("确认清理当前账号的工作区离线副本？云端文件和其他账号的缓存不会被删除。")) return;
     setBusy("clear-cache");
     try {
-      await workspaceCacheClear();
+      await workspaceCacheClear(accountScope);
       refreshCacheInfo();
       toast("本地缓存已清理。");
     } catch (caught) {
@@ -275,6 +312,11 @@ export default function WorkspaceManager() {
   // —— 导入：从本地文件上传到当前目录 ——
   async function importFromFile(file) {
     if (!file?.name) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setError("工作区单个文件目前最多 5MB；聊天附件和聊天记录导入使用各自的容量限制。");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
     const text = await file.text().catch(() => "");
     if (text === "" && file.size > 0) {
       setError("文件读取失败或为空。");
@@ -312,11 +354,12 @@ export default function WorkspaceManager() {
   }
 
   // —— 导出：把已打开文件下载到本地 ——
-  function exportOpenFile() {
-    if (!openPath) return;
-    const name = openPath.split("/").pop() || "workspace-file.txt";
-    downloadTextFile(name, content);
-    toast(`已导出 ${name}`);
+  function exportOpenFile(file = null) {
+    const current = file?.path ? file : { path: openPath, content };
+    if (!current.path) return;
+    const name = current.path.split("/").pop() || "workspace-file.txt";
+    downloadTextFile(name, current.content);
+    toast(`已导出 ${name}${current.truncated ? "（仅当前预览）" : ""}`);
   }
 
   // —— 复制：把编辑器内容复制到剪贴板 ——
@@ -403,7 +446,7 @@ export default function WorkspaceManager() {
           </div>
         </div>
         <p className="workspace-stats-line">
-          云端 {stats?.files ?? "…"} 个文件 · {formatBytes(stats?.bytes)}；本地缓存 {cacheInfo.files} 个 · {formatBytes(cacheInfo.totalBytes)}
+          云端 {stats?.files ?? "…"} 个文件 · {formatBytes(stats?.bytes)}{stats?.partial ? "（部分统计）" : ""}；本账号离线副本 {cacheInfo.files} 个 · {formatBytes(cacheInfo.totalBytes)}
         </p>
       </div>
 
@@ -462,7 +505,7 @@ export default function WorkspaceManager() {
         {loading ? (
           <p className="notification-feature-feedback busy" role="status">加载中…</p>
         ) : entries === null ? null : entries.length === 0 ? (
-          <p className="media-empty-state">这个目录还是空的。可以让 AI 写代码或记笔记到这里。</p>
+          <p className="media-empty-state">{offline ? "这个目录没有本账号的离线副本。连接恢复后点“刷新”。" : "这个目录还是空的。可以让 AI 写代码或记笔记到这里。"}</p>
         ) : (
           <ul className="workspace-file-list">
             {entries.map((entry) => {
@@ -473,6 +516,7 @@ export default function WorkspaceManager() {
                   <button
                     type="button"
                     className="workspace-file-name"
+                    disabled={Boolean(busy)}
                     onClick={() => (isDir ? navigate(path ? `${path}/${name}` : name) : void openFile(entry))}
                   >
                     <span aria-hidden="true">{isDir ? "📂" : "📄"}</span>
@@ -484,7 +528,7 @@ export default function WorkspaceManager() {
                       <button
                         type="button"
                         disabled={Boolean(busy)}
-                        onClick={() => openFile(entry).then(() => exportOpenFile())}
+                        onClick={() => openFile(entry).then((file) => { if (file) exportOpenFile(file); })}
                       >
                         下载
                       </button>
@@ -516,8 +560,8 @@ export default function WorkspaceManager() {
               <button type="button" onClick={() => void copyContent()} disabled={Boolean(busy) || !openPath}>
                 {copied ? "已复制 ✓" : "复制"}
               </button>
-              <button type="button" onClick={exportOpenFile} disabled={Boolean(busy) || !openPath}>下载</button>
-              <button type="button" disabled={busy === "save" || !dirty} onClick={() => void saveFile()}>
+              <button type="button" onClick={exportOpenFile} disabled={Boolean(busy) || !openPath}>下载当前内容</button>
+              <button type="button" disabled={Boolean(busy) || readOnly || !dirty} onClick={() => void saveFile()}>
                 {busy === "save" ? "保存中…" : "保存"}
               </button>
               <button type="button" disabled={Boolean(busy)} onClick={() => { setOpenPath(""); setDirty(false); setCopied(false); }}>关闭</button>
@@ -526,6 +570,7 @@ export default function WorkspaceManager() {
           <textarea
             ref={editorRef}
             value={content}
+            readOnly={readOnly || Boolean(busy)}
             onChange={(event) => { setContent(event.target.value); setDirty(true); }}
             spellCheck={false}
             placeholder="在这里输入或粘贴文件内容…"
