@@ -6041,6 +6041,11 @@ button:disabled {
   visibility: visible;
 }
 
+.app-shell.is-settings-open > .distill-modal-backdrop {
+  visibility: visible;
+  z-index: 320;
+}
+
 /* 移动端:降低设置面板的昂贵模糊,减少 GPU 合成压力 */
 @media (max-width: 820px) {
   .settings-sheet {
