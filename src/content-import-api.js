@@ -53,6 +53,8 @@ const IMPORT_ERROR_MESSAGES = Object.freeze({
   import_settings_missing: "当前伴侣的设置记录缺失，本轮写入已回滚。请重新打开设置，确认保存成功后重试。",
   import_commit_rolled_back: "数据库未完成提交，本轮写入已全部回滚。请核对候选内容后重试。",
   import_commit_unconfirmed: "未能确认服务器是否已提交，请先检查提交结果，暂勿重复导入。",
+  import_commit_pending: "服务器仍未标记这次导入完成，暂时无法确定是否正在提交。请稍后再次核对，暂勿重复导入。",
+  import_receipt_missing: "服务器已找不到这次导入预览，无法确认旧结果。请核对已保存的记忆与世界书，再重新预览。",
   validation_error: "导入内容未通过校验，请检查候选项后重试。",
   authentication_required: "登录状态已失效，请重新登录后再导入。",
   import_scope_changed: "账号或伴侣已切换，旧导入操作已取消，请在当前面板重新选择文件。",
@@ -65,7 +67,7 @@ const IMPORT_ERROR_MESSAGES = Object.freeze({
 });
 
 export function importCommitRecovery(code) {
-  if (["import_legacy_preview", "import_partial_legacy"].includes(code)) return "legacy";
+  if (["import_legacy_preview", "import_partial_legacy", "import_receipt_missing"].includes(code)) return "legacy";
   if (["import_commit_rolled_back", "import_transaction_unavailable", "import_settings_missing",
     "import_decisions_incomplete", "import_candidate_invalid", "import_decision_invalid", "import_target_invalid",
     "import_content_invalid", "import_content_empty", "import_time_unreliable", "import_title_too_long",

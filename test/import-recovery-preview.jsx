@@ -22,6 +22,7 @@ export default function Preview() {
         throw Object.assign(new Error('Synthetic timeout'),{code:'request_timeout',status:504});
       }
       const result=records.current.get(path.split('/').at(-1));
+      if(!result)throw Object.assign(new Error(),{code:'import_not_found',status:404});
       return {result};
     },
     async apiFetch(path,options) {

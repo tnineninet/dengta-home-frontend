@@ -406,6 +406,9 @@ button:disabled {
 .content-import button:focus-visible { outline: 3px solid #718bc0; outline-offset: 3px; }
 .content-import button:disabled { cursor: default; opacity: .55; }
 .content-import-page-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 10px; }
+.content-import-attempts ul { display: grid; gap: 12px; padding: 0; list-style: none; }
+.content-import-attempts li { display: grid; gap: 7px; min-width: 0; }
+.content-import-attempts code { overflow-wrap: anywhere; font-size: .78rem; }
 @media (prefers-reduced-motion: reduce) { .content-import-secondary { transition: none; } }
 .content-import-error,
 .content-import-success,

@@ -5,6 +5,43 @@ import { Buffer } from 'node:buffer';
 import { importCheckpointKey, readImportCheckpoint, saveImportCheckpoint, clearImportCheckpoint, importCommitReceipt } from '../src/import-checkpoint.js';
 import { fingerprintImportFile } from '../src/import-file-fingerprint.js';
 import { createImportRequestClient } from '../src/import-request-scope.js';
+import { importAttemptPrefix, readImportAttempts, saveImportAttempt, clearImportAttempt } from '../src/import-attempt-receipt.js';
+
+test('small import attempts retain only technical metadata and isolate each account, companion and receipt',()=>{
+  const values=new Map(),store={get length(){return values.size;},key:i=>[...values.keys()][i],getItem:k=>values.get(k),setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
+  const prefix=importAttemptPrefix('receipt-account','receipt-companion');
+  const row={version:1,importId:'small-1',kind:'world_book',startedAt:123,content:'private',filename:'private',decisions:['private'],token:'private'};
+  assert.equal(saveImportAttempt(prefix,row,store),true);
+  assert.equal(saveImportAttempt(prefix,{...row,importId:'small-2',startedAt:124},store),true);
+  assert.equal([...values.values()].join('').includes('private'),false);
+  values.set(prefix+'corrupt','{');
+  values.set(prefix+'mismatched',JSON.stringify({...row,importId:'other-id'}));
+  assert.deepEqual(readImportAttempts(prefix,store).map(x=>x.importId),['small-1','small-2']);
+  assert.deepEqual(readImportAttempts(importAttemptPrefix('other-account','receipt-companion'),store),[]);
+  assert.deepEqual(readImportAttempts(importAttemptPrefix('receipt-account','other-companion'),store),[]);
+  assert.equal(clearImportAttempt(prefix,'small-1',store),true);
+  assert.deepEqual(readImportAttempts(prefix,store).map(x=>x.importId),['small-2']);
+  assert.equal(clearImportAttempt(prefix,'small-2',store),true);
+  assert.notEqual(importAttemptPrefix('a.b','c'),importAttemptPrefix('a','b.c'));
+  saveImportAttempt(prefix,row,store);
+  values.delete(prefix+row.importId);
+  assert.deepEqual(readImportAttempts(prefix,store),[],'another tab clearing a confirmed receipt removes it from the next read');
+  assert.equal(saveImportAttempt(prefix,{...row,importId:'bad.id'},store),false);
+  assert.equal(saveImportAttempt(null,row,store),false);
+});
+
+test('blocked storage preserves uncertain small import IDs across same-tab remounts',()=>{
+  const descriptor=Object.getOwnPropertyDescriptor(globalThis,'localStorage');
+  Object.defineProperty(globalThis,'localStorage',{configurable:true,get(){throw Error('blocked');}});
+  const prefix=importAttemptPrefix('blocked-attempt-account','companion');
+  const row={version:1,importId:'blocked-attempt',kind:'chat_history',startedAt:456};
+  try {
+    assert.equal(saveImportAttempt(prefix,row),false);
+    assert.deepEqual(readImportAttempts(prefix),[row]);
+    assert.equal(clearImportAttempt(prefix,row.importId),false);
+    assert.deepEqual(readImportAttempts(prefix),[]);
+  } finally {if(descriptor)Object.defineProperty(globalThis,'localStorage',descriptor);else delete globalThis.localStorage;}
+});
 
 function storage() { const values=new Map();return {values,getItem:key=>values.get(key),setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)}; }
 const digest='a'.repeat(64);

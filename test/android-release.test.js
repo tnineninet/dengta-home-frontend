@@ -72,7 +72,7 @@ const neteasePlaybackPlugin = fs.readFileSync(
 );
 
 assert.match(buildGradle, /applicationId "home\.dengta\.app"/);
-assert.match(buildGradle, /versionCode 106\b/);
+assert.match(buildGradle, /versionCode 107\b/);
 assert.ok(buildGradle.includes(`versionName "${packageJson.version}"`), "APK version must match the package version");
 assert.match(
   buildGradle,
