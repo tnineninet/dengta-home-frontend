@@ -8,7 +8,22 @@ import {
   previewContentImport,
   translatedImportError,
   validateImportFile,
+  resolveContentImport,
+  contentImportResolutionReceipt,
 } from "../src/content-import-api.js";
+
+test('pending resolution posts only explicit confirmation and accepts only a complete matching result',async()=>{
+  const calls=[],client={apiRequest:async(path,options)=>{calls.push({path,options});return{};}};
+  const signal=new AbortController().signal;
+  await resolveContentImport('pending/id',client,{signal});
+  assert.equal(calls[0].path,'/api/v2/imports/pending%2Fid/resolve');
+  assert.equal(calls[0].options.signal,signal);
+  assert.deepEqual(JSON.parse(calls[0].options.body),{confirm_reject_pending:true});
+  const value={import:{id:'x',status:'committed',accepted_count:0,rejected_count:2,candidate_count:2},accepted_count:0,rejected_count:2,resolution:'discarded',resolution_protocol:'reject-pending-v1'};
+  assert.equal(contentImportResolutionReceipt({result:value},'x'),value);
+  for(const changed of [{...value,resolution:'committed'},{...value,resolution_protocol:null},{...value,import:{...value.import,id:'other'}},{...value,rejected_count:1},{...value,import:{...value.import,status:'preview'}}])
+    assert.throws(()=>contentImportResolutionReceipt({result:changed},'x'),{code:'import_resolution_receipt_invalid'});
+});
 
 test("JSON preview uses apiRequest and preserves unfiltered source content", async () => {
   const calls = [];

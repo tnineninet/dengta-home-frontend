@@ -55,6 +55,8 @@ const IMPORT_ERROR_MESSAGES = Object.freeze({
   import_commit_unconfirmed: "未能确认服务器是否已提交，请先检查提交结果，暂勿重复导入。",
   import_commit_pending: "服务器仍未标记这次导入完成，暂时无法确定是否正在提交。请稍后再次核对，暂勿重复导入。",
   import_receipt_missing: "服务器已找不到这次导入预览，无法确认旧结果。请核对已保存的记忆与世界书，再重新预览。",
+  import_resolution_confirmation_required: "请明确确认放弃尚未提交的旧候选，已经保存的内容会保留。",
+  import_resolution_receipt_invalid: "没有收到可靠的旧候选处理结果，请保留编号并再次核对，暂勿重复导入。",
   validation_error: "导入内容未通过校验，请检查候选项后重试。",
   authentication_required: "登录状态已失效，请重新登录后再导入。",
   import_scope_changed: "账号或伴侣已切换，旧导入操作已取消，请在当前面板重新选择文件。",
@@ -181,6 +183,26 @@ export function listContentImports(client = defaultClient) {
 
 export function getContentImport(importId, client = defaultClient) {
   return jsonImportRequest(`/api/v2/imports/${encodeURIComponent(importId)}`, undefined, client);
+}
+
+export function contentImportResolutionReceipt(data, importId) {
+  const value = data?.result, task = value?.import;
+  const accepted = value?.accepted_count, rejected = value?.rejected_count;
+  if (value?.resolution_protocol !== "reject-pending-v1" || task?.id !== importId || task.status !== "committed"
+      || !Number.isSafeInteger(accepted) || accepted < 0 || !Number.isSafeInteger(rejected) || rejected < 0
+      || !Number.isSafeInteger(task.candidate_count) || task.candidate_count < 0
+      || accepted !== task.accepted_count || rejected !== task.rejected_count || accepted + rejected !== task.candidate_count
+      || value.resolution !== (accepted === 0 ? "discarded" : "committed")) {
+    throw importError({code:"import_resolution_receipt_invalid"});
+  }
+  return value;
+}
+
+export function resolveContentImport(importId, client = defaultClient, options = {}) {
+  return jsonImportRequest(`/api/v2/imports/${encodeURIComponent(importId)}/resolve`, {
+    method:"POST", ...(options.signal ? {signal:options.signal} : {}),
+    body:JSON.stringify({confirm_reject_pending:true})
+  }, client);
 }
 
 export function previewContentImport(

@@ -11,6 +11,96 @@ const text=node=>typeof node==='string'?node:(node?.children||[]).map(text).join
 const button=(renderer,label)=>renderer.root.find(n=>n.type==='button'&&text(n)===label);
 const preview={import:{id:'receipt-1',status:'preview'},candidates:[{id:'candidate-1',candidate_type:'memory',title:'Synthetic',content:'Synthetic content'}]};
 
+test('paged resolution resumes discarded bytes, advances completed bytes and preserves an unknown pending segment',async()=>{
+  const previousStorage=globalThis.localStorage,previousWindow=globalThis.window;
+  const values=new Map(),store={getItem:k=>values.get(k),setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
+  globalThis.localStorage=store;globalThis.window={dispatchEvent:()=>{}};
+  const file=new File(['Synthetic\n'.repeat(120000)],'synthetic.txt'),fingerprint=await fingerprintImportFile(file);
+  const vite=await createServer({appType:'custom',logLevel:'silent',server:{middlewareMode:true}});let renderer;
+  try {
+    const {default:Component}=await vite.ssrLoadModule('/src/ContentImport.jsx');
+    for(const outcome of ['discarded','committed','network']) {
+      const account='paged-resolve-'+outcome,key=importCheckpointKey(account,'c','world_book',fingerprint);
+      saveImportCheckpoint(key,{version:1,totalBytes:file.size,nextByte:100,pending:{importId:'receipt-1',startByte:100,endByte:500,commitAttempted:true}},store);
+      let resolves=0,previews=0;
+      const api={apiRequest:async path=>{
+        if(path==='/api/v2/imports/')return{imports:[]};
+        if(path.endsWith('/receipt-1'))return{result:{...preview,import:{...preview.import,commit_protocol:'atomic-v1'}}};
+        if(path.endsWith('/resolve')) {
+          resolves++;if(outcome==='network')throw Object.assign(Error('private'),{code:'import_commit_unconfirmed'});
+          const accepted=outcome==='committed'?1:0;
+          return{result:{import:{id:'receipt-1',status:'committed',candidate_count:1,accepted_count:accepted,rejected_count:1-accepted},accepted_count:accepted,rejected_count:1-accepted,resolution:outcome,resolution_protocol:'reject-pending-v1'}};
+        }
+        throw Error('unexpected request');
+      },apiFetch:async(_path,options)=>{
+        previews++;assert.ok((await options.body.get('file').text()).startsWith('Synthetic\n'));
+        return new Response(JSON.stringify({result:{...preview,import:{id:'next-preview',status:'preview'}}}),{headers:{'Content-Type':'application/json'}});
+      }};
+      await act(async()=>{renderer=TestRenderer.create(React.createElement(Component,{api,accountScope:account,companionScope:'c'}));});
+      await act(async()=>renderer.root.find(n=>n.type==='input'&&n.props.type==='file').props.onChange({target:{files:[file]}}));
+      await act(async()=>button(renderer,'生成导入预览').props.onClick());
+      for(let i=0;i<60&&!text(renderer.toJSON()).includes('这一段曾尝试提交');i++)await act(async()=>{await new Promise(r=>setTimeout(r,20));});
+      await act(async()=>button(renderer,'检查提交结果').props.onClick());
+      await act(async()=>button(renderer,'放弃旧候选并核对结果').props.onClick());
+      assert.equal(resolves,1);assert.equal(previews,0);
+      const saved=readImportCheckpoint(key,file.size,store);
+      assert.equal(saved.nextByte,outcome==='committed'?500:100);
+      assert.equal(Boolean(saved.pending),outcome==='network');
+      if(outcome==='discarded') {
+        assert.equal(text(renderer.toJSON()).includes('读取下一段'),false,'discarded segment must not offer skipping it');
+        await act(async()=>button(renderer,'生成导入预览').props.onClick());
+        for(let i=0;i<60&&!previews;i++)await act(async()=>{await new Promise(r=>setTimeout(r,20));});
+        assert.equal(previews,1);assert.equal(readImportCheckpoint(key,file.size,store).pending.startByte,100);
+      }
+      await act(async()=>renderer.unmount());renderer=null;
+    }
+  } finally {if(renderer)await act(async()=>renderer.unmount());await vite.close();globalThis.localStorage=previousStorage;globalThis.window=previousWindow;}
+});
+
+test('explicit pending resolution unlocks only matching results and preserves unknown failures',async()=>{
+  const previousStorage=globalThis.localStorage,previousWindow=globalThis.window;
+  const values=new Map();globalThis.localStorage={get length(){return values.size;},key:i=>[...values.keys()][i],getItem:k=>values.get(k),setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)};
+  let events=0;globalThis.window={dispatchEvent:()=>events++};
+  const vite=await createServer({appType:'custom',logLevel:'silent',server:{middlewareMode:true}});let renderer;
+  try {
+    const {default:Component}=await vite.ssrLoadModule('/src/ContentImport.jsx');
+    const receipts=await vite.ssrLoadModule('/src/import-attempt-receipt.js');
+    for(const outcome of ['discarded','committed','invalid','network']) {
+      let resolves=0,posts=0;const account='resolve-'+outcome,prefix=receipts.importAttemptPrefix(account,'companion');
+      receipts.saveImportAttempt(prefix,{version:1,importId:'receipt-1',kind:'world_book',startedAt:123});
+      const api={apiRequest:async(path,options)=>{
+        if(path==='/api/v2/imports/')return{imports:[]};
+        if(path.endsWith('/receipt-1'))return{result:{...preview,import:{...preview.import,commit_protocol:'atomic-v1'}}};
+        if(path.endsWith('/resolve')) {
+          resolves++;assert.deepEqual(JSON.parse(options.body),{confirm_reject_pending:true});
+          if(outcome==='network')throw Object.assign(Error('private'),{code:'import_commit_unconfirmed',status:503});
+          const accepted=outcome==='committed'?1:0;
+          return{result:{import:{id:'receipt-1',status:'committed',accepted_count:accepted,rejected_count:1-accepted,candidate_count:1},accepted_count:accepted,rejected_count:1-accepted,resolution:outcome==='invalid'?'committed':outcome,resolution_protocol:'reject-pending-v1'}};
+        }
+        posts++;throw Error('unexpected POST');
+      }};
+      await act(async()=>{renderer=TestRenderer.create(React.createElement(Component,{api,accountScope:account,companionScope:'companion'}));});
+      await act(async()=>button(renderer,'核对这次导入').props.onClick());
+      assert.equal(resolves,0,'receipt checks alone cannot reject candidates');
+      assert.match(text(renderer.toJSON()),/尚未提交的全部旧候选/);
+      await act(async()=>button(renderer,'放弃旧候选并核对结果').props.onClick());
+      assert.equal(resolves,1);assert.equal(posts,0);
+      if(['invalid','network'].includes(outcome)) {
+        assert.equal(receipts.readImportAttempts(prefix).length,1);
+        assert.equal(button(renderer,'生成导入预览').props.disabled,true);
+        assert.match(text(renderer.toJSON()),/旧提交编号仍保留/);
+        assert.equal(text(renderer.toJSON()).includes('private'),false);
+      } else {
+        assert.equal(receipts.readImportAttempts(prefix).length,0);
+        assert.equal(renderer.root.find(n=>n.type==='input'&&n.props.type==='file').props.disabled,false);
+        assert.match(text(renderer.toJSON()),outcome==='discarded'?/没有写入用户内容/:/原提交已经完成/);
+      }
+      await act(async()=>renderer.unmount());renderer=null;receipts.clearImportAttempt(prefix,'receipt-1');
+    }
+    assert.equal(events,1,'only an existing completed accepted import refreshes memory');
+  } finally {if(renderer)await act(async()=>renderer.unmount());await vite.close();globalThis.localStorage=previousStorage;globalThis.window=previousWindow;}
+});
+
 test('paste and small-file unknown commits survive closing; receipt GET never resubmits and pending stays locked',async()=>{
   const previousStorage=globalThis.localStorage,previousWindow=globalThis.window;
   globalThis.window={dispatchEvent:()=>{}};

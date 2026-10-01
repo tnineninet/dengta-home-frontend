@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { commitContentImport, getContentImport, listContentImports, previewContentImport, previewContentImportPage, CONTENT_IMPORT_PAGED_EXTENSIONS, CONTENT_IMPORT_ERROR_FEEDBACK, translatedImportError, importCommitRecovery } from "./content-import-api.js";
+import { commitContentImport, getContentImport, resolveContentImport, contentImportResolutionReceipt, listContentImports, previewContentImport, previewContentImportPage, CONTENT_IMPORT_PAGED_EXTENSIONS, CONTENT_IMPORT_ERROR_FEEDBACK, translatedImportError, importCommitRecovery } from "./content-import-api.js";
 import WorldBookManager from "./WorldBookManager.jsx";
 import ChatErrorLog from "./ChatErrorLog.jsx";
 import { funLabsDiagnostic } from "./fun-labs-refresh.js";
@@ -347,6 +347,26 @@ export default function ContentImport({ api, accountScope = "", companionScope =
     settlePage(resume?.key,resume?.record);setPreview(null);setResult(null);
   }
 
+  async function resolvePendingCommit() {
+    const importId=uncertainImportId || resume?.record.pending?.importId;
+    if(!importId || diagnostic?.error_code!=="import_commit_pending")return;
+    const task=begin("resolve");if(!task)return;
+    try {
+      const data=await resolveContentImport(importId,client,{signal:task.controller.signal});if(!current(task))return;
+      const value=contentImportResolutionReceipt(data,importId);
+      removeAttempt(importId);setUncertainImportId(null);setPreview(null);
+      if(value.resolution==="discarded") {
+        if(resume?.record.pending)remember(resume.key,{...resume.record,nextByte:resume.record.pending.startByte,pending:null});
+        setPage(null);setResult(null);setRecoveryNote("旧候选已全部放弃，没有写入用户内容；可以重新选择原文件或粘贴文本，生成新预览。");
+      } else {
+        settlePage(resume?.key,resume?.record);setResult(committedResult(value.import));
+        setRecoveryNote("原提交已经完成，保留原结果，没有重复写入或删除已保存内容。");
+        window.dispatchEvent(new CustomEvent("dengta:memories-imported",{detail:value}));
+      }
+      await refreshRecent(task);
+    } catch(error) {if(current(task)){fail(error);setRecoveryNote("结束旧候选的请求未确认；旧提交编号仍保留，请先检查提交结果，再决定下一步。");}} finally {finish(task);}
+  }
+
   function reviewLegacyPage() {
     if(busy || importCommitRecovery(diagnostic?.error_code)!=="legacy")return;
     if(resume?.record.pending)remember(resume.key,{...resume.record,nextByte:resume.record.pending.startByte,pending:null});
@@ -405,6 +425,10 @@ export default function ContentImport({ api, accountScope = "", companionScope =
         {progress && <p role="status">正在校验原文件：{Math.round(progress.readBytes / progress.totalBytes * 100)}% · 分块读取，不整份载入内存。</p>}
         {recoveryNote && <p role="status">{recoveryNote}</p>}
         {(uncertainImportId || resume?.record.pending?.commitAttempted) && <button className="content-import-secondary" type="button" disabled={Boolean(busy)} onClick={()=>void checkCommit()}>{busy==="check" ? "正在核对…" : "检查提交结果"}</button>}
+        {(diagnostic?.error_code==="import_commit_pending" || busy==="resolve") && <section className="content-import-receipt" aria-label="结束旧候选">
+          <p>放弃尚未提交的全部旧候选；已经保存的内容保留。如果原提交先完成，将显示原结果。</p>
+          <button className="content-import-secondary" type="button" disabled={Boolean(busy)} onClick={()=>void resolvePendingCommit()}>{busy==="resolve" ? "正在核对并结束…" : "放弃旧候选并核对结果"}</button>
+        </section>}
         {importCommitRecovery(diagnostic?.error_code)==="legacy" && <button className="content-import-secondary" type="button" disabled={Boolean(busy)} onClick={reviewLegacyPage}>已核对旧结果，重新预览本段</button>}
         {page && <div role="status"><p>本段：{page.startByte.toLocaleString()}–{page.endByte.toLocaleString()} 字节 / 共 {page.totalBytes.toLocaleString()} 字节。预览不会自动写入记忆。</p>
           <div className="content-import-page-actions">
