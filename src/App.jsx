@@ -73,6 +73,8 @@ import { diagnosticScopeKey } from "./operation-diagnostics.js";
 import FeatureNavigation from "./FeatureNavigation.jsx";
 import { FEATURE_LABELS, QUICK_FEATURES } from "./feature-navigation.js";
 import AchievementNotice from "./AchievementNotice.jsx";
+import FunLabsFeedback from "./FunLabsFeedback.jsx";
+import { emptyFunLabsState, refreshFunLabsSections, removeFunDate, FUN_LABS_ERROR_FEEDBACK } from "./fun-labs-refresh.js";
 import { ACHIEVEMENT_ACTIONS, freshAchievements, guideStorageKey } from "./achievement-guide.js";
 import { appendActivityDraft } from "./chat-activities.js";
 import { useChatDraft } from "./use-chat-draft.js";
@@ -5658,15 +5660,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const funToken = useMemo(() => ({ scope: funScope, requestId: 0 }), [funScope]);
   const funTokenRef = useRef(funToken);
   funTokenRef.current = funToken;
-  const [funLabsSnapshot, setFunLabsState] = useState({
-    status: "idle",
-    dates: [],
-    achievements: [],
-    shots: { today: null, recent: [] },
-  });
-  const funLabsState = funLabsSnapshot.scope === funToken ? funLabsSnapshot : {
-    status: "idle", dates: [], achievements: [], shots: { today: null, recent: [] },
-  };
+  const [funLabsSnapshot, setFunLabsState] = useState(emptyFunLabsState);
+  const funLabsState = funLabsSnapshot.scope === funToken ? funLabsSnapshot : emptyFunLabsState();
+  const [dateDeleteState, setDateDeleteState] = useState(null);
+  const dateDeleteRef = useRef(null);
   const [guideRevision, setGuideRevision] = useState(0);
   const [customAchievement, setCustomAchievement] = useState({
     title: "",
@@ -5838,29 +5835,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const unlockedCodesRef = useRef(null);
   const dismissAchievement = useCallback(() => setAchievementPopup({ visible: false, items: [] }), []);
 
-  const refreshFunLabs = useCallback(async () => {
-    if (funTokenRef.current !== funToken || !componentMountedRef.current) return;
-    const requestId = ++funToken.requestId;
-    setFunLabsState(previous => ({ ...(previous.scope === funToken ? previous : { dates: [], achievements: [], shots: { today: null, recent: [] } }), scope: funToken, status: "busy" }));
-    const [datesData, achievementsData, shotsData] = await Promise.all([
-      apiRequest("/api/v2/special-dates", { timeoutMs: 12_000 }).catch(() => null),
-      apiRequest("/api/v2/fun-labs/achievements", { timeoutMs: 20_000 }).catch(() => null),
-      apiRequest("/api/v2/fun-labs/daily-shots", { timeoutMs: 12_000 }).catch(() => null),
-    ]);
-    if (funTokenRef.current !== funToken || funToken.requestId !== requestId || !componentMountedRef.current) return;
-    const items = Array.isArray(achievementsData?.achievements) ? achievementsData.achievements : null;
-    setFunLabsState(previous => ({
-      scope: funToken, status: items ? "success" : "error",
-      dates: Array.isArray(datesData?.dates) ? datesData.dates : previous.dates || [],
-      achievements: items || previous.achievements || [],
-      shots: shotsData || previous.shots || { today: null, recent: [] },
-    }));
-    if (!items) return;
-    const previous = unlockedCodesRef.current?.scope === funToken ? unlockedCodesRef.current.codes : null;
-    const fresh = freshAchievements(previous, items);
-    unlockedCodesRef.current = { scope: funToken, codes: items.filter(item => item.unlocked).map(item => item.code || item.id) };
-    if (fresh.length) setAchievementPopup({ scope: funToken, visible: true, items: fresh });
-  }, [funToken]);
+  const refreshFunLabs = useCallback((sections) => refreshFunLabsSections({
+    token: funToken, currentToken: () => funTokenRef.current,
+    isMounted: () => componentMountedRef.current, request: apiRequest,
+    update: setFunLabsState, sections,
+    onAchievements: items => {
+      const previous = unlockedCodesRef.current?.scope === funToken ? unlockedCodesRef.current.codes : null;
+      const fresh = freshAchievements(previous, items);
+      unlockedCodesRef.current = { scope: funToken, codes: items.filter(item => item.unlocked).map(item => item.code || item.id) };
+      if (fresh.length) setAchievementPopup({ scope: funToken, visible: true, items: fresh });
+    },
+  }), [funToken]);
 
   async function addCustomAchievement() {
     if (!customAchievement.title.trim()) return;
@@ -5875,7 +5860,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         }),
       });
       setCustomAchievement({ title: "", emoji: "", description: "" });
-      await refreshFunLabs();
+      await refreshFunLabs(["achievements"]);
     } catch {
       if (funTokenRef.current === funToken) setNotice("成就没有保存成功，内容仍在输入框中。请重试，或在设置的错误日志中查看 DT-ACHIEVEMENTS。");
     }
@@ -5887,7 +5872,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         `/api/v2/fun-labs/achievements/${encodeURIComponent(code)}/unlock`,
         { method: "POST", timeoutMs: 12_000, body: JSON.stringify({}) }
       );
-      await refreshFunLabs();
+      await refreshFunLabs(["achievements"]);
     } catch {
       if (funTokenRef.current === funToken) setNotice("这次未能保存成就完成状态，请稍后重试。诊断编号：DT-ACHIEVEMENTS。");
     }
@@ -5899,7 +5884,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         method: "DELETE",
         timeoutMs: 12_000,
       });
-      await refreshFunLabs();
+      await refreshFunLabs(["achievements"]);
     } catch {
       if (funTokenRef.current === funToken) setNotice("这次没有删除成功，请稍后重试。可到设置中的错误日志查看操作诊断。");
     }
@@ -5913,7 +5898,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     if (Array.isArray(result.achievements)) {
       setFunLabsState(previous => ({ ...previous, scope: funToken, achievements: result.achievements }));
     }
-    await refreshFunLabs();
+    await refreshFunLabs(["achievements"]);
   }
 
   function handleGuideAction(action) {
@@ -5925,7 +5910,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   function renderAchievementGuide() {
     return <AchievementGuide key={funScope + guideRevision} storageKey={guideStorageKey(accountStorageScope, companionScope)}
-      achievements={funLabsState.achievements} loading={funLabsState.status === "busy"}
+      achievements={funLabsState.achievements} loading={funLabsState.sections.achievements.status === "busy"}
       onAction={handleGuideAction} onClaim={completeOnboarding} />;
   }
 
@@ -5940,15 +5925,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   async function removeSpecialDate(id) {
-    try {
-      await apiRequest(`/api/v2/special-dates/${id}`, {
-        method: "DELETE",
-        timeoutMs: 12_000,
-      });
-      await refreshFunLabs();
-    } catch {
-      // 删除失败不阻塞。
-    }
+    await removeFunDate({ id, token: funToken, currentToken: () => funTokenRef.current,
+      isMounted: () => componentMountedRef.current, lock: dateDeleteRef, request: apiRequest,
+      update: setFunLabsState, feedback: setDateDeleteState, refresh: refreshFunLabs });
   }
 
   useEffect(() => {
@@ -7331,15 +7310,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               </button>
             </div>
           </div>
-          {funLabsState.status === "busy" ? (
-            <p className="notification-feature-feedback busy" role="status">
-              加载中…
-            </p>
-          ) : funLabsState.status === "error" ? (
-            <p className="notification-feature-feedback error" role="status">
-              暂时加载失败，请稍后再试。
-            </p>
-          ) : null}
+          <FunLabsFeedback key={funScope + ":achievements"} section={funLabsState.sections.achievements} title="成就"
+            hasSavedData={funLabsState.achievements.length > 0} onRetry={() => void refreshFunLabs(["achievements"])} />
           {funLabsState.achievements.length > 0 ? (
             <div className="fun-achievements-wrap">
               <div className="fun-achievements-grid">
@@ -7437,6 +7409,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               <span>聊天中管理，这里查看</span>
             </div>
           </div>
+          <h3 className="fun-labs-section-title">纪念日与追番</h3>
+          <FunLabsFeedback key={funScope + ":dates"} section={funLabsState.sections.dates} title="纪念日"
+            hasSavedData={funLabsState.dates.length > 0} onRetry={() => void refreshFunLabs(["dates"])} />
+          {dateDeleteState?.scope === funToken && dateDeleteState.status === "error" && <div className="fun-labs-feedback">
+            <p role="status">删除结果尚未确认。请先刷新核对，暂勿重复删除。</p>
+            <button type="button" onClick={() => { setDateDeleteState(null); void refreshFunLabs(["dates"]); }}>刷新核对</button>
+            <ChatErrorLog key={dateDeleteState.diagnostic.error_log_id || dateDeleteState.diagnostic.error_code} logId={dateDeleteState.diagnostic.error_log_id} diagnostic={dateDeleteState.diagnostic} feedbackByCode={FUN_LABS_ERROR_FEEDBACK} />
+          </div>}
           {funLabsState.dates.length > 0 ? (
             <div className="fun-labs-list">
               {funLabsState.dates.slice(0, 10).map((date) => (
@@ -7450,18 +7430,22 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   </small>
                   <button
                     type="button"
+                    disabled={dateDeleteState?.scope === funToken && dateDeleteState.status === "busy"}
                     onClick={() => void removeSpecialDate(date.id)}
                   >
-                    删除
+                    {dateDeleteState?.scope === funToken && dateDeleteState.status === "busy" && dateDeleteState.id === date.id ? "删除中…" : "删除"}
                   </button>
                 </div>
               ))}
             </div>
-          ) : (
+          ) : funLabsState.sections.dates.status === "success" ? (
             <p className="fun-labs-line">
               还没有保存的日子。在聊天里说“记住我们的纪念日”“追番鬼灭之刃”即可添加。
             </p>
-          )}
+          ) : null}
+          <h3 className="fun-labs-section-title">每日一拍</h3>
+          <FunLabsFeedback key={funScope + ":shots"} section={funLabsState.sections.shots} title="照片"
+            hasSavedData={Boolean(funLabsState.shots.today || funLabsState.shots.recent.length)} onRetry={() => void refreshFunLabs(["shots"])} />
           {funLabsState.shots?.today ? (
             <p className="fun-labs-line">
               今天已拍每日一拍
@@ -7469,7 +7453,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 ? `：${funLabsState.shots.today.note}`
                 : ""}
             </p>
-          ) : null}
+          ) : funLabsState.sections.shots.status === "success" ? <p className="fun-labs-line">今天还没有照片，可以在聊天中发送照片并说“记下今天的每日一拍”。</p> : null}
           <small>在聊天里直接说“看看我的纪念日/成就”也能查。</small>
         </div>
       </div>

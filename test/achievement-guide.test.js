@@ -76,7 +76,7 @@ try {
   assert.equal(dismissed, 1);
   const app = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
   assert.ok(!app.includes("dengta_onboarding_v1") && !app.includes("onboardingAutoShownRef"));
-  assert.ok(app.includes("funToken.requestId !== requestId"), "late achievement refresh guarded");
+  assert.ok(app.includes("refreshFunLabsSections"), "achievement refresh uses the scoped section loader; race behavior is tested in fun-labs-refresh.test.js");
   console.log("Achievement guide: dismiss/resume, scope, optional steps, confirmed rewards, failure recovery and non-modal notices passed");
 } finally {
   if (tree) await act(async () => tree.unmount());
