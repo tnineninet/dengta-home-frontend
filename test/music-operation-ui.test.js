@@ -63,7 +63,7 @@ try{
  await act(async()=>{pending.resolve({playlist:{...saved,name:'Old private playlist'}});await settle();});assert.equal(notified,0);assert.doesNotMatch(output(),/Old private playlist/);
  await act(async()=>tree.unmount());identity=accountA;handler=null;
 
- await mount(Settings,{compact:true});upload=deferred();const input=tree.root.findAllByType('input').find(node=>node.props.type==='file'&&node.props.accept.startsWith('.mp3,.m4a,.wav'));
+ await mount(Settings,{compact:true});upload=deferred();const input=tree.root.findAllByType('label').find(node=>node.children.some(child=>typeof child==='string'&&child.startsWith('上传本机音频'))).findByType('input');
  const control={files:[new File(['fixture'],'fixture.mp3',{type:'audio/mpeg'})],value:'fixture'};const importsBefore=calls.filter(c=>c.path.endsWith('/playlists/import')).length;
  await act(async()=>{input.props.onChange({currentTarget:control});await settle();});const uploading=calls.at(-1);
  await act(async()=>tree.unmount());assert.equal(uploading.options.signal.aborted,true);

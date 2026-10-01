@@ -22,6 +22,7 @@ import MusicPagedList from "./MusicPagedList.jsx";
 import { useMusicScope } from "./use-music-scope.js";
 import { runMusicTask, musicErrorMessage } from "./music-operation-feedback.js";
 import { launchExternalMusic, externalMusicFeedback } from "./music-external-launch.js";
+import { createMusicImportRecovery } from "./music-import-recovery.js";
 
 const PROVIDERS = [
   ["local_playlist", "本地歌单", "ready", "可用"],
@@ -33,7 +34,11 @@ const PLAYLIST_ACCEPT = ".json,.m3u,.m3u8,.txt,application/json,text/plain,audio
 const AUDIO_ACCEPT = ".mp3,.m4a,.aac,.wav,.ogg,.opus,.flac,audio/mpeg,audio/mp4,audio/aac,audio/wav,audio/ogg,audio/opus,audio/flac";
 const AUDIO_EXTENSION = /\.(?:mp3|m4a|aac|wav|ogg|opus|flac)$/i;
 
-export default function MusicSettings({ providerStatus = null, onOpenMcpDeviceCenter, onImported, onBusyChange, compact = false, accountScope = "", companionScope = "" }) {
+export default function MusicSettings(props) {
+  return <MusicSettingsPanel key={JSON.stringify([props.accountScope || "", props.companionScope || ""])} {...props} />;
+}
+
+function MusicSettingsPanel({ providerStatus = null, onOpenMcpDeviceCenter, onImported, onBusyChange, compact = false, accountScope = "", companionScope = "" }) {
   const musicScope = useMusicScope(accountScope, companionScope);
   const [playlists, setPlaylists] = useState([]);
   const [selected, setSelected] = useState(null);
@@ -58,8 +63,11 @@ export default function MusicSettings({ providerStatus = null, onOpenMcpDeviceCe
   const [neteaseBusy, setNeteaseBusy] = useState("");
 
   const localAudioUrlRef = useRef("");
+  const importRequestRef = useRef(null);
+  const [recovery] = useState(() => createMusicImportRecovery({ upload: uploadLocalMusicFile, save: importMusicPlaylist }));
+  const [pendingAudio, setPendingAudio] = useState(null);
   const neteaseShare = detectNeteaseShare(content);
-  const canImport = Boolean(content.trim()) && !busy;
+  const canImport = Boolean(content.trim()) && !busy && !fileBusy && !pendingAudio;
   const neteaseLabel = [neteaseStatus?.display_name, neteaseStatus?.account_name, neteaseStatus?.status].find(value => typeof value === "string" && value.trim())
     || (neteaseBusy === "loading" ? "读取中…" : neteaseStatus?.logged_in === false ? "未登录" : "未知");
   useEffect(() => { onBusyChange?.(busy || fileBusy); }, [busy, fileBusy, onBusyChange]);
@@ -121,9 +129,16 @@ export default function MusicSettings({ providerStatus = null, onOpenMcpDeviceCe
     catch (caught) { if (musicScope.current(token)) setMessage(`歌单已保存；播放器刷新失败，可关闭此面板后手动刷新，无需重复导入。${musicErrorMessage(caught, "播放器读取失败。")} `); }
   }
   async function importPlaylist() {
-    await runMusicTask(musicScope, "import", (token) => neteaseShare ? importNeteaseShare(connectionId, content, token.options) : importMusicPlaylist({ format, sourceName: fileName || "粘贴内容", name, content }, token.options), {
+    await runMusicTask(musicScope, "import", (token) => {
+      if (neteaseShare) return importNeteaseShare(connectionId, content, token.options);
+      const payload = { format, sourceName: fileName || "粘贴内容", name, content };
+      const signature = JSON.stringify([token.generation, token.options.accountScope, token.options.companionScope, payload]);
+      if (importRequestRef.current?.signature !== signature) importRequestRef.current = { signature, requestId: crypto.randomUUID() };
+      return importMusicPlaylist({ ...payload, requestId: importRequestRef.current.requestId }, token.options);
+    }, {
       onStart: () => { setBusy(true); setError(""); setMessage(""); },
       onSuccess: async (imported, token) => {
+        importRequestRef.current = null;
         setContent(""); setFileName(""); setSelected(imported);
         setMessage(`已导入“${imported.name}”，共 ${imported.itemCount} 首。可播放方式由歌曲的实际回执决定。`);
         await notifyImported(imported, token);
@@ -208,20 +223,28 @@ export default function MusicSettings({ providerStatus = null, onOpenMcpDeviceCe
     } catch (caught) { setError(musicErrorMessage(caught, "本机音频选择失败，请重试。")); }
     finally { input.value = ""; }
   }
+  async function saveLocalAudio(file) {
+    await runMusicTask(musicScope, "import", token => file
+      ? recovery.start(file, musicScope, token, setPendingAudio)
+      : recovery.resume(musicScope, token), {
+      onStart: () => { setFileBusy(true); setError(""); setMessage(""); },
+      onSuccess: async ({ audio, imported }, token) => {
+        setPendingAudio(null); setSelected(imported);
+        setMessage(`已把「${audio.title}」导入歌单「${imported.name}」。音频能否播放以播放器实际结果为准。`);
+        await notifyImported(imported, token);
+        if (musicScope.current(token) && !compact) void refresh({ quiet: true });
+      },
+      onError: caught => {
+        const pending = recovery.pending(musicScope);
+        setPendingAudio(pending?.audio || null);
+        setError(`${pending ? "音频已上传；点击“继续保存歌单”重试，不会重复上传。" : ""}${musicErrorMessage(caught, "本机音频导入失败，请检查文件和网络后重试。")}`);
+      },
+      onFinish: () => setFileBusy(false),
+    });
+  }
   async function importLocalAudio(event) {
     const input = event.currentTarget, file = input.files?.[0]; if (!file) return;
-    await runMusicTask(musicScope, "import", async (token) => {
-      if (!AUDIO_EXTENSION.test(file.name) && !String(file.type).startsWith("audio/")) throw new Error("请选择 MP3、M4A、WAV、OGG 或 FLAC 音频文件。");
-      const audio = await uploadLocalMusicFile(file, token.options);
-      musicScope.assertCurrent(token);
-      try { return { audio, imported: await importMusicPlaylist({ format: "txt", sourceName: "本机音频", name: `本机 · ${audio.title}`, content: audio.url }, token.options) }; }
-      catch (caught) { throw Object.assign(new Error("音频已上传，但歌单保存失败。请刷新确认后重试，避免重复上传。"), { code: caught?.code || "music_audio_playlist_failed", status: caught?.status, error_source: caught?.error_source, upstream_status: caught?.upstream_status, error_log_id: caught?.error_log_id, error_location: caught?.error_location }); }
-    }, {
-      onStart: () => { setFileBusy(true); setError(""); },
-      onSuccess: async ({ audio, imported }, token) => { setSelected(imported); setMessage(`已把「${audio.title}」上传并导入歌单「${imported.name}」，可以在一起听里播放了。`); await notifyImported(imported, token); if (musicScope.current(token) && !compact) void refresh({ quiet: true }); },
-      onError: (caught) => setError(musicErrorMessage(caught, "本机音频导入失败，请检查文件和网络后重试。")), onFinish: () => setFileBusy(false),
-    });
-    input.value = "";
+    await saveLocalAudio(file); input.value = "";
   }
 
   return <section className={`music-settings settings-card${compact ? " is-import-sheet" : ""}`} aria-labelledby="music-settings-title">
@@ -247,12 +270,13 @@ export default function MusicSettings({ providerStatus = null, onOpenMcpDeviceCe
       <label>格式<select value={format} onChange={(event) => setFormat(event.target.value)}><option value="auto">自动识别</option><option value="json">JSON</option><option value="m3u">M3U / M3U8</option><option value="txt">TXT</option></select></label>
       <label className="music-file-label">导入歌单文件（JSON/M3U/M3U8/TXT）<input type="file" accept={PLAYLIST_ACCEPT} disabled={busy || fileBusy} onChange={(event) => void choosePlaylistFile(event)} /></label>
       <label className="music-file-label">选择本机音频（MP3/M4A/AAC/WAV/OGG/OPUS/FLAC）<input type="file" accept={AUDIO_ACCEPT} disabled={fileBusy} onChange={chooseLocalAudio} /></label>
-      <label className="music-file-label">上传本机音频到歌单（MP3/M4A/WAV/OGG/FLAC，≤20MB）<input type="file" accept=".mp3,.m4a,.wav,.ogg,.flac,audio/mpeg,audio/mp4,audio/wav,audio/ogg,audio/flac" disabled={busy || fileBusy} onChange={(event) => void importLocalAudio(event)} /></label>
+      <label className="music-file-label">上传本机音频到歌单（MP3/M4A/AAC/WAV/OGG/OPUS/FLAC，≤20MB）<input type="file" accept={AUDIO_ACCEPT} disabled={busy || fileBusy || Boolean(pendingAudio)} onChange={(event) => void importLocalAudio(event)} /></label>
       <label className="music-content-label">粘贴歌单文本<textarea value={content} maxLength={MAX_PLAYLIST_TEXT_LENGTH} onChange={(event) => setContent(event.target.value)} rows={7} placeholder="JSON、M3U、每行一个 HTTPS 音频地址，或网易云分享文本" aria-describedby="music-content-limit" /></label>
       <div className="music-clipboard-actions"><button type="button" disabled={clipboardBusy || busy} onClick={() => void readClipboard()}>{clipboardBusy ? "读取中…" : "读取剪贴板"}</button><span id="music-content-limit" role="status">{content.trim() ? `已输入 ${content.trim().length} 个字符（上限 ${MAX_PLAYLIST_TEXT_LENGTH}）。` : "等待粘贴或读取歌单文本，最大 1 MiB。"}</span></div>
     </div>
     {neteaseShare && <div className="music-share-recognition" role="status"><strong>{neteaseShare.provider}</strong><span>{neteaseShare.resourceType === "short" ? "已识别网易云短链" : `${neteaseShare.resourceType === "song" ? "Song" : "Playlist"} ID：${neteaseShare.resourceId}`}</span><span>标题提示：{neteaseShare.title}</span><p>{connectionId && neteaseShare.resourceType === "playlist" ? "将通过所选自托管连接导入歌单元数据与曲目。" : "将先保存链接元数据；无需 Cookie，仍可跳转网易云。"}</p>{neteaseShare.resourceId && <button type="button" onClick={() => void openExternal({}, neteaseShare.resourceType, neteaseShare.resourceId)}>在网易云打开</button>}{!connectionId && onOpenMcpDeviceCenter && <button type="button" onClick={onOpenMcpDeviceCenter}>连接 MCP 以补全歌单</button>}</div>}
     <button type="button" className="together-primary" disabled={!canImport} onClick={() => void importPlaylist()}>{busy ? "正在导入…" : neteaseShare ? `导入网易云${neteaseShare.resourceType === "song" ? "单曲" : "歌单"}` : "导入歌单"}</button>
+    {pendingAudio && <section className="music-import-recovery" aria-label="音频导入恢复"><strong>待保存：{pendingAudio.title}</strong><p>上传已完成。继续保存会核对服务器回执并补齐曲目。关闭面板后不会保留此恢复入口；重新上传同一文件会复用存储文件。</p><div className="music-clipboard-actions"><button type="button" className="together-primary" disabled={busy || fileBusy} onClick={() => void saveLocalAudio()}>{fileBusy ? "正在确认保存…" : "继续保存歌单"}</button><button type="button" disabled={busy || fileBusy} onClick={() => { recovery.clear(); setPendingAudio(null); setError(""); setMessage("已结束本次导入；不会删除服务器中已经保存的文件或歌单，可刷新列表确认。"); }}>结束本次导入</button></div></section>}
     {localAudio && <section className="music-local-audio" aria-label="本机音频播放器"><strong>{localAudio.name}</strong><audio src={localAudio.url} controls playsInline preload="metadata" /><p>仅本机播放，不能投屏/跨设备同步；文件不会上传、发送后端或交给 AI。</p></section>}
     {error && <p className="music-feedback is-error" role="alert">{error}</p>}{message && <p className="music-feedback" role="status">{message}</p>}
     {!compact && <div className="music-playlist-list"><h4>已保存歌单</h4>{playlists.length ? playlists.map((playlist) => <article key={playlist.id}><button type="button" className="music-playlist-summary" aria-expanded={selected?.id === playlist.id} onClick={() => void selectSavedPlaylist(playlist.id)}><strong>{playlist.name}</strong><span>{playlist.itemCount} 首 · 来源：{playlist.provider}</span></button><button type="button" className="danger" disabled={busy} onClick={() => void removePlaylist(playlist.id)}>删除</button></article>) : <p>还没有导入歌单。</p>}</div>}

@@ -351,7 +351,7 @@ function resolveImportFormat(content, format) {
   return "text";
 }
 
-export async function importMusicPlaylist({ format = "auto", sourceName = "粘贴内容", name = "我的歌单", content }, options = {}) {
+export async function importMusicPlaylist({ format = "auto", sourceName = "粘贴内容", name = "我的歌单", content, requestId }, options = {}) {
   if (detectNeteaseShare(content)) {
     throw new Error("这是网易云网页分享，请使用网易云导入操作。");
   }
@@ -359,8 +359,8 @@ export async function importMusicPlaylist({ format = "auto", sourceName = "粘�
   const items = parseMusicText(content, resolvedFormat);
   if (!items.length) throw new Error("没有解析到可播放曲目。");
   return importReceipt(await musicRequest("/api/v2/music/playlists/import", {
-    method: "POST", timeoutMs: WRITE_TIMEOUT_MS,
-    body: JSON.stringify({ format: resolvedFormat, source_name: text(sourceName, 180), name: text(name, 180), content: String(content || "") }),
+    method: "POST", timeoutMs: WRITE_TIMEOUT_MS, retry: false,
+    body: JSON.stringify({ format: resolvedFormat, source_name: text(sourceName, 180), name: text(name, 180), content: String(content || ""), ...(requestId ? { request_id: requestId } : {}) }),
   }, options));
 }
 
@@ -368,7 +368,8 @@ export async function uploadLocalMusicFile(file, options = {}) {
   options = captureMusicScope(options, authSession);
   if (!(file instanceof Blob)) throw new Error("请选择一个音频文件。");
   if (file.size === 0) throw new Error("音频文件是空的。");
-  if (file.size > 20 * 1024 * 1024) throw new Error("单个音频不能超过 20MB。");
+  if (file.size > 20 * 1024 * 1024) throw Object.assign(new Error("单个音频不能超过 20MB。大文件可选择仅本机播放。"), { code: "music_audio_too_large" });
+  if (!/\.(?:mp3|m4a|aac|wav|ogg|opus|flac)$/i.test(file.name || "audio.mp3")) throw Object.assign(new Error("请选择 MP3、M4A、AAC、WAV、OGG、OPUS 或 FLAC 音频。"), { code: "music_audio_type_invalid" });
   const form = new FormData();
   form.append("file", file, file.name || "audio.mp3");
   const response = await musicFetch("/api/v2/music/upload-audio", {
@@ -383,9 +384,10 @@ export async function uploadLocalMusicFile(file, options = {}) {
     const code = data?.code || "music_audio_upload_failed";
     throw Object.assign(new Error(musicErrorMessage({ ...data, message: data?.message || data?.error, code, status: response.status }, "本机音频上传失败，请检查文件和网络后重试。")), { code, status: response.status, error_log_id: data?.error_log_id });
   }
-  if (!data?.audio?.url) throw new Error("上传成功但没有返回音频地址。");
+  const receipt = validateDirectAudioUrl(data?.audio?.url);
+  if (!receipt.ok) throw Object.assign(new Error("没有收到有效的音频上传回执，请重试上传同一文件。"), { code: "music_audio_receipt_invalid" });
   return Object.freeze({
-    url: String(data.audio.url),
+    url: receipt.url,
     title: text(String(data.audio.title || "本机音频"), 180),
   });
 }

@@ -121,6 +121,9 @@
 .music-playlist-detail .music-paged-items > div > span:nth-child(2) { display: grid; gap: 3px; min-width: 0; }
 .music-playlist-detail audio { width: min(220px, 38vw); }
 .music-feedback.is-error { color: #a34444; }
+.music-import-recovery { display: grid; gap: 10px; margin: 14px 0; padding: 14px; border: 1px solid rgba(42, 67, 56, .18); border-radius: 14px; background: rgba(255, 250, 242, .82); overflow-wrap: anywhere; }
+.music-import-recovery p { margin: 0; color: var(--together-muted); font-size: 12px; line-height: 1.6; }
+.music-import-recovery button { min-height: 44px; }
 .music-clipboard-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .music-clipboard-actions span { color: var(--together-muted); font-size: 12px; }
 .music-share-recognition, .music-local-audio { display: grid; gap: 8px; margin: 12px 0; padding: 12px; border: 1px solid rgba(42, 67, 56, .16); border-radius: 8px; background: rgba(255,255,255,.45); }
