@@ -234,9 +234,26 @@ export async function requestExternalMusicPlayback(resourceType, resourceId, opt
 }
 
 export async function listAiMusicPlayRequests(options = {}) {
-  const data = await musicRequest("/api/v2/music/providers/netease/ai-play-requests", { timeoutMs: READ_TIMEOUT_MS }, options);
+  const data = await musicRequest("/api/v2/music/providers/netease/ai-play-requests?delivery=claim-v1", { timeoutMs: READ_TIMEOUT_MS }, options);
+  if (data?.delivery_protocol !== "claim-v1") throw Object.assign(new Error("服务器尚未启用点歌交接，请稍后重试或在一起听中手动打开。"), { code: "music_ai_delivery_protocol_required" });
   if (!Array.isArray(data?.requests)) throw Object.assign(new Error("服务器未返回有效点歌列表，请稍后重试。"), { code: "music_ai_requests_receipt_invalid" });
   return data.requests;
+}
+
+export async function claimAiMusicPlayRequest(id, deliveryToken, options = {}) {
+  const data = await musicRequest(`/api/v2/music/providers/netease/ai-play-requests/${encodeURIComponent(id)}/claim`, {
+    method: "POST", timeoutMs: WRITE_TIMEOUT_MS, retry: false, body: JSON.stringify({ delivery_token: deliveryToken }),
+  }, options);
+  if (data?.request?.id !== id || typeof data.claimed !== "boolean" || (data.claimed && typeof data.committed !== "boolean")) throw Object.assign(new Error("服务器未确认点歌领取，请稍后重试。"), { code: "music_ai_delivery_receipt_invalid" });
+  return data;
+}
+
+export async function commitAiMusicPlayRequest(id, deliveryToken, options = {}) {
+  const data = await musicRequest(`/api/v2/music/providers/netease/ai-play-requests/${encodeURIComponent(id)}/commit`, {
+    method: "POST", timeoutMs: WRITE_TIMEOUT_MS, retry: false, body: JSON.stringify({ delivery_token: deliveryToken }),
+  }, options);
+  if (data?.request?.id !== id || data.ok !== true || data.committed !== true || typeof data.replayed !== "boolean") throw Object.assign(new Error("服务器未确认播放器交接，暂不重复打开，请在一起听中手动检查。"), { code: "music_ai_delivery_receipt_invalid" });
+  return data;
 }
 
 export async function reportAiMusicPlayResult(id, result, options = {}) {

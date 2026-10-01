@@ -14,7 +14,7 @@ import { createScreenGlanceLifecycle } from "./screen-glance-lifecycle.js";
 import { createMusicPlaybackSync } from "./music-playback-sync.js";
 import { runNowPlayingControl, sameNowPlaying } from "./now-playing-controls.js";
 import { createNowPlayingSync } from "./music-now-playing-sync.js";
-import { getMusicPlaylist, listAiMusicPlayRequests, reportAiMusicPlayResult } from "./music-listening.js";
+import { getMusicPlaylist, listAiMusicPlayRequests, claimAiMusicPlayRequest, commitAiMusicPlayRequest, reportAiMusicPlayResult } from "./music-listening.js";
 import { useMusicScope } from "./use-music-scope.js";
 import { createAiMusicConsumer } from "./ai-music-consumer.js";
 import MemoryGatewayStatus from "./MemoryGatewayStatus.jsx";
@@ -1076,7 +1076,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const aiMusicScope = useMusicScope(accountStorageScope, companionScope);
   useEffect(() => {
     if (!Capacitor.isNativePlatform() || visualPreview || !accountStorageScope || !companionScope) return;
-    const consumer = createAiMusicConsumer({ scope: aiMusicScope, list: listAiMusicPlayRequests, report: reportAiMusicPlayResult, open: playNeteaseSilent, storage: globalThis.sessionStorage, onFeedback: message => setNotice(message) });
+    const consumer = createAiMusicConsumer({ scope: aiMusicScope, list: listAiMusicPlayRequests, claim: claimAiMusicPlayRequest, commit: commitAiMusicPlayRequest, report: reportAiMusicPlayResult, open: playNeteaseSilent, storage: globalThis.sessionStorage, onFeedback: message => setNotice(message) });
     void consumer.drain();
     const timer = window.setInterval(() => void consumer.drain(), 5000);
     return () => { window.clearInterval(timer); consumer.cancel(); };
