@@ -1,7 +1,7 @@
 {
   "name": "dengta-home-react",
   "private": true,
-  "version": "2.10.56",
+  "version": "2.10.57",
   "type": "module",
   "scripts": {
     "test:workspace": "node test/workspace-cache.test.js && node test/workspace-manager.test.js",
@@ -67,7 +67,7 @@
     "test:ai-provider-center": "node test/ai-provider-center.test.js",
     "test:cc-switch-bridge": "node test/cc-switch-bridge.test.js",
     "test:pwa-install": "node test/pwa-install.test.js",
-    "test:content-import": "node --test --experimental-test-coverage --test-coverage-include=src/content-import-api.js test/content-import-api.test.js test/content-import.test.js test/content-import-paging.test.js",
+    "test:content-import": "node --test --experimental-test-coverage --test-coverage-include=src/content-import-api.js test/content-import-api.test.js test/content-import.test.js test/content-import-paging.test.js && node --test test/import-recovery.test.js test/import-recovery-ui.test.js",
     "test:music-listening": "node test/music-listening.test.js && node test/music-sync-lifecycle.test.js && node test/together-music-lifecycle.test.js && node test/music-request-scope.test.js && node test/music-operation-ui.test.js && node test/music-delivery.test.js && node test/music-import-recovery.test.js && node test/music-playlist-integrity.test.js",
     "preview": "vite preview",
     "test:cotton-pet": "node test/cotton-pet.test.js && node test/cotton-runtime.test.js && node test/cotton-dock.test.js",
@@ -86,6 +86,7 @@
     "@capacitor/core": "^8.4.2",
     "@capacitor/local-notifications": "^8.0.0",
     "@capacitor/preferences": "^8.0.1",
+    "@noble/hashes": "2.4.0",
     "@supabase/auth-js": "^2.110.8",
     "lucide-react": "^0.468.0",
     "qrcode": "^1.5.4",

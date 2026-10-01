@@ -1,0 +1,32 @@
+import { useMemo, useRef, useState } from 'react';
+import ContentImport from '../src/ContentImport.jsx';
+
+export default function Preview() {
+  const [mount,setMount]=useState(0), [requests,setRequests]=useState({previews:0,commits:0});
+  const records=useRef(new Map());
+  const api=useMemo(()=>({
+    async apiRequest(path) {
+      if(path==='/api/v2/imports/')return{imports:[...records.current.values()].map(value=>value.import)};
+      if(path.endsWith('/commit')) {
+        const id=path.split('/').at(-2),record=records.current.get(id);
+        if(record.import.status==='committed')throw Object.assign(new Error(),{code:'import_already_committed'});
+        record.import={...record.import,status:'committed',accepted_count:1,rejected_count:0};
+        setRequests(value=>({...value,commits:value.commits+1}));
+        throw Object.assign(new Error('Synthetic timeout'),{code:'request_timeout',status:504});
+      }
+      const result=records.current.get(path.split('/').at(-1));
+      return {result};
+    },
+    async apiFetch(path,options) {
+      if(path!=='/api/v2/imports/preview')throw Error('Unexpected preview route');
+      const id=crypto.randomUUID(),file=options.body.get('file');
+      const result={import:{id,status:'preview',source_name:'虚构测试文件'},count:1,candidates:[{id:id+'-candidate',candidate_type:'memory',title:'虚构测试候选',content:(await file.text()).slice(0,120)}]};
+      records.current.set(id,result);setRequests(value=>({...value,previews:value.previews+1}));
+      return{ok:true,json:async()=>({result})};
+    },
+  }),[]);
+  return <main className="import-preview-shell"><h1>导入恢复验收</h1><p>本地虚构数据，不连接生产账号。模拟服务器已写入、回执超时。</p><p aria-label="请求统计">预览 {requests.previews} 次 · 写入 {requests.commits} 次</p>
+    <button type="button" onClick={()=>setMount(value=>value+1)}>模拟关闭后重开</button>
+    <ContentImport key={mount} api={api} accountScope="synthetic-preview" companionScope="synthetic-companion" />
+  </main>;
+}

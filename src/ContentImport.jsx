@@ -1,6 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
-import { commitContentImport, listContentImports, previewContentImport, previewContentImportPage, CONTENT_IMPORT_PAGED_EXTENSIONS } from "./content-import-api.js";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { commitContentImport, getContentImport, listContentImports, previewContentImport, previewContentImportPage, CONTENT_IMPORT_PAGED_EXTENSIONS, CONTENT_IMPORT_ERROR_FEEDBACK, translatedImportError } from "./content-import-api.js";
 import WorldBookManager from "./WorldBookManager.jsx";
+import ChatErrorLog from "./ChatErrorLog.jsx";
+import { funLabsDiagnostic } from "./fun-labs-refresh.js";
+import { createImportRequestClient } from "./import-request-scope.js";
+import { importCheckpointKey, readImportCheckpoint, saveImportCheckpoint, clearImportCheckpoint, importCommitReceipt } from "./import-checkpoint.js";
+import { readImportFingerprint } from "./import-fingerprint-reader.js";
 
 const TYPE_META = Object.freeze({
   memory: {
@@ -87,8 +92,8 @@ function committedResult(data) {
   };
 }
 
-export default function ContentImport({ api }) {
-  const client = api || undefined;
+export default function ContentImport({ api, accountScope = "", companionScope = "" }) {
+  const client = useMemo(() => api || createImportRequestClient({ accountScope, companionScope }), [api, accountScope, companionScope]);
   const [activeTab, setActiveTab] = useState("import");
   const [kind, setKind] = useState("world_book");
   const [format, setFormat] = useState("auto");
@@ -101,12 +106,47 @@ export default function ContentImport({ api }) {
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
   const [page, setPage] = useState(null);
+  const [resume, setResume] = useState(null);
+  const [progress, setProgress] = useState(null);
+  const [diagnostic, setDiagnostic] = useState(null);
+  const [recoveryNote, setRecoveryNote] = useState("");
+  const [uncertainImportId, setUncertainImportId] = useState(null);
+  const operationRef = useRef({ alive: true, task: null });
+  const fingerprintRef = useRef(null);
 
-  async function refreshRecent() {
+  useEffect(() => {
+    const operation=operationRef.current; operation.alive=true;
+    return () => { operation.alive=false; operation.task?.controller.abort(); operation.task=null; };
+  }, []);
+  function begin(label) {
+    if (!operationRef.current.alive || operationRef.current.task) return null;
+    const task={controller:new AbortController()}; operationRef.current.task=task;
+    setBusy(label);setError("");setDiagnostic(null);setRecoveryNote(""); return task;
+  }
+  function current(task) { return operationRef.current.alive && operationRef.current.task===task && !task.controller.signal.aborted; }
+  function finish(task) { if(current(task)){operationRef.current.task=null;setBusy("");setProgress(null);} }
+  function fail(error) {
+    setError(translatedImportError({code:error?.code},"导入请求未能完成，请查看诊断后重试。"));
+    setDiagnostic(funLabsDiagnostic(error,"import_operation_failed"));
+  }
+  function remember(key,record) {
+    setResume({key,record});
+    if(!saveImportCheckpoint(key,record))setRecoveryNote("当前设备未能保存进度；请保持此面板打开，已提交内容不受影响。");
+  }
+  function settlePage(key,record) {
+    if(record?.pending)remember(key,{...record,nextByte:record.pending.endByte,pending:null});
+  }
+  function stopReading() {
+    operationRef.current.task?.controller.abort();operationRef.current.task=null;
+    setBusy("");setProgress(null);setRecoveryNote("读取已停止，原文件和已确认的进度仍保留。");
+  }
+
+  async function refreshRecent(task) {
     try {
-      setRecentImports(recentImportsOf(await listContentImports(client)));
+      const data=await listContentImports(client);
+      if(current(task))setRecentImports(recentImportsOf(data));
     } catch (loadError) {
-      setError(loadError.message);
+      if(current(task))fail(loadError);
     }
   }
 
@@ -117,7 +157,7 @@ export default function ContentImport({ api }) {
         if (active) setRecentImports(recentImportsOf(data));
       },
       (loadError) => {
-        if (active) setError(loadError.message);
+        if (active) fail(loadError);
       },
     );
     return () => {
@@ -149,37 +189,70 @@ export default function ContentImport({ api }) {
   }
 
   async function handlePreview(startByte = 0) {
-    setBusy("preview");
-    setError("");
+    if (uncertainImportId || resume?.record.pending?.commitAttempted) return;
+    const task=begin("preview");if(!task)return;
     setResult(null);
     try {
       let data;
       if (inputMode === "file" && file?.size > 1024 * 1024 && CONTENT_IMPORT_PAGED_EXTENSIONS.test(file.name)) {
-        const paged = await previewContentImportPage({ file, kind, startByte }, client);
+        let fingerprint=fingerprintRef.current?.file===file ? fingerprintRef.current.fingerprint : null;
+        if(!fingerprint) {
+          fingerprint=await readImportFingerprint(file,{signal:task.controller.signal,onProgress:value=>{if(current(task))setProgress(value);}});
+          if(!current(task))return;fingerprintRef.current={file,fingerprint};setProgress(null);
+        }
+        const key=importCheckpointKey(accountScope,companionScope,kind,fingerprint);
+        let record=readImportCheckpoint(key,file.size) || {version:1,totalBytes:file.size,nextByte:0,pending:null};
+        if(!startByte && record.pending) {
+          const restored=await getContentImport(record.pending.importId,client);
+          if(!current(task))return;
+          const value=restored?.result || restored;
+          if(value?.import?.id!==record.pending.importId)throw Object.assign(new Error(),{code:"import_preview_receipt_invalid"});
+          setPage({startByte:record.pending.startByte,endByte:record.pending.endByte,totalBytes:file.size});
+          remember(key,record);
+          if(value.import.status==="committed") {
+            importCommitReceipt(restored,record.pending.importId);settlePage(key,record);setResult(committedResult(value.import));setPreview(null);
+            setRecoveryNote("服务器确认这一段已提交，无需重复写入，可以继续下一段。");return;
+          }
+          if(value.import.status!=="preview" || !Array.isArray(value.candidates))throw Object.assign(new Error(),{code:"import_preview_receipt_invalid"});
+          setPreview(normalizeImportPreview(restored));
+          setRecoveryNote(record.pending.commitAttempted ? "这一段曾尝试提交，请先检查提交结果；不会自动重复写入。" : "已恢复未提交的预览，请重新核对候选；上次未提交的页面编辑未保留。");return;
+        }
+        startByte=startByte || record.nextByte;
+        if(startByte>=file.size){remember(key,record);setPreview(null);setPage({startByte:file.size,endByte:file.size,totalBytes:file.size});setRecoveryNote("这份文件已处理到末尾，包含你主动放弃的分段。");return;}
+        const paged = await previewContentImportPage({ file, kind, startByte,signal:task.controller.signal }, client);
+        if(!current(task))return;
         data = paged.data;
         setPage(paged.page);
+        const parsed=normalizeImportPreview(data);
+        if(!parsed.id)throw Object.assign(new Error(),{code:"import_preview_receipt_invalid"});
+        record={...record,nextByte:startByte,pending:{importId:String(parsed.id),startByte,endByte:paged.page.endByte,commitAttempted:false}};
+        remember(key,record);
       } else {
         data = await previewContentImport({
         kind,
         format,
         file: inputMode === "file" ? file : null,
         content: inputMode === "paste" ? content : "",
+        signal:task.controller.signal,
       }, client);
+        if(!current(task))return;
         setPage(null);
+        setResume(null);
       }
       setPreview(normalizeImportPreview(data));
     } catch (previewError) {
-      setPreview(null);
-      setError(previewError.message);
+      if(current(task))fail(previewError);
     } finally {
-      setBusy("");
+      finish(task);
     }
   }
 
   async function handleCommit() {
-    if (!preview?.id || summary.pending > 0) return;
-    setBusy("commit");
-    setError("");
+    if (!preview?.id || summary.pending > 0 || uncertainImportId || resume?.record.pending?.commitAttempted) return;
+    const task=begin("commit");if(!task)return;
+    const committing=resume?.record.pending ? {...resume.record,pending:{...resume.record.pending,commitAttempted:true}} : null;
+    if(committing)remember(resume.key,committing);
+    setUncertainImportId(preview.id);
     try {
       const decisions = preview.candidates.map((item) => ({
         id: item.candidateId,
@@ -200,17 +273,46 @@ export default function ContentImport({ api }) {
           sort_order: Number(item.sort_order),
         } : {}),
       }));
-      const committed = await commitContentImport(preview.id, decisions, client);
+      const committed = await commitContentImport(preview.id, decisions, client,{signal:task.controller.signal});
+      if(!current(task))return;
+      importCommitReceipt(committed,preview.id);
+      setUncertainImportId(null);
+      if(committing)settlePage(resume.key,committing);
       setResult(committedResult(committed));
       setPreview(null);
       window.dispatchEvent(new CustomEvent("dengta:memories-imported", { detail: committed.result || committed }));
-      await refreshRecent();
+      await refreshRecent(task);
     } catch (commitError) {
-      setError(commitError.message);
+      if(current(task))fail(commitError);
     } finally {
-      setBusy("");
+      finish(task);
     }
   }
+
+  async function checkCommit() {
+    const pending=resume?.record.pending;
+    const importId=uncertainImportId || (pending?.commitAttempted ? pending.importId : null);
+    if(!importId)return;
+    const task=begin("check");if(!task)return;
+    try {
+      const data=await getContentImport(importId,client);if(!current(task))return;
+      const value=importCommitReceipt(data,importId);
+      setUncertainImportId(null);
+      settlePage(resume?.key,resume?.record);setResult(committedResult(value.import));setPreview(null);
+      window.dispatchEvent(new CustomEvent("dengta:memories-imported", {detail:value}));
+      setRecoveryNote("服务器已确认提交成功，没有重复写入。");await refreshRecent(task);
+    } catch(error) {if(current(task))fail(error);} finally {finish(task);}
+  }
+  function discardPage() {
+    if(uncertainImportId || resume?.record.pending?.commitAttempted)return;
+    settlePage(resume?.key,resume?.record);setPreview(null);setResult(null);
+  }
+
+  function resetSource() {
+    setPage(null);setPreview(null);setResult(null);setResume(null);setUncertainImportId(null);setRecoveryNote("");setError("");setDiagnostic(null);
+  }
+
+  const decisionsLocked = Boolean(busy || uncertainImportId || resume?.record.pending?.commitAttempted);
 
   const groupedCandidates = useMemo(() => Object.keys(TYPE_META).map((type) => ({
     type,
@@ -230,59 +332,64 @@ export default function ContentImport({ api }) {
         <button type="button" role="tab" aria-selected={activeTab === "manage"} onClick={() => setActiveTab("manage")}>世界书管理</button>
       </div>
 
-      {activeTab === "manage" ? <WorldBookManager api={api} /> : <>
+      {activeTab === "manage" ? <WorldBookManager api={client} /> : <>
         <div className="content-import-source settings-card">
         <fieldset className="content-import-segments">
           <legend>导入内容类型</legend>
-          <button type="button" disabled={Boolean(busy)} aria-pressed={kind === "world_book"} onClick={() => {setKind("world_book");setPage(null);setPreview(null);setResult(null);}}>世界书</button>
-          <button type="button" disabled={Boolean(busy)} aria-pressed={kind === "chat_history"} onClick={() => {setKind("chat_history");setPage(null);setPreview(null);setResult(null);}}>聊天记录</button>
+          <button type="button" disabled={Boolean(busy) || Boolean(uncertainImportId) || Boolean(resume?.record.pending?.commitAttempted)} aria-pressed={kind === "world_book"} onClick={() => {setKind("world_book");resetSource();}}>世界书</button>
+          <button type="button" disabled={Boolean(busy) || Boolean(uncertainImportId) || Boolean(resume?.record.pending?.commitAttempted)} aria-pressed={kind === "chat_history"} onClick={() => {setKind("chat_history");resetSource();}}>聊天记录</button>
         </fieldset>
         <div className="content-import-fields">
-          <label><span>输入方式</span><select aria-label="输入方式" disabled={Boolean(busy)} value={inputMode} onChange={(event) => {setInputMode(event.target.value);setPage(null);setPreview(null);setResult(null);}}><option value="file">上传文件</option><option value="paste">粘贴文本</option></select></label>
-          <label><span>内容格式</span><select aria-label="内容格式" disabled={Boolean(busy)} value={format} onChange={(event) => {setFormat(event.target.value);setPage(null);setPreview(null);setResult(null);}}><option value="auto">自动识别</option><option value="sillytavern">SillyTavern</option><option value="generic_json">通用 JSON</option><option value="plain_text">纯文本</option></select></label>
+          <label><span>输入方式</span><select aria-label="输入方式" disabled={Boolean(busy) || Boolean(uncertainImportId) || Boolean(resume?.record.pending?.commitAttempted)} value={inputMode} onChange={(event) => {setInputMode(event.target.value);resetSource();}}><option value="file">上传文件</option><option value="paste">粘贴文本</option></select></label>
+          <label><span>内容格式</span><select aria-label="内容格式" disabled={Boolean(busy) || Boolean(uncertainImportId) || Boolean(resume?.record.pending?.commitAttempted)} value={format} onChange={(event) => {setFormat(event.target.value);resetSource();}}><option value="auto">自动识别</option><option value="sillytavern">SillyTavern</option><option value="generic_json">通用 JSON</option><option value="plain_text">纯文本</option></select></label>
         </div>
         {inputMode === "file" ? (
-          <label className="content-import-dropzone"><span>{file ? file.name : "选择聊天记录、世界书或文档"}</span><small>TXT、Markdown、日志、CSV、TSV、JSONL 最大 1GB，分段预览并逐段确认；完整 JSON 最大 100MB（解析最多 100 万字），PDF、DOCX、邮件最大 20MB。模型上下文仍由所选接口决定。</small><input aria-label="选择导入文件" type="file" accept=".json,.txt,.text,.md,.markdown,.log,.csv,.tsv,.jsonl,.ndjson,.html,.htm,.srt,.vtt,.eml,.pdf,.docx,.xml,.yaml,.yml,.ini,.conf" disabled={Boolean(busy)} onChange={(event) => {setFile(event.target.files?.[0] || null);setPage(null);setPreview(null);setResult(null);}} /></label>
+          <label className="content-import-dropzone"><span>{file ? file.name : "选择聊天记录、世界书或文档"}</span><small>TXT、Markdown、日志、CSV、TSV、JSONL 最大 1GB，分段预览并逐段确认；重新选择原文件可恢复进度。完整 JSON 最大 100MB（解析最多 100 万字），PDF、DOCX、邮件最大 20MB。模型上下文仍由所选接口决定。</small><input aria-label="选择导入文件" type="file" accept=".json,.txt,.text,.md,.markdown,.log,.csv,.tsv,.jsonl,.ndjson,.html,.htm,.srt,.vtt,.eml,.pdf,.docx,.xml,.yaml,.yml,.ini,.conf" disabled={Boolean(busy) || Boolean(uncertainImportId) || Boolean(resume?.record.pending?.commitAttempted)} onChange={(event) => {setFile(event.target.files?.[0] || null);resetSource();}} /></label>
         ) : (
-          <label className="content-import-paste"><span>粘贴原始内容</span><textarea aria-label="粘贴导入内容" value={content} onChange={(event) => setContent(event.target.value)} rows={8} placeholder="内容会按原文发送，不进行关键词过滤。" /></label>
+          <label className="content-import-paste"><span>粘贴原始内容</span><textarea aria-label="粘贴导入内容" disabled={Boolean(busy) || Boolean(uncertainImportId)} value={content} onChange={(event) => setContent(event.target.value)} rows={8} placeholder="内容会按原文发送，不进行关键词过滤。" /></label>
         )}
-        <button className="content-import-primary" type="button" disabled={Boolean(busy) || (inputMode === "file" ? !file : !content)} onClick={() => void handlePreview()}>{busy === "preview" ? "正在读入故事…" : "生成导入预览"}</button>
+        <button className="content-import-primary" type="button" disabled={Boolean(busy) || Boolean(uncertainImportId) || resume?.record.pending?.commitAttempted || (inputMode === "file" ? !file : !content)} onClick={() => void handlePreview()}>{busy === "preview" ? "正在读入故事…" : "生成导入预览"}</button>
+        {busy==="preview" && <button type="button" onClick={stopReading}>停止读取</button>}
+        {progress && <p role="status">正在校验原文件：{Math.round(progress.readBytes / progress.totalBytes * 100)}% · 分块读取，不整份载入内存。</p>}
+        {recoveryNote && <p role="status">{recoveryNote}</p>}
+        {(uncertainImportId || resume?.record.pending?.commitAttempted) && <button type="button" disabled={Boolean(busy)} onClick={()=>void checkCommit()}>{busy==="check" ? "正在核对…" : "检查提交结果"}</button>}
         {page && <div role="status"><p>本段：{page.startByte.toLocaleString()}–{page.endByte.toLocaleString()} 字节 / 共 {page.totalBytes.toLocaleString()} 字节。预览不会自动写入记忆。</p>
           {page.endByte < page.totalBytes && <button type="button" disabled={Boolean(busy) || Boolean(preview)} onClick={() => void handlePreview(page.endByte)}>读取下一段</button>}
-          {preview && <button type="button" disabled={Boolean(busy)} onClick={() => {setPreview(null);setResult(null);}}>放弃本段候选</button>}
+          {preview && <button type="button" disabled={Boolean(busy) || Boolean(resume?.record.pending?.commitAttempted)} onClick={discardPage}>放弃本段候选</button>}
+          {!busy && !preview && resume?.key && !resume.record.pending && <button type="button" onClick={()=>{clearImportCheckpoint(resume.key);setResume(null);setPage(null);setRecoveryNote("进度已重置；再次提交之前，请核对是否会重复导入。");}}>重新从头预览</button>}
         </div>}
         </div>
 
-      {error && <div className="content-import-error" role="alert">{error}</div>}
+      {error && <div className="content-import-error" role="alert">{error}{diagnostic && <><small>错误代码：{diagnostic.error_code}{diagnostic.http_status ? ` · HTTP ${diagnostic.http_status}` : ""}</small><ChatErrorLog key={diagnostic.error_log_id || diagnostic.error_code} logId={diagnostic.error_log_id} diagnostic={diagnostic} feedbackByCode={CONTENT_IMPORT_ERROR_FEEDBACK}/></>}</div>}
       {result && <div className="content-import-success" role="status"><strong>导入完成</strong><span>{countText(result)}</span></div>}
 
       {preview && (
         <section className="content-import-preview" aria-label="导入候选预览">
           <div className="content-import-receipt"><strong>预览回执</strong><span>{countText(preview.counts)}</span>{preview.digest && <p>{preview.digest}</p>}{preview.warnings.length > 0 && <ul aria-label="导入警告">{preview.warnings.map((warning, index) => <li key={`${String(warning)}-${index}`}>{String(warning?.message || warning)}</li>)}</ul>}</div>
-          <div className="content-import-bulk" aria-label="批量决策"><button type="button" onClick={() => decideAll("accepted")}>全选接受</button><button type="button" onClick={() => decideAll("rejected")}>全选拒绝</button></div>
+          <div className="content-import-bulk" aria-label="批量决策"><button type="button" disabled={decisionsLocked} onClick={() => decideAll("accepted")}>全选接受</button><button type="button" disabled={decisionsLocked} onClick={() => decideAll("rejected")}>全选拒绝</button></div>
           {preview.candidates.length === 0 ? <div className="content-import-empty">没有生成可导入的候选项，请尝试其他格式。</div> : groupedCandidates.map(({ type, items }) => items.length > 0 && (
             <section className="content-import-group" key={type} aria-labelledby={`import-group-${type}`}>
               <h4 id={`import-group-${type}`}>{TYPE_META[type].label}<span>{items.length}</span></h4>
               <div className="content-import-grid">{items.map((item) => (
                 <article className={`content-import-candidate is-${item.decision}`} key={item.clientKey}>
                   <div className="content-import-candidate-meta"><span>{item.source}</span><em>{TYPE_META[item.type].label}</em></div>
-                  <label><span>标题</span><input aria-label={`${item.title}的标题`} value={item.title} onChange={(event) => updateCandidate(item.clientKey, { title: event.target.value })} /></label>
-                  <label><span>内容</span><textarea aria-label={`${item.title}的内容`} value={item.content} onChange={(event) => updateCandidate(item.clientKey, { content: event.target.value })} rows={5} /></label>
-                   <label><span>写入位置</span><select aria-label={`${item.title}的写入位置`} value={item.target} onChange={(event) => updateCandidate(item.clientKey, { target: event.target.value })}>{TYPE_META[item.type].targets.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+                  <label><span>标题</span><input disabled={decisionsLocked} aria-label={`${item.title}的标题`} value={item.title} onChange={(event) => updateCandidate(item.clientKey, { title: event.target.value })} /></label>
+                  <label><span>内容</span><textarea disabled={decisionsLocked} aria-label={`${item.title}的内容`} value={item.content} onChange={(event) => updateCandidate(item.clientKey, { content: event.target.value })} rows={5} /></label>
+                   <label><span>写入位置</span><select disabled={decisionsLocked} aria-label={`${item.title}的写入位置`} value={item.target} onChange={(event) => updateCandidate(item.clientKey, { target: event.target.value })}>{TYPE_META[item.type].targets.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
                    {item.type === "world_book" && <div className="content-import-world-book-fields">
-                     <label><span>关键词</span><input aria-label={`${item.title}的关键词`} value={item.keywords.join(", ")} onChange={(event) => updateCandidate(item.clientKey, { keywords: event.target.value.split(/[,，\n]/).map((value) => value.trim()).filter(Boolean) })} /></label>
-                     <label><span>优先级</span><input aria-label={`${item.title}的优先级`} type="number" min="-100000" max="100000" value={item.priority} onChange={(event) => updateCandidate(item.clientKey, { priority: event.target.value })} /></label>
-                     <label><span>排序值</span><input aria-label={`${item.title}的排序值`} type="number" value={item.sort_order} onChange={(event) => updateCandidate(item.clientKey, { sort_order: event.target.value })} /></label>
-                     <label><span>匹配方式</span><select aria-label={`${item.title}的匹配方式`} value={item.match_mode} onChange={(event) => updateCandidate(item.clientKey, { match_mode: event.target.value })}><option value="any">命中任一关键词</option><option value="all">命中全部关键词</option></select></label>
-                     <label><span>上下文位置</span><select aria-label={`${item.title}的上下文位置`} value={item.position} onChange={(event) => updateCandidate(item.clientKey, { position: event.target.value })}><option value="dynamic_context">动态本轮背景</option><option value="before_memory">稳定记忆之前</option></select></label>
-                     <div className="world-book-switches"><label><input type="checkbox" checked={item.enabled} onChange={(event) => updateCandidate(item.clientKey, { enabled: event.target.checked })} /><span>启用</span></label><label><input type="checkbox" checked={item.constant} onChange={(event) => updateCandidate(item.clientKey, { constant: event.target.checked })} /><span>常驻</span></label><label><input type="checkbox" checked={item.case_sensitive} onChange={(event) => updateCandidate(item.clientKey, { case_sensitive: event.target.checked })} /><span>区分大小写</span></label></div>
+                     <label><span>关键词</span><input disabled={decisionsLocked} aria-label={`${item.title}的关键词`} value={item.keywords.join(", ")} onChange={(event) => updateCandidate(item.clientKey, { keywords: event.target.value.split(/[,，\n]/).map((value) => value.trim()).filter(Boolean) })} /></label>
+                     <label><span>优先级</span><input disabled={decisionsLocked} aria-label={`${item.title}的优先级`} type="number" min="-100000" max="100000" value={item.priority} onChange={(event) => updateCandidate(item.clientKey, { priority: event.target.value })} /></label>
+                     <label><span>排序值</span><input disabled={decisionsLocked} aria-label={`${item.title}的排序值`} type="number" value={item.sort_order} onChange={(event) => updateCandidate(item.clientKey, { sort_order: event.target.value })} /></label>
+                     <label><span>匹配方式</span><select disabled={decisionsLocked} aria-label={`${item.title}的匹配方式`} value={item.match_mode} onChange={(event) => updateCandidate(item.clientKey, { match_mode: event.target.value })}><option value="any">命中任一关键词</option><option value="all">命中全部关键词</option></select></label>
+                     <label><span>上下文位置</span><select disabled={decisionsLocked} aria-label={`${item.title}的上下文位置`} value={item.position} onChange={(event) => updateCandidate(item.clientKey, { position: event.target.value })}><option value="dynamic_context">动态本轮背景</option><option value="before_memory">稳定记忆之前</option></select></label>
+                     <div className="world-book-switches"><label><input disabled={decisionsLocked} type="checkbox" checked={item.enabled} onChange={(event) => updateCandidate(item.clientKey, { enabled: event.target.checked })} /><span>启用</span></label><label><input disabled={decisionsLocked} type="checkbox" checked={item.constant} onChange={(event) => updateCandidate(item.clientKey, { constant: event.target.checked })} /><span>常驻</span></label><label><input disabled={decisionsLocked} type="checkbox" checked={item.case_sensitive} onChange={(event) => updateCandidate(item.clientKey, { case_sensitive: event.target.checked })} /><span>区分大小写</span></label></div>
                    </div>}
-                  <div className="content-import-decision" role="group" aria-label={`${item.title}的导入决策`}><button type="button" aria-pressed={item.decision === "accepted"} onClick={() => updateCandidate(item.clientKey, { decision: "accepted" })}>接受</button><button type="button" aria-pressed={item.decision === "rejected"} onClick={() => updateCandidate(item.clientKey, { decision: "rejected" })}>拒绝</button></div>
+                  <div className="content-import-decision" role="group" aria-label={`${item.title}的导入决策`}><button type="button" disabled={decisionsLocked} aria-pressed={item.decision === "accepted"} onClick={() => updateCandidate(item.clientKey, { decision: "accepted" })}>接受</button><button type="button" disabled={decisionsLocked} aria-pressed={item.decision === "rejected"} onClick={() => updateCandidate(item.clientKey, { decision: "rejected" })}>拒绝</button></div>
                 </article>
               ))}</div>
             </section>
           ))}
-          {preview.candidates.length > 0 && <div className="content-import-commit-summary" role="status"><div><strong>提交前确认</strong><span>接受 {summary.accepted} 项 · 拒绝 {summary.rejected} 项 · 未决定 {summary.pending} 项</span></div><button className="content-import-primary" type="button" disabled={Boolean(busy) || summary.pending > 0} onClick={() => void handleCommit()}>{busy === "commit" ? "正在写入…" : summary.pending > 0 ? "请先逐项决定" : "确认并提交"}</button></div>}
+          {preview.candidates.length > 0 && <div className="content-import-commit-summary" role="status"><div><strong>提交前确认</strong><span>接受 {summary.accepted} 项 · 拒绝 {summary.rejected} 项 · 未决定 {summary.pending} 项</span></div><button className="content-import-primary" type="button" disabled={Boolean(busy) || Boolean(uncertainImportId) || summary.pending > 0 || Boolean(resume?.record.pending?.commitAttempted)} onClick={() => void handleCommit()}>{busy === "commit" ? "正在写入…" : summary.pending > 0 ? "请先逐项决定" : "确认并提交"}</button></div>}
         </section>
       )}
 

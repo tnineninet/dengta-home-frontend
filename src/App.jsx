@@ -7902,7 +7902,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
             {settingsCategory === "data-import" && (
               <Suspense fallback={<DeferredFeature label="正在打开导入手记…" />}>
-                <ContentImport />
+                <ContentImport key={JSON.stringify([accountStorageScope, companionScope])} accountScope={accountStorageScope} companionScope={companionScope} />
               </Suspense>
             )}
 

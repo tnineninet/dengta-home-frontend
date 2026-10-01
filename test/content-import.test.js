@@ -26,7 +26,7 @@ function buttonByText(renderer, text) {
 test("settings has a lazy, standalone data import entry and responsive glass styling", () => {
   assert.match(appSource, /lazy\(\(\) => import\("\.\/ContentImport"\)\)/);
   assert.match(appSource, /id: "data-import"[\s\S]{0,100}label: "数据导入"[\s\S]{0,100}description: "世界书与聊天记录"/);
-  const componentIndex = appSource.indexOf('<ContentImport />');
+  const componentIndex = appSource.indexOf('<ContentImport key=');
   const formIndex = appSource.indexOf('<form className="settings-form"', componentIndex);
   assert.ok(componentIndex > 0 && formIndex > componentIndex, "ContentImport must render independently before the main settings form");
   assert.match(appSource.slice(componentIndex, formIndex), /settingsCategory !== "data-import"/);
@@ -53,7 +53,7 @@ test("preview defaults to pending, requires item decisions, commits edits, and d
           { id: "b", candidate_type: "world_book", source_label: "Lorebook", title: "海边城市", content: "夜晚会亮起蓝灯", target: "world_book_entries" },
         ],
       } };
-      if (path.endsWith("/commit")) return { ok: true, result: { accepted_count: 1, rejected_count: 1 } };
+      if (path.endsWith("/commit")) return { ok: true, result: { import: { id: "preview-1", status: "committed" }, accepted_count: 1, rejected_count: 1 } };
       throw new Error(`unexpected ${path}`);
     },
   };

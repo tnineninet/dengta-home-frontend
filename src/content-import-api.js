@@ -37,7 +37,21 @@ const IMPORT_ERROR_MESSAGES = Object.freeze({
   import_already_committed: "这次导入已经提交，无需重复操作。",
   validation_error: "导入内容未通过校验，请检查候选项后重试。",
   authentication_required: "登录状态已失效，请重新登录后再导入。",
+  import_scope_changed: "账号或伴侣已切换，旧导入操作已取消，请在当前面板重新选择文件。",
+  import_commit_receipt_invalid: "提交结果尚未确认，请先检查提交结果，暂勿重复提交。",
+  import_preview_receipt_invalid: "服务器返回的预览与本段不匹配，请保留进度并查看错误日志。",
+  import_read_failed: "文件读取失败，请确认原文件仍可访问，再重新选择后重试。",
+  import_cancelled: "读取已取消，可以重新选择原文件继续。",
+  request_timeout: "请求超时。提交操作请先检查提交结果；预览或日志读取可检查网络后重试。",
+  import_binary_disguised: "文件实际是二进制文档，无法按文本分段读取。请使用真实扩展名或导出为文本。",
 });
+
+export const CONTENT_IMPORT_ERROR_FEEDBACK = Object.freeze(Object.fromEntries(
+  Object.entries(IMPORT_ERROR_MESSAGES).map(([code, reason]) => [code, {
+    reason,
+    action: "预览失败可以修正文件后重试。提交回执未确认时，先检查提交结果，避免重复写入。",
+  }]),
+));
 
 export function translatedImportError(source, fallback) {
   const code = String(source?.code || "").toLowerCase();
@@ -52,6 +66,7 @@ function importError(source, fallback, status) {
   });
   error.code = source?.code || "content_import_failed";
   error.status = status ?? source?.status;
+  error.error_log_id = source?.error_log_id;
   return error;
 }
 
@@ -101,12 +116,12 @@ export function validateImportFile(file) {
   return file;
 }
 
-export async function previewContentImportPage({ file, kind, startByte = 0 }, client = defaultClient) {
+export async function previewContentImportPage({ file, kind, startByte = 0, signal }, client = defaultClient) {
   validateImportFile(file);
   if (!CONTENT_IMPORT_PAGED_EXTENSIONS.test(file.name)) throw importError({code:'unsupported_file_type'});
   let text = '';
   const suffix = file.name.split('.').pop().toLowerCase();
-  for await (const batch of readTextFileBatches(file, { startByte, chunkBytes: 64 * 1024 })) {
+  for await (const batch of readTextFileBatches(file, { startByte, chunkBytes: 64 * 1024, signal })) {
     text += batch.text;
     if (text.length > 1024 * 1024) throw importError({code:'import_record_too_large'});
     if (batch.endByte < file.size) {
@@ -120,7 +135,8 @@ export async function previewContentImportPage({ file, kind, startByte = 0 }, cl
       }
     }
     const part = new File([text], `part-${startByte}-${batch.endByte}.${suffix}`, { type: 'text/plain' });
-    const data = await previewContentImport({ file: part, kind }, client);
+    signal?.throwIfAborted();
+    const data = await previewContentImport({ file: part, kind, signal }, client);
     return { data, page: { startByte, endByte: batch.endByte, totalBytes: file.size } };
   }
   throw importError({code:'import_empty'});
@@ -135,7 +151,7 @@ export function getContentImport(importId, client = defaultClient) {
 }
 
 export function previewContentImport(
-  { file, kind, format = "auto", content = "" },
+  { file, kind, format = "auto", content = "", signal },
   client = defaultClient,
 ) {
   if (file) {
@@ -146,13 +162,14 @@ export function previewContentImport(
     formData.append("kind", kind);
     formData.append("format", format);
     formData.append("source_type", kind);
-    return formImportRequest(formData, client);
+    return formImportRequest(formData, signal ? { apiFetch: (path,options) => client.apiFetch(path,{...options,signal}), apiRequest:client.apiRequest } : client);
   }
   const mediaType = mediaTypeFor(format, content);
   return jsonImportRequest(
     "/api/v2/imports/preview",
     {
       method: "POST",
+      ...(signal ? { signal } : {}),
       body: JSON.stringify({
         kind,
         format,
@@ -166,10 +183,10 @@ export function previewContentImport(
   );
 }
 
-export function commitContentImport(importId, decisions, client = defaultClient) {
+export function commitContentImport(importId, decisions, client = defaultClient, options = {}) {
   return jsonImportRequest(
     `/api/v2/imports/${encodeURIComponent(importId)}/commit`,
-    { method: "POST", body: JSON.stringify({ decisions }) },
+    { ...options, method: "POST", body: JSON.stringify({ decisions }) },
     client,
   );
 }
