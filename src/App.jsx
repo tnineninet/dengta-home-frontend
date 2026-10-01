@@ -65,7 +65,7 @@ import { companionPronoun } from "./companion-gender";
 import { isTextFile } from "./large-text-file.js";
 import { readLargeTextSample } from "./large-text-reader.js";
 import AmbientContextBadge from "./AmbientContextBadge";
-import ChatMessage from "./ChatMessage";
+import ChatTranscript from "./ChatTranscript.jsx";
 import ChatActivities from "./ChatActivities.jsx";
 import AchievementGuide from "./AchievementGuide.jsx";
 import LocalDiagnostics from "./LocalDiagnostics.jsx";
@@ -148,7 +148,6 @@ import {
   readInnerMonologues,
   reduceVisibleMonologueEvent,
   storeInnerMonologue,
-  visibleMonologueForMessage,
   canRequestVisibleMonologue,
 } from "./inner-monologue";
 import { hydrateChatHistory } from "./chat-history";
@@ -313,7 +312,6 @@ import {
 import { useDengTaTheme } from "./dengta-theme";
 import {
   chatSkinPreferencesApiPayload,
-  getMessageSkinPresentation,
   normalizeChatSkinPreferences,
   readStoredChatSkinPreferences,
   writeStoredChatSkinPreferences,
@@ -6476,16 +6474,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               ) : null}
             </div>
           ) : (
-            messages.map((item, index) => (
-              <ChatMessage
-                key={item.id}
-                item={item}
-                skin={chatSkinPreferences.skin}
-                skinPresentation={getMessageSkinPresentation(
-                  messages,
-                  index,
-                  chatSkinPreferences,
-                )}
+              <ChatTranscript
+                messages={messages}
+                preferences={chatSkinPreferences}
                 aiName={effectiveAiName}
                 aiPronoun={companionPronoun(settings)}
                 userName={effectiveUserName}
@@ -6495,21 +6486,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 onReference={selectMessageForReference}
                 onDismissError={dismissChatError}
                 onOpenActivity={openCompanionActivity}
-                innerMonologue={
-                  (visibleMonologueForMessage(item)?.text
-                    ? visibleMonologueForMessage(item)
-                    : innerMonologueForMessage(innerMonologues, item.id) || visibleMonologueForMessage(item))
-                }
-                innerMonologuePending={
-                  innerMonologuePending[item.id] === true
-                }
-                innerMonologueError={innerMonologueErrors[item.id] || ""}
+                innerMonologues={innerMonologues}
+                innerMonologuePending={innerMonologuePending}
+                innerMonologueErrors={innerMonologueErrors}
                 onRequestInnerMonologue={requestVisibleInnerMonologue}
                 userAvatar={userAvatar}
                 companionAvatar={companionAvatar}
                 privateMediaCatalog={privateMediaCatalog}
               />
-            ))
           )}
           </div>
         </section>

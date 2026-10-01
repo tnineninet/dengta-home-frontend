@@ -384,7 +384,8 @@ assert.match(appSource, /\/companion\/inner-monologue/);
 assert.match(appSource, /timeoutMs:\s*300\s*\*\s*1000/);
 assert.match(appSource, /event\.type === "monologue"/);
 assert.match(appSource, /reduceVisibleMonologueEvent/);
-assert.match(appSource, /visibleMonologueForMessage\(item\)/);
+assert.match(appSource, /<ChatTranscript/);
+assert.match(readFileSync(new URL("../src/ChatTranscript.jsx", import.meta.url), "utf8"), /visibleMonologueForMessage\(item\)/);
 assert.match(messageExtrasSource, /AI 生成的可见心声/);
 assert.match(messageExtrasSource, /不是模型隐藏的原始思考链/);
 assert.match(

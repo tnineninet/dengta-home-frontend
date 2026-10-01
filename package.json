@@ -1,7 +1,7 @@
 {
   "name": "dengta-home-react",
   "private": true,
-  "version": "2.10.60",
+  "version": "2.10.61",
   "type": "module",
   "scripts": {
     "test:workspace": "node test/workspace-cache.test.js && node test/workspace-manager.test.js",
@@ -37,7 +37,7 @@
     "test:voice": "node test/voice.test.js",
     "test:voice-output": "node test/voice-output.test.js",
     "test:chat-tools": "node test/chat-tools.test.js",
-    "test:chat-latency": "node test/chat-latency.test.js",
+    "test:chat-latency": "node test/chat-latency.test.js && node --test test/chat-transcript.test.js",
     "test:inner-monologue": "node test/inner-monologue.test.js && node test/monologue-recovery-ui.test.js",
     "test:inner-monologue-sync": "node test/inner-monologue-sync.test.js",
     "test:chat-errors": "node test/chat-error-sanitization.test.js && node test/chat-error-feedback.test.js",
