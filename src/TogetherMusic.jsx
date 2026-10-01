@@ -53,6 +53,7 @@ import { launchExternalMusic, externalMusicFeedback } from "./music-external-lau
 import MusicSettings from "./MusicSettings.jsx";
 import MusicImportDialog from "./MusicImportDialog.jsx";
 import MusicPagedList from "./MusicPagedList.jsx";
+import { musicPlaylistStatus } from "./music-playlist-status.js";
 
 const ERROR_MESSAGE = "音频无法播放。链接可能已过期、需要登录、受到防盗链限制，或使用了 DRM。DengTa 不会绕过这些限制。";
 const REPEAT_LABELS = Object.freeze({ off: "不循环", all: "列表循环", one: "单曲循环" });
@@ -324,7 +325,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
       setPosition(0);
       setStatus(`${next.name} · ${next.itemCount} 首`);
     } catch (caught) {
-      if (mountedRef.current && selection === playlistSelectionRef.current) setError(caught?.message || "歌单暂时无法读取。");
+      if (mountedRef.current && selection === playlistSelectionRef.current) setError(musicErrorMessage(caught, "歌单暂时无法读取，请刷新重试。"));
     } finally {
       if (mountedRef.current && selection === playlistSelectionRef.current) setLoading(false);
     }
@@ -885,7 +886,8 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
       <button type="button" className={favorite ? "is-favorite" : ""} aria-label={favorite ? "取消收藏当前曲目" : "收藏当前曲目"} aria-pressed={favorite} disabled={!item || favoriteBusy} onClick={() => void toggleFavorite()}><Heart aria-hidden="true" /></button>
       <button type="button" aria-label="刷新音乐资料" disabled={refreshing} onClick={() => void refreshLibrary()}><RefreshCw aria-hidden="true" />{refreshing ? "刷新中" : "刷新"}</button>
     </div>
-    <label>{active ? "加入曲目的来源歌单" : "歌单"}<select value={playlist?.id || ""} disabled={busy} onChange={(event) => void selectPlaylist(event.target.value)}><option value="">选择已导入歌单</option>{playlists.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} · {entry.itemCount} 首</option>)}</select></label>
+    <label>{active ? "加入曲目的来源歌单" : "歌单"}<select value={playlist?.id || ""} disabled={busy} onChange={(event) => void selectPlaylist(event.target.value)}><option value="">选择已导入歌单</option>{playlists.map((entry) => <option key={entry.id} value={entry.id} disabled={entry.saveState === "incomplete"}>{entry.name} · {musicPlaylistStatus(entry)}</option>)}</select></label>
+    {playlists.some(entry => entry.saveState === "incomplete") && <p role="status">部分歌单保存未完成。请回到仍打开的导入面板继续保存；面板已关闭时重新导入原文件，然后刷新歌单列表。</p>}
     {!active && playlist && <label>曲目<select value={localIndex} onChange={(event) => setLocalIndex(Number(event.target.value))}>{playlist.items.map((entry, itemIndex) => <option key={entry.id || itemIndex} value={itemIndex}>{itemIndex + 1}. {entry.title}{entry.artist ? ` · ${entry.artist}` : ""}</option>)}</select></label>}
     <audio
       ref={audioRef}

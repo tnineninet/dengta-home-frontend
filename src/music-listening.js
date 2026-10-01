@@ -4,6 +4,7 @@ import { coWatchRequestOptions } from "./co-watch-request-scope.js";
 import { captureMusicScope, assertMusicScope } from "./music-request-scope.js";
 import { musicErrorMessage } from "./music-operation-feedback.js";
 import { isPrivateMediaHostname } from "./direct-media.js";
+import { requireMusicPlaylistReceipt } from "./music-playlist-status.js";
 
 const MAX_TEXT = 500;
 const MAX_ITEMS = 2_000;
@@ -134,6 +135,8 @@ export function normalizeMusicPlaylist(value) {
     externalUrl: text(source.external_url ?? source.externalUrl, 4096),
     sourceFormat: text(source.source_format ?? source.sourceFormat, 80),
     itemCount: number(source.item_count ?? source.itemCount, items.length),
+    savedItemCount: Number.isInteger(source.saved_item_count) && source.saved_item_count >= 0 ? source.saved_item_count : null,
+    saveState: ["ready", "incomplete", "external_metadata"].includes(source.save_state) ? source.save_state : "unknown",
     items: Object.freeze(items),
     createdAt: source.created_at || "",
   });
@@ -398,7 +401,7 @@ export async function listMusicPlaylists(options = {}) {
 }
 
 export async function getMusicPlaylist(id, options = {}) {
-  return normalizeMusicPlaylist(await musicRequest(`/api/v2/music/playlists/${encodeURIComponent(id)}`, { timeoutMs: READ_TIMEOUT_MS }, options));
+  return requireMusicPlaylistReceipt(normalizeMusicPlaylist(await musicRequest(`/api/v2/music/playlists/${encodeURIComponent(id)}`, { timeoutMs: READ_TIMEOUT_MS }, options)));
 }
 
 export async function deleteMusicPlaylist(id, options = {}) {

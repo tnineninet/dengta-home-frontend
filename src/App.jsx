@@ -200,12 +200,11 @@ import {
   normalizeDeviceActivityState,
   normalizeDeviceActivitySummary,
   controlNowPlaying,
-  openNotificationAccessSettings,
   readCurrentApp,
   readDeviceActivityState,
-  readNotificationAccessState,
   readNowPlaying,
 } from "./device-activity";
+import { useNotificationAccess } from "./use-notification-access";
 import { playNeteaseSilent } from "./netease-playback";
 import { openBuiltInBrowser, readBrowserCookie } from "./browser-launcher.js";
 import {
@@ -1072,7 +1071,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const lastNowPlayingRef = useRef(null);
   const randomPlayAudioRef = useRef(null);
 
-  const [notificationAccess, setNotificationAccess] = useState({ granted: false, checking: true });
+  const { state: notificationAccess, request: requestNotificationAccess, refresh: refreshNotificationAccess } = useNotificationAccess();
 
   const aiMusicScope = useMusicScope(accountStorageScope, companionScope);
   useEffect(() => {
@@ -1083,22 +1082,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     return () => { window.clearInterval(timer); consumer.cancel(); };
   }, [aiMusicScope, accountStorageScope, companionScope, visualPreview]);
 
-  useEffect(() => {
-    let alive = true;
-    if (!deviceActivityPluginAvailable()) {
-      setNotificationAccess({ granted: false, checking: false });
-      setNowPlaying(null);
-      return undefined;
-    }
-    readNotificationAccessState().catch(() => ({ granted: false })).then(state => {
-      if (alive) setNotificationAccess({ granted: state?.granted === true, checking: false });
-    });
-    return () => { alive = false; };
-  }, []);
-
   // Listening to system media notifications is separate from consuming explicit AI song requests.
   useEffect(() => {
-    if (!deviceActivityPluginAvailable() || !notificationAccess.granted) return;
+    if (!deviceActivityPluginAvailable() || !notificationAccess.granted) {
+      setNowPlaying(current => current?.source === "dengta" ? current : null);
+      return;
+    }
     let alive = true, busy = false;
     const token = aiMusicScope.capture();
     const poll = async () => {
@@ -1125,28 +1114,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     // syncNowPlayingToSession is a stable callback declared after this effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiMusicScope, accountStorageScope, companionScope, notificationAccess.granted]);
-
-  const requestNotificationAccess = useCallback(async () => {
-    setNotificationAccess((previous) => ({ ...previous, checking: true }));
-    // 1) 请求 App 通知权限（Android 13+ 媒体通知监听需要它）
-    try {
-      if (Capacitor.isPluginAvailable("LocalNotifications")) {
-        const permission = await LocalNotifications.checkPermissions();
-        if (permission?.display !== "granted") {
-          await LocalNotifications.requestPermissions().catch(() => {});
-        }
-      }
-    } catch {
-      // 通知权限请求失败不阻塞
-    }
-    // 2) 打开系统"通知使用权"设置页
-    await openNotificationAccessSettings().catch(() => false);
-    // 用户从系统设置返回后重新检查
-    window.setTimeout(async () => {
-      const state = await readNotificationAccessState().catch(() => ({ granted: false }));
-      setNotificationAccess({ granted: state?.granted === true, checking: false });
-    }, 1500);
-  }, []);
 
   useEffect(() => {
     setNowPlayingBusy(false);
@@ -8621,7 +8588,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 <div>
                   <strong>音乐识别（彩虹胶囊显示正在播放）</strong>
                   <span>
-                    {notificationAccess.checking
+                    {!notificationAccess.supported
+                      ? "仅 Android 客户端支持系统音乐识别"
+                      : notificationAccess.errorMessage
+                        ? notificationAccess.errorMessage
+                        : notificationAccess.checking
                       ? "正在检查…"
                       : notificationAccess.granted
                         ? "已授权 · 播放时自动显示"
@@ -8632,15 +8603,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               <p>
                 授权后，只要你在网易云、QQ 音乐或系统播放器里放歌，聊天页的彩虹胶囊就会变成旋转唱片，显示歌名、歌手、封面和播放控制（暂停 / 下一首）。仅读取媒体通知，不读取消息内容。
               </p>
-              {!notificationAccess.granted && (
+              {notificationAccess.supported && (!notificationAccess.granted || notificationAccess.errorCode) && (
                 <div className="device-activity-actions">
                   <button
                     type="button"
-                    disabled={notificationAccess.checking}
+                    disabled={notificationAccess.checking || notificationAccess.opening}
                     onClick={() => void requestNotificationAccess()}
                   >
-                    {notificationAccess.checking ? "处理中…" : "去授权通知使用权"}
+                    {notificationAccess.opening ? "正在打开系统设置…" : "去授权通知使用权"}
                   </button>
+                  <button type="button" disabled={notificationAccess.checking || notificationAccess.opening} onClick={() => void refreshNotificationAccess()}>重新检查</button>
                 </div>
               )}
               <small>

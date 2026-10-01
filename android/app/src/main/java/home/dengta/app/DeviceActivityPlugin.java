@@ -2,6 +2,7 @@ package home.dengta.app;
 
 import android.app.AppOpsManager;
 import android.app.Notification;
+import android.app.NotificationManager;
 import android.app.usage.UsageEvents;
 import android.os.Bundle;
 import android.graphics.drawable.Icon;
@@ -487,13 +488,13 @@ public final class DeviceActivityPlugin extends Plugin {
     public void getNotificationAccessState(PluginCall call) {
         JSObject state = new JSObject();
         try {
-            String flat = Settings.Secure.getString(getContext().getContentResolver(),
-                "enabled_notification_listeners");
-            String ownComponent = getContext().getPackageName() + "/" +
-                NowPlayingListenerService.class.getName();
-            state.put("granted", flat != null && flat.contains(ownComponent));
+            NotificationManager manager = (NotificationManager) getContext().getSystemService(Context.NOTIFICATION_SERVICE);
+            if (manager == null) throw new IllegalStateException("Notification service unavailable");
+            state.put("granted", manager.isNotificationListenerAccessGranted(
+                new ComponentName(getContext(), NowPlayingListenerService.class)));
         } catch (Exception ignored) {
-            state.put("granted", false);
+            call.reject("无法读取通知使用权。", "music_notification_check_failed");
+            return;
         }
         call.resolve(state);
     }

@@ -45,7 +45,7 @@ assert.equal(await readPlaylistTextFile(playlistBlob("safe.m3u8", "application/v
 assert.deepEqual(normalizeMusicPlaylist({ id: "p1", title: "夜航", tracks: [{ id: "1", name: "星海", author: "桃桃", duration: 188 }] }), {
   id: "p1", name: "夜航", provider: "local_playlist", providerPlaylistId: "", externalUrl: "", sourceFormat: "", itemCount: 1,
   items: [{ id: "1", title: "星海", artist: "桃桃", album: "", url: "", providerTrackId: "", externalUrl: "", playbackMode: "", coverUrl: "", durationSeconds: 188, lyrics: "" }],
-  createdAt: "",
+  createdAt: "", savedItemCount: null, saveState: "unknown",
 });
 assert.equal(normalizeMusicPlaylist({ playlist: { items: ["https://media.example.com/raw.mp3"] } }).items[0].url, "https://media.example.com/raw.mp3");
 assert.equal(normalizeMusicPlaylist({ items: "invalid" }).items.length, 0);

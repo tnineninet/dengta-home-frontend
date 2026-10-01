@@ -158,12 +158,15 @@ export async function controlNowPlaying(action, {
 export async function readNotificationAccessState({
   capacitor = Capacitor,
   plugin = DeviceActivity,
+  strict = false,
 } = {}) {
   if (!deviceActivityPluginAvailable(capacitor)) return { granted: false };
   try {
     const result = await plugin.getNotificationAccessState();
+    if (strict && typeof result?.granted !== "boolean") throw new Error("Invalid receipt");
     return { granted: result?.granted === true };
   } catch {
+    if (strict) throw Object.assign(new Error("无法读取通知使用权，请返回本页重新检查。"), { code: "music_notification_check_failed" });
     return { granted: false };
   }
 }
