@@ -33,4 +33,19 @@ assert.equal(await openNotificationAccessSettings({ capacitor, plugin: { openNot
 const app = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8"), hook = fs.readFileSync(new URL("../src/use-notification-access.js", import.meta.url), "utf8");
 assert.match(app, /useNotificationAccess\(\)/); assert.match(app, /refreshNotificationAccess\(\)/); assert.doesNotMatch(app, /setNotificationAccess|const requestNotificationAccess = useCallback/);
 assert.match(hook, /App.addListener\("appStateChange", callback\)/); assert.match(hook, /useEffect\(\(\) => monitor.start\(\), \[monitor\]\)/);
-console.log("Notification access: native receipts, return/revoke/latest request, timeout, duplicate-open lock and delayed-listener cleanup passed; source wiring checked, device UX unverified");
+const registrationReceipt = deferred(), callbacks = []; let registrations = 0, disposed = 0;
+const recovering = createNotificationAccessMonitor({ ...opts, read: async () => ({ granted: true }), listen: callback => { callbacks.push(callback); registrations++; return registrations === 1 ? registrationReceipt.promise : Promise.resolve({ remove() { disposed++; } }); } });
+recovering.start(); await flush(); assert.equal(timers.size, 1, "registration has its own deadline");
+for (const callback of [...timers.values()]) callback(); await flush();
+assert.equal(states.at(-1).errorCode, "music_notification_listener_timeout"); assert.equal(states.at(-1).granted, true, "registration failure does not invent permission revocation");
+const oldReadCount = states.length; callbacks[0]({ isActive: true }); await flush(); assert.equal(states.length, oldReadCount, "expired native subscription callbacks are inactive");
+await recovering.refresh(); await flush(); assert.equal(registrations, 2); assert.equal(states.at(-1).errorCode, "", "manual refresh restores a failed subscription");
+await recovering.refresh(); assert.equal(registrations, 2, "healthy listeners are reused");
+registrationReceipt.resolve({ remove() { disposed++; } }); await flush(); assert.equal(disposed, 1, "late receipt is disposed after timeout"); recovering.stop(); await flush(); assert.equal(disposed, 2); assert.equal(timers.size, 0);
+for (const receipt of [null, {}, { remove: false }]) {
+  const invalid = createNotificationAccessMonitor({ ...opts, listen: async () => receipt }); invalid.start(); await flush(); assert.equal(states.at(-1).errorCode, "music_notification_listener_failed"); invalid.stop();
+}
+let retries = 0;
+const rejected = createNotificationAccessMonitor({ ...opts, listen: async () => { if (++retries === 1) throw Error("private registration error"); return { remove() {} }; } });
+rejected.start(); await flush(); assert.equal(states.at(-1).errorCode, "music_notification_listener_failed"); assert.doesNotMatch(states.at(-1).errorMessage, /private/); await rejected.refresh(); await flush(); assert.equal(states.at(-1).errorCode, ""); rejected.stop(); await flush(); assert.equal(timers.size, 0);
+console.log("Notification access: native receipts, return/revoke/latest request, independent registration deadline/recovery, invalid handles and cleanup passed; device UX unverified");
