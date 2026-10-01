@@ -11,10 +11,11 @@ test("mobile chat uses one decorative rainbow capsule as the status toggle", () 
   const styles = read("src/sun-glass-chat.css");
 
   assert.match(
-    status,
-    /className=\{`sun-glass-liquid-capsule-toggle\$\{/,
-    "the capsule toggle class must support the now-playing variant suffix",
+    read("src/NowPlayingCard.jsx"),
+    /className="sun-glass-liquid-capsule-toggle has-now-playing"/,
+    "the separate song card keeps the same capsule styles without nesting controls in a button",
   );
+  assert.match(status, /nowPlaying \? \([\s\S]*?<NowPlayingCard/);
   assert.match(
     status,
     /sun-glass-liquid-capsule-toggle[\s\S]*?aria-expanded=\{expanded\}[\s\S]*?onClick=\{togglePanel\}/,

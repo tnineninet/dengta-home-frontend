@@ -8,6 +8,7 @@ import android.graphics.drawable.Icon;
 import android.app.usage.UsageStats;
 import android.app.usage.UsageStatsManager;
 import android.content.Context;
+import android.content.ComponentName;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
@@ -296,13 +297,25 @@ public final class DeviceActivityPlugin extends Plugin {
      * 当前正在播放的歌曲（活动感知-音乐识别）：读取系统 MediaSessionManager
      * 的活动媒体会话，返回标题/歌手/专辑/时长/进度/播放状态/封面（缩略图）。
      * 无论用户在网易云、QQ 音乐、系统播放器还是本 App 内放歌都能识别，
-     * 不依赖"使用情况访问"授权（系统媒体会话是只读公开信息）。
+     * 不依赖"使用情况访问"，但跨应用媒体会话需要通知使用权。
      */
     @PluginMethod
     public void getNowPlaying(PluginCall call) {
         // 1) 优先读取通知监听缓存（Android 13+ 媒体会话可见性受限，通知是最可靠的来源）
         JSObject fromNotification = buildNowPlayingFromNotification();
         if (fromNotification != null) {
+            try {
+                JSObject notified = fromNotification.getJSObject("nowPlaying");
+                MediaSessionManager manager = (MediaSessionManager) getContext().getSystemService(Context.MEDIA_SESSION_SERVICE);
+                if (manager != null && notified != null) {
+                    for (MediaController controller : manager.getActiveSessions(new ComponentName(getContext(), NowPlayingListenerService.class))) {
+                        if (controller != null && notified.getString("packageName", "").equals(controller.getPackageName())) {
+                            JSObject live = buildNowPlaying(controller);
+                            if (!live.getJSObject("nowPlaying").getString("title", "").isEmpty()) { call.resolve(live); return; }
+                        }
+                    }
+                }
+            } catch (Exception ignored) { }
             call.resolve(fromNotification);
             return;
         }
@@ -311,7 +324,7 @@ public final class DeviceActivityPlugin extends Plugin {
             MediaSessionManager manager = (MediaSessionManager) getContext()
                 .getSystemService(Context.MEDIA_SESSION_SERVICE);
             if (manager != null) {
-                java.util.List<MediaController> controllers = manager.getActiveSessions(null);
+                java.util.List<MediaController> controllers = manager.getActiveSessions(new ComponentName(getContext(), NowPlayingListenerService.class));
                 MediaController best = null;
                 long bestActive = -1L;
                 if (controllers != null) {
@@ -402,8 +415,9 @@ public final class DeviceActivityPlugin extends Plugin {
             song.put("artist", truncate(text, 120));
             song.put("album", "");
             song.put("packageName", truncate(sbn.getPackageName() == null ? "" : sbn.getPackageName(), 80));
-            // 播放状态：网易云等媒体通知通常带媒体会话；无法直接判断时默认 true（有媒体通知=在播）
-            song.put("isPlaying", true);
+            // A cached notification alone does not confirm playback.
+            song.put("isPlaying", false);
+            song.put("playbackStateKnown", false);
             song.put("duration", 0L);
             song.put("position", 0L);
 
@@ -435,27 +449,22 @@ public final class DeviceActivityPlugin extends Plugin {
     }
 
     private String bitmapToDataUrl(Bitmap bitmap) {
+        if (bitmap == null) return "";
+        Bitmap thumbnail = bitmap;
         try {
-            if (bitmap == null) return "";
-            int width = bitmap.getWidth();
-            int height = bitmap.getHeight();
+            int width = bitmap.getWidth(), height = bitmap.getHeight();
             if (width > 96 || height > 96) {
                 float scale = Math.min(96f / width, 96f / height);
-                int newWidth = Math.max(1, Math.round(width * scale));
-                int newHeight = Math.max(1, Math.round(height * scale));
-                Bitmap scaled = Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true);
-                if (scaled != bitmap) bitmap.recycle();
-                bitmap = scaled;
+                thumbnail = Bitmap.createScaledBitmap(bitmap, Math.max(1, Math.round(width * scale)), Math.max(1, Math.round(height * scale)), true);
             }
-            java.io.ByteArrayOutputStream stream = new java.io.ByteArrayOutputStream();
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream);
-            String data = "data:image/png;base64," +
-                android.util.Base64.encodeToString(stream.toByteArray(), android.util.Base64.NO_WRAP);
-            stream.close();
-            bitmap.recycle();
-            return data;
+            try (java.io.ByteArrayOutputStream stream = new java.io.ByteArrayOutputStream()) {
+                thumbnail.compress(Bitmap.CompressFormat.PNG, 100, stream);
+                return "data:image/png;base64," + android.util.Base64.encodeToString(stream.toByteArray(), android.util.Base64.NO_WRAP);
+            }
         } catch (Exception ignored) {
             return "";
+        } finally {
+            if (thumbnail != bitmap) thumbnail.recycle();
         }
     }
 
@@ -502,14 +511,8 @@ public final class DeviceActivityPlugin extends Plugin {
         }
     }
 
-    private JSObject buildNowPlaying(MediaController controller) {
-        JSObject result = new JSObject();
-        if (controller == null) {
-            result.put("nowPlaying", JSONObject.NULL);
-            return result;
-        }
+    private JSObject buildNowPlayingIdentity(MediaController controller) {
         MediaMetadata metadata = controller.getMetadata();
-        PlaybackState state = controller.getPlaybackState();
         JSObject song = new JSObject();
         String title = metadata == null ? null : metadata.getString(MediaMetadata.METADATA_KEY_TITLE);
         String artist = metadata == null ? null : metadata.getString(MediaMetadata.METADATA_KEY_ARTIST);
@@ -518,7 +521,21 @@ public final class DeviceActivityPlugin extends Plugin {
         song.put("artist", truncate(artist == null ? "" : artist, 120));
         song.put("album", truncate(album == null ? "" : album, 120));
         song.put("packageName", truncate(controller.getPackageName() == null ? "" : controller.getPackageName(), 80));
+        song.put("sessionId", controller.getPackageName() + ":" + controller.getSessionToken().hashCode());
+        return song;
+    }
+
+    private JSObject buildNowPlaying(MediaController controller) {
+        JSObject result = new JSObject();
+        if (controller == null) {
+            result.put("nowPlaying", JSONObject.NULL);
+            return result;
+        }
+        MediaMetadata metadata = controller.getMetadata();
+        PlaybackState state = controller.getPlaybackState();
+        JSObject song = buildNowPlayingIdentity(controller);
         song.put("isPlaying", state != null && state.getState() == PlaybackState.STATE_PLAYING);
+        song.put("playbackStateKnown", state != null);
         // PlaybackState 没有 getDuration；时长从元数据取（毫秒）。
         long durationMs = 0L;
         if (metadata != null) {
@@ -526,112 +543,67 @@ public final class DeviceActivityPlugin extends Plugin {
         }
         song.put("duration", durationMs);
         song.put("position", state == null ? 0L : Math.max(0L, state.getPosition()));
-        // 封面缩略图（base64 PNG，控制在 ~96px 内）
         String cover = "";
         try {
             Bitmap artwork = metadata == null ? null : metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
-            if (artwork == null && metadata != null) {
-                artwork = metadata.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON);
-            }
-            if (artwork != null) {
-                int width = artwork.getWidth();
-                int height = artwork.getHeight();
-                if (width > 96 || height > 96) {
-                    float scale = Math.min(96f / width, 96f / height);
-                    int newWidth = Math.max(1, Math.round(width * scale));
-                    int newHeight = Math.max(1, Math.round(height * scale));
-                    Bitmap scaled = Bitmap.createScaledBitmap(artwork, newWidth, newHeight, true);
-                    if (scaled != artwork) artwork.recycle();
-                    artwork = scaled;
-                }
-                java.io.ByteArrayOutputStream stream = new java.io.ByteArrayOutputStream();
-                artwork.compress(Bitmap.CompressFormat.PNG, 100, stream);
-                cover = "data:image/png;base64," +
-                    android.util.Base64.encodeToString(stream.toByteArray(), android.util.Base64.NO_WRAP);
-                stream.close();
-                artwork.recycle();
-            }
-        } catch (Exception ignored) {
-            cover = "";
-        }
+            if (artwork == null && metadata != null) artwork = metadata.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON);
+            if (artwork != null) cover = bitmapToDataUrl(artwork);
+        } catch (Exception ignored) { }
         song.put("cover", cover);
         result.put("nowPlaying", song);
         return result;
     }
 
 
-    /**
-     * 控制当前播放（播放/暂停/下一首）：通过缓存的系统 MediaController 下发
-     * transportControls 指令。部分第三方 App 可能拒绝外部控制，失败时返回 false，
-     * 前端保持乐观 UI 即可。
-     */
+    /** A receipt confirms dispatch only; the external player owns its playback state. */
     @PluginMethod
     public void controlNowPlaying(PluginCall call) {
-        String action = call.getString("action", "toggle");
+        String action = call.getString("action", "");
+        String expectedPackage = call.getString("expectedPackage", "");
+        String expectedTitle = call.getString("expectedTitle", "");
+        String expectedArtist = call.getString("expectedArtist", "");
+        String expectedSession = call.getString("expectedSessionId", "");
+        long required = "play".equals(action) ? PlaybackState.ACTION_PLAY
+            : "pause".equals(action) ? PlaybackState.ACTION_PAUSE
+            : "next".equals(action) ? PlaybackState.ACTION_SKIP_TO_NEXT : 0L;
+        if (required == 0L || expectedPackage.isEmpty() || expectedTitle.isEmpty()) {
+            call.resolve(new JSObject().put("controlled", false).put("code", "music_control_invalid"));
+            return;
+        }
         try {
-            if (cachedNowPlayingController == null) {
-                // 通知路径时 cachedNowPlayingController 为空，从通知缓存反查包名重新匹配
-                android.service.notification.StatusBarNotification sbn =
-                    NowPlayingListenerService.getCachedMediaNotification();
-                if (sbn != null) {
-                    String notifyPkg = sbn.getPackageName();
-                    MediaSessionManager manager = (MediaSessionManager) getContext()
-                        .getSystemService(Context.MEDIA_SESSION_SERVICE);
-                    if (manager != null) {
-                        java.util.List<MediaController> controllers = manager.getActiveSessions(null);
-                        if (controllers != null) {
-                            for (MediaController controller : controllers) {
-                                if (controller == null) continue;
-                                if (controller.getPackageName() != null
-                                    && controller.getPackageName().equals(notifyPkg)) {
-                                    cachedNowPlayingController = controller;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-                // 仍然没找到，再尝试通用探测
-                if (cachedNowPlayingController == null) {
-                    MediaSessionManager manager = (MediaSessionManager) getContext()
-                        .getSystemService(Context.MEDIA_SESSION_SERVICE);
-                    if (manager != null) {
-                        java.util.List<MediaController> controllers = manager.getActiveSessions(null);
-                        if (!controllers.isEmpty()) {
-                            cachedNowPlayingController = controllers.get(0);
-                        }
+            MediaSessionManager manager = (MediaSessionManager) getContext().getSystemService(Context.MEDIA_SESSION_SERVICE);
+            MediaController target = null;
+            if (manager != null) {
+                List<MediaController> controllers = manager.getActiveSessions(new ComponentName(getContext(), NowPlayingListenerService.class));
+                if (controllers != null) for (MediaController candidate : controllers) {
+                    if (candidate == null) continue;
+                    JSObject song = buildNowPlayingIdentity(candidate);
+                    if (song != null && NowPlayingControlPolicy.matches(expectedPackage, expectedTitle, expectedArtist,
+                            song.getString("packageName", ""), song.getString("title", ""), song.getString("artist", ""))
+                        && (expectedSession.isEmpty() || expectedSession.equals(song.getString("sessionId", "")))) {
+                        target = candidate;
+                        break;
                     }
                 }
             }
-            if (cachedNowPlayingController == null) {
-                call.resolve(new JSObject().put("controlled", false));
+            if (target == null) {
+                call.resolve(new JSObject().put("controlled", false).put("code", "music_control_session_changed"));
                 return;
             }
-            MediaController.TransportControls controls = cachedNowPlayingController.getTransportControls();
-            if (controls == null) {
-                call.resolve(new JSObject().put("controlled", false));
+            PlaybackState state = target.getPlaybackState();
+            if (state == null || !NowPlayingControlPolicy.supports(state.getActions(), required)) {
+                call.resolve(new JSObject().put("controlled", false).put("code", "music_control_unsupported"));
                 return;
             }
-            boolean controlled = true;
-            if ("play".equals(action)) {
-                controls.play();
-            } else if ("pause".equals(action)) {
-                controls.pause();
-            } else if ("toggle".equals(action)) {
-                PlaybackState state = cachedNowPlayingController.getPlaybackState();
-                if (state != null && state.getState() == PlaybackState.STATE_PLAYING) {
-                    controls.pause();
-                } else {
-                    controls.play();
-                }
-            } else if ("next".equals(action)) {
-                controls.skipToNext();
-            } else {
-                controlled = false;
-            }
-            call.resolve(new JSObject().put("controlled", controlled));
+            MediaController.TransportControls controls = target.getTransportControls();
+            if ("play".equals(action)) controls.play();
+            else if ("pause".equals(action)) controls.pause();
+            else controls.skipToNext();
+            call.resolve(new JSObject().put("controlled", true));
+        } catch (SecurityException error) {
+            call.resolve(new JSObject().put("controlled", false).put("code", "music_control_permission"));
         } catch (Exception error) {
-            call.resolve(new JSObject().put("controlled", false));
+            call.resolve(new JSObject().put("controlled", false).put("code", "music_control_failed"));
         }
     }
 

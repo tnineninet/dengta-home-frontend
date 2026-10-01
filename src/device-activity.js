@@ -106,7 +106,9 @@ export function normalizeNowPlaying(value) {
     artist: String(song.artist || "").slice(0, 120),
     album: String(song.album || "").slice(0, 120),
     packageName: String(song.packageName || "").slice(0, 80),
-    isPlaying: song.isPlaying === true,
+    sessionId: String(song.sessionId || "").slice(0, 160),
+    isPlaying: song.isPlaying === true && song.playbackStateKnown !== false,
+    playbackStateKnown: song.playbackStateKnown !== false,
     durationSeconds: Number(song.duration) > 0 ? Math.round(Number(song.duration) / 1000) : 0,
     positionSeconds: Number(song.position) > 0 ? Math.round(Number(song.position) / 1000) : 0,
     cover: typeof song.cover === "string" && song.cover.startsWith("data:image") ? song.cover : "",
@@ -129,14 +131,27 @@ export async function readNowPlaying({
 export async function controlNowPlaying(action, {
   capacitor = Capacitor,
   plugin = DeviceActivity,
+  expectedSong,
 } = {}) {
-  if (!deviceActivityPluginAvailable(capacitor)) return false;
+  const failure = code => Object.assign(new Error({
+    music_control_unavailable: "此设备不支持系统播放器控制，请打开音乐 App 操作。",
+    music_control_invalid: "歌曲或操作信息已失效，请刷新歌曲卡片后重试。",
+    music_control_permission: "通知使用权未开启或已撤销，请在设置中重新授权。",
+    music_control_session_changed: "播放器或歌曲已切换，请等待歌曲卡片更新后重试。",
+    music_control_session_missing: "当前歌曲没有可控制的媒体会话，请打开音乐 App 操作。",
+    music_control_unsupported: "此播放器不支持该操作，请打开音乐 App 操作。",
+    music_control_failed: "系统播放器指令发送失败，请在音乐 App 中重试。",
+  }[code]), { code });
+  if (!deviceActivityPluginAvailable(capacitor)) throw failure("music_control_unavailable");
+  if (!["play", "pause", "next"].includes(action) || !expectedSong?.packageName || !expectedSong?.title) throw failure("music_control_invalid");
+  let result;
   try {
-    const result = await plugin.controlNowPlaying({ action: String(action || "toggle") });
-    return result?.controlled === true;
+    result = await plugin.controlNowPlaying({ action, expectedPackage: expectedSong.packageName, expectedTitle: expectedSong.title, expectedArtist: expectedSong.artist || "", expectedSessionId: expectedSong.sessionId || "" });
   } catch {
-    return false;
+    throw failure("music_control_failed");
   }
+  if (result?.controlled !== true) throw failure(["music_control_permission", "music_control_session_changed", "music_control_session_missing", "music_control_unsupported", "music_control_invalid"].includes(result?.code) ? result.code : "music_control_failed");
+  return { submitted: true };
 }
 
 

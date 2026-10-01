@@ -528,6 +528,15 @@
 }
 .sun-glass-now-playing-controls button:active { transform: scale(0.9); opacity: 1; }
 .sun-glass-now-playing-controls button svg { width: 14px; height: 14px; }
+.sun-glass-now-playing-title { padding: 0; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; min-width: 0; }
+.sun-glass-now-playing-title strong { display: block; }
+.sun-glass-now-playing-controls button:disabled { opacity: 0.4; cursor: wait; transform: none; }
+.sun-glass-now-playing-title:focus-visible,
+.sun-glass-now-playing-controls button:focus-visible { outline: 2px solid var(--theme-ink); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  .sun-glass-now-playing-cover.is-spinning { animation: none; }
+  .sun-glass-now-playing-controls button { transition: none; }
+}
 
 /* ============================================================
    一起看 / 一起听歌 / 设置 — Apple 液态玻璃质感覆写

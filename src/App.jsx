@@ -12,6 +12,7 @@ import { resizeComposerInput } from "./composer-size.js";
 import { createCoWatchLifecycle } from "./co-watch-lifecycle.js";
 import { createScreenGlanceLifecycle } from "./screen-glance-lifecycle.js";
 import { createMusicPlaybackSync } from "./music-playback-sync.js";
+import { runNowPlayingControl, sameNowPlaying } from "./now-playing-controls.js";
 import { createNowPlayingSync } from "./music-now-playing-sync.js";
 import { getMusicPlaylist, listAiMusicPlayRequests, reportAiMusicPlayResult } from "./music-listening.js";
 import { useMusicScope } from "./use-music-scope.js";
@@ -1066,6 +1067,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [dlnaState, setDlnaState] = useState(() => normalizeDlnaState({}));
   const [dlnaBusy, setDlnaBusy] = useState(false);
   const [nowPlaying, setNowPlaying] = useState(null);
+  const [nowPlayingBusy, setNowPlayingBusy] = useState(false);
   const nowPlayingDismissedRef = useRef(false);
   const lastNowPlayingRef = useRef(null);
   const randomPlayAudioRef = useRef(null);
@@ -1106,10 +1108,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         const song = await readNowPlaying().catch(() => null);
         if (!alive || !aiMusicScope.current(token)) return;
         if (song?.title) {
-          nowPlayingDismissedRef.current = false;
-          setNowPlaying(song);
           const previous = lastNowPlayingRef.current;
-          const changed = !previous || previous.title !== song.title || previous.artist !== song.artist;
+          const changed = !sameNowPlaying(previous, song);
+          if (changed) nowPlayingDismissedRef.current = false;
+          if (!nowPlayingDismissedRef.current) setNowPlaying(song);
           lastNowPlayingRef.current = song;
           if (changed) void syncNowPlayingToSession(song);
         } else if (!nowPlayingDismissedRef.current) {
@@ -1146,24 +1148,21 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }, 1500);
   }, []);
 
-  const handleNowPlayingPlayPause = useCallback(() => {
-    setNowPlaying((current) => {
-      const nextPlaying = !(current?.isPlaying ?? true);
-      void controlNowPlaying(nextPlaying ? "play" : "pause");
-      return current ? { ...current, isPlaying: nextPlaying } : current;
-    });
-  }, []);
-
-  const handleNowPlayingNext = useCallback(() => {
-    void controlNowPlaying("next");
+  useEffect(() => {
+    setNowPlayingBusy(false);
     setNowPlaying(null);
-    nowPlayingDismissedRef.current = true;
-    // 不把 setNotice 放进依赖数组：它声明在组件更后面，
-    // 放依赖数组会让压缩构建在渲染时访问未初始化变量（TDZ）。
-    // setNotice 是稳定 setter，闭包内直接调用即可。
-    setNotice("已发送下一首指令。");
-     
-  }, []);
+    nowPlayingDismissedRef.current = false;
+  }, [accountStorageScope, companionScope]);
+
+  const handleNowPlayingControl = useCallback(action => {
+    void runNowPlayingControl({ scope: aiMusicScope, song: nowPlaying, action, control: controlNowPlaying, read: readNowPlaying,
+      onBusy: setNowPlayingBusy,
+      onSong: song => { if (!nowPlayingDismissedRef.current) setNowPlaying(song); },
+      onFeedback: message => setNotice(message),
+    });
+  }, [aiMusicScope, nowPlaying]);
+  const handleNowPlayingPlayPause = useCallback(() => handleNowPlayingControl(nowPlaying?.isPlaying ? "pause" : "play"), [handleNowPlayingControl, nowPlaying?.isPlaying]);
+  const handleNowPlayingNext = useCallback(() => handleNowPlayingControl("next"), [handleNowPlayingControl]);
 
   const handleDismissNowPlaying = useCallback(() => {
     nowPlayingDismissedRef.current = true;
@@ -9411,6 +9410,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             onOpenNavigation={() => setIsSidebarOpen(true)}
             onOpenSettings={openSettingsPanel}
             nowPlaying={nowPlaying}
+            nowPlayingBusy={nowPlayingBusy}
             onNowPlayingPlayPause={handleNowPlayingPlayPause}
             onNowPlayingNext={handleNowPlayingNext}
             onDismissNowPlaying={handleDismissNowPlaying}

@@ -13,10 +13,7 @@ import {
   Heart,
   Menu,
   MessageCircle,
-  Pause,
-  Play,
   Settings,
-  SkipForward,
   Sparkles,
   Tv,
   X,
@@ -37,6 +34,7 @@ import {
   settleExpiredCountdown,
 } from "./companion-status";
 import StatusFlowField from "./StatusFlowField";
+import NowPlayingCard from "./NowPlayingCard.jsx";
 
 const DESIRE_ACTIONS = [
   {
@@ -79,6 +77,7 @@ function CompanionStatus({
   intimateExpressionEnabled = false,
   isResponding = false,
   nowPlaying = null,
+  nowPlayingBusy = false,
   onNowPlayingPlayPause,
   onNowPlayingNext,
   onDismissNowPlaying,
@@ -382,67 +381,13 @@ function CompanionStatus({
     >
       <section className="sun-glass-liquid-action-stage" aria-label="动态状态">
         <span className="sun-glass-liquid-color-flow" aria-hidden="true" />
-        <button
-          type="button"
-          className={`sun-glass-liquid-capsule-toggle${nowPlaying ? " has-now-playing" : ""}`}
-          aria-label={expanded ? "收起动态状态" : nowPlaying ? "正在播放：" + nowPlaying.title : `展开${displayName}的动态状态`}
-          aria-expanded={expanded}
-          onClick={togglePanel}
-        >
-          {nowPlaying ? (
-            <span className="sun-glass-now-playing" aria-hidden="true">
-              <span
-                className={`sun-glass-now-playing-cover${nowPlaying.isPlaying ? " is-spinning" : ""}`}
-                style={nowPlaying.cover ? { backgroundImage: `url("${nowPlaying.cover}")` } : undefined}
-              >
-                <span className="sun-glass-now-playing-disc" />
-                <span className="sun-glass-now-playing-hole" />
-              </span>
-              <span className="sun-glass-now-playing-meta">
-                <strong>{nowPlaying.title}</strong>
-                <small>{nowPlaying.artist || "正在播放"}</small>
-                <span className="sun-glass-now-playing-controls" onClick={(event) => event.stopPropagation()}>
-                  <button
-                    type="button"
-                    aria-label={nowPlaying.isPlaying ? "暂停" : "播放"}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onNowPlayingPlayPause?.();
-                    }}
-                  >
-                    {nowPlaying.isPlaying ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="下一首"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onNowPlayingNext?.();
-                    }}
-                  >
-                    <SkipForward aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    aria-label="收起歌曲胶囊"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onDismissNowPlaying?.();
-                    }}
-                  >
-                    <X aria-hidden="true" />
-                  </button>
-                </span>
-              </span>
-            </span>
-          ) : (
-            <span className="sun-glass-capsule-decoration" aria-hidden="true">
-              <Heart />
-              <MessageCircle />
-              <Sparkles />
-            </span>
-          )}
-        </button>
+        {nowPlaying ? (
+          <NowPlayingCard song={nowPlaying} busy={nowPlayingBusy} expanded={expanded} onToggle={togglePanel} onPlayPause={onNowPlayingPlayPause} onNext={onNowPlayingNext} onDismiss={onDismissNowPlaying} />
+        ) : (
+          <button type="button" className="sun-glass-liquid-capsule-toggle" aria-label={expanded ? "收起动态状态" : `展开${displayName}的动态状态`} aria-expanded={expanded} onClick={togglePanel}>
+            <span className="sun-glass-capsule-decoration" aria-hidden="true"><Heart /><MessageCircle /><Sparkles /></span>
+          </button>
+        )}
       </section>
 
       <div className="sun-glass-status-ribbon">
