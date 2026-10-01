@@ -32,9 +32,27 @@ const IMPORT_ERROR_MESSAGES = Object.freeze({
   decisions_required: "每个候选项都必须明确选择接受或拒绝。",
   import_decision_invalid: "每个候选项都必须明确选择接受或拒绝。",
   import_decisions_incomplete: "必须为全部候选项选择接受或拒绝。",
+  import_candidate_invalid: "提交决策与当前候选不匹配，请重新核对预览。",
+  import_content_invalid: "候选标题或正文超过导入容量，请缩短该候选后重试。",
+  import_content_empty: "接受的候选内容不能为空，请补充内容或选择拒绝。",
+  import_world_book_keywords_invalid: "世界书关键词格式无效，请重新填写关键词。",
+  import_world_book_enabled_invalid: "世界书启用状态无效，请重新选择开关。",
+  import_world_book_constant_invalid: "世界书常驻状态无效，请重新选择开关。",
+  import_world_book_case_sensitive_invalid: "世界书大小写匹配设置无效，请重新选择开关。",
+  import_world_book_priority_invalid: "世界书优先级必须是 -100000 到 100000 的整数，请修改后重试。",
+  import_world_book_sort_order_invalid: "世界书排序必须是整数，请修改后重试。",
+  import_world_book_match_mode_invalid: "世界书匹配模式无效，请重新选择任一匹配或全部匹配。",
+  import_world_book_position_invalid: "世界书注入位置无效，请重新选择位置。",
   import_target_invalid: "候选项的写入位置无效，请重新选择。",
   import_time_unreliable: "这条日历线索缺少可靠时间，暂时不能接受。",
   import_already_committed: "这次导入已经提交，无需重复操作。",
+  import_commit_conflict: "这次导入已经以另一组决策提交，请检查已保存结果，不要重复追加。",
+  import_legacy_preview: "这是旧版导入预览，可能已有部分写入。请核对已保存结果，重新预览时拒绝已经导入的内容。",
+  import_partial_legacy: "这份预览已有部分处理记录，不能直接再次提交。请核对已保存结果后重新预览。",
+  import_transaction_unavailable: "服务器的原子导入尚未就绪，本次没有开始写入，请稍后重试。",
+  import_settings_missing: "当前伴侣的设置记录缺失，本轮写入已回滚。请重新打开设置，确认保存成功后重试。",
+  import_commit_rolled_back: "数据库未完成提交，本轮写入已全部回滚。请核对候选内容后重试。",
+  import_commit_unconfirmed: "未能确认服务器是否已提交，请先检查提交结果，暂勿重复导入。",
   validation_error: "导入内容未通过校验，请检查候选项后重试。",
   authentication_required: "登录状态已失效，请重新登录后再导入。",
   import_scope_changed: "账号或伴侣已切换，旧导入操作已取消，请在当前面板重新选择文件。",
@@ -46,10 +64,23 @@ const IMPORT_ERROR_MESSAGES = Object.freeze({
   import_binary_disguised: "文件实际是二进制文档，无法按文本分段读取。请使用真实扩展名或导出为文本。",
 });
 
+export function importCommitRecovery(code) {
+  if (["import_legacy_preview", "import_partial_legacy"].includes(code)) return "legacy";
+  if (["import_commit_rolled_back", "import_transaction_unavailable", "import_settings_missing",
+    "import_decisions_incomplete", "import_candidate_invalid", "import_decision_invalid", "import_target_invalid",
+    "import_content_invalid", "import_content_empty", "import_time_unreliable", "import_title_too_long",
+    "import_world_book_keywords_invalid", "import_world_book_priority_invalid", "import_world_book_sort_order_invalid",
+    "import_world_book_enabled_invalid", "import_world_book_constant_invalid", "import_world_book_case_sensitive_invalid",
+    "import_world_book_match_mode_invalid", "import_world_book_position_invalid"].includes(code)) return "retry";
+  return "check";
+}
+
 export const CONTENT_IMPORT_ERROR_FEEDBACK = Object.freeze(Object.fromEntries(
   Object.entries(IMPORT_ERROR_MESSAGES).map(([code, reason]) => [code, {
     reason,
-    action: "预览失败可以修正文件后重试。提交回执未确认时，先检查提交结果，避免重复写入。",
+    action: importCommitRecovery(code) === "retry" ? "本轮未写入；核对候选或服务器状态后，可以再次确认提交。"
+      : importCommitRecovery(code) === "legacy" ? "先核对记忆与世界书的已保存内容，再重新预览；已经导入的候选请选择拒绝。"
+        : "预览失败可以修正文件后重试。提交回执未确认时，先检查提交结果，避免重复写入。",
   }]),
 ));
 

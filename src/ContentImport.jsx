@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { commitContentImport, getContentImport, listContentImports, previewContentImport, previewContentImportPage, CONTENT_IMPORT_PAGED_EXTENSIONS, CONTENT_IMPORT_ERROR_FEEDBACK, translatedImportError } from "./content-import-api.js";
+import { commitContentImport, getContentImport, listContentImports, previewContentImport, previewContentImportPage, CONTENT_IMPORT_PAGED_EXTENSIONS, CONTENT_IMPORT_ERROR_FEEDBACK, translatedImportError, importCommitRecovery } from "./content-import-api.js";
 import WorldBookManager from "./WorldBookManager.jsx";
 import ChatErrorLog from "./ChatErrorLog.jsx";
 import { funLabsDiagnostic } from "./fun-labs-refresh.js";
@@ -215,6 +215,7 @@ export default function ContentImport({ api, accountScope = "", companionScope =
           }
           if(value.import.status!=="preview" || !Array.isArray(value.candidates))throw Object.assign(new Error(),{code:"import_preview_receipt_invalid"});
           setPreview(normalizeImportPreview(restored));
+          if(value.import.commit_protocol===null){fail({code:"import_legacy_preview"});return;}
           setRecoveryNote(record.pending.commitAttempted ? "这一段曾尝试提交，请先检查提交结果；不会自动重复写入。" : "已恢复未提交的预览，请重新核对候选；上次未提交的页面编辑未保留。");return;
         }
         startByte=startByte || record.nextByte;
@@ -283,7 +284,14 @@ export default function ContentImport({ api, accountScope = "", companionScope =
       window.dispatchEvent(new CustomEvent("dengta:memories-imported", { detail: committed.result || committed }));
       await refreshRecent(task);
     } catch (commitError) {
-      if(current(task))fail(commitError);
+      if(current(task)) {
+        if(importCommitRecovery(commitError?.code)==="retry") {
+          setUncertainImportId(null);
+          if(committing)remember(resume.key,{...committing,pending:{...committing.pending,commitAttempted:false}});
+          setRecoveryNote("本轮没有写入，可以核对候选后再次提交。");
+        }
+        fail(commitError);
+      }
     } finally {
       finish(task);
     }
@@ -296,6 +304,8 @@ export default function ContentImport({ api, accountScope = "", companionScope =
     const task=begin("check");if(!task)return;
     try {
       const data=await getContentImport(importId,client);if(!current(task))return;
+      const stored=data?.result || data;
+      if(stored?.import?.status==="preview" && stored.import.commit_protocol===null){fail({code:"import_legacy_preview"});return;}
       const value=importCommitReceipt(data,importId);
       setUncertainImportId(null);
       settlePage(resume?.key,resume?.record);setResult(committedResult(value.import));setPreview(null);
@@ -306,6 +316,13 @@ export default function ContentImport({ api, accountScope = "", companionScope =
   function discardPage() {
     if(uncertainImportId || resume?.record.pending?.commitAttempted)return;
     settlePage(resume?.key,resume?.record);setPreview(null);setResult(null);
+  }
+
+  function reviewLegacyPage() {
+    if(busy || importCommitRecovery(diagnostic?.error_code)!=="legacy")return;
+    if(resume?.record.pending)remember(resume.key,{...resume.record,nextByte:resume.record.pending.startByte,pending:null});
+    setPreview(null);setResult(null);setUncertainImportId(null);setError("");setDiagnostic(null);
+    setRecoveryNote("请重新生成本段预览；已保存的记忆、指令或世界书不会删除，请拒绝已经导入的候选。");
   }
 
   function resetSource() {
@@ -349,14 +366,17 @@ export default function ContentImport({ api, accountScope = "", companionScope =
           <label className="content-import-paste"><span>粘贴原始内容</span><textarea aria-label="粘贴导入内容" disabled={Boolean(busy) || Boolean(uncertainImportId)} value={content} onChange={(event) => setContent(event.target.value)} rows={8} placeholder="内容会按原文发送，不进行关键词过滤。" /></label>
         )}
         <button className="content-import-primary" type="button" disabled={Boolean(busy) || Boolean(uncertainImportId) || resume?.record.pending?.commitAttempted || (inputMode === "file" ? !file : !content)} onClick={() => void handlePreview()}>{busy === "preview" ? "正在读入故事…" : "生成导入预览"}</button>
-        {busy==="preview" && <button type="button" onClick={stopReading}>停止读取</button>}
+        {busy==="preview" && <button className="content-import-secondary" type="button" onClick={stopReading}>停止读取</button>}
         {progress && <p role="status">正在校验原文件：{Math.round(progress.readBytes / progress.totalBytes * 100)}% · 分块读取，不整份载入内存。</p>}
         {recoveryNote && <p role="status">{recoveryNote}</p>}
-        {(uncertainImportId || resume?.record.pending?.commitAttempted) && <button type="button" disabled={Boolean(busy)} onClick={()=>void checkCommit()}>{busy==="check" ? "正在核对…" : "检查提交结果"}</button>}
+        {(uncertainImportId || resume?.record.pending?.commitAttempted) && <button className="content-import-secondary" type="button" disabled={Boolean(busy)} onClick={()=>void checkCommit()}>{busy==="check" ? "正在核对…" : "检查提交结果"}</button>}
+        {importCommitRecovery(diagnostic?.error_code)==="legacy" && <button className="content-import-secondary" type="button" disabled={Boolean(busy)} onClick={reviewLegacyPage}>已核对旧结果，重新预览本段</button>}
         {page && <div role="status"><p>本段：{page.startByte.toLocaleString()}–{page.endByte.toLocaleString()} 字节 / 共 {page.totalBytes.toLocaleString()} 字节。预览不会自动写入记忆。</p>
-          {page.endByte < page.totalBytes && <button type="button" disabled={Boolean(busy) || Boolean(preview)} onClick={() => void handlePreview(page.endByte)}>读取下一段</button>}
-          {preview && <button type="button" disabled={Boolean(busy) || Boolean(resume?.record.pending?.commitAttempted)} onClick={discardPage}>放弃本段候选</button>}
-          {!busy && !preview && resume?.key && !resume.record.pending && <button type="button" onClick={()=>{clearImportCheckpoint(resume.key);setResume(null);setPage(null);setRecoveryNote("进度已重置；再次提交之前，请核对是否会重复导入。");}}>重新从头预览</button>}
+          <div className="content-import-page-actions">
+          {page.endByte < page.totalBytes && <button className="content-import-secondary" type="button" disabled={Boolean(busy) || Boolean(preview)} onClick={() => void handlePreview(page.endByte)}>读取下一段</button>}
+          {preview && <button className="content-import-secondary" type="button" disabled={Boolean(busy) || Boolean(resume?.record.pending?.commitAttempted) || Boolean(uncertainImportId)} onClick={discardPage}>放弃本段候选</button>}
+          {!busy && !preview && resume?.key && !resume.record.pending && <button className="content-import-secondary" type="button" onClick={()=>{clearImportCheckpoint(resume.key);setResume(null);setPage(null);setRecoveryNote("进度已重置；再次提交之前，请核对是否会重复导入。");}}>重新从头预览</button>}
+          </div>
         </div>}
         </div>
 
