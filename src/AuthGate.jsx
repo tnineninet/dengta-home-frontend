@@ -73,6 +73,7 @@ export function AuthScreen({
   const [busy, setBusy] = useState("");
   const [feedback, setFeedback] = useState(initialMessage);
   const [verificationEmail, setVerificationEmail] = useState("");
+  const [verificationLink, setVerificationLink] = useState("");
 
   function changeMode(nextMode, preserveEmail) {
     setMode(nextMode);
@@ -80,6 +81,7 @@ export function AuthScreen({
     setPasswordConfirmation("");
     setFeedback("");
     setVerificationEmail("");
+    setVerificationLink("");
     if (preserveEmail) setEmail(preserveEmail);
   }
 
@@ -139,6 +141,20 @@ export function AuthScreen({
     } catch (error) {
       setFeedback(error?.message || "验证邮件发送失败，请稍后再试。");
     } finally {
+      setBusy("");
+    }
+  }
+
+  async function verifyLink(event) {
+    event.preventDefault();
+    setBusy("verify-link");
+    setFeedback("");
+    try {
+      await sessionManager.verifyRegistrationLink(verificationLink);
+    } catch (error) {
+      setFeedback(error?.message || "邮箱验证失败，请重新发送验证邮件并使用最新链接。");
+    } finally {
+      setVerificationLink("");
       setBusy("");
     }
   }
@@ -206,8 +222,8 @@ export function AuthScreen({
             </span>
             <h2>去邮箱确认一下</h2>
             <p>
-              验证链接已经发送到 <strong>{verificationEmail}</strong>。
-              验证完成后返回本页登录即可。
+              验证邮箱：<strong>{verificationEmail}</strong>。
+              打开最新的验证邮件；验证完成后可用注册时的密码登录。
             </p>
             {feedback && <p className="auth-feedback">{feedback}</p>}
             <button
@@ -225,6 +241,21 @@ export function AuthScreen({
             >
               返回登录
             </button>
+            <details>
+              <summary>邮件链接打不开？在这里验证</summary>
+              <p>在最新验证邮件里长按“Confirm email address”，复制链接并粘贴到下面。链接只发送给灯塔当前认证服务验证，不需要在邮件浏览器中跳转。不要把链接发给其他人。</p>
+              <form className="auth-form" onSubmit={verifyLink}>
+                <label>
+                  <span>注册验证链接</span>
+                  <input required type="password" autoComplete="off" spellCheck={false}
+                    value={verificationLink} onChange={(event) => setVerificationLink(event.target.value)}
+                    placeholder="粘贴邮件中确认按钮的原始链接" />
+                </label>
+                <button className="auth-primary-button" disabled={Boolean(busy)}>
+                  {busy === "verify-link" ? "正在验证..." : "验证邮箱并进入灯塔"}
+                </button>
+              </form>
+            </details>
           </div>
         ) : (
           <form className="auth-form" onSubmit={submit}>
@@ -319,6 +350,20 @@ export function AuthScreen({
                       ? "发送重置邮件"
                       : "保存新密码"}
             </button>
+            {mode === "login" && (
+              <button
+                type="button"
+                className="auth-text-button"
+                disabled={Boolean(busy)}
+                onClick={(event) => {
+                  if (!event.currentTarget.form?.querySelector('input[type="email"]')?.reportValidity()) return;
+                  setVerificationEmail(email.trim().toLowerCase());
+                  setFeedback("邮箱尚未验证时，在此重新发送验证邮件；已经验证的账号可直接返回登录。");
+                }}
+              >
+                没收到验证邮件／验证链接失效？
+              </button>
+            )}
             {mode === "login" && (
               <button
                 type="button"

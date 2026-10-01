@@ -2049,6 +2049,14 @@ button:disabled {
   text-align: center;
 }
 
+.composer-wrap > small.composer-send-preparation {
+  display: block;
+  margin: 0 0 8px;
+  color: var(--theme-ink-soft, #67545c);
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .chat-model-picker {
   display: flex;
   min-width: 0;

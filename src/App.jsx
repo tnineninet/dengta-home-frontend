@@ -66,6 +66,7 @@ import { isTextFile } from "./large-text-file.js";
 import { readLargeTextSample } from "./large-text-reader.js";
 import AmbientContextBadge from "./AmbientContextBadge";
 import ChatTranscript from "./ChatTranscript.jsx";
+import { awaitChatPreparation, CHAT_SEND_PREPARATION_LABELS } from "./chat-send-preparation.js";
 import ChatActivities from "./ChatActivities.jsx";
 import AchievementGuide from "./AchievementGuide.jsx";
 import LocalDiagnostics from "./LocalDiagnostics.jsx";
@@ -1046,6 +1047,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [commentDrafts, setCommentDrafts] = useState({});
   const [isLoading, setIsLoading] = useState(!visualPreview);
   const [isSending, setIsSending] = useState(false);
+  const [sendPreparationStage, setSendPreparationStage] = useState("");
   const [isCompanionResponding, setIsCompanionResponding] = useState(false);
   const [hasLoadedSettings, setHasLoadedSettings] = useState(false);
   const [settingsAutosaveState, setSettingsAutosaveState] = useState("idle");
@@ -4472,19 +4474,49 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
     isSendingRef.current = true;
     setIsSending(true);
+    const startingSessionId = activeSessionIdRef.current;
+    abortChatRequest(chatRequestRef, "replaced");
+    const request = {
+      controller: new AbortController(),
+      attachments: preserveComposer ? attachmentsToSend : [],
+      attachmentsReleased: false,
+      cancelReason: "",
+    };
+    chatRequestRef.current = request;
     const deviceActivityRefresh = refreshDeviceActivityContext({ silent: true });
-    if (!(await flushLatestSettingsDraft())) {
-      isSendingRef.current = false;
-      if (componentMountedRef.current) setIsSending(false);
-      setNotice(
-        "最新角色设置还没有保存成功，这条消息没有发送。请恢复网络后重试。",
-      );
+    try {
+      setSendPreparationStage("settings");
+      if (!(await awaitChatPreparation(flushLatestSettingsDraft, request.controller.signal))) {
+        throw Object.assign(new Error("发送前设置未保存"), { code: "chat_preparation_settings_unsaved" });
+      }
+      if (startingSessionId) {
+        setSendPreparationStage("model");
+        await awaitChatPreparation(() => sessionModelSaveQueueRef.current, request.controller.signal);
+      }
+      if (request.controller.signal.aborted || chatRequestRef.current !== request ||
+          !componentMountedRef.current || activeSessionIdRef.current !== startingSessionId) {
+        throw new DOMException("发送准备已取消", "AbortError");
+      }
+    } catch (error) {
+      if (preserveComposer) releaseChatRequestAttachments(request);
+      if (chatRequestRef.current === request) {
+        chatRequestRef.current = null;
+        isSendingRef.current = false;
+        if (componentMountedRef.current) {
+          setIsSending(false);
+          setSendPreparationStage("");
+          setNotice(error?.name === "AbortError"
+            ? `发送准备已停止，本轮尚未发送。${preserveComposer ? "临时画面已释放。" : "文字和附件仍保留在输入框中。"}`
+            : error?.code === "chat_preparation_settings_unsaved"
+              ? "最新角色设置还没有保存成功，这条消息没有发送。请恢复网络后重试。（Code: chat_preparation_settings_unsaved）"
+              : "最新设置或模型未确认，本轮没有发送，请检查设置保存状态后重试。（Code: chat_preparation_failed）");
+        }
+      }
       return;
     }
-
-    if (activeSessionIdRef.current) {
-      await sessionModelSaveQueueRef.current;
-    }
+    setSendPreparationStage("");
+    request.attachments = attachmentsToSend;
+    request.attachmentsReleased = false;
 
     if (voiceStateRef.current === VOICE_STATES.speaking) {
       void stopVoicePlayback();
@@ -4499,7 +4531,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
     setNotice("");
 
-    let sessionId = activeSessionId;
+    let sessionId = startingSessionId;
     let localUserId = `local-user-${Date.now()}`;
     let localAssistantId = `local-assistant-${Date.now()}`;
     let sendSucceeded = false;
@@ -4508,14 +4540,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     let generationInProgress = false;
     let completedUserMessageId = "";
     let completedAssistantMessageId = "";
-    abortChatRequest(chatRequestRef, "replaced");
-    const request = {
-      controller: new AbortController(),
-      attachments: attachmentsToSend,
-      attachmentsReleased: false,
-      cancelReason: "",
-    };
-    chatRequestRef.current = request;
     streamThinkingRef.current = {
       statuses: appendThinkingStatus([], "preparing_request"),
       summary: "",
@@ -6499,6 +6523,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         </section>
 
         <div className="composer-wrap">
+          {sendPreparationStage && (
+            <small role="status" aria-live="polite" className="composer-send-preparation">
+              {CHAT_SEND_PREPARATION_LABELS[sendPreparationStage]}
+            </small>
+          )}
           <Suspense fallback={null}>
             <CottonChatDock
               accountScope={accountStorageScope}

@@ -822,14 +822,14 @@ assert.match(
   "the reference snapshot must travel separately from turn_context",
 );
 assert.ok(
-  sendMessageSource.indexOf("await flushLatestSettingsDraft()") >= 0 &&
-    sendMessageSource.indexOf("await flushLatestSettingsDraft()") <
+  sendMessageSource.indexOf("await awaitChatPreparation(flushLatestSettingsDraft,") >= 0 &&
+    sendMessageSource.indexOf("await awaitChatPreparation(flushLatestSettingsDraft,") <
       sendMessageSource.indexOf('setMessage("")'),
   "text chat must save the latest role settings before consuming the draft",
 );
 assert.match(
   sendMessageSource,
-  /if \(activeSessionIdRef\.current\) \{\s*await sessionModelSaveQueueRef\.current;\s*\}/,
+  /if \(startingSessionId\) \{\s*setSendPreparationStage\("model"\);\s*await awaitChatPreparation\(\(\) => sessionModelSaveQueueRef\.current, request\.controller\.signal\);\s*\}/,
   "an existing session must finish saving its selected model before sending",
 );
 assert.doesNotMatch(

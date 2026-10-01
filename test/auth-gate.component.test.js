@@ -17,6 +17,7 @@ function createSessionManager({
   signUp = async () => {
     throw new Error("not used");
   },
+  verifyRegistrationLink = async () => { throw new Error("not used"); },
   resendVerification = async () => {
     throw new Error("not used");
   },
@@ -51,6 +52,7 @@ function createSessionManager({
     signIn: (payload) => signIn({ payload, publish }),
     resendVerification: (payload) =>
       resendVerification({ payload, publish }),
+    verifyRegistrationLink,
     requestPasswordReset: (payload) =>
       requestPasswordReset({ payload, publish }),
   };
@@ -96,6 +98,44 @@ const vite = await createServer({
 try {
   const { AuthScreen, default: AuthGate } =
     await vite.ssrLoadModule("/src/AuthGate.jsx");
+
+  {
+    let verifiedLink;
+    const manager = createSessionManager({
+      async verifyRegistrationLink(link) { verifiedLink = link; throw new Error("虚构链接已失效"); },
+    });
+    const renderer = await renderGate(AuthGate, manager);
+    await act(async () => renderer.root.find(node => node.type === "input" && node.props.type === "email").props.onChange({ target: { value: "retry@example.test" } }));
+    await act(async () => renderer.root.find(node => node.type === "button" && textContent(node).includes("验证链接失效")).props.onClick({ currentTarget: { form: { querySelector: () => ({ reportValidity: () => true }) } } }));
+    const input = renderer.root.find(node => node.type === "input" && node.props.placeholder === "粘贴邮件中确认按钮的原始链接");
+    assert.equal(input.props.type, "password");
+    await act(async () => input.props.onChange({ target: { value: "fictional-link" } }));
+    await act(async () => renderer.root.findByType("form").props.onSubmit({ preventDefault() {} }));
+    assert.equal(verifiedLink, "fictional-link");
+    assert.equal(renderer.root.findByType("input").props.value, "");
+    assert.match(textContent(renderer.toJSON()), /虚构链接已失效/);
+    await act(async () => renderer.unmount());
+  }
+
+  {
+    let resendPayload;
+    const manager = createSessionManager({
+      async resendVerification({ payload }) { resendPayload = payload; },
+    });
+    const renderer = await renderGate(AuthGate, manager);
+    const emailInput = renderer.root.find(node => node.type === "input" && node.props.type === "email");
+    await act(async () => emailInput.props.onChange({ target: { value: "retry@example.test" } }));
+    const retry = renderer.root.find(node => node.type === "button" && textContent(node).includes("验证链接失效"));
+    await act(async () => retry.props.onClick({ currentTarget: { form: { querySelector: () => ({ reportValidity: () => false }) } } }));
+    assert.equal(renderer.root.findAll(node => node.props.className === "auth-verification").length, 0);
+    await act(async () => retry.props.onClick({ currentTarget: { form: { querySelector: () => ({ reportValidity: () => true }) } } }));
+    assert.match(textContent(renderer.toJSON()), /retry@example.test/);
+    assert.equal(resendPayload, undefined, "opening retry does not send an email");
+    await act(async () => renderer.root.find(node => node.type === "button" && textContent(node) === "重新发送验证邮件").props.onClick());
+    assert.equal(resendPayload.email, "retry@example.test");
+    assert.equal(resendPayload.emailRedirectTo, "https://www.dengtahome.com/");
+    await act(async () => renderer.unmount());
+  }
 
   {
     const signUpResponse = deferred();
@@ -170,7 +210,7 @@ try {
     const resendButton = renderer.root.find(
       (node) =>
         node.type === "button" &&
-        node.props.className === "auth-primary-button",
+        textContent(node) === "重新发送验证邮件",
     );
     await act(async () => resendButton.props.onClick());
     assert.equal(

@@ -87,10 +87,12 @@ function storeCompanionId(storage, userId, companionId) {
 }
 
 function authFailure(error, fallbackMessage) {
-  const code = String(error?.code || "auth_error");
+  const code = String(error?.details?.code || error?.code || "auth_error");
   const messages = {
     invalid_credentials: "邮箱或密码不正确。",
-    email_not_confirmed: "请先完成邮箱验证，再登录 DengTa Home。",
+    email_not_confirmed: "邮箱尚未验证。请打开最新的验证邮件；链接失效时可在这里重新发送，不需要重新注册。",
+    otp_expired: "邮箱验证链接已过期或已使用。若已完成验证，请用注册时的邮箱和密码登录；否则重新发送验证邮件并打开最新一封。",
+    access_denied: "邮箱验证未完成，请重新发送验证邮件并打开最新链接。",
     user_already_exists: "这个邮箱已经注册，请直接登录。",
     user_already_registered: "这个邮箱已经注册，请直接登录。",
     over_email_send_rate_limit: "验证邮件发送得太频繁，请稍后再试。",
@@ -98,7 +100,7 @@ function authFailure(error, fallbackMessage) {
     validation_failed: "邮箱或密码格式不正确。",
   };
   return new AuthSessionError(
-    messages[code] || fallbackMessage || "账号操作失败，请稍后再试。",
+    `${messages[code] || fallbackMessage || "账号操作失败，请稍后再试。"}（错误代码：${/^[a-z0-9_]{1,80}$/i.test(code) ? code : "auth_error"}）`,
     {
       code,
       status: Number(error?.status || 0),
@@ -139,6 +141,7 @@ export function createAuthSessionManager({
   let authSubscription = null;
   let session = null;
   let passwordRecovery = false;
+  let callbackInitializationChecked = false;
   let snapshot = Object.freeze({
     status: configured(normalizedUrl, normalizedKey)
       ? AUTH_STATUS.loading
@@ -212,6 +215,19 @@ export function createAuthSessionManager({
     initialization = (async () => {
       const authClient = await ensureClient();
       publish({ status: AUTH_STATUS.loading, error: null });
+
+      // getSession() awaits SDK initialization but does not return its callback error.
+      // Consume that result once so a failed email link cannot block password login.
+      if (!callbackInitializationChecked && authClient.auth.initialize) {
+        callbackInitializationChecked = true;
+        const { error } = await authClient.auth.initialize();
+        if (error) {
+          const restored = await authClient.auth.getSession();
+          if (!restored.data?.session?.user?.id) {
+            throw authFailure(error, "邮箱链接验证失败，请重新发送验证邮件，或使用已验证的邮箱和密码登录。");
+          }
+        }
+      }
 
       if (!authSubscription) {
         const result = authClient.auth.onAuthStateChange(
@@ -336,6 +352,30 @@ export function createAuthSessionManager({
     if (error) {
       throw authFailure(error, "密码重置邮件发送失败，请稍后再试。");
     }
+  }
+
+  async function verifyRegistrationLink(rawLink) {
+    requireConfiguration();
+    let tokenHash;
+    let type;
+    try {
+      const link = new URL(String(rawLink || "").trim());
+      const project = new URL(normalizedUrl);
+      type = link.searchParams.get("type");
+      tokenHash = link.searchParams.get("token_hash") || link.searchParams.get("token");
+      if (link.origin !== project.origin || link.pathname !== `${project.pathname.replace(/\/$/, "")}/auth/v1/verify` ||
+          link.username || link.password || !["email", "signup"].includes(type) ||
+          !/^[a-z0-9_-]{16,256}$/i.test(tokenHash || "")) throw new Error();
+    } catch {
+      throw new AuthSessionError("请粘贴本次灯塔注册邮件中“Confirm email address”按钮的原始链接；不要粘贴网页地址、其他网站或重置密码链接。", { code: "invalid_registration_link" });
+    }
+    await initialize();
+    const { data, error } = await (await ensureClient()).auth.verifyOtp({ token_hash: tokenHash, type });
+    if (error || !data?.session?.user?.id) {
+      throw authFailure(error || { code: "invalid_session" }, "邮箱验证未完成，请重新发送验证邮件并复制最新链接。");
+    }
+    applySession(data.session);
+    return { ok: true };
   }
 
   async function updatePassword({ password } = {}) {
@@ -514,6 +554,7 @@ export function createAuthSessionManager({
     signIn,
     signOut,
     resendVerification,
+    verifyRegistrationLink,
     requestPasswordReset,
     updatePassword,
     handleAuthCallbackUrl,

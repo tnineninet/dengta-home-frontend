@@ -1,7 +1,7 @@
 {
   "name": "dengta-home-react",
   "private": true,
-  "version": "2.10.61",
+  "version": "2.10.62",
   "type": "module",
   "scripts": {
     "test:workspace": "node test/workspace-cache.test.js && node test/workspace-manager.test.js",
@@ -27,7 +27,7 @@
     "test:memory-management": "node test/memory-management.test.js",
     "test:startup-reconnect": "node test/startup-reconnect.test.js",
     "test:backend-prewarm": "node test/backend-prewarm.test.js",
-    "test:auth-session": "node test/auth-session.test.js",
+    "test:auth-session": "node test/auth-session.test.js && node --test test/auth-email-callback.test.js",
     "test:auth-gate": "node test/auth-gate.test.js && node test/auth-gate.component.test.js",
     "test:auth-redirect": "node test/auth-redirect.test.js",
     "test:background-notification-identity": "node test/background-notification-identity.test.js",
@@ -37,7 +37,7 @@
     "test:voice": "node test/voice.test.js",
     "test:voice-output": "node test/voice-output.test.js",
     "test:chat-tools": "node test/chat-tools.test.js",
-    "test:chat-latency": "node test/chat-latency.test.js && node --test test/chat-transcript.test.js",
+    "test:chat-latency": "node test/chat-latency.test.js && node --test test/chat-transcript.test.js && node --test test/chat-send-preparation.test.js",
     "test:inner-monologue": "node test/inner-monologue.test.js && node test/monologue-recovery-ui.test.js",
     "test:inner-monologue-sync": "node test/inner-monologue-sync.test.js",
     "test:chat-errors": "node test/chat-error-sanitization.test.js && node test/chat-error-feedback.test.js",
