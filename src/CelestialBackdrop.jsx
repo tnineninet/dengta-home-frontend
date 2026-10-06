@@ -1,6 +1,7 @@
 import { createVisualLoop } from "./visual-loop.js";
 import { useEffect, useMemo, useRef } from "react";
 import { getSunGlassSky, weatherModeFromAmbient } from "./sun-glass-sky.js";
+import useReducedVisualMotion from "./use-reduced-visual-motion.js";
 
 function clamp(value, minimum = 0, maximum = 1) {
   return Math.max(minimum, Math.min(maximum, value));
@@ -36,7 +37,7 @@ function drawCloudShape(context, x, y, size, alpha, darkness) {
   context.restore();
 }
 
-function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode }) {
+function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode, reduceMotion }) {
   const skyRef = useRef(sky);
   const loopRef = useRef(null);
   const starsVisible = sky.night > 0.08;
@@ -305,7 +306,7 @@ function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode }) 
 
     resize();
     const hasVisibleMotion = starsVisible || mode === "cloudy" || mode === "rain" || mode === "storm";
-    const loop = createVisualLoop(paint, { animated: hasVisibleMotion, interval: () => {
+    const loop = createVisualLoop(paint, { animated: hasVisibleMotion, reducedMotion: reduceMotion, interval: () => {
       if (document.documentElement.dataset.timeScrubbing === "true") return 120;
       if (document.querySelector(".settings-sheet, .message-list.is-scrolling")) return 180;
       if (document.querySelector('[data-chat-streaming="true"]')) return 100;
@@ -319,7 +320,7 @@ function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode }) 
       loopRef.current = null;
       window.removeEventListener("resize", handleResize);
     };
-  }, [cloudsRef, mode, starsRef, starsVisible, weatherRef]);
+  }, [cloudsRef, mode, starsRef, starsVisible, weatherRef, reduceMotion]);
 }
 
 export default function CelestialBackdrop({
@@ -330,6 +331,7 @@ export default function CelestialBackdrop({
   const starsRef = useRef(null);
   const cloudsRef = useRef(null);
   const weatherRef = useRef(null);
+  const reduceMotion = useReducedVisualMotion();
   const minute = Number.isFinite(snapshot.minute)
     ? snapshot.minute
     : snapshot.hour * 60;
@@ -345,6 +347,7 @@ export default function CelestialBackdrop({
     weatherRef,
     sky,
     mode: weatherMode,
+    reduceMotion,
   });
 
   const style = Object.fromEntries([

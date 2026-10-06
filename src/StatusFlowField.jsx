@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import useReducedVisualMotion from "./use-reduced-visual-motion.js";
 
 import { createStatusFluidEngine } from "./status-fluid-engine";
 
@@ -31,9 +32,10 @@ function hsvToRgb(hue, saturation, value) {
 
 export default function StatusFlowField({ active }) {
   const canvasRef = useRef(null);
+  const reduceMotion = useReducedVisualMotion();
 
   useEffect(() => {
-    if (!active) return undefined;
+    if (!active || reduceMotion) return undefined;
     const canvas = canvasRef.current;
     const panel = canvas?.closest(".sun-glass-floating-status-panel");
     const field = canvas?.parentElement;
@@ -261,7 +263,7 @@ export default function StatusFlowField({ active }) {
       field.classList.remove("status-flow-field--ready");
       engine.dispose();
     };
-  }, [active]);
+  }, [active, reduceMotion]);
 
   return (
     <div className="status-flow-field" aria-hidden="true">

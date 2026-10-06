@@ -198,7 +198,7 @@ export default function ThemeStudio({
         <label className="chat-skin-toggle">
           <span>
             <strong>减少动画</strong>
-            <small>跟随系统减少回弹与挂件动态</small>
+            <small>关闭回弹、挂件与背景动态；系统偏好也会生效</small>
           </span>
           <input
             type="checkbox"

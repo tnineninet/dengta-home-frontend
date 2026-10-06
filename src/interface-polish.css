@@ -37,3 +37,13 @@
 @media (prefers-reduced-motion: reduce) {
   .app-shell :where(.settings-page, .feature-page, .fun-view) :where(button, input, select, textarea) { transition: none; }
 }
+
+:root[data-dengta-reduced-motion="true"] *,
+:root[data-dengta-reduced-motion="true"] *::before,
+:root[data-dengta-reduced-motion="true"] *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+
+:root[data-dengta-reduced-motion="true"] .dengta-prelude { display: none !important; }

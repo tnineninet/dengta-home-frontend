@@ -43,6 +43,17 @@ export default function PersonalizationEditor({
     };
   }, [scopeKey]);
 
+  useLayoutEffect(() => {
+    if (!disabled) return;
+    const requestId = ++operationRef.current;
+    queueMicrotask(() => {
+      if (!aliveRef.current || requestId !== operationRef.current) return;
+      setOperation((previous) => previous.scopeKey === scopeKey && previous.reading
+        ? { scopeKey, reading: false, message: "本次导入已取消，当前内容保持原样。", error: false }
+        : previous);
+    });
+  }, [disabled, scopeKey]);
+
   function updateText(nextValue) {
     latestRef.current.value = nextValue;
     onChange(nextValue);

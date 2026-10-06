@@ -101,6 +101,112 @@
   gap: 8px;
 }
 
+.settings-home-shortcuts {
+  display: grid;
+  min-width: 0;
+  gap: 8px;
+}
+
+.settings-home-shortcuts-heading,
+.settings-home-quick-actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.settings-home-shortcuts-heading > span {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settings-home-quick-edit,
+.settings-home-quick-actions button {
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 9px;
+  color: rgb(var(--theme-accent-rgb));
+  background: transparent;
+  font-size: 12px;
+}
+
+.settings-home-quick-edit:hover,
+.settings-home-quick-actions button:hover {
+  background: rgb(var(--theme-accent-rgb) / .08);
+}
+
+.settings-home-quick-editor {
+  display: grid;
+  min-width: 0;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgb(var(--theme-ink-rgb) / .1);
+  border-radius: 12px;
+  background: rgb(var(--theme-card-rgb) / .65);
+}
+
+.settings-home-quick-editor > p,
+.settings-home-quick-feedback,
+.settings-home-shortcuts-empty {
+  margin: 0;
+  color: rgb(var(--theme-ink-rgb) / .65);
+  font-size: 12px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.settings-home-quick-options {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.settings-home-quick-options button {
+  display: flex;
+  min-width: 0;
+  min-height: 44px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid rgb(var(--theme-ink-rgb) / .1);
+  border-radius: 9px;
+  text-align: left;
+  background: transparent;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.settings-home-quick-options button[aria-pressed="true"] {
+  border-color: rgb(var(--theme-accent-rgb) / .32);
+  background: rgb(var(--theme-accent-rgb) / .08);
+}
+
+.settings-home-quick-options button:disabled {
+  cursor: default;
+  opacity: .5;
+}
+
+.settings-home-quick-check {
+  display: grid;
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid rgb(var(--theme-ink-rgb) / .23);
+  border-radius: 5px;
+}
+
+.settings-home-quick-check svg {
+  width: 13px;
+  height: 13px;
+  color: rgb(var(--theme-accent-rgb));
+}
+
 .settings-home-quick-links button,
 .settings-home-reset {
   display: flex;

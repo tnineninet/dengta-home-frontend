@@ -23,6 +23,7 @@ const categories = Object.freeze([
 const originalCategories = JSON.stringify(categories);
 const vite = await createServer({
   root: fileURLToPath(new URL("..", import.meta.url)),
+  cacheDir: fileURLToPath(new URL("../../artifacts/dengta-settings-20261006/.vite-existing-home", import.meta.url)),
   appType: "custom",
   logLevel: "silent",
   server: { middlewareMode: true },
@@ -55,7 +56,7 @@ try {
   assert.equal(tree.root.findAll((node) => node.type === "section").length, 4);
   assert.deepEqual(entries().map((node) => node.props["data-settings-category"]).sort(), categories.map((category) => category.id).sort());
   assert.equal(selected.length, 0, "opening settings only displays navigation and never changes a setting");
-  const guideToggle = () => tree.root.find((node) => node.type === "button" && typeof node.props["aria-expanded"] === "boolean");
+  const guideToggle = () => tree.root.findByProps({ className: "settings-home-guide-toggle" });
   assert.equal(guideToggle().props["aria-expanded"], false, "the guide is optional and starts collapsed");
   assert.equal(tree.root.findAll((node) => node.type === "ol").length, 0);
   await act(async () => findButton("写下偏好").props.onClick());

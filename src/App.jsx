@@ -7968,7 +7968,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         </div>
 
         {!settingsCategory ? (
-          <SettingsHome categories={SETTINGS_CATEGORIES} onSelectCategory={setSettingsCategory} />
+          <SettingsHome categories={SETTINGS_CATEGORIES} onSelectCategory={setSettingsCategory} preferenceScope={privateMediaScope} />
         ) : (
           <>
             <div className="settings-category-heading">
@@ -9202,16 +9202,19 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     );
   }
 
-  const viewTitle = {
-    chat: activeSession?.title || "欢迎回家",
-    moments: "Moments",
-    diary: "Diary",
-    nursery: "Family",
-    cotton: "小棉花的小屋",
-    together: "Together",
-    duel: "Duel",
-    memories: "Portrait",
-  }[activeView];
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    const previous = root.dataset.dengtaReducedMotion;
+    root.dataset.dengtaReducedMotion = String(chatSkinPreferences.reduceMotion);
+    return () => {
+      if (previous === undefined) delete root.dataset.dengtaReducedMotion;
+      else root.dataset.dengtaReducedMotion = previous;
+    };
+  }, [chatSkinPreferences.reduceMotion]);
+
+  const viewTitle = activeView === "chat"
+    ? activeSession?.title || "欢迎回家"
+    : FEATURE_LABELS[activeView] || (activeView === "cast" ? "放映厅" : "灯塔");
   const showStartupRecovery =
     !visualPreview &&
     (startupConnection.status === "connecting" ||

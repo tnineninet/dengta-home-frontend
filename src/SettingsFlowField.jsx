@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import useReducedVisualMotion from "./use-reduced-visual-motion.js";
 
 const LOOP_SECONDS = 15.466667;
 const ACTIVE_FRAME_MS = 1000 / 15; // 15fps:降低手机 GPU 负担,肉眼几乎无差别
@@ -156,6 +157,7 @@ function createProgram(gl) {
 
 export default function SettingsFlowField() {
   const canvasRef = useRef(null);
+  const reduceMotion = useReducedVisualMotion();
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -243,13 +245,13 @@ export default function SettingsFlowField() {
           gl.uniform2f(resolution, canvas.width, canvas.height);
           gl.uniform1f(
             phase,
-            reducedMotion.matches ? 0.64 : (elapsed % LOOP_SECONDS) / LOOP_SECONDS,
+            reduceMotion || reducedMotion.matches ? 0.64 : (elapsed % LOOP_SECONDS) / LOOP_SECONDS,
           );
           gl.drawArrays(gl.TRIANGLES, 0, 6);
           canvas.parentElement?.classList.add("settings-flow-field--ready");
           lastFrame = now;
         }
-        if (!reducedMotion.matches && !scrolling) {
+        if (!reduceMotion && !reducedMotion.matches && !scrolling) {
           animationFrame = requestAnimationFrame(draw);
         }
       };
@@ -257,7 +259,7 @@ export default function SettingsFlowField() {
       const restart = () => {
         cancelAnimationFrame(animationFrame);
         lastFrame = -Infinity;
-        if (reducedMotion.matches) {
+        if (reduceMotion || reducedMotion.matches) {
           draw(performance.now());
         } else {
           startedAt = performance.now();
@@ -278,7 +280,8 @@ export default function SettingsFlowField() {
             }
             canvas.parentElement?.classList.remove("settings-flow-field--paused");
             lastFrame = -Infinity;
-            if (!reducedMotion.matches) animationFrame = requestAnimationFrame(draw);
+            if (!reduceMotion && !reducedMotion.matches) animationFrame = requestAnimationFrame(draw);
+            else draw(performance.now());
           })
         : null;
       scrollObserver?.observe(settingsSheet, {
@@ -288,6 +291,7 @@ export default function SettingsFlowField() {
 
       const resizeObserver = new ResizeObserver(() => {
         lastFrame = -Infinity;
+        if ((reduceMotion || reducedMotion.matches) && !scrolling) draw(performance.now());
       });
       resizeObserver.observe(canvas);
       reducedMotion.addEventListener?.("change", restart);
@@ -319,7 +323,7 @@ export default function SettingsFlowField() {
       window.clearTimeout(warmupTimer);
       disposeRenderer();
     };
-  }, []);
+  }, [reduceMotion]);
 
   return (
     <div className="settings-flow-field" aria-hidden="true">

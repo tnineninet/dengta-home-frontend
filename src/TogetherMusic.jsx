@@ -891,7 +891,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
     {!active && playlist && <label>曲目<select value={localIndex} onChange={(event) => setLocalIndex(Number(event.target.value))}>{playlist.items.map((entry, itemIndex) => <option key={entry.id || itemIndex} value={itemIndex}>{itemIndex + 1}. {entry.title}{entry.artist ? ` · ${entry.artist}` : ""}</option>)}</select></label>}
     <audio
       ref={audioRef}
-      src={playableItemUrl}
+      src={playableItemUrl || undefined}
       preload="metadata"
       controls={false}
       onLoadedMetadata={(event) => report(event)}

@@ -1,3 +1,5 @@
+import { readAccountStorage, writeAccountStorage } from "./account-storage.js";
+
 const CATEGORY_HELP = {
   appearance: {
     description: "调整主题、气泡、头像和动效",
@@ -73,6 +75,38 @@ export const SETTINGS_QUICK_LINKS = [
   { categoryId: "services", label: "连接模型" },
   { categoryId: "fun", label: "发现玩法" },
 ];
+
+export const SETTINGS_QUICK_LINK_LIMIT = 4;
+export const SETTINGS_QUICK_LINKS_STORAGE_KEY = "dengta.settings-quick-links.v1";
+
+export function normalizeSettingsQuickLinks(value, categories = []) {
+  const available = new Set(categories.map((category) => category.id));
+  const ids = Array.isArray(value) ? value : SETTINGS_QUICK_LINKS.map((link) => link.categoryId);
+  return [...new Set(ids.filter((id) => typeof id === "string" && available.has(id)))].slice(0, SETTINGS_QUICK_LINK_LIMIT);
+}
+
+export function readSettingsQuickLinks(categories = [], preferenceScope = "", storage) {
+  if (!String(preferenceScope || "").trim()) return normalizeSettingsQuickLinks(null, categories);
+  try {
+    const raw = readAccountStorage(storage ?? globalThis.localStorage, SETTINGS_QUICK_LINKS_STORAGE_KEY, preferenceScope);
+    return normalizeSettingsQuickLinks(raw === null ? null : JSON.parse(raw), categories);
+  } catch {
+    return normalizeSettingsQuickLinks(null, categories);
+  }
+}
+
+export function writeSettingsQuickLinks(ids, categories = [], preferenceScope = "", storage) {
+  const normalized = normalizeSettingsQuickLinks(ids, categories);
+  if (!String(preferenceScope || "").trim()) return { ids: normalized, persisted: false };
+  try {
+    const target = storage ?? globalThis.localStorage;
+    if (typeof target?.setItem !== "function") return { ids: normalized, persisted: false };
+    writeAccountStorage(target, SETTINGS_QUICK_LINKS_STORAGE_KEY, preferenceScope, JSON.stringify(normalized));
+    return { ids: normalized, persisted: true };
+  } catch {
+    return { ids: normalized, persisted: false };
+  }
+}
 
 export const SETTINGS_STARTER_STEPS = [
   {
