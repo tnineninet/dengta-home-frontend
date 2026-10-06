@@ -279,6 +279,7 @@ export async function sendCoWatchReply(sessionId, text, positionSeconds = 0) {
   return Object.freeze({
     requestId,
     reaction: cleanText(data?.reaction, 600),
+    danmaku: Array.isArray(data?.danmaku) ? data.danmaku : [],
     assistantMessage: data?.assistant_message || null,
     session: normalizeCoWatchSession(data?.session),
   });

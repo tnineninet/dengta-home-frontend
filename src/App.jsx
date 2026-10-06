@@ -75,6 +75,7 @@ import SettingsHome from "./SettingsHome.jsx";
 import PersonalizationEditor from "./PersonalizationEditor.jsx";
 import { authSession } from "./auth-session.js";
 import { createScopedSettingsSession, registerSettingsSaveGuard } from "./settings-save-scope.js";
+import { createCoWatchViewScope } from "./co-watch-view-scope.js";
 import LocalDiagnostics from "./LocalDiagnostics.jsx";
 import { diagnosticScopeKey } from "./operation-diagnostics.js";
 import FeatureNavigation from "./FeatureNavigation.jsx";
@@ -1024,6 +1025,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     String(settings.ai_name || "").trim() || "伴侣";
   const [activeView, setActiveView] = useState("chat");
   const [togetherEntryMode, setTogetherEntryMode] = useState("external");
+  const coWatchViewKindRef = useRef(activeView);
+  coWatchViewKindRef.current = activeView;
   const [musicActivityRequest, setMusicActivityRequest] = useState(null);
   const [watchActivityRequest, setWatchActivityRequest] = useState(null);
   const [takeoutActivityRequest, setTakeoutActivityRequest] = useState(null);
@@ -1183,6 +1186,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [castPairing, setCastPairing] = useState(null);
   const coWatchIdentityRef = useRef(null);
   coWatchIdentityRef.current = { accountScope: accountStorageScope, companionScope };
+  const coWatchViewScopeRef = useRef(null);
+  const coWatchPollStampRef = useRef(null);
+  if (!coWatchViewScopeRef.current) coWatchViewScopeRef.current = createCoWatchViewScope({
+    getIdentity: () => coWatchIdentityRef.current,
+    getViewKind: () => coWatchViewKindRef.current,
+  });
   const coWatchBusyRef = useRef(false);
   coWatchBusyRef.current = isScreenGlanceBusy;
   const coWatchLifecycleRef = useRef(null);
@@ -1259,6 +1268,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   useEffect(
     () => () => {
       coWatchLifecycleRef.current.invalidate();
+      coWatchViewScopeRef.current.invalidate();
       musicPlaybackSyncRef.current?.invalidate(); nowPlayingSyncRef.current?.invalidate();
       screenGlanceLifecycleRef.current.invalidate();
       releasePendingScreenGlanceTurn(pendingScreenGlanceTurnRef);
@@ -1409,6 +1419,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const chatSkinPreferencesRef = useRef(chatSkinPreferences);
   const chatSkinSaveTimerRef = useRef(null);
   const chatSkinSaveRunRef = useRef(Promise.resolve());
+  const chatSkinEditRevisionRef = useRef(0);
   const composerHintSessionRef = useRef(null);
   const composerHintLoadTokenRef = useRef(0);
   const settingsLifecycleFlushPendingRef = useRef(false);
@@ -1669,64 +1680,75 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   };
 
   const refreshCoWatchExperience = useCallback(
-    async ({ silent = false, mode = "" } = {}) => {
+    async ({ silent = false, mode = "", poll = false } = {}) => {
       const lifecycle = coWatchLifecycleRef.current;
       const stamp = lifecycle.capture();
       const identity = coWatchIdentityRef.current;
-      const sessionMode = mode || resolveCoWatchSessionMode(togetherEntryMode);
-      const [sessionResult, previewResult, stateResult] = await Promise.allSettled([
-        readActiveCoWatchSession({ sessionMode }, identity),
-        readCoWatchPreview(identity),
-        refreshScreenGlanceState(),
-      ]);
-      if (!lifecycle.current(stamp) || (coWatchSessionRef.current?.id || "") !== stamp.sessionId) return { session: null, state: null };
-      if (sessionResult.status === "fulfilled") {
-        const next = (() => {
-          const current = coWatchSessionRef.current;
-          const remote = sessionResult.value;
-          if (!remote) return null;
-          if (
-            current?.id === remote.id &&
-            (current.sourceApp === DIRECT_MEDIA_SOURCE_APP ||
-              current.sourceApp === WEB_PAGE_SOURCE_APP)
-          ) {
-            return Object.freeze({
-              ...remote,
-              mediaPositionSeconds: current.mediaPositionSeconds,
-              mediaDurationSeconds:
-                current.mediaDurationSeconds || remote.mediaDurationSeconds,
-            });
+      if (poll && coWatchViewScopeRef.current.current(coWatchPollStampRef.current)) return { session: coWatchSessionRef.current, state: null };
+      const viewStamp = coWatchViewScopeRef.current.capture({
+        mode,
+        fallbackMode: resolveCoWatchSessionMode(togetherEntryMode),
+        channel: poll ? "poll" : "manual",
+      });
+      if (poll) coWatchPollStampRef.current = viewStamp;
+      try {
+        const sessionMode = viewStamp.sessionMode;
+        const [sessionResult, previewResult, stateResult] = await Promise.allSettled([
+          readActiveCoWatchSession({ sessionMode }, identity),
+          readCoWatchPreview(identity),
+          refreshScreenGlanceState(),
+        ]);
+        if (!lifecycle.current(stamp) || !coWatchViewScopeRef.current.current(viewStamp) || (coWatchSessionRef.current?.id || "") !== stamp.sessionId) return { session: null, state: null };
+        if (sessionResult.status === "fulfilled") {
+          const next = (() => {
+            const current = coWatchSessionRef.current;
+            const remote = sessionResult.value;
+            if (!remote) return null;
+            if (
+              current?.id === remote.id &&
+              (current.sourceApp === DIRECT_MEDIA_SOURCE_APP ||
+                current.sourceApp === WEB_PAGE_SOURCE_APP)
+            ) {
+              return Object.freeze({
+                ...remote,
+                mediaPositionSeconds: current.mediaPositionSeconds,
+                mediaDurationSeconds:
+                  current.mediaDurationSeconds || remote.mediaDurationSeconds,
+              });
+            }
+            return remote;
+          })();
+          coWatchSessionRef.current = next;
+          setCoWatchSession(next);
+          if (sessionResult.value) {
+            const currentDialog = await readCoWatchDialog(
+              sessionResult.value,
+              identity,
+            ).catch(() => null);
+            if (!lifecycle.current(stamp) || !coWatchViewScopeRef.current.current(viewStamp) || coWatchSessionRef.current?.id !== sessionResult.value.id) return { session: null, state: null };
+            if (currentDialog) {
+              setCoWatchDialog(
+                currentDialog.map((item) => ({ ...item, key: item.id })),
+              );
+            }
           }
-          return remote;
-        })();
-        coWatchSessionRef.current = next;
-        setCoWatchSession(next);
-        if (sessionResult.value) {
-          const currentDialog = await readCoWatchDialog(
-            sessionResult.value,
-            identity,
-          ).catch(() => null);
-          if (!lifecycle.current(stamp) || coWatchSessionRef.current?.id !== sessionResult.value.id) return { session: null, state: null };
-          if (currentDialog) {
-            setCoWatchDialog(
-              currentDialog.map((item) => ({ ...item, key: item.id })),
-            );
-          }
+        } else if (!silent) {
+          setScreenGlanceFeedback({
+            status: "error",
+            message: sessionResult.reason?.message || "暂时无法读取共看会话。",
+          });
         }
-      } else if (!silent) {
-        setScreenGlanceFeedback({
-          status: "error",
-          message: sessionResult.reason?.message || "暂时无法读取共看会话。",
-        });
+        if (previewResult.status === "fulfilled") {
+          setCoWatchPreview(previewResult.value);
+        }
+        return {
+          session:
+            sessionResult.status === "fulfilled" ? sessionResult.value : null,
+          state: stateResult.status === "fulfilled" ? stateResult.value : null,
+        };
+      } finally {
+        if (coWatchPollStampRef.current === viewStamp) coWatchPollStampRef.current = null;
       }
-      if (previewResult.status === "fulfilled") {
-        setCoWatchPreview(previewResult.value);
-      }
-      return {
-        session:
-          sessionResult.status === "fulfilled" ? sessionResult.value : null,
-        state: stateResult.status === "fulfilled" ? stateResult.value : null,
-      };
     },
     [refreshScreenGlanceState, togetherEntryMode],
   );
@@ -1894,22 +1916,32 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }, [isStatusPanelExpanded]);
 
   function queueChatSkinPreferences(next) {
+    const controller = settingsScopeControllerRef.current;
+    if (!componentMountedRef.current || !controller || controller.signal.aborted) return;
+    const scopedSession = createScopedSettingsSession(authSession, privateMediaScope, controller.signal);
     window.clearTimeout(chatSkinSaveTimerRef.current);
     chatSkinSaveTimerRef.current = window.setTimeout(() => {
+      chatSkinSaveTimerRef.current = null;
+      if (!componentMountedRef.current || controller.signal.aborted) return;
       const payload = chatSkinPreferencesApiPayload(next);
       chatSkinSaveRunRef.current = chatSkinSaveRunRef.current
         .catch(() => {})
-        .then(() =>
-          apiRequest("/api/v2/chat-skin/preferences", {
+        .then(() => {
+          if (!componentMountedRef.current || controller.signal.aborted) return;
+          return apiRequest("/api/v2/chat-skin/preferences", {
             method: "PUT",
             body: JSON.stringify(payload),
-          }),
-        )
+            signal: controller.signal,
+            authSession: scopedSession,
+          });
+        })
         .catch(() => {});
     }, 260);
   }
 
   function updateChatSkinPreferences(patch) {
+    if (!componentMountedRef.current) return;
+    chatSkinEditRevisionRef.current += 1;
     setChatSkinPreferences((current) => {
       const next = normalizeChatSkinPreferences({
         ...current,
@@ -1927,11 +1959,19 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   const loadChatSkinPreferences = useCallback(async () => {
+    const controller = settingsScopeControllerRef.current;
+    if (!componentMountedRef.current || !controller || controller.signal.aborted) return;
+    const editRevision = chatSkinEditRevisionRef.current;
     try {
       const data = await apiRequest(
         "/api/v2/chat-skin/preferences",
-        STARTUP_REQUEST_OPTIONS,
+        {
+          ...STARTUP_REQUEST_OPTIONS,
+          signal: controller.signal,
+          authSession: createScopedSettingsSession(authSession, privateMediaScope, controller.signal),
+        },
       );
+      if (!componentMountedRef.current || controller.signal.aborted || editRevision !== chatSkinEditRevisionRef.current) return;
       const next = normalizeChatSkinPreferences(data.preferences);
       chatSkinPreferencesRef.current = next;
       writeStoredChatSkinPreferences(
@@ -1943,7 +1983,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     } catch {
       // Local skin preferences remain available during a backend reconnect.
     }
-  }, [accountStorageScope]);
+  }, [accountStorageScope, privateMediaScope]);
 
   const loadComposerHint = useCallback(async (sessionId) => {
     const token = ++composerHintLoadTokenRef.current;
@@ -2022,17 +2062,28 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }, []);
 
   const refreshVoiceOutputStatus = useCallback(async () => {
+    const controller = settingsScopeControllerRef.current;
+    if (!componentMountedRef.current || !controller || controller.signal.aborted) return;
     try {
-      const config = await getVoiceOutput();
-      if (!componentMountedRef.current) return;
+      const config = await getVoiceOutput({
+        signal: controller.signal,
+        authSession: createScopedSettingsSession(authSession, privateMediaScope, controller.signal),
+      });
+      if (!componentMountedRef.current || controller.signal.aborted) return;
       applyVoiceOutputStatus(config);
     } catch {
       // The regular health request remains the fallback. This account-scoped
       // request must never delay or block the main startup path.
     }
-  }, [applyVoiceOutputStatus]);
+  }, [applyVoiceOutputStatus, privateMediaScope]);
 
   const refreshServiceHealth = useCallback(async () => {
+    const controller = settingsScopeControllerRef.current;
+    if (!componentMountedRef.current || !controller || controller.signal.aborted) return;
+    const requestOptions = {
+      signal: controller.signal,
+      authSession: createScopedSettingsSession(authSession, privateMediaScope, controller.signal),
+    };
     setServiceHealth((current) => ({
       ...current,
       checking: true,
@@ -2040,8 +2091,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }));
 
     try {
-      const data = await apiRequest("/health");
-      if (!componentMountedRef.current) return;
+      const data = await apiRequest("/health", requestOptions);
+      if (!componentMountedRef.current || controller.signal.aborted) return;
       const available = data?.features?.hervoice_proxy_configured === true;
       const expressiveAvailable =
         data?.features?.expressive_tts_configured === true;
@@ -2078,6 +2129,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       });
       if (available) {
         void apiRequest("/voice/warmup", {
+          ...requestOptions,
           method: "POST",
           timeoutMs: 5_000,
           retry: false,
@@ -2092,7 +2144,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         checkedAt: new Date().toISOString(),
       });
     } catch (error) {
-      if (!componentMountedRef.current) return;
+      if (!componentMountedRef.current || controller.signal.aborted) return;
       setVoiceService({
         checked: true,
         available: false,
@@ -2112,10 +2164,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         checkedAt: new Date().toISOString(),
       }));
     }
-  }, []);
+  }, [privateMediaScope]);
 
   useEffect(() => {
     let cancelled = false;
+
+    const startupController = new AbortController();
+    const startupRequestOptions = {
+      ...STARTUP_REQUEST_OPTIONS,
+      signal: startupController.signal,
+      authSession: createScopedSettingsSession(authSession, privateMediaScope, startupController.signal),
+    };
 
     voiceOutputStatusRef.current = null;
     setVoiceOutputStatus(null);
@@ -2140,6 +2199,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       });
       return () => {
         cancelled = true;
+        startupController.abort();
       };
     }
 
@@ -2168,7 +2228,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       });
       if (!cancelled) setSelectedChatModel(pendingSelection);
       try {
-        const data = await apiRequest("/models");
+        const data = await apiRequest("/models", startupRequestOptions);
         applyInitialModelCatalog(data, fallbackModel);
         if (!cancelled) setModelsLoadMessage("");
       } catch {
@@ -2186,7 +2246,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       const settingsRevisionAtRead = settingsWriteRevisionRef.current;
       const bootstrapData = await apiRequest(
         "/api/v2/bootstrap",
-        STARTUP_REQUEST_OPTIONS,
+        startupRequestOptions,
       );
       const settingsData = { settings: bootstrapData.settings };
       const sessionsData = { sessions: bootstrapData.sessions };
@@ -2309,6 +2369,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     void reconnectController.start();
     return () => {
       cancelled = true;
+      startupController.abort();
       reconnectController.stop();
       if (startupReconnectRef.current === reconnectController) {
         startupReconnectRef.current = null;
@@ -2316,6 +2377,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     };
   }, [
     accountStorageScope,
+    privateMediaScope,
     loadChatSkinPreferences,
     refreshServiceHealth,
     refreshVoiceOutputStatus,
@@ -2470,6 +2532,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       controller.abort();
       unregisterSettingsGuard();
       pendingSettingsSaveRef.current = null;
+      window.clearTimeout(chatSkinSaveTimerRef.current);
+      chatSkinSaveTimerRef.current = null;
       window.clearTimeout(settingsSaveRetryTimerRef.current);
       abortChatRequest(chatRequestRef, "component-unmount");
       releaseChatRequestAttachments(chatRequestRef.current);
@@ -2593,11 +2657,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }, [consumeLatestScreenGlance, refreshScreenGlanceState]);
 
   useEffect(() => {
-    if (activeView !== "together") return undefined;
-    void refreshCoWatchExperience();
+    if (activeView !== "together" && activeView !== "music") return undefined;
+    void refreshCoWatchExperience({ poll: true });
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible") {
-        void refreshCoWatchExperience({ silent: true });
+        void refreshCoWatchExperience({ silent: true, poll: true });
       }
     }, 10_000);
     return () => window.clearInterval(timer);

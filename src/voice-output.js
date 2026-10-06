@@ -173,13 +173,15 @@ async function voiceOutputResponse(response, fallbackMessage) {
   return data;
 }
 
-export async function getVoiceOutput() {
+export async function getVoiceOutput(requestOptions = {}) {
   let response = await apiFetch("/api/v2/voice-output/status", {
+    ...requestOptions,
     headers: { Accept: "application/json" },
     retry: false,
   });
   if (response.status === 404) {
     response = await apiFetch("/api/v2/voice-output", {
+      ...requestOptions,
       headers: { Accept: "application/json" },
       retry: false,
     });

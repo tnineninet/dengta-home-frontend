@@ -21,7 +21,7 @@ assert.ok(startupStart >= 0 && startupEnd > startupStart);
 const startupHandler = app.slice(startupStart, startupEnd);
 assert.match(
   startupHandler,
-  /apiRequest\(\s*"\/api\/v2\/bootstrap",\s*STARTUP_REQUEST_OPTIONS,?\s*\)/,
+  /apiRequest\(\s*"\/api\/v2\/bootstrap",\s*startupRequestOptions,?\s*\)/,
   "startup must use one authenticated bootstrap request",
 );
 assert.doesNotMatch(

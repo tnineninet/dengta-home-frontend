@@ -77,6 +77,7 @@ function harness() {
       async getRequestContext() { return { companionId: authScope.split("/")[1] }; },
     },
     STARTUP_REQUEST_OPTIONS: {},
+    startupRequestOptions: {},
     SETTINGS_SAVE_RETRY_DELAYS_MS: [1200, 3500, 8000],
     window: {
       setTimeout(callback, delay) {
