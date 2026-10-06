@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { Capacitor } from "@capacitor/core";
 import { AUTH_STATUS, authSession } from "./auth-session.js";
 import { startBackgroundNotificationIdentitySync } from "./background-notification-identity.js";
 import { resolveEmailRedirectUrl } from "./auth-redirect.js";
 import WebInstallButton from "./WebInstallButton.jsx";
+import { flushSettingsBeforeAccountExit, releaseSettingsAccountExit, settingsSaveScope } from "./settings-save-scope.js";
 
 function browserEmailRedirectUrl() {
   return resolveEmailRedirectUrl({
@@ -399,8 +400,15 @@ export function AccountMenu({ sessionManager, snapshot }) {
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
   const rootRef = useRef(null);
+  const alive = useRef(false);
+  const exiting = useRef(false);
   const email = snapshot.user?.email || "已登录";
   const initial = email.slice(0, 1).toUpperCase();
+
+  useLayoutEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; };
+  }, []);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -412,13 +420,24 @@ export function AccountMenu({ sessionManager, snapshot }) {
   }, [open]);
 
   async function signOut() {
+    if (exiting.current) return;
+    exiting.current = true;
+    const scope = settingsSaveScope(snapshot);
     setBusy(true);
     setFeedback("");
     try {
+      if (!await flushSettingsBeforeAccountExit(scope)) throw new Error("设置尚未保存，已保留当前页面。请重试保存，或复制未保存的原文后再退出。");
+      if (!alive.current) return;
+      if (settingsSaveScope(sessionManager.getSnapshot()) !== scope) throw new Error("账号或伴侣已切换，本次退出已取消。请在当前空间重新操作。");
       await sessionManager.signOut();
     } catch (error) {
-      setFeedback(error?.message || "退出登录失败，请稍后再试。");
-      setBusy(false);
+      if (alive.current) {
+        setFeedback(error?.message || "退出登录失败，请稍后再试。");
+        setBusy(false);
+      }
+    } finally {
+      releaseSettingsAccountExit(scope);
+      exiting.current = false;
     }
   }
 

@@ -140,7 +140,9 @@ function MusicSettingsPanel({ providerStatus = null, onOpenMcpDeviceCenter, onIm
       onStart: () => { setBusy(true); setError(""); setMessage(""); },
       onSuccess: async (imported, token) => {
         importRequestRef.current = null;
-        setContent(""); setFileName(""); setSelected(imported);
+        setContent(current => current === content ? "" : current);
+        setFileName(current => current === fileName ? "" : current);
+        setSelected(imported);
         setMessage(`已导入“${imported.name}”，共 ${imported.itemCount} 首。可播放方式由歌曲的实际回执决定。`);
         await notifyImported(imported, token);
         if (musicScope.current(token) && !compact) void refresh({ quiet: true });

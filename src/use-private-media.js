@@ -1,23 +1,27 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { API_BASE_URL, apiFetch } from "./api";
 import { privateMediaRequestPath } from "./private-media";
+import { authSession } from "./auth-session.js";
 
-export function usePrivateMediaSource(source) {
+export function usePrivateMediaSource(source, { enabled = true, scopeKey = "" } = {}) {
   const value = String(source || "").trim();
   const requestPath = privateMediaRequestPath(value, API_BASE_URL);
+  const snapshot = useSyncExternalStore(authSession.subscribe, authSession.getSnapshot, authSession.getSnapshot);
+  const scope = JSON.stringify([snapshot?.user?.id || "", snapshot?.activeCompanionId || "", scopeKey]);
+  const identity = useMemo(() => ({ source: value, scope, enabled }), [value, scope, enabled]);
   const [loaded, setLoaded] = useState({
-    source: "",
+    identity: null,
     url: "",
     error: "",
   });
 
   useEffect(() => {
-    if (!requestPath) return undefined;
+    if (!requestPath || !enabled) return undefined;
 
     let active = true;
     let objectUrl = "";
     const controller = new AbortController();
-    apiFetch(requestPath, { retry: false, signal: controller.signal })
+    apiFetch(requestPath, { retry: false, cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) {
           const payload = await response.json().catch(() => ({}));
@@ -28,13 +32,13 @@ export function usePrivateMediaSource(source) {
         if (!blob.size) throw new Error("媒体内容为空。");
         objectUrl = URL.createObjectURL(blob);
         if (active) {
-          setLoaded({ source: value, url: objectUrl, error: "" });
+          setLoaded({ identity, url: objectUrl, error: "" });
         }
       })
       .catch((error) => {
         if (active) {
           setLoaded({
-            source: value,
+            identity,
             url: "",
             error: error?.message || "媒体暂时无法读取。",
           });
@@ -46,12 +50,12 @@ export function usePrivateMediaSource(source) {
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [requestPath, value]);
+  }, [requestPath, enabled, identity]);
 
   if (!requestPath) {
     return { url: value, loading: false, error: "" };
   }
-  if (loaded.source !== value) {
+  if (!enabled || loaded.identity !== identity) {
     return { url: "", loading: true, error: "" };
   }
   return {

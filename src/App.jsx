@@ -73,6 +73,8 @@ import CompanionInspiration from "./CompanionInspiration.jsx";
 import OperationErrorHelp from "./OperationErrorHelp.jsx";
 import SettingsHome from "./SettingsHome.jsx";
 import PersonalizationEditor from "./PersonalizationEditor.jsx";
+import { authSession } from "./auth-session.js";
+import { createScopedSettingsSession, registerSettingsSaveGuard } from "./settings-save-scope.js";
 import LocalDiagnostics from "./LocalDiagnostics.jsx";
 import { diagnosticScopeKey } from "./operation-diagnostics.js";
 import FeatureNavigation from "./FeatureNavigation.jsx";
@@ -1014,6 +1016,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [modelsLoadMessage, setModelsLoadMessage] = useState("");
   const [settings, setSettings] = useState(emptySettings);
   const [draftSettings, setDraftSettings] = useState(emptySettings);
+  const [settingsExitBusy, setSettingsExitBusy] = useState(false);
+  const settingsExitBusyRef = useRef(false);
   const effectiveUserName =
     String(settings.user_display_name || userName || "").trim() || "你";
   const effectiveAiName =
@@ -1400,6 +1404,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const settingsSaveRetryTimerRef = useRef(null);
   const settingsSaveRetryCountRef = useRef(0);
   const settingsSaveFailureRef = useRef(false);
+  const settingsWriteRevisionRef = useRef(0);
+  const settingsScopeControllerRef = useRef(null);
   const chatSkinPreferencesRef = useRef(chatSkinPreferences);
   const chatSkinSaveTimerRef = useRef(null);
   const chatSkinSaveRunRef = useRef(Promise.resolve());
@@ -2177,6 +2183,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
 
     async function loadInitialData() {
+      const settingsRevisionAtRead = settingsWriteRevisionRef.current;
       const bootstrapData = await apiRequest(
         "/api/v2/bootstrap",
         STARTUP_REQUEST_OPTIONS,
@@ -2186,12 +2193,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       const runtimeData = { state: bootstrapData.state };
 
       if (cancelled) return null;
+      const acceptReadSettings = settingsRevisionAtRead === settingsWriteRevisionRef.current &&
+        !settingsSaveInFlightRef.current && !pendingSettingsSaveRef.current && !settingsSaveFailureRef.current;
+      const nextSettings = acceptReadSettings ? normalizeSettingsDraft(settingsData.settings) : confirmedSettingsRef.current;
       const localPersonaResetApplied = applyPersonaResetToLocalStorage(
-        settingsData.settings?.context_reset_at,
+        nextSettings.context_reset_at,
         globalThis.localStorage,
         accountStorageScope,
       );
-      const nextSettings = normalizeSettingsDraft(settingsData.settings);
       const nextSessions = sessionsData.sessions || [];
       const serverRuntimeState = runtimeData?.state || {};
       const legacyOwnerStatus =
@@ -2251,16 +2260,18 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       }
       runtimeStateHydratedRef.current = true;
 
-      confirmedSettingsRef.current = nextSettings;
-      if (!hasUnsavedSettingsDraft) {
-        draftSettingsRef.current = nextSettings;
-        latestDraftFingerprintRef.current = settingsFingerprint;
-        setDraftSettings(nextSettings);
+      if (acceptReadSettings) {
+        confirmedSettingsRef.current = nextSettings;
+        if (!hasUnsavedSettingsDraft) {
+          draftSettingsRef.current = nextSettings;
+          latestDraftFingerprintRef.current = settingsFingerprint;
+          setDraftSettings(nextSettings);
+        }
+        lastSavedSettingsFingerprintRef.current = settingsFingerprint;
+        setSettings(nextSettings);
+        setSettingsAutosaveState(hasUnsavedSettingsDraft ? "pending" : "saved");
       }
-      lastSavedSettingsFingerprintRef.current = settingsFingerprint;
-      setSettings(nextSettings);
       setHasLoadedSettings(true);
-      setSettingsAutosaveState(hasUnsavedSettingsDraft ? "pending" : "saved");
       setSessions(recovered.sessions);
       activeSessionIdRef.current = recovered.activeSessionId;
       const serverSessionModel = readServerSessionChatModel(
@@ -2445,11 +2456,20 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     chatAttachmentsRef.current = chatAttachments;
   }, [chatAttachments]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     componentMountedRef.current = true;
+    const controller = new AbortController();
+    settingsScopeControllerRef.current = controller;
+    const unregisterSettingsGuard = registerSettingsSaveGuard(privateMediaScope, () => flushLatestSettingsDraftRef.current?.(), busy => {
+      settingsExitBusyRef.current = busy;
+      if (componentMountedRef.current) setSettingsExitBusy(busy);
+    });
     return () => {
       componentMountedRef.current = false;
       hasLoadedSettingsRef.current = false;
+      controller.abort();
+      unregisterSettingsGuard();
+      pendingSettingsSaveRef.current = null;
       window.clearTimeout(settingsSaveRetryTimerRef.current);
       abortChatRequest(chatRequestRef, "component-unmount");
       releaseChatRequestAttachments(chatRequestRef.current);
@@ -2462,7 +2482,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       window.clearTimeout(settingsAutosaveTimerRef.current);
       window.clearTimeout(settingsScrollIdleTimerRef.current);
     };
-  }, []);
+  }, [privateMediaScope]);
 
   useEffect(() => {
     if (!deviceActivityPluginAvailable()) {
@@ -5111,24 +5131,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       return;
     }
 
-    const payload = createSettingsPayload(value);
-    const fingerprint = settingsPayloadFingerprint(payload);
+    const draftRevision = Symbol("pending-settings-draft");
     window.clearTimeout(settingsSaveRetryTimerRef.current);
     settingsSaveRetryTimerRef.current = null;
     settingsSaveRetryCountRef.current = 0;
     settingsSaveFailureRef.current = false;
-    latestDraftFingerprintRef.current = fingerprint;
+    latestDraftFingerprintRef.current = draftRevision;
+    pendingSettingsSaveRef.current = null;
     window.clearTimeout(settingsAutosaveTimerRef.current);
     settingsAutosaveTimerRef.current = null;
-
-    if (
-      fingerprint === lastSavedSettingsFingerprintRef.current &&
-      !settingsSaveInFlightRef.current
-    ) {
-      setSettingsAutosaveState("saved");
-      setSettingsSaveError("");
-      return;
-    }
 
     setSettingsAutosaveState("pending");
     setSettingsSaveError("");
@@ -5136,10 +5147,18 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
     const enqueue = () => {
       settingsAutosaveTimerRef.current = null;
+      if (!componentMountedRef.current || latestDraftFingerprintRef.current !== draftRevision) return;
+      const payload = createSettingsPayload(value);
+      const fingerprint = settingsPayloadFingerprint(payload);
+      latestDraftFingerprintRef.current = fingerprint;
       if (
         fingerprint === lastSavedSettingsFingerprintRef.current &&
-        !settingsSaveInFlightRef.current
+        !settingsSaveInFlightRef.current &&
+        !settingsSaveFailureRef.current
       ) {
+        pendingSettingsSaveRef.current = null;
+        window.clearTimeout(settingsSaveRetryTimerRef.current);
+        settingsSaveRetryTimerRef.current = null;
         setSettingsAutosaveState("saved");
         return;
       }
@@ -5156,6 +5175,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   function flushSettingsSaveQueue() {
+    if (!componentMountedRef.current || !hasLoadedSettingsRef.current) return Promise.resolve(false);
     if (settingsSaveRunRef.current) return settingsSaveRunRef.current;
     if (!pendingSettingsSaveRef.current) {
       return Promise.resolve(
@@ -5170,6 +5190,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         const queued = pendingSettingsSaveRef.current;
         pendingSettingsSaveRef.current = null;
         settingsSaveInFlightRef.current = true;
+        const controller = settingsScopeControllerRef.current;
+        settingsWriteRevisionRef.current++;
         setSettingsAutosaveState("saving");
         if (!settingsSaveFailureRef.current) {
           setSettingsSaveError("");
@@ -5184,7 +5206,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             method: "PUT",
             body: requestBody,
             keepalive,
+            signal: controller.signal,
+            authSession: createScopedSettingsSession(authSession, privateMediaScope, controller.signal),
           });
+          if (!componentMountedRef.current || controller.signal.aborted) return false;
           const nextSettings = normalizeSettingsDraft(data.settings);
           const savedFingerprint = settingsPayloadFingerprint(nextSettings);
           const previousSettings = confirmedSettingsRef.current;
@@ -5223,7 +5248,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
           if (connectionChanged) {
             try {
-              const modelsData = await apiRequest("/models");
+              const modelsData = await apiRequest("/models", {
+                signal: controller.signal,
+                authSession: createScopedSettingsSession(authSession, privateMediaScope, controller.signal),
+              });
+              if (!componentMountedRef.current || controller.signal.aborted) return false;
               const catalog = reconcileModelCatalog(modelsData, {
                 previous: readStoredSessionChatModel(
                   activeSessionIdRef.current,
@@ -5243,17 +5272,21 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               );
               setModelsLoadMessage("");
             } catch {
+              if (!componentMountedRef.current || controller.signal.aborted) return false;
               setModelsLoadMessage(
                 "设置已保存，但新的模型列表暂时无法读取。重新打开 App 后会再次加载。",
               );
             }
           }
         } catch (error) {
+          if (!componentMountedRef.current || controller.signal.aborted) return false;
           settingsSaveFailureRef.current = true;
-          pendingSettingsSaveRef.current = pendingAutosaveAfterFailure(
-            queued,
-            pendingSettingsSaveRef.current,
-          );
+          if (latestDraftFingerprintRef.current === queued.fingerprint) {
+            pendingSettingsSaveRef.current = pendingAutosaveAfterFailure(
+              queued,
+              pendingSettingsSaveRef.current,
+            );
+          }
           pausedForOnlineRetry = true;
           if (latestDraftFingerprintRef.current === queued.fingerprint) {
             setSettingsAutosaveState("error");
@@ -5318,6 +5351,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     if (
       fingerprint === lastSavedSettingsFingerprintRef.current &&
       !settingsSaveInFlightRef.current &&
+      !settingsSaveFailureRef.current &&
       !pendingSettingsSaveRef.current
     ) {
       return true;
@@ -5340,6 +5374,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   function updateDraft(field, value) {
+    if (settingsExitBusyRef.current) return;
     const nextDraft = {
       ...draftSettingsRef.current,
       [field]: value,
@@ -5685,6 +5720,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     emoji: "",
     description: "",
   });
+  const customAchievementSubmitRef = useRef(null);
+  const [customAchievementBusy, setCustomAchievementBusy] = useState(false);
 
   const [coWatchDanmaku, setCoWatchDanmaku] = useState([]);
   const [discoverState, setDiscoverState] = useState({
@@ -5863,21 +5900,36 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }), [funToken]);
 
   async function addCustomAchievement() {
-    if (!customAchievement.title.trim()) return;
+    if (!componentMountedRef.current || !customAchievement.title.trim() || customAchievementSubmitRef.current) return;
+    const submitted = { ...customAchievement };
+    const operation = { scope: funToken };
+    customAchievementSubmitRef.current = operation;
+    setCustomAchievementBusy(true);
+    const current = () => componentMountedRef.current && funTokenRef.current === funToken;
+    let saved = false;
     try {
       await apiRequest("/api/v2/fun-labs/achievements/custom", {
         method: "POST",
         timeoutMs: 12_000,
         body: JSON.stringify({
-          title: customAchievement.title.trim(),
-          emoji: customAchievement.emoji.trim(),
-          description: customAchievement.description.trim(),
+          title: submitted.title.trim(),
+          emoji: submitted.emoji.trim(),
+          description: submitted.description.trim(),
         }),
       });
-      setCustomAchievement({ title: "", emoji: "", description: "" });
+      saved = true;
+      if (!current()) return;
+      setCustomAchievement(previous =>
+        Object.keys(submitted).every(key => previous[key] === submitted[key])
+          ? { title: "", emoji: "", description: "" } : previous);
       await refreshFunLabs(["achievements"]);
     } catch {
-      if (funTokenRef.current === funToken) setNotice("成就没有保存成功，内容仍在输入框中。请重试，或在设置的错误日志中查看 DT-ACHIEVEMENTS。");
+      if (current()) setNotice(saved
+        ? "成就已保存，列表刷新失败。请先刷新核对，避免重复添加；诊断编号：DT-ACHIEVEMENTS。"
+        : "成就保存结果尚未确认，内容仍在输入框中。请先刷新列表核对，再重试或查看错误日志；诊断编号：DT-ACHIEVEMENTS。");
+    } finally {
+      if (customAchievementSubmitRef.current === operation) customAchievementSubmitRef.current = null;
+      if (current()) setCustomAchievementBusy(false);
     }
   }
 
@@ -6151,6 +6203,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   function updateUnifiedPrompt(value) {
+    if (settingsExitBusyRef.current) return;
     const nextDraft = {
       ...draftSettingsRef.current,
       prompt_mode: "unified",
@@ -7403,10 +7456,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 />
                 <button
                   type="button"
-                  disabled={!customAchievement.title.trim()}
+                  disabled={customAchievementBusy || !customAchievement.title.trim()}
+                  aria-busy={customAchievementBusy}
                   onClick={() => void addCustomAchievement()}
                 >
-                  ＋ 添加自定义成就
+                  {customAchievementBusy ? "正在保存…" : "＋ 添加自定义成就"}
                 </button>
               </div>
             </div>
@@ -7830,6 +7884,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
     return (
       <section className="feature-page settings-page">
+        {settingsExitBusy && <p role="status">正在保存设置并退出账号，请稍候…</p>}
+        <fieldset disabled={settingsExitBusy} style={{ display: "contents" }}>
         <div className="section-intro settings-intro">
           <div>
             <span className="eyebrow">控制中心</span>
@@ -8088,7 +8144,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   value={draftSettings.unified_system_prompt || ""}
                   onChange={updateUnifiedPrompt}
                   placeholder="写清楚稳定身份、关系和表达习惯……"
-                  disabled={!hasLoadedSettings}
+                  disabled={!hasLoadedSettings || settingsExitBusy}
                 />
               </div>
 
@@ -8114,7 +8170,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   value={draftSettings.user_details || ""}
                   onChange={value => updateDraft("user_details", value)}
                   placeholder="例如：称呼、长期偏好、重要背景，以及希望伴侣始终记得的个人详情……"
-                  disabled={!hasLoadedSettings}
+                  disabled={!hasLoadedSettings || settingsExitBusy}
                 />
               </div>
 
@@ -9077,6 +9133,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             )}
           </>
         )}
+        </fieldset>
       </section>
     );
   }
