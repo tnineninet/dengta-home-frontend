@@ -69,6 +69,10 @@ import ChatTranscript from "./ChatTranscript.jsx";
 import { awaitChatPreparation, CHAT_SEND_PREPARATION_LABELS } from "./chat-send-preparation.js";
 import ChatActivities from "./ChatActivities.jsx";
 import AchievementGuide from "./AchievementGuide.jsx";
+import CompanionInspiration from "./CompanionInspiration.jsx";
+import OperationErrorHelp from "./OperationErrorHelp.jsx";
+import SettingsHome from "./SettingsHome.jsx";
+import PersonalizationEditor from "./PersonalizationEditor.jsx";
 import LocalDiagnostics from "./LocalDiagnostics.jsx";
 import { diagnosticScopeKey } from "./operation-diagnostics.js";
 import FeatureNavigation from "./FeatureNavigation.jsx";
@@ -86,7 +90,7 @@ import FeatureAtmosphere from "./FeatureAtmosphere";
 import RainbowAgentMark from "./RainbowAgentMark";
 import SettingsFlowField from "./SettingsFlowField";
 import { AuthenticatedImage } from "./PrivateMedia";
-import { getPrivateMediaCatalog } from "./private-media-api.js";
+import { usePrivateMediaCatalog } from "./use-private-media-catalog.js";
 import {
   privateMediaContentPath,
   selectedPrivateMedia,
@@ -434,28 +438,32 @@ const SETTINGS_CATEGORIES = [
   },
 ];
 
-function ErrorLogsPanel({ accountScope, companionScope }) {
+function ErrorLogsPanel({ accountScope, companionScope, onOpenSettings }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [expandedId, setExpandedId] = useState(null);
+  const requestRevision = useRef(0);
 
   const refresh = useCallback(async () => {
+    const request = ++requestRevision.current;
     setLoading(true);
     setLoadError("");
     try {
       const items = await fetchErrorLogs(50);
+      if (request !== requestRevision.current) return;
       setLogs(items);
     } catch (error) {
-      setLoadError(error?.message || "读取错误日志失败，请稍后重试。");
+      if (request === requestRevision.current) setLoadError({ code: error?.code, status: error?.status });
     } finally {
-      setLoading(false);
+      if (request === requestRevision.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
+    const revision = requestRevision;
     const timer = window.setTimeout(() => void refresh(), 0);
-    return () => window.clearTimeout(timer);
+    return () => { window.clearTimeout(timer); revision.current++; };
   }, [refresh]);
 
   function formatTime(value) {
@@ -478,7 +486,7 @@ function ErrorLogsPanel({ accountScope, companionScope }) {
           {loading ? "刷新中…" : "刷新"}
         </button>
       </div>
-      {loadError && <div className="error-logs-load-error">{loadError}</div>}
+      {loadError && <div className="error-logs-load-error" role="alert"><OperationErrorHelp diagnostic={loadError} onOpenSettings={onOpenSettings} /></div>}
       {!loadError && logs.length === 0 && !loading && (
         <div className="error-logs-empty">暂无错误记录 🎉</div>
       )}
@@ -501,6 +509,8 @@ function ErrorLogsPanel({ accountScope, companionScope }) {
               </button>
               {expanded && (
                 <div className="error-log-detail">
+                  <OperationErrorHelp diagnostic={{ code: log.error_code }} onOpenSettings={onOpenSettings} />
+                  <details className="error-log-technical"><summary>错误代码与技术详情</summary>
                   <p className="error-log-message">{log.message || ""}</p>
                   {log.error_location && <p>业务位置：{log.error_location}</p>}
                   <p className="error-log-meta">
@@ -512,6 +522,7 @@ function ErrorLogsPanel({ accountScope, companionScope }) {
                   {log.stack_trace && (
                     <pre className="error-log-stack">{log.stack_trace}</pre>
                   )}
+                  </details>
                 </div>
               )}
             </li>
@@ -1053,9 +1064,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [settingsAutosaveState, setSettingsAutosaveState] = useState("idle");
   const [settingsSaveError, setSettingsSaveError] = useState("");
   const [settingsSaveReceipt, setSettingsSaveReceipt] = useState(null);
-  const [privateMediaCatalog, setPrivateMediaCatalog] = useState(null);
-  const [privateMediaLoading, setPrivateMediaLoading] = useState(false);
-  const [privateMediaError, setPrivateMediaError] = useState("");
+  const privateMediaScope = JSON.stringify([accountStorageScope, companionScope]);
+  const {
+    catalog: privateMediaCatalog, loading: privateMediaLoading, error: privateMediaError,
+    refresh: refreshPrivateMediaCatalog, updateCatalog: setPrivateMediaCatalog,
+  } = usePrivateMediaCatalog(privateMediaScope, visualPreview);
   const [lastPromptReceipt, setLastPromptReceipt] = useState(() =>
     readPromptReceipt(accountStorageScope),
   );
@@ -1229,26 +1242,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-
-  const refreshPrivateMediaCatalog = useCallback(async () => {
-    if (visualPreview) return null;
-    setPrivateMediaLoading(true);
-    setPrivateMediaError("");
-    try {
-      const catalog = await getPrivateMediaCatalog();
-      setPrivateMediaCatalog(catalog);
-      return catalog;
-    } catch (error) {
-      setPrivateMediaError(error?.message || "私密媒体目录暂时无法读取。");
-      return null;
-    } finally {
-      setPrivateMediaLoading(false);
-    }
-  }, [visualPreview]);
-
-  useEffect(() => {
-    void refreshPrivateMediaCatalog();
-  }, [accountStorageScope, companionScope, refreshPrivateMediaCatalog]);
 
   useEffect(() => {
     function refreshAfterImport() {
@@ -7304,6 +7297,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           </p>
         </header>
         {renderAchievementGuide()}
+        <CompanionInspiration key={funScope} disabled={isVoiceInputBusy} onUse={text => {
+          setMessage(current => current ? `${current}\n${text}` : text);
+          changeView("chat");
+        }} />
         <div className="notification-feature-panel device-activity-panel">
           <div className="device-activity-heading">
             <div>
@@ -7838,7 +7835,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             <span className="eyebrow">控制中心</span>
             <h2>AI 与应用设置</h2>
             <p>
-              当前接口和模型可以随时更换；API Key 只发送到后端加密保存，页面不会回显。
+              把外观、伴侣和日常陪伴调成你喜欢的样子。
             </p>
           </div>
           <WebInstallButton
@@ -7851,24 +7848,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         </div>
 
         {!settingsCategory ? (
-          <div className="settings-folder-grid" aria-label="设置分类">
-            {SETTINGS_CATEGORIES.map(({ id, label, description, Icon }) => (
-              <button
-                type="button"
-                className="settings-folder"
-                key={id}
-                onClick={() => setSettingsCategory(id)}
-              >
-                <span className="settings-folder-icon" aria-hidden="true">
-                  <Icon />
-                </span>
-                <span>
-                  <strong>{label}</strong>
-                  <small>{description}</small>
-                </span>
-              </button>
-            ))}
-          </div>
+          <SettingsHome categories={SETTINGS_CATEGORIES} onSelectCategory={setSettingsCategory} />
         ) : (
           <>
             <div className="settings-category-heading">
@@ -7902,6 +7882,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 </Suspense>
                 <Suspense fallback={<DeferredFeature label="正在打开私密媒体设置…" />}>
                   <MediaSettings
+                    key={privateMediaScope}
                     catalog={privateMediaCatalog}
                     loading={privateMediaLoading}
                     error={privateMediaError}
@@ -8086,7 +8067,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 <p>当前使用旧版个性化字段。修改昵称或性别不会合并或改写它们；点击下方按钮可将原文带标题复制到个性化指令。</p>
                 <button type="button" className="secondary-button" onClick={() => updateUnifiedPrompt(mergeLegacyPromptFields(draftSettings))}>将旧版字段复制到个性化指令</button>
               </div>}
-              <label className="prompt-layer highest-priority unified-prompt-layer">
+              <div className="prompt-layer highest-priority unified-prompt-layer">
                 <span className="prompt-layer-title">
                   <span className="prompt-priority-number">指</span>
                   <span>
@@ -8100,18 +8081,18 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 <p>
                   写下希望伴侣长期遵循的身份、关系、表达方式和规则。保存时保留原文的空格与换行；旧版字段只在你主动选择复制时合并。
                 </p>
-                <textarea
-                  data-setting-field="unified_system_prompt"
+                <PersonalizationEditor
+                  field="unified_system_prompt"
+                  label="个性化指令"
+                  scopeKey={privateMediaScope}
                   value={draftSettings.unified_system_prompt || ""}
-                  onChange={(event) =>
-                    updateUnifiedPrompt(event.target.value)
-                  }
+                  onChange={updateUnifiedPrompt}
                   placeholder="写清楚稳定身份、关系和表达习惯……"
-                  rows="12"
+                  disabled={!hasLoadedSettings}
                 />
-              </label>
+              </div>
 
-              <label className="prompt-layer highest-priority unified-prompt-layer">
+              <div className="prompt-layer highest-priority unified-prompt-layer">
                 <span className="prompt-layer-title">
                   <span className="prompt-priority-number">详</span>
                   <span>
@@ -8126,16 +8107,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   写下希望伴侣在每轮对话都了解的长期详情。这里的原文同样不做语义解析或
                   trim，并与个性化指令一起放入最高应用级 instructions / system。
                 </p>
-                <textarea
-                  data-setting-field="user_details"
+                <PersonalizationEditor
+                  field="user_details"
+                  label="你的详情"
+                  scopeKey={privateMediaScope}
                   value={draftSettings.user_details || ""}
-                  onChange={(event) =>
-                    updateDraft("user_details", event.target.value)
-                  }
+                  onChange={value => updateDraft("user_details", value)}
                   placeholder="例如：称呼、长期偏好、重要背景，以及希望伴侣始终记得的个人详情……"
-                  rows="10"
+                  disabled={!hasLoadedSettings}
                 />
-              </label>
+              </div>
 
               <div className="prompt-layer style-distill-panel">
                 <span className="prompt-layer-title">
@@ -8498,7 +8479,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               </>
             )}
             {settingsCategory === "logs" && (
-              <ErrorLogsPanel key={JSON.stringify([accountStorageScope, companionScope])} accountScope={accountStorageScope} companionScope={companionScope} />
+              <ErrorLogsPanel key={JSON.stringify([accountStorageScope, companionScope])} accountScope={accountStorageScope} companionScope={companionScope} onOpenSettings={setSettingsCategory} />
             )}
 
             {settingsCategory === "devices" && (

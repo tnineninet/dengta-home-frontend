@@ -647,6 +647,7 @@ export default function AiProviderCenter({ onStatusChange = null } = {}) {
           <span className="settings-kicker">模型接入</span>
           <h3>多供应商 API 控制台</h3>
           <p>统一管理正规 API、自建 New API、Sub2API、CPA 或其他兼容网关。这里保存的接口会真实接入聊天后端。</p>
+          <p>API Key 只发送到后端加密保存，页面不会回显已保存的密钥。</p>
         </div>
         <span className={status.available ? "provider-state ready" : "provider-state pending"}>
           {status.checking ? "检查中" : status.available ? "数据库已就绪" : "等待数据库迁移"}

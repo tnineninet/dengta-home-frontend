@@ -1,0 +1,39 @@
+:root { --interface-radius: 20px; --interface-control-radius: 12px; }
+.app-shell :where(.settings-card, .memory-card, .moment-card, .diary-card, .notification-feature-panel, .dialog-card) {
+  border-radius: var(--interface-radius);
+  box-shadow: 0 5px 20px color-mix(in srgb, var(--theme-accent, #865a69) 5%, transparent);
+}
+.app-shell :where(.settings-page, .feature-page, .fun-view) :where(button, input, select) { border-radius: var(--interface-control-radius); }
+.app-shell :where(button, input, select, textarea):focus-visible { outline: 2px solid var(--theme-accent, #865a69); outline-offset: 3px; }
+.app-shell :where(.settings-page, .feature-page, .fun-view) button:not(.chat-error-log-toggle) { min-height: 42px; }
+.settings-intro { margin-bottom: 20px; align-items: center; }
+.settings-intro h2 { font-size: clamp(24px, 3vw, 32px); letter-spacing: -.025em; }
+.settings-intro p { max-width: 48ch; font-size: 14px; line-height: 1.7; }
+.settings-category-heading { gap: 12px; margin-bottom: 20px; }
+.settings-category-heading h3 { font-size: clamp(22px, 3vw, 28px); }
+.settings-category-back { flex: 0 0 42px; width: 42px; height: 42px; min-height: 42px; }
+.operation-error-help { display: grid; gap: 10px; margin: 12px 0; padding: 14px; border: 1px solid color-mix(in srgb, currentColor 12%, transparent); border-radius: 14px; }
+.operation-error-help p { display: grid; gap: 4px; margin: 0; line-height: 1.7; font-size: 14px; overflow-wrap: anywhere; }
+.operation-error-help strong { font-size: 12px; opacity: .76; }
+.operation-error-help button { justify-self: start; padding: 6px 12px; color: inherit; background: transparent; border: 1px solid color-mix(in srgb, currentColor 20%, transparent); }
+.error-log-technical > summary { padding: 10px 0; cursor: pointer; font-size: 13px; }
+.error-log-technical .error-log-stack { max-height: 260px; overflow: auto; }
+.companion-inspiration { min-width: 0; margin: 12px 0 20px; padding: 18px; border: 1px solid color-mix(in srgb, currentColor 14%, transparent); border-radius: var(--interface-radius); color: inherit; background: color-mix(in srgb, var(--theme-accent, #865a69) 5%, transparent); }
+.companion-inspiration-heading, .companion-inspiration-result { display: flex; gap: 14px; align-items: center; justify-content: space-between; }
+.companion-inspiration h3 { margin: 0; font-size: 18px; }
+.companion-inspiration p { margin: 5px 0 0; font-size: 14px; line-height: 1.6; }
+.companion-inspiration button { min-height: 44px; flex: 0 0 auto; padding: 8px 14px; border: 1px solid color-mix(in srgb, currentColor 18%, transparent); background: transparent; color: inherit; border-radius: var(--interface-control-radius); cursor: pointer; }
+.companion-inspiration-result { margin-top: 16px; justify-content: start; padding-top: 15px; border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent); }
+.companion-inspiration-result > span { font-size: 30px; min-width: 28px; }
+.companion-inspiration-result > div { flex: 1; min-width: 0; }
+.companion-inspiration > small { display: block; margin-top: 12px; font-size: 12px; opacity: .76; }
+@media (max-width: 600px) {
+  .settings-intro { align-items: start; gap: 12px; }
+  .settings-intro .install-button { padding: 9px 13px; min-height: 40px; font-size: 13px; }
+  .companion-inspiration { padding: 15px; }
+  .companion-inspiration-result { flex-wrap: wrap; }
+  .companion-inspiration-result button { margin-left: 42px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-shell :where(.settings-page, .feature-page, .fun-view) :where(button, input, select, textarea) { transition: none; }
+}

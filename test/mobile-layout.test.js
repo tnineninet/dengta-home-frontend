@@ -116,6 +116,7 @@ assert.deepEqual(
     "room-invite.css",
     "settings-media-polish.css",
     "interaction-polish.css",
+    "interface-polish.css",
   ],
   "layout tests must use the same stylesheet order as the application entrypoint",
 );
@@ -140,6 +141,7 @@ assert.deepEqual(
     "room-invite.css",
     "settings-media-polish.css",
     "interaction-polish.css",
+    "interface-polish.css",
   ],
   "the 280px regression must use the complete application stylesheet cascade",
 );
@@ -905,12 +907,12 @@ assert.doesNotMatch(
 );
 assert.match(
   app,
-  /data-setting-field="unified_system_prompt"/,
+  /<PersonalizationEditor\s+field="unified_system_prompt"/,
   "settings must expose the persistent custom-instructions editor",
 );
 assert.match(
   app,
-  /data-setting-field="user_details"/,
+  /<PersonalizationEditor\s+field="user_details"/,
   "settings must expose a separate persistent user-details editor",
 );
 assert.match(

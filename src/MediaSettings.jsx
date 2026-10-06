@@ -1,9 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { settingsServiceErrorDetail } from "./settings-service-errors.js";
 import { AuthenticatedImage } from "./PrivateMedia";
 import {
   archivePrivateMediaAsset,
-  getPrivateMediaCatalog,
   patchPrivateMediaAsset,
   privateMediaFileWarning,
   updatePrivateMediaPreferences,
@@ -23,7 +22,7 @@ function preferenceKey(purpose) {
   return `${purpose}_asset_id`;
 }
 
-function UploadControl({ purpose, label, busy, onUpload }) {
+function UploadControl({ purpose, label, busy, disabled, onUpload }) {
   const [warning, setWarning] = useState("");
   return (
     <div className="media-upload-control">
@@ -32,7 +31,7 @@ function UploadControl({ purpose, label, busy, onUpload }) {
         <input
           type="file"
           accept="image/*"
-          disabled={busy}
+          disabled={disabled || busy}
           onChange={(event) => {
             const file = event.target.files?.[0];
             setWarning(privateMediaFileWarning(file, purpose));
@@ -137,29 +136,42 @@ export default function MediaSettings({
   const normalized = useMemo(() => normalizePrivateMediaCatalog(catalog), [catalog]);
   const [busy, setBusy] = useState("");
   const [localError, setLocalError] = useState("");
+  const operation = useRef(null);
+  const mounted = useRef(false);
 
   useEffect(() => {
-    if (!catalog && !loading) void onRefresh?.();
-  }, [catalog, loading, onRefresh]);
+    mounted.current = true;
+    return () => { mounted.current = false; operation.current = null; };
+  }, []);
 
   async function perform(key, action) {
+    if (!mounted.current || operation.current || loading) return;
+    const request = {};
+    operation.current = request;
+    const isCurrent = () => mounted.current && operation.current === request;
+    let submitted = false;
     setBusy(key);
     setLocalError("");
     try {
       await action();
+      submitted = true;
       if (key.startsWith('delete:') || key.startsWith('archive:')) {
         const id = key.slice(key.indexOf(':') + 1);
-        onCatalogChange?.({ ...normalized,
-          assets: normalized.assets.filter(asset => asset.id !== id),
-          preferences: Object.fromEntries(Object.entries(normalized.preferences).filter(([, selected]) => selected !== id)),
+        onCatalogChange?.(current => {
+          const latest = normalizePrivateMediaCatalog(current);
+          return { ...latest,
+            assets: latest.assets.filter(asset => asset.id !== id),
+            preferences: Object.fromEntries(Object.entries(latest.preferences).filter(([, selected]) => selected !== id)),
+          };
         });
       }
-      const fresh = await getPrivateMediaCatalog();
-      onCatalogChange?.(fresh);
+      const fresh = await onRefresh?.();
+      if (!isCurrent()) return;
+      if (!fresh) setLocalError("图片操作已提交，但目录暂时无法刷新。请点击刷新确认结果，请勿重复上传或删除。（Code: private_media_refresh_failed）");
     } catch (caught) {
-      setLocalError(settingsServiceErrorDetail(caught, "私密媒体操作失败，请稍后重试。"));
+      if (isCurrent()) setLocalError((submitted ? "图片操作已提交，目录刷新失败，请先点击刷新确认结果。" : "") + settingsServiceErrorDetail(caught, "私密媒体操作失败，请稍后重试。"));
     } finally {
-      setBusy("");
+      if (isCurrent()) { operation.current = null; setBusy(""); }
     }
   }
 
@@ -175,6 +187,14 @@ export default function MediaSettings({
     );
   }
 
+  async function refreshCatalog() {
+    setLocalError("");
+    try { await onRefresh(); }
+    catch (caught) {
+      if (mounted.current) setLocalError(settingsServiceErrorDetail(caught, "私密媒体目录暂时无法读取。"));
+    }
+  }
+
   const stickers = normalized.assets.filter((asset) => asset.purpose === "custom_sticker");
   const feedback = localError || error;
 
@@ -186,7 +206,7 @@ export default function MediaSettings({
           <h3 id="media-settings-title">头像、背景与表情包</h3>
           <p>图片经登录态安全读取，不接受外部图片地址。</p>
         </div>
-        <button type="button" className="media-refresh-button" disabled={loading || Boolean(busy)} onClick={() => void onRefresh?.()}>
+        <button type="button" className="media-refresh-button" disabled={loading || Boolean(busy)} onClick={() => void refreshCatalog()}>
           {loading ? "读取中…" : "刷新"}
         </button>
       </div>
@@ -201,7 +221,7 @@ export default function MediaSettings({
             <section className="media-purpose-card" key={purpose} aria-labelledby={`media-${purpose}`}>
               <div className="media-purpose-heading">
                 <div><h4 id={`media-${purpose}`}>{label}</h4><small>{hint}</small></div>
-                <UploadControl purpose={purpose} label={label} busy={busy === `upload:${purpose}`} onUpload={(file) => upload(purpose, file)} />
+                <UploadControl purpose={purpose} label={label} busy={busy === `upload:${purpose}`} disabled={loading || Boolean(busy)} onUpload={(file) => upload(purpose, file)} />
               </div>
               {items.length ? (
                 <div className="media-choice-list">
@@ -230,7 +250,7 @@ export default function MediaSettings({
                             type="button"
                             className="media-choice-enable"
                             aria-pressed={selectedId === asset.id}
-                            disabled={Boolean(busy) || selectedId === asset.id}
+                            disabled={loading || Boolean(busy) || selectedId === asset.id}
                             onClick={() => void choose(purpose, asset.id)}
                           >
                             {selectedId === asset.id ? "使用中" : "启用"}
@@ -238,7 +258,7 @@ export default function MediaSettings({
                           <button
                             type="button"
                             className="media-choice-edit"
-                            disabled={Boolean(busy)}
+                            disabled={loading || Boolean(busy)}
                             onClick={() => {
                               const nextName = window.prompt("显示名称（可留空）：", asset.display_name || "");
                               if (nextName === null) return;
@@ -257,7 +277,7 @@ export default function MediaSettings({
                           <button
                             type="button"
                             className="danger"
-                            disabled={Boolean(busy)}
+                            disabled={loading || Boolean(busy)}
                             onClick={() => {
                               if (!window.confirm(`确认删除此${label}？删除后不可恢复。`)) return;
                               void perform(`delete:${asset.id}`, () => archivePrivateMediaAsset(asset.id, true));
@@ -273,7 +293,7 @@ export default function MediaSettings({
                     <button
                       type="button"
                       className="media-default-button"
-                      disabled={Boolean(busy) || !selectedId}
+                      disabled={loading || Boolean(busy) || !selectedId}
                       onClick={() => void choose(purpose, null)}
                     >
                       {purpose === "chat_background" ? (selectedId ? "移除背景，恢复默认" : "默认天空·太阳轨迹·银河") : (selectedId ? "移除头像，恢复默认" : "默认头像")}
@@ -294,7 +314,7 @@ export default function MediaSettings({
       <section className="media-sticker-section" aria-labelledby="media-stickers-title">
         <div className="media-purpose-heading">
           <div><h4 id="media-stickers-title">自定义表情包</h4><small>名称与替代文字仅用于显示，不在前端做内容词过滤。</small></div>
-          <UploadControl purpose="custom_sticker" label="表情" busy={busy === "upload:custom_sticker"} onUpload={(file) => upload("custom_sticker", file)} />
+          <UploadControl purpose="custom_sticker" label="表情" busy={busy === "upload:custom_sticker"} disabled={loading || Boolean(busy)} onUpload={(file) => upload("custom_sticker", file)} />
         </div>
         {stickers.length ? (
           <div className="media-sticker-list">
@@ -302,7 +322,7 @@ export default function MediaSettings({
               <StickerEditor
                 key={asset.id}
                 asset={asset}
-                busy={Boolean(busy)}
+                busy={loading || Boolean(busy)}
                 onPreview={onPreview}
                 onSave={(id, changes) => perform(`patch:${id}`, () => patchPrivateMediaAsset(id, changes))}
                 onArchive={(id) => perform(`archive:${id}`, () => archivePrivateMediaAsset(id))}

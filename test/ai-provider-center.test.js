@@ -160,7 +160,7 @@ assert.doesNotMatch(app, /旧版单接口（兼容保留）/);
 assert.doesNotMatch(app, /draftSettings\.api_url/);
 assert.doesNotMatch(app, /draftSettings\.model/);
 assert.doesNotMatch(app, /API Key 永远只放在后端环境变量中/);
-assert.match(app, /API Key 只发送到后端加密保存/);
+assert.match(component, /API Key 只发送到后端加密保存/);
 assert.match(component, /onStatusChange\?\.\(failed\)/);
 assert.match(component, /迁移后无法聊天？重新保存活动 GPT 密钥/);
 assert.match(component, /providerCredentialNeedsRecovery\(profile\)/);
