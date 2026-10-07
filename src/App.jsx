@@ -84,6 +84,8 @@ import { FEATURE_LABELS, QUICK_FEATURES } from "./feature-navigation.js";
 import AchievementNotice from "./AchievementNotice.jsx";
 import FunLabsFeedback from "./FunLabsFeedback.jsx";
 import { emptyFunLabsState, refreshFunLabsSections, removeFunDate, FUN_LABS_ERROR_FEEDBACK } from "./fun-labs-refresh.js";
+import { validateAchievementReceipt, achievementFailure, withAchievementDeadline, ACHIEVEMENT_ERROR_FEEDBACK } from "./achievement-action.js";
+import { recordOperationFailure } from "./operation-diagnostics.js";
 import { ACHIEVEMENT_ACTIONS, freshAchievements, guideStorageKey } from "./achievement-guide.js";
 import { appendActivityDraft } from "./chat-activities.js";
 import { useChatDraft } from "./use-chat-draft.js";
@@ -1038,6 +1040,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const effectiveAiName =
     String(settings.ai_name || "").trim() || "伴侣";
   const [activeView, setActiveView] = useState("chat");
+  const activeViewRef = useRef(activeView);
+  activeViewRef.current = activeView;
+  const workspaceLeaveGuardRef = useRef(null);
+  const canLeaveWorkspace = useCallback(view => activeViewRef.current !== "workspace" || view === activeViewRef.current || !workspaceLeaveGuardRef.current || workspaceLeaveGuardRef.current(), []);
+  const registerWorkspaceLeaveGuard = useCallback(guard => {
+    workspaceLeaveGuardRef.current = guard;
+    return () => { if (workspaceLeaveGuardRef.current === guard) workspaceLeaveGuardRef.current = null; };
+  }, []);
   const [togetherEntryMode, setTogetherEntryMode] = useState("external");
   const coWatchViewKindRef = useRef(activeView);
   coWatchViewKindRef.current = activeView;
@@ -1791,6 +1801,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       return false;
     }
 
+    if (!canLeaveWorkspace("chat")) return false;
     pendingScreenGlanceTurnRef.current = null;
     setActiveView("chat");
     setIsSettingsOpen(false);
@@ -1816,7 +1827,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         void refreshScreenGlanceState();
       });
     return true;
-  }, [effectiveAiName, refreshScreenGlanceState]);
+  }, [effectiveAiName, refreshScreenGlanceState, canLeaveWorkspace]);
 
   const consumeLatestScreenGlance = useCallback(async () => {
     if (!screenGlancePluginAvailable()) return null;
@@ -2542,7 +2553,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     componentMountedRef.current = true;
     const controller = new AbortController();
     settingsScopeControllerRef.current = controller;
-    const unregisterSettingsGuard = registerSettingsSaveGuard(privateMediaScope, () => flushLatestSettingsDraftRef.current?.(), busy => {
+    const unregisterSettingsGuard = registerSettingsSaveGuard(privateMediaScope, async () => {
+      const saved = await flushLatestSettingsDraftRef.current?.();
+      if (saved === true && !canLeaveWorkspace("account-exit")) throw new Error("退出已取消，工作区草稿和当前页面仍保留。可先保存或下载草稿，再退出账号。");
+      return saved;
+    }, busy => {
       settingsExitBusyRef.current = busy;
       if (componentMountedRef.current) setSettingsExitBusy(busy);
     });
@@ -2566,7 +2581,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       window.clearTimeout(settingsAutosaveTimerRef.current);
       window.clearTimeout(settingsScrollIdleTimerRef.current);
     };
-  }, [privateMediaScope]);
+  }, [privateMediaScope, canLeaveWorkspace]);
 
   useEffect(() => {
     if (!deviceActivityPluginAvailable()) {
@@ -2806,6 +2821,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     let nativeListener;
     const openNativeTarget = (target) => {
       if (target?.available !== true) return;
+      if (!canLeaveWorkspace(target.view === "together" ? "together" : "chat")) return;
       if (target.view === "together") {
         setActiveView("together");
         setIsSidebarOpen(false);
@@ -2837,6 +2853,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       (event) => {
         const sessionId = event.notification.extra?.sessionId;
         if (!sessionId) return;
+        if (!canLeaveWorkspace("chat")) return;
 
         activeSessionIdRef.current = sessionId;
         setActiveSessionId(sessionId);
@@ -2851,7 +2868,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       localListener?.remove();
       nativeListener?.remove();
     };
-  }, []);
+  }, [canLeaveWorkspace]);
 
   // DLNA 投屏接收：视频 App 投屏到灯塔时，自动进入一起看并播放投过来的媒体。
   useEffect(() => {
@@ -2862,6 +2879,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     const processMedia = async (payload) => {
       const uri = String(payload?.uri || payload?.pendingUri || "").trim();
       if (!uri) return;
+      if (!canLeaveWorkspace("cast")) return;
       const title = String(payload?.title || payload?.pendingTitle || "").trim().slice(0, 180) || "投屏播放";
       // 独立投屏频道：只用专用播放器播放，不进入屏幕共看/一起看
       setDlnaCastInfo({ uri, title, receivedAt: Date.now() });
@@ -2921,7 +2939,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       stateHandle?.remove();
       appStateHandle?.remove();
     };
-  }, []);
+  }, [canLeaveWorkspace]);
 
   useEffect(() => {
     if (!hasLoadedSettings || settings.push_enabled !== true) {
@@ -3991,6 +4009,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   async function createSession() {
     if (createSessionPendingRef.current) return;
+    if (!canLeaveWorkspace("chat")) return;
     createSessionPendingRef.current = true;
     setIsCreatingSession(true);
     abortChatRequest(chatRequestRef, "session-change");
@@ -4024,6 +4043,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   function chooseSession(sessionId) {
+    if (!canLeaveWorkspace("chat")) return;
     chatScrollControllerRef.current?.open();
     if (sessionId !== activeSessionIdRef.current) {
       abortChatRequest(chatRequestRef, "session-change");
@@ -5848,6 +5868,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [dateDeleteState, setDateDeleteState] = useState(null);
   const dateDeleteRef = useRef(null);
   const [guideRevision, setGuideRevision] = useState(0);
+  const [guideOpenScope, setGuideOpenScope] = useState(null);
+  const achievementMutationRef = useRef(null);
+  const [achievementAction, setAchievementAction] = useState(null);
   const [customAchievement, setCustomAchievement] = useState({
     title: "",
     emoji: "",
@@ -6020,9 +6043,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const unlockedCodesRef = useRef(null);
   const dismissAchievement = useCallback(() => setAchievementPopup({ visible: false, items: [] }), []);
 
-  const refreshFunLabs = useCallback((sections) => refreshFunLabsSections({
+  const refreshFunLabs = useCallback((sections) => {
+    const request = getMomentsRequestScope();
+    if (!request) return Promise.resolve(null);
+    return refreshFunLabsSections({
     token: funToken, currentToken: () => funTokenRef.current,
-    isMounted: () => componentMountedRef.current, request: apiRequest,
+    isMounted: () => request.current(), request: (path, options) => withAchievementDeadline(request.options, deadline => apiRequest(path, { ...options, ...deadline }), options.timeoutMs),
     update: setFunLabsState, sections,
     onAchievements: items => {
       const previous = unlockedCodesRef.current?.scope === funToken ? unlockedCodesRef.current.codes : null;
@@ -6030,18 +6056,63 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       unlockedCodesRef.current = { scope: funToken, codes: items.filter(item => item.unlocked).map(item => item.code || item.id) };
       if (fresh.length) setAchievementPopup({ scope: funToken, visible: true, items: fresh });
     },
-  }), [funToken]);
+    });
+  }, [funToken, getMomentsRequestScope]);
+
+  async function runAchievementMutation(kind, path, options, identity, onConfirmed) {
+    const request = getMomentsRequestScope();
+    if (!request || achievementMutationRef.current?.scope === funToken) return null;
+    const operation = { scope: funToken, kind, status: "busy" };
+    achievementMutationRef.current = operation;
+    setAchievementAction(operation);
+    const current = () => request.current() && funTokenRef.current === funToken;
+    let saved = false;
+    let confirmedReceipt = null;
+    try {
+      const result = await withAchievementDeadline(request.options, deadline => apiRequest(path, { ...options, ...deadline, timeoutMs: 12_000, retry: false }));
+      if (!current()) return null;
+      validateAchievementReceipt(kind, result, identity);
+      confirmedReceipt = result;
+      saved = true;
+      onConfirmed?.(result);
+      setAchievementAction({ scope: funToken, kind, status: "success", message: kind === "delete" ? "这份自定义成就已删除。" : kind === "create" ? "已留下你的新目标，什么时候完成由你决定。" : "这份纪念已收好。" });
+      const refreshed = await refreshFunLabs(["achievements"]);
+      if (current() && refreshed?.achievements === "error") {
+        const feedback = achievementFailure(null, true);
+        setAchievementAction({ scope: funToken, kind, status: "error", ...feedback });
+      }
+      return result;
+    } catch (error) {
+      if (current()) {
+        if (error?.code === "achievements_receipt_invalid") recordOperationFailure(privateMediaScope, path, error);
+        const feedback = achievementFailure(error, saved);
+        setAchievementAction({ scope: funToken, kind, status: "error", ...feedback });
+        setNotice(feedback.message);
+      }
+      if (kind === "onboarding" && current() && !saved) throw error;
+      return confirmedReceipt;
+    } finally {
+      if (achievementMutationRef.current === operation) achievementMutationRef.current = null;
+    }
+  }
 
   async function addCustomAchievement() {
-    if (!componentMountedRef.current || !customAchievement.title.trim() || customAchievementSubmitRef.current) return;
+    if (!componentMountedRef.current || !customAchievement.title.trim() || customAchievementSubmitRef.current?.scope === funToken || achievementMutationRef.current?.scope === funToken) return;
     const submitted = { ...customAchievement };
+    const request = getMomentsRequestScope();
+    if (!request) return;
+    if (["title", "description", "emoji"].some((key, index) => Array.from(submitted[key].replace(/\s+/g, " ").trim()).length > [40, 120, 4][index])) {
+      const feedback = achievementFailure({ code: "achievements_input_too_long" });
+      setAchievementAction({ scope: funToken, status: "error", ...feedback });
+      setNotice(feedback.message);
+      return;
+    }
     const operation = { scope: funToken };
     customAchievementSubmitRef.current = operation;
     setCustomAchievementBusy(true);
-    const current = () => componentMountedRef.current && funTokenRef.current === funToken;
-    let saved = false;
+    const current = () => request.current() && funTokenRef.current === funToken;
     try {
-      await apiRequest("/api/v2/fun-labs/achievements/custom", {
+      await runAchievementMutation("create", "/api/v2/fun-labs/achievements/custom", {
         method: "POST",
         timeoutMs: 12_000,
         body: JSON.stringify({
@@ -6049,17 +6120,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           emoji: submitted.emoji.trim(),
           description: submitted.description.trim(),
         }),
-      });
-      saved = true;
-      if (!current()) return;
-      setCustomAchievement(previous =>
+      }, null, () => setCustomAchievement(previous =>
         Object.keys(submitted).every(key => previous[key] === submitted[key])
-          ? { title: "", emoji: "", description: "" } : previous);
-      await refreshFunLabs(["achievements"]);
-    } catch {
-      if (current()) setNotice(saved
-        ? "成就已保存，列表刷新失败。请先刷新核对，避免重复添加；诊断编号：DT-ACHIEVEMENTS。"
-        : "成就保存结果尚未确认，内容仍在输入框中。请先刷新列表核对，再重试或查看错误日志；诊断编号：DT-ACHIEVEMENTS。");
+          ? { title: "", emoji: "", description: "" } : previous));
     } finally {
       if (customAchievementSubmitRef.current === operation) customAchievementSubmitRef.current = null;
       if (current()) setCustomAchievementBusy(false);
@@ -6067,38 +6130,18 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   async function unlockCustomAchievement(code) {
-    try {
-      await apiRequest(
-        `/api/v2/fun-labs/achievements/${encodeURIComponent(code)}/unlock`,
-        { method: "POST", timeoutMs: 12_000, body: JSON.stringify({}) }
-      );
-      await refreshFunLabs(["achievements"]);
-    } catch {
-      if (funTokenRef.current === funToken) setNotice("这次未能保存成就完成状态，请稍后重试。诊断编号：DT-ACHIEVEMENTS。");
-    }
+    return runAchievementMutation("unlock", `/api/v2/fun-labs/achievements/${encodeURIComponent(code)}/unlock`,
+      { method: "POST", body: JSON.stringify({}) }, code);
   }
 
   async function removeCustomAchievement(id) {
-    try {
-      await apiRequest(`/api/v2/fun-labs/achievements/custom/${id}`, {
-        method: "DELETE",
-        timeoutMs: 12_000,
-      });
-      await refreshFunLabs(["achievements"]);
-    } catch {
-      if (funTokenRef.current === funToken) setNotice("这次没有删除成功，请稍后重试。可到设置中的错误日志查看操作诊断。");
-    }
+    return runAchievementMutation("delete", `/api/v2/fun-labs/achievements/custom/${encodeURIComponent(id)}`,
+      { method: "DELETE" }, id);
   }
 
   async function completeOnboarding() {
-    const result = await apiRequest("/api/v2/fun-labs/onboarding", {
-      method: "POST", timeoutMs: 12_000, body: JSON.stringify({}),
-    });
-    if (funTokenRef.current !== funToken || !componentMountedRef.current) return;
-    if (Array.isArray(result.achievements)) {
-      setFunLabsState(previous => ({ ...previous, scope: funToken, achievements: result.achievements }));
-    }
-    await refreshFunLabs(["achievements"]);
+    return runAchievementMutation("onboarding", "/api/v2/fun-labs/onboarding", { method: "POST", body: JSON.stringify({}) }, "onboarding_1",
+      result => setFunLabsState(previous => ({ ...previous, scope: funToken, achievements: result.achievements })));
   }
 
   function handleGuideAction(action) {
@@ -6110,7 +6153,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   function renderAchievementGuide() {
     return <AchievementGuide key={funScope + guideRevision} storageKey={guideStorageKey(accountStorageScope, companionScope)}
-      achievements={funLabsState.achievements} loading={funLabsState.sections.achievements.status === "busy"}
+      startExpanded={guideOpenScope === funScope} achievements={funLabsState.achievements} loading={funLabsState.sections.achievements.status === "busy" || (achievementAction?.scope === funToken && achievementAction.status === "busy")}
+      onOpenHandled={() => setGuideOpenScope(previous => previous === funScope ? null : previous)}
       onAction={handleGuideAction} onClaim={completeOnboarding} />;
   }
 
@@ -6121,12 +6165,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       if (key) globalThis.localStorage?.setItem(key, JSON.stringify({ ...saved, collapsed: false }));
     } catch { /* The guide remains available without storage. */ }
     setGuideRevision(value => value + 1);
+    setGuideOpenScope(funScope);
     changeView("achievements");
   }
 
   async function removeSpecialDate(id) {
+    const request = getMomentsRequestScope();
+    if (!request) return;
     await removeFunDate({ id, token: funToken, currentToken: () => funTokenRef.current,
-      isMounted: () => componentMountedRef.current, lock: dateDeleteRef, request: apiRequest,
+      isMounted: () => request.current(), lock: dateDeleteRef, request: (path, options) => apiRequest(path, { ...options, ...request.options }),
       update: setFunLabsState, feedback: setDateDeleteState, refresh: refreshFunLabs });
   }
 
@@ -6554,6 +6601,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   function changeView(view) {
+    if (!canLeaveWorkspace(view)) return;
     if (
       shouldScheduleSettingsOnViewChange({
         activeView,
@@ -7523,7 +7571,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           <p>
             {funLabsState.achievements.length > 0
               ? `已经留下 ${unlockedCount} 份小纪念 · 按自己的节奏慢慢发现`
-              : "加载中…"}
+              : funLabsState.sections.achievements.status === "error" ? "暂时无法读取，刷新后继续。" : funLabsState.sections.achievements.status === "success" ? "还没有小纪念，可以留一个自己的目标。" : "正在读取小纪念…"}
           </p>
         </header>
         {renderAchievementGuide()}
@@ -7552,7 +7600,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           </div>
           <FunLabsFeedback key={funScope + ":achievements"} section={funLabsState.sections.achievements} title="成就"
             hasSavedData={funLabsState.achievements.length > 0} onRetry={() => void refreshFunLabs(["achievements"])} />
-          {funLabsState.achievements.length > 0 ? (
+          {achievementAction?.scope === funToken && <div className="fun-labs-feedback">
+            <p role="status">{achievementAction.status === "busy" ? "正在确认成就操作…" : achievementAction.message}</p>
+            {achievementAction.status === "error" && <>
+              <button type="button" onClick={() => void refreshFunLabs(["achievements"])}>刷新列表核对</button>
+              <ChatErrorLog key={achievementAction.diagnostic.error_log_id || achievementAction.diagnostic.error_code}
+                logId={achievementAction.diagnostic.error_log_id} diagnostic={achievementAction.diagnostic} feedbackByCode={ACHIEVEMENT_ERROR_FEEDBACK} />
+            </>}
+          </div>}
+          {
             <div className="fun-achievements-wrap">
               <div className="fun-achievements-grid">
                 {funLabsState.achievements.map((item) => (
@@ -7577,6 +7633,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                       <div className="fun-achievement-card-actions">
                         <button
                           type="button"
+                          disabled={achievementAction?.scope === funToken && achievementAction.status === "busy"}
                           onClick={() =>
                             void unlockCustomAchievement(item.code)
                           }
@@ -7585,6 +7642,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                         </button>
                         <button
                           type="button"
+                          disabled={achievementAction?.scope === funToken && achievementAction.status === "busy"}
                           onClick={() =>
                             void removeCustomAchievement(item.id)
                           }
@@ -7633,15 +7691,24 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 />
                 <button
                   type="button"
-                  disabled={customAchievementBusy || !customAchievement.title.trim()}
+                  disabled={customAchievementBusy || (achievementAction?.scope === funToken && achievementAction.status === "busy") || !customAchievement.title.trim()}
                   aria-busy={customAchievementBusy}
                   onClick={() => void addCustomAchievement()}
                 >
                   {customAchievementBusy ? "正在保存…" : "＋ 添加自定义成就"}
                 </button>
               </div>
+              <small>名称最多 40 字，完成条件最多 120 字，图标最多 4 个字符。手动完成的小目标由你决定。</small>
+              <div className="achievement-starter-actions" aria-label="小目标灵感">
+                <span>不知道写什么？</span>
+                {[{ title: "今天分享一首歌", emoji: "🎵", description: "挑一首喜欢的歌，在一起听歌中分享。" },
+                  { title: "一起完成两分钟小任务", emoji: "✨", description: "从一起玩里选个小任务，完成后回来留下纪念。" }].map(starter =>
+                  <button key={starter.title} type="button" disabled={!!customAchievement.title || !!customAchievement.description || !!customAchievement.emoji || customAchievementBusy}
+                    onClick={() => setCustomAchievement(starter)}>{starter.emoji} {starter.title}</button>)}
+                <small>只填入草稿，点添加后才保存。</small>
+              </div>
             </div>
-          ) : null}
+          }
         </div>
         <div className="notification-feature-panel device-activity-panel">
           <div className="device-activity-heading">
@@ -7774,7 +7841,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           <h2>留在家里的事情</h2>
           <p>这些摘要会作为真实模型回复时的长期背景。</p>
         </div>
-        <MemoryGatewayStatus key={JSON.stringify([accountStorageScope, companionScope])} />
+          <MemoryGatewayStatus key={privateMediaScope} scopeKey={privateMediaScope} />
         <Suspense fallback={<DeferredFeature label="正在打开记忆档案…" />}>
           <OmbreMemories onManageConnections={openExternalMemorySettings} />
         </Suspense>
@@ -9295,7 +9362,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             )}
             {settingsCategory === "persona" && (
               <Suspense fallback={<DeferredFeature label="正在打开外部记忆连接…" />}>
-                <ExternalMemoryConnections />
+                    <ExternalMemoryConnections key={privateMediaScope} scopeKey={privateMediaScope} />
               </Suspense>
             )}
             {settingsCategory === "devices" && (
@@ -9675,7 +9742,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           {activeView === "workspace" && (
             <div className="workspace-page">
               <Suspense fallback={<DeferredFeature label="正在打开工作区…" />}>
-                <WorkspaceManager key={JSON.stringify([accountStorageScope, companionScope])} accountScope={accountStorageScope} />
+                <WorkspaceManager key={privateMediaScope} accountScope={accountStorageScope} registerLeaveGuard={registerWorkspaceLeaveGuard} />
               </Suspense>
             </div>
           )}

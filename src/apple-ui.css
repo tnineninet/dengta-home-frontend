@@ -1665,14 +1665,45 @@ select:focus-visible {
 }
 
 .duel-notice button {
-  width: 28px;
-  height: 28px;
+  width: 44px;
+  height: 44px;
   flex: 0 0 auto;
   padding: 0;
   border: 0;
   color: inherit;
   background: transparent;
   font-size: 18px;
+}
+
+.duel-recovery-actions,
+.achievement-starter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.duel-recovery-actions button,
+.achievement-starter-actions button {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--border-color, #d8c9d0);
+  border-radius: 14px;
+  background: var(--surface-secondary, rgba(255, 255, 255, 0.12));
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.duel-help {
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.achievement-starter-actions small {
+  flex-basis: 100%;
 }
 
 .duel-skills {

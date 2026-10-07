@@ -1,10 +1,15 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { achievementFailure, validateAchievementReceipt } from "./achievement-action.js";
 import { GUIDE_STEPS, readGuidePreferences, saveGuidePreferences } from "./achievement-guide.js";
 import "./achievement-guide.css";
 
-export default function AchievementGuide({ storageKey, achievements = [], loading = false, onAction, onClaim }) {
-  const [preferences, setPreferences] = useState(() => readGuidePreferences(storageKey));
+export default function AchievementGuide({ storageKey, achievements = [], loading = false, startExpanded = false, onOpenHandled, onAction, onClaim }) {
+  const [preferences, setPreferences] = useState(() => ({ ...readGuidePreferences(storageKey), ...(startExpanded ? { collapsed: false } : {}) }));
   const [claim, setClaim] = useState("idle");
+  const [claimError, setClaimError] = useState("");
+  const pendingClaim = useRef(false), mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => { if (startExpanded) onOpenHandled?.(); }, [startExpanded, onOpenHandled]);
   const firstChat = achievements.some(item => item.code === "first_chat" && item.unlocked);
   const graduated = achievements.some(item => item.code === "onboarding_1" && item.unlocked);
   const collapsed = preferences.collapsed;
@@ -19,9 +24,16 @@ export default function AchievementGuide({ storageKey, achievements = [], loadin
     update({ step: GUIDE_STEPS[(index + 1) % GUIDE_STEPS.length].id, visited: [...new Set([...preferences.visited, current.id])] });
   }
   async function collect() {
-    if (claim === "busy" || !firstChat || graduated) return;
+    if (pendingClaim.current || loading || !firstChat || graduated || claim === "success") return;
+    pendingClaim.current = true;
     setClaim("busy");
-    try { await onClaim(); setClaim("success"); } catch { setClaim("error"); }
+    setClaimError("");
+    try {
+      validateAchievementReceipt("onboarding", await onClaim());
+      if (mounted.current) setClaim("success");
+    } catch (error) {
+      if (mounted.current) { setClaim("error"); setClaimError(achievementFailure(error).message); }
+    } finally { pendingClaim.current = false; }
   }
   return <section className="achievement-guide" aria-label="轻松上手">
     <div className="achievement-guide-heading">
@@ -33,9 +45,9 @@ export default function AchievementGuide({ storageKey, achievements = [], loadin
       <h3>{current.title}</h3><p>{current.text}</p>
       {firstChat && <p className="achievement-guide-positive">💌 已点亮「初次相遇」。第一步已经留下来了，接下来按你的节奏。</p>}
       {current.id === "keepsake" ? <>
-        <button type="button" disabled={loading || !firstChat || graduated || claim === "busy"} onClick={() => void collect()}>{graduated ? "纪念已收好" : claim === "busy" ? "正在保存…" : current.action}</button>
+        <button type="button" aria-busy={claim === "busy"} disabled={loading || !firstChat || graduated || claim === "busy" || claim === "success"} onClick={() => void collect()}>{graduated || claim === "success" ? "纪念已收好" : claim === "busy" ? "正在保存…" : current.action}</button>
         {!firstChat && <small>第一次对话完成后会在这里点亮；你也可以先探索其他功能。</small>}
-        {claim === "error" && <p role="status">这次没能保存纪念，其他功能照常使用。可以稍后再点一次。</p>}
+        {claim === "error" && <p role="status">{claimError} 其他功能照常使用。</p>}
       </> : <button type="button" onClick={() => onAction(current.id)}>{current.action}</button>}
       <button type="button" className="achievement-guide-skip" onClick={next}>换一步看看</button>
       <small>收起后，可在「成就」页随时回来。成就是纪念，不是作业。</small>

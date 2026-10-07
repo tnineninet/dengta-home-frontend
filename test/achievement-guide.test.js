@@ -58,10 +58,11 @@ try {
   await act(async () => button("收下入门纪念").props.onClick());
   assert.equal(button("正在保存").props.disabled, true);
   assert.equal(attempts, 1);
-  await act(async () => resolveClaim());
-  await act(async () => tree.update(React.createElement(Guide, { ...props, achievements: [first], onClaim: async () => { throw Error("synthetic failure"); } })));
+  await act(async () => resolveClaim({ unlocked: {code:"onboarding_1",unlocked:true}, achievements:[first,{code:"onboarding_1",title:"Fictional keepsake",unlocked:true}] }));
+  assert.equal(button("纪念已收好").props.disabled,true);
+  await act(async () => tree.update(React.createElement(Guide, { ...props, key:"failed-claim", achievements: [first], onClaim: async () => { throw Error("synthetic failure"); } })));
   await act(async () => button("收下入门纪念").props.onClick());
-  assert.ok(tree.root.findAll(node => node.props.role === "status").some(node => node.children.join("").includes("没能保存")));
+  assert.ok(tree.root.findAll(node => node.props.role === "status").some(node => node.children.join("").includes("结果尚未确认")));
   await act(async () => tree.update(React.createElement(Guide, { ...props, key: "b", storageKey: guideStorageKey("account-b", "companion-a") })));
   await act(async () => button("看看路线").props.onClick());
   assert.equal(tree.root.findByType("h3").children.join(""), "先聊一句");

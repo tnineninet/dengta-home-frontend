@@ -7,8 +7,12 @@
 .workspace-view .workspace-file-name strong { overflow-wrap: anywhere; }
 .workspace-view .workspace-file-name small { flex-shrink: 0; }
 .workspace-view .workspace-toolbar-path { white-space: normal; overflow-wrap: anywhere; }
+.workspace-view .workspace-capacity-note,
+.workspace-view .workspace-storage-warning { margin: 10px 0; font-size: .85rem; line-height: 1.6; overflow-wrap: anywhere; }
+.workspace-view .workspace-capacity-note { color: var(--text-muted); }
+.workspace-view button:focus-visible { outline: 2px solid var(--accent-color, #985b70); outline-offset: 3px; }
 @media (max-width: 680px) {
   .workspace-view .workspace-editor-actions { flex-basis: 100%; }
   .workspace-view .workspace-editor-actions button,
-  .workspace-view .workspace-file-actions button { min-height: 40px; }
+  .workspace-view .workspace-file-actions button { min-height: 44px; }
 }

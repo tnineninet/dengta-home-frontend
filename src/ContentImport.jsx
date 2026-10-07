@@ -132,7 +132,7 @@ export default function ContentImport({ api, accountScope = "", companionScope =
   function finish(task) { if(current(task)){operationRef.current.task=null;setBusy("");setProgress(null);} }
   function fail(error) {
     setError(translatedImportError({code:error?.code},"导入请求未能完成，请查看诊断后重试。"));
-    setDiagnostic(funLabsDiagnostic(error,"import_operation_failed"));
+    setDiagnostic(funLabsDiagnostic(error,"import_operation_failed",CONTENT_IMPORT_ERROR_FEEDBACK));
   }
   function remember(key,record) {
     setResume({key,record});

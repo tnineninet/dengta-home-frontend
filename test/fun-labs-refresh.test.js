@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { emptyFunLabsState, refreshFunLabsSections, funLabsDiagnostic, removeFunDate } from "../src/fun-labs-refresh.js";
+import { achievementFailure } from "../src/achievement-action.js";
+import { CONTENT_IMPORT_ERROR_FEEDBACK } from "../src/content-import-api.js";
+
+const LOG_ID = "11111111-1111-4111-8111-111111111111";
 
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
 const date = { id: "date-one", title: "Fictional date", event_date: "2026-10-01" };
@@ -21,13 +25,13 @@ test("fast sections display before slow ones; failure retains cached records and
   const h = harness(); h.seed({ shots: { today: { id: "old-shot" }, recent: [] } });
   const run = refreshFunLabsSections(h.options);
   h.calls[0].resolve({ dates: [date] });
-  h.calls[2].reject(Object.assign(new Error("PRIVATE_PROVIDER_BODY"), { code: "daily_shots_read_failed", status: 503, error_log_id: "log-one" }));
+  h.calls[2].reject(Object.assign(new Error("PRIVATE_PROVIDER_BODY"), { code: "daily_shots_read_failed", status: 503, error_log_id: LOG_ID }));
   await tick();
   assert.deepEqual(h.state.dates, [date]);
   assert.equal(h.state.sections.achievements.status, "busy");
   assert.equal(h.state.sections.shots.status, "error");
   assert.equal(h.state.shots.today.id, "old-shot");
-  assert.equal(h.state.sections.shots.diagnostic.error_log_id, "log-one");
+  assert.equal(h.state.sections.shots.diagnostic.error_log_id, LOG_ID);
   assert.ok(!JSON.stringify(h.state).includes("PRIVATE_PROVIDER_BODY"));
   h.calls[1].resolve({ achievements: [] }); await run;
   assert.equal(h.state.status, "partial");
@@ -61,6 +65,50 @@ test("malformed receipts preserve data and report the failed section", async () 
   }
   assert.deepEqual(funLabsDiagnostic({ code: "secret body !", error_log_id: "<private>", status: "503" }), { error_code: "activity_load_failed", error_log_id: undefined, error_source: "dengta", http_status: undefined, upstream_status: undefined });
   const diagnosis=funLabsDiagnostic({status:503,upstream_status:522}); assert.equal(diagnosis.http_status,503); assert.equal(diagnosis.upstream_status,522);
+});
+
+for (const row of [
+  { code: "first_chat", title: "Fictional", unlocked: "false" },
+  { code: "first_chat", title: "Fictional" },
+  { code: "first_chat", title: "Fictional", unlocked: 1 },
+  { id: "first_chat", title: "Fictional", unlocked: true },
+  { code: " ", title: "Fictional", unlocked: true },
+]) test(`achievement read rejects ambiguous identity or unlock state: ${JSON.stringify(row)}`, async () => {
+  const h = harness(), saved = [{ code: "saved", title: "Fictional", unlocked: false }];
+  h.seed({ achievements: saved });
+  const run = refreshFunLabsSections({ ...h.options, sections: ["achievements"] });
+  h.calls[0].resolve({ achievements: [row] });
+  assert.deepEqual(await run, { achievements: "error" });
+  assert.deepEqual(h.state.achievements, saved);
+  assert.equal(h.achievements.length, 0);
+  assert.equal(h.state.sections.achievements.diagnostic.error_code, "achievements_receipt_invalid");
+});
+
+test("duplicate achievement codes never trigger unlock popups", async () => {
+  const h = harness(), run = refreshFunLabsSections({ ...h.options, sections: ["achievements"] });
+  h.calls[0].resolve({ achievements: [false, true].map(unlocked => ({ code: "first_chat", title: "Fictional", unlocked })) });
+  await run; assert.equal(h.state.sections.achievements.status, "error"); assert.equal(h.achievements.length, 0);
+});
+
+test("achievement read accepts a real false boolean without marking it complete", async () => {
+  const h = harness(), run = refreshFunLabsSections({ ...h.options, sections: ["achievements"] });
+  h.calls[0].resolve({ achievements: [{ code: "first_chat", title: "Fictional", unlocked: false }] });
+  await run; assert.equal(h.state.sections.achievements.status, "success"); assert.equal(h.achievements[0][0].unlocked, false);
+});
+
+test("achievement diagnostics admit known public codes and UUID log ids only", () => {
+  for (const helper of [error => funLabsDiagnostic(error), error => achievementFailure(error).diagnostic]) {
+    const diagnosis = helper({ code: "sk_fictional_raw_marker", error_log_id: "sk-fictional-marker-only", message: "FICTIONAL_PRIVATE_BODY", status: 503 });
+    assert.doesNotMatch(JSON.stringify(diagnosis), /sk_fictional|sk-fictional|FICTIONAL_PRIVATE/);
+    const known = helper({ code: "request_timeout", error_log_id: LOG_ID, status: 504 });
+    assert.equal(known.error_code, "request_timeout"); assert.equal(known.error_log_id, LOG_ID); assert.equal(known.http_status, 504);
+  }
+});
+
+test("shared import diagnostics retain declared recovery codes without admitting raw unknown codes", () => {
+  for (const code of ["import_commit_pending", "import_receipt_missing", "import_commit_rolled_back"])
+    assert.equal(funLabsDiagnostic({ code }, "import_operation_failed", CONTENT_IMPORT_ERROR_FEEDBACK).error_code, code);
+  assert.equal(funLabsDiagnostic({ code: "sk_fictional_raw_marker" }, "import_operation_failed", CONTENT_IMPORT_ERROR_FEEDBACK).error_code, "import_operation_failed");
 });
 
 test("date deletion waits for a matching receipt and prevents double clicks", async () => {

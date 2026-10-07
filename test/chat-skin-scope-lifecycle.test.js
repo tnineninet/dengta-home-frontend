@@ -25,7 +25,7 @@ function sourceBetween(startMarker, endMarker) {
   return app.slice(start, end);
 }
 const preferencesSource = sourceBetween("  function queueChatSkinPreferences(", "\n  const loadComposerHint =");
-const mountedSource = sourceBetween("    componentMountedRef.current = true;", "\n  }, [privateMediaScope]);");
+const mountedSource = sourceBetween("    componentMountedRef.current = true;", "\n  }, [");
 const ACCOUNT_A = "11111111-1111-4111-8111-111111111111";
 const ACCOUNT_B = "22222222-2222-4222-8222-222222222222";
 const COMPANION_A = "33333333-3333-4333-8333-333333333333";
@@ -76,6 +76,7 @@ async function harness() {
     chatSkinPreferencesApiPayload, normalizeChatSkinPreferences, writeStoredChatSkinPreferences,
     localStorage: storage, window, useCallback: callback => callback,
     registerSettingsSaveGuard: () => () => {},
+    canLeaveWorkspace: () => true,
     setSettingsExitBusy() {}, abortChatRequest() {}, releaseChatRequestAttachments() {},
     releasePendingScreenGlanceTurn() {}, revokeAttachmentDraft() {},
     setChatSkinPreferences(next) { writes++; preferences = typeof next === "function" ? next(preferences) : next; },

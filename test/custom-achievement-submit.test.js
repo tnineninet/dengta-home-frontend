@@ -54,6 +54,8 @@ const vite = await createServer({
         import {useState as realUseState,useRef,useEffect,useMemo,useCallback} from "react";
         import {emptyFunLabsState,refreshFunLabsSections as realRefreshFunLabsSections} from "/src/fun-labs-refresh.js";
         import {freshAchievements} from "/src/achievement-guide.js";
+        import {validateAchievementReceipt,achievementFailure,withAchievementDeadline} from "/src/achievement-action.js";
+        import {recordOperationFailure} from "/src/operation-diagnostics.js";
         import FunLabsFeedback from "/src/FunLabsFeedback.jsx";
         const fixture=globalThis.__customAchievementFixture;
         function useState(initial) {
@@ -70,6 +72,8 @@ const vite = await createServer({
           const [notice,setNotice]=useState("");
           const unlockedCodesRef=useRef(null);
           const [,setAchievementPopup]=useState(null);
+          const privateMediaScope=JSON.stringify([accountStorageScope,companionScope]);
+          const getMomentsRequestScope=()=>({current:()=>componentMountedRef.current,options:{}});
           ${stateSource}
           ${refreshSource}
           ${submitSource}
@@ -106,7 +110,7 @@ async function fill(values = originalDraft) {
 }
 async function submit() { await act(async () => submitButton().props.onClick()); }
 async function resolvePost(index = 0) {
-  await act(async () => posts()[index].resolve({ achievement: { code: "custom:fixture", title: "Fixture achievement" } }));
+  await act(async () => posts()[index].resolve({ achievement: { id: "custom-fixture-id", code: "custom:fixture", title: "Fixture achievement" } }));
 }
 
 afterEach(async () => {
@@ -150,7 +154,7 @@ test("POST failure retains the exact draft, releases the lock and explains that 
   assert.equal(submitButton().props.disabled, false);
   assert.equal(submitButton().props["aria-busy"], false);
   assert.equal(reads().length, 0);
-  assert.match(snapshot(), /保存结果尚未确认/);
+  assert.match(snapshot(), /结果尚未确认/);
   assert.match(snapshot(), /先刷新列表核对/);
   assert.doesNotMatch(snapshot(), /FICTIONAL_PRIVATE_FAILURE_BODY/);
   await submit();
@@ -201,7 +205,7 @@ test("an unexpected refresh exception after successful POST reports saved status
   await mount(); await fill(); await submit(); await resolvePost();
   assert.deepEqual(draft(), { title: "", emoji: "", description: "" });
   assert.match(snapshot(), /成就已保存，列表刷新失败/);
-  assert.match(snapshot(), /先刷新核对，避免重复添加/);
+  assert.match(snapshot(), /不要再次提交同一操作/);
   assert.doesNotMatch(snapshot(), /保存结果尚未确认|没有保存成功|FICTIONAL_UNEXPECTED_REFRESH_EXCEPTION/);
   assert.equal(posts().length, 1);
   assert.equal(submitButton().props["aria-busy"], false);

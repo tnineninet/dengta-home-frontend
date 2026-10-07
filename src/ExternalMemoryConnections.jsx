@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
-import { apiRequest } from "./api";
-import { settingsServiceErrorDetail } from "./settings-service-errors";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { authSession } from "./auth-session.js";
+import { settingsSaveScope } from "./settings-save-scope.js";
+import { invalidMemoryReceipt, memoryCount, memoryUiFailure, useMemoryUiRequest } from "./memory-ui-feedback.js";
 
 const CONNECTION_TYPES = Object.freeze({
   supabase_memory: {
@@ -75,62 +76,52 @@ function draftFromConnection(connectionType, connection) {
   };
 }
 
-async function memoryConnectionRequest(path, { method = "GET", body } = {}) {
-  try {
-    return await apiRequest(path, {
-      method,
-      headers: { Accept: "application/json" },
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
-  } catch (error) {
-    throw new Error(
-      settingsServiceErrorDetail(
-        error,
-        "无法连接外部记忆服务，请稍后再试 / Unable to reach the external memory service. Try again shortly."
-      ),
-      { cause: error }
-    );
-  }
-}
-
 function responseConnection(data, connectionType) {
-  const candidate =
-    data?.connection || data?.result?.connection || data?.result || null;
-  if (!candidate || typeof candidate !== "object") return null;
+  const candidate = data?.connection;
+  if (data?.ok !== true || !validConnection(candidate, connectionType)) throw invalidMemoryReceipt();
   return normalizeConnection(candidate, connectionType);
 }
 
 function safeTestSummary(connectionType, data = {}) {
-  const result = data.result || data.connection || data;
-  const message = String(data.message || result.message || "").trim();
+  const result = data.result;
+  if (data.ok !== true || result?.connection_type !== connectionType) throw invalidMemoryReceipt();
   if (connectionType === "supabase_memory") {
-    const count = Number(
-      result.record_count ?? result.total ?? result.row_count
-    );
-    const countText = Number.isFinite(count) ? `，读取到 ${count} 条记录` : "";
-    const columns = Array.isArray(result.columns)
-      ? result.columns.map(String).filter(Boolean).slice(0, 8)
-      : [];
-    const columnText = columns.length ? `；字段：${columns.join("、")}` : "";
-    return message || `Supabase 专用记忆表连接成功${countText}${columnText}。`;
+    if (result.table_name !== "dengta_memories" || !memoryCount(result.record_count)) throw invalidMemoryReceipt();
+    return `专用表只读连接通过，统计 ${result.record_count} 条记录；尚未导入，实际聊天召回仍待验证。`;
   }
-  const tools = Array.isArray(result.tools)
-    ? result.tools.map((tool) => String(tool?.name || tool)).filter(Boolean)
-    : [];
-  const serverName = String(result.server_name || result.name || "Ombre Brain");
-  return message || `${serverName} 已响应，发现 ${tools.length} 个 MCP 工具。`;
+  if (!Array.isArray(result.tools) || !Array.isArray(result.read_tools) || !result.read_tools.every(tool => typeof tool === "string" && result.tools.some(item => item?.name === tool))) throw invalidMemoryReceipt();
+  return result.read_tools.length
+    ? `MCP 服务已响应，识别出 ${result.read_tools.length} 个只读记忆工具（工具总数 ${result.tools.length}）；实际聊天召回仍待验证。`
+    : `MCP 服务已响应（工具总数 ${result.tools.length}），没有受支持的只读记忆工具；请核对服务工具清单，聊天召回未通过。`;
+}
+
+function validConnection(connection, type = connection?.connection_type) {
+  return Boolean(connection && typeof connection === "object" && !Array.isArray(connection) && typeof connection.id === "string" && connection.id && connection.connection_type === type && CONNECTION_TYPES[type] && typeof connection.enabled === "boolean" && typeof connection.credential_configured === "boolean" && typeof connection.last_status === "string" && typeof (type === "supabase_memory" ? connection.project_url : connection.endpoint) === "string");
+}
+
+function connectionList(data) {
+  if (data?.ok !== true || !Array.isArray(data.connections)) throw invalidMemoryReceipt();
+  const result = {};
+  for (const item of data.connections) {
+    const type = connectionTypeOf(item);
+    if (!CONNECTION_TYPES[type]) continue;
+    if (!validConnection(item, type) || result[type]) throw invalidMemoryReceipt();
+    result[type] = normalizeConnection(item, type);
+  }
+  return result;
 }
 
 function statusLabel(connection) {
   if (!connection) return "未配置";
   if (connection.credential_reentry_required) return "需要重新填写凭据";
-  if (connection.last_status === "connected") return "已连接";
   if (connection.enabled === false) return "已保存 · 未启用";
+  if (connection.last_status === "connected") return "上次检测通过";
+  if (connection.last_status === "error") return "上次检测未通过";
   return "已保存 · 待测试";
 }
 
 function statusClass(connection) {
-  if (connection?.last_status === "connected") return "online";
+  if (connection?.enabled && !connection.credential_reentry_required && connection.last_status === "connected") return "online";
   return "pending";
 }
 
@@ -167,301 +158,197 @@ function requiredFieldsReady(connectionType, draft, connection) {
   return Boolean(draft.name.trim() && endpointReady && credentialReady);
 }
 
-export default function ExternalMemoryConnections() {
+export default function ExternalMemoryConnections({ scopeKey = settingsSaveScope(authSession.getSnapshot()) }) {
+  const [stateScope, setStateScope] = useState(scopeKey);
   const [connections, setConnections] = useState({});
   const [drafts, setDrafts] = useState(() => ({
     supabase_memory: emptyDraft("supabase_memory"),
     ombre_brain_mcp: emptyDraft("ombre_brain_mcp"),
   }));
   const [loaded, setLoaded] = useState(false);
+  const [reading, setReading] = useState(false);
   const [busy, setBusy] = useState("");
   const [feedback, setFeedback] = useState({});
   const [supabasePreview, setSupabasePreview] = useState(null);
   const [expandedTypes, setExpandedTypes] = useState({});
-
-  async function loadConnections() {
-    const data = await memoryConnectionRequest(
-      "/api/external-memory/connections"
-    );
-    const list = Array.isArray(data?.connections) ? data.connections : [];
-    const nextConnections = {};
-    for (const item of list) {
-      const connectionType = connectionTypeOf(item);
-      if (!CONNECTION_TYPES[connectionType]) continue;
-      nextConnections[connectionType] = normalizeConnection(
-        item,
-        connectionType
-      );
-    }
-    setConnections(nextConnections);
-    setDrafts((current) => {
-      const next = { ...current };
-      for (const connectionType of Object.keys(CONNECTION_TYPES)) {
-        next[connectionType] = draftFromConnection(
-          connectionType,
-          nextConnections[connectionType]
-        );
-      }
-      return next;
-    });
+  const readRef = useRef(null);
+  const actionRef = useRef(null);
+  const readVersion = useRef(0);
+  const editVersions = useRef({ supabase_memory: 0, ombre_brain_mcp: 0 });
+  const { request, isCurrent } = useMemoryUiRequest(scopeKey);
+  if (stateScope !== scopeKey) {
+    setStateScope(scopeKey);
+    setConnections({});
+    setDrafts({ supabase_memory: emptyDraft("supabase_memory"), ombre_brain_mcp: emptyDraft("ombre_brain_mcp") });
+    setLoaded(false); setReading(false); setBusy(""); setFeedback({}); setSupabasePreview(null); setExpandedTypes({});
   }
+  useLayoutEffect(() => {
+    readRef.current = null;
+    actionRef.current = null;
+    readVersion.current += 1;
+    editVersions.current = { supabase_memory: 0, ombre_brain_mcp: 0 };
+  }, [scopeKey]);
 
-  useEffect(() => {
-    let cancelled = false;
-    memoryConnectionRequest("/api/external-memory/connections")
-      .then((data) => {
-        if (cancelled) return;
-        const list = Array.isArray(data?.connections) ? data.connections : [];
-        const nextConnections = {};
-        for (const item of list) {
-          const connectionType = connectionTypeOf(item);
-          if (!CONNECTION_TYPES[connectionType]) continue;
-          nextConnections[connectionType] = normalizeConnection(
-            item,
-            connectionType
-          );
+  const loadConnections = useCallback(async () => {
+    if (readRef.current || actionRef.current || !isCurrent()) return false;
+    const operation = {};
+    const version = ++readVersion.current;
+    const edits = { ...editVersions.current };
+    readRef.current = operation;
+    setReading(true);
+    try {
+      const data = await request("/api/external-memory/connections");
+      if (!isCurrent() || version !== readVersion.current) return false;
+      const nextConnections = connectionList(data);
+      setConnections(nextConnections);
+      setDrafts(current => {
+        const next = { ...current };
+        for (const type of Object.keys(CONNECTION_TYPES)) {
+          if (edits[type] === 0 && editVersions.current[type] === 0) next[type] = draftFromConnection(type, nextConnections[type]);
         }
-        setConnections(nextConnections);
-        setDrafts((current) => {
-          const next = { ...current };
-          for (const connectionType of Object.keys(CONNECTION_TYPES)) {
-            next[connectionType] = draftFromConnection(
-              connectionType,
-              nextConnections[connectionType]
-            );
-          }
-          return next;
-        });
-      })
-      .catch((error) => {
-        if (!cancelled) {
-          setFeedback({ general: { kind: "error", message: error.message } });
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoaded(true);
+        return next;
       });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      setLoaded(true);
+      setFeedback(current => { const next = { ...current }; delete next.general; return next; });
+      return true;
+    } catch (error) {
+      if (isCurrent() && version === readVersion.current) setFeedback(current => ({ ...current, general: { kind: "error", message: memoryUiFailure(error) } }));
+      return false;
+    } finally {
+      if (isCurrent() && readRef.current === operation) { readRef.current = null; setReading(false); }
+    }
+  }, [request, isCurrent]);
 
-  const configuredCount = useMemo(
-    () => Object.values(connections).filter(Boolean).length,
-    [connections]
-  );
+  useEffect(() => { void loadConnections(); }, [loadConnections]);
+
+  const configuredCount = useMemo(() => Object.values(connections).filter(Boolean).length, [connections]);
 
   function updateDraft(connectionType, field, value) {
-    setDrafts((current) => ({
-      ...current,
-      [connectionType]: {
-        ...current[connectionType],
-        [field]: value,
-      },
-    }));
-    setFeedback((current) => {
-      const next = { ...current };
-      delete next[connectionType];
-      return next;
-    });
+    editVersions.current[connectionType] += 1;
+    setDrafts(current => ({ ...current, [connectionType]: { ...current[connectionType], [field]: value } }));
+    setFeedback(current => { const next = { ...current }; delete next[connectionType]; return next; });
   }
 
   function setTypeFeedback(connectionType, message, kind = "success") {
-    setFeedback((current) => ({
-      ...current,
-      [connectionType]: { kind, message },
-    }));
+    setFeedback(current => ({ ...current, [connectionType]: { kind, message } }));
+  }
+
+  function beginAction(connectionType, action) {
+    if (actionRef.current || !isCurrent()) return null;
+    const operation = { connectionType, editVersion: editVersions.current[connectionType] };
+    actionRef.current = operation;
+    // A pending list response predates the mutation and must not restore its old connection.
+    readVersion.current += 1;
+    setBusy(action + "-" + connectionType);
+    setTypeFeedback(connectionType, "");
+    return operation;
+  }
+
+  const actionCurrent = operation => isCurrent() && actionRef.current === operation;
+  function finishAction(operation) {
+    if (actionCurrent(operation)) { actionRef.current = null; setBusy(""); }
+  }
+  function actionError(operation, error, mutation = false) {
+    if (actionCurrent(operation)) setTypeFeedback(operation.connectionType, memoryUiFailure(error, { mutation }), "error");
   }
 
   async function testDraft(connectionType) {
-    const draft = drafts[connectionType];
-    setBusy(`draft-test-${connectionType}`);
-    setTypeFeedback(connectionType, "");
+    const operation = beginAction(connectionType, "draft-test");
+    if (!operation) return;
+    const payload = { connection_type: connectionType, ...payloadFor(connectionType, drafts[connectionType]) };
     try {
-      const data = await memoryConnectionRequest(
-        "/api/external-memory/connections/test",
-        {
-          method: "POST",
-          body: {
-            connection_type: connectionType,
-            ...payloadFor(connectionType, draft),
-          },
-        }
-      );
-      setTypeFeedback(connectionType, safeTestSummary(connectionType, data));
-    } catch (error) {
-      setTypeFeedback(connectionType, error.message, "error");
-    } finally {
-      setBusy("");
-    }
+      const data = await request("/api/external-memory/connections/test", { method: "POST", body: payload });
+      if (actionCurrent(operation)) setTypeFeedback(connectionType, safeTestSummary(connectionType, data) + (operation.editVersion === editVersions.current[connectionType] ? "" : " 检测的是提交时的填写，当前新输入尚未检测。"));
+    } catch (error) { actionError(operation, error); }
+    finally { finishAction(operation); }
   }
 
   async function saveConnection(connectionType) {
-    const draft = drafts[connectionType];
-    setBusy(`save-${connectionType}`);
-    setTypeFeedback(connectionType, "");
+    const operation = beginAction(connectionType, "save");
+    if (!operation) return;
+    const submitted = drafts[connectionType];
     try {
-      const data = await memoryConnectionRequest(
-        `/api/external-memory/connections/${connectionType}`,
-        {
-          method: "PUT",
-          body: payloadFor(connectionType, draft),
-        }
-      );
-      let connection = responseConnection(data, connectionType);
-      if (!connection) {
-        await loadConnections();
-        connection = null;
-      } else {
-        setConnections((current) => ({
-          ...current,
-          [connectionType]: connection,
-        }));
-        setDrafts((current) => ({
-          ...current,
-          [connectionType]: draftFromConnection(connectionType, connection),
-        }));
-      }
-      setTypeFeedback(
-        connectionType,
-        "连接已按当前账号加密保存，旧凭据不会显示在页面 / Saved and encrypted for this account. The stored credential is never displayed."
-      );
-    } catch (error) {
-      setTypeFeedback(connectionType, error.message, "error");
-    } finally {
-      setBusy("");
-    }
+      const data = await request("/api/external-memory/connections/" + connectionType, { method: "PUT", body: payloadFor(connectionType, submitted) });
+      if (!actionCurrent(operation)) return;
+      const connection = responseConnection(data, connectionType);
+      setConnections(current => ({ ...current, [connectionType]: connection }));
+      const draftUnchanged = operation.editVersion === editVersions.current[connectionType];
+      setDrafts(current => ({ ...current, [connectionType]: draftUnchanged
+        ? draftFromConnection(connectionType, connection)
+        : { ...current[connectionType], ...(current[connectionType].credential === submitted.credential ? { credential: "" } : {}) } }));
+      if (connectionType === "supabase_memory") setSupabasePreview(null);
+      if (draftUnchanged) editVersions.current[connectionType] = 0;
+      setTypeFeedback(connectionType, "连接已按当前账号加密保存，旧凭据不会显示在页面；实际聊天召回仍待验证。" + (draftUnchanged ? "" : " 等待期间的新输入已保留，尚未保存。"));
+    } catch (error) { actionError(operation, error, true); }
+    finally { finishAction(operation); }
   }
 
   async function testSaved(connectionType) {
-    setBusy(`saved-test-${connectionType}`);
-    setTypeFeedback(connectionType, "");
+    const operation = beginAction(connectionType, "saved-test");
+    if (!operation) return;
     try {
-      const data = await memoryConnectionRequest(
-        `/api/external-memory/connections/${connectionType}/test`,
-        { method: "POST" }
-      );
-      await loadConnections();
-      setTypeFeedback(connectionType, safeTestSummary(connectionType, data));
-    } catch (error) {
-      setTypeFeedback(connectionType, error.message, "error");
-    } finally {
-      setBusy("");
-    }
+      const data = await request("/api/external-memory/connections/" + connectionType + "/test", { method: "POST" });
+      if (!actionCurrent(operation)) return;
+      const summary = safeTestSummary(connectionType, data);
+      setConnections(current => ({ ...current, [connectionType]: { ...current[connectionType], last_status: "connected", ...(connectionType === "ombre_brain_mcp" ? { read_tools: data.result.read_tools } : {}) } }));
+      setTypeFeedback(connectionType, summary);
+    } catch (error) { actionError(operation, error); }
+    finally { finishAction(operation); }
   }
 
   async function removeConnection(connectionType) {
-    const definition = CONNECTION_TYPES[connectionType];
-    if (
-      !window.confirm(
-        `移除“${definition.label}”连接及后端保存的加密凭据？外部数据库中的原始数据不会被删除。`
-      )
-    ) {
-      return;
-    }
-    setBusy(`remove-${connectionType}`);
-    setTypeFeedback(connectionType, "");
+    if (actionRef.current || !isCurrent() || !window.confirm("移除“" + CONNECTION_TYPES[connectionType].label + "”连接及后端保存的加密凭据？外部数据库中的原始数据不会被删除。")) return;
+    const operation = beginAction(connectionType, "remove");
+    if (!operation) return;
     try {
-      await memoryConnectionRequest(
-        `/api/external-memory/connections/${connectionType}`,
-        { method: "DELETE" }
-      );
-      setConnections((current) => {
-        const next = { ...current };
-        delete next[connectionType];
-        return next;
-      });
-      setDrafts((current) => ({
-        ...current,
-        [connectionType]: emptyDraft(connectionType),
-      }));
-      setExpandedTypes((current) => ({
-        ...current,
-        [connectionType]: false,
-      }));
+      const data = await request("/api/external-memory/connections/" + connectionType, { method: "DELETE" });
+      if (!actionCurrent(operation)) return;
+      if (data?.ok !== true || data.deleted !== true || data.connection_type !== connectionType) throw invalidMemoryReceipt();
+      setConnections(current => { const next = { ...current }; delete next[connectionType]; return next; });
+      const draftUnchanged = operation.editVersion === editVersions.current[connectionType];
+      if (draftUnchanged) {
+        setDrafts(current => ({ ...current, [connectionType]: emptyDraft(connectionType) }));
+        editVersions.current[connectionType] = 0;
+      }
       if (connectionType === "supabase_memory") setSupabasePreview(null);
-      setTypeFeedback(
-        connectionType,
-        "连接和加密凭据已移除；你的外部数据库内容没有被删除。"
-      );
-    } catch (error) {
-      setTypeFeedback(connectionType, error.message, "error");
-    } finally {
-      setBusy("");
-    }
+      setTypeFeedback(connectionType, "连接和加密凭据已移除；你的外部数据库内容没有被删除。" + (draftUnchanged ? "" : " 等待期间的新输入已保留，尚未保存。"));
+    } catch (error) { actionError(operation, error, true); }
+    finally { finishAction(operation); }
   }
 
   async function previewSupabaseMemory() {
-    setBusy("preview-supabase_memory");
-    setTypeFeedback("supabase_memory", "");
+    const operation = beginAction("supabase_memory", "preview");
+    if (!operation) return;
     try {
-      const data = await memoryConnectionRequest(
-        "/api/external-memory/connections/supabase_memory/preview?limit=20"
-      );
-      const result = data?.result || data || {};
-      const items = Array.isArray(data?.items)
-        ? data.items
-        : Array.isArray(result.items)
-        ? result.items
-        : Array.isArray(result.memories)
-        ? result.memories
-        : [];
-      setSupabasePreview({
-        items,
-        total:
-          Number(
-            data?.total ?? result.record_count ?? result.total ?? items.length
-          ) || 0,
-      });
-      setTypeFeedback(
-        "supabase_memory",
-        `只读预览成功，共发现 ${
-          Number(
-            data?.total ?? result.record_count ?? result.total ?? items.length
-          ) || 0
-        } 条可导入记忆；尚未复制任何数据。`
-      );
-    } catch (error) {
-      setSupabasePreview(null);
-      setTypeFeedback("supabase_memory", error.message, "error");
-    } finally {
-      setBusy("");
-    }
+      const data = await request("/api/external-memory/connections/supabase_memory/preview?limit=20");
+      if (!actionCurrent(operation)) return;
+      const result = data?.result;
+      if (data?.ok !== true || result?.connection_type !== "supabase_memory" || result.read_only !== true || !Array.isArray(data.items) || !memoryCount(data.total) || !data.items.every(item => item && typeof item.id === "string" && typeof item.summary === "string")) throw invalidMemoryReceipt();
+      setSupabasePreview({ items: data.items, total: data.total });
+      setTypeFeedback("supabase_memory", "只读预览成功，共发现 " + data.total + " 条可导入记忆；尚未复制任何数据。");
+    } catch (error) { actionError(operation, error); }
+    finally { finishAction(operation); }
   }
 
   async function importSupabaseMemory() {
-    if (
-      !window.confirm(
-        "把最多 100 条预览合格的外部记忆复制到当前 DengTa 账号？重复导入会幂等更新，不会修改 Supabase 外库，也不会建立自动双向同步。"
-      )
-    ) {
-      return;
-    }
-    setBusy("import-supabase_memory");
-    setTypeFeedback("supabase_memory", "");
+    if (actionRef.current || !isCurrent() || !window.confirm("把最多 100 条预览合格的外部记忆复制到当前 DengTa 账号？重复导入会幂等更新，不会修改 Supabase 外库，也不会建立自动双向同步。")) return;
+    const operation = beginAction("supabase_memory", "import");
+    if (!operation) return;
     try {
-      const data = await memoryConnectionRequest(
-        "/api/external-memory/connections/supabase_memory/import",
-        { method: "POST", body: { limit: 100 } }
-      );
-      const result = data?.result || data || {};
-      const synchronized = Number(result.synchronized) || 0;
-      const imported = Number(result.imported) || 0;
-      const updated = Number(result.updated) || 0;
-      const skipped = Number(result.skipped) || 0;
-      const total = Number(result.total) || imported + updated + skipped;
-      setTypeFeedback(
-        "supabase_memory",
-        result.count_mode === "synchronized"
-          ? `同步完成：已同步 ${synchronized} 条（新增与更新合并计数；重复导入会覆盖更新，不会重复新增）。外部 Supabase 未被写入。`
-          : `导入完成：新增 ${imported} 条，更新 ${updated} 条，跳过 ${skipped} 条，共检查 ${total} 条。外部 Supabase 未被写入。`
-      );
+      const data = await request("/api/external-memory/connections/supabase_memory/import", { method: "POST", body: { limit: 100 } });
+      if (!actionCurrent(operation)) return;
+      const result = data?.result;
+      if (data?.ok !== true || result?.connection_type !== "supabase_memory" || result.read_only_source !== true || !memoryCount(result.skipped) || !memoryCount(result.total)) throw invalidMemoryReceipt();
+      if (result.count_mode === "synchronized") {
+        if (!memoryCount(result.synchronized)) throw invalidMemoryReceipt();
+        setTypeFeedback("supabase_memory", "同步完成：已同步 " + result.synchronized + " 条（新增与更新合并计数；重复导入会覆盖更新，不会重复新增）。外部 Supabase 未被写入。");
+      } else {
+        if (!memoryCount(result.imported) || !memoryCount(result.updated)) throw invalidMemoryReceipt();
+        setTypeFeedback("supabase_memory", "导入完成：新增 " + result.imported + " 条，更新 " + result.updated + " 条，跳过 " + result.skipped + " 条，共检查 " + result.total + " 条。外部 Supabase 未被写入。");
+      }
       window.dispatchEvent(new CustomEvent("dengta:memories-imported"));
-    } catch (error) {
-      setTypeFeedback("supabase_memory", error.message, "error");
-    } finally {
-      setBusy("");
-    }
+    } catch (error) { actionError(operation, error, true); }
+    finally { finishAction(operation); }
   }
 
   return (
@@ -482,8 +369,11 @@ export default function ExternalMemoryConnections() {
         <span
           className={`status-chip ${configuredCount ? "online" : "pending"}`}
         >
-          {loaded ? `${configuredCount} 个已配置` : "读取中"}
+          {reading ? "读取中" : loaded ? `${configuredCount} 个已配置` : "尚未读取成功"}
         </span>
+        <button type="button" className="secondary-button" disabled={reading || Boolean(busy)} onClick={() => void loadConnections()}>
+          {reading ? "读取中…" : "重新读取连接"}
+        </button>
       </div>
 
       <div className="external-memory-security" role="note">
@@ -733,7 +623,7 @@ export default function ExternalMemoryConnections() {
                       <button
                         type="button"
                         className="secondary-button"
-                        disabled={Boolean(busy) || !draftTestReady}
+                        disabled={Boolean(busy) || !loaded || !draftTestReady}
                         onClick={() => testDraft(connectionType)}
                       >
                         {busy === `draft-test-${connectionType}`
@@ -743,7 +633,7 @@ export default function ExternalMemoryConnections() {
                       <button
                         type="button"
                         className="primary-button"
-                        disabled={Boolean(busy) || !saveReady}
+                        disabled={Boolean(busy) || !loaded || !saveReady}
                         onClick={() => saveConnection(connectionType)}
                       >
                         {busy === `save-${connectionType}`
@@ -755,7 +645,7 @@ export default function ExternalMemoryConnections() {
                           <button
                             type="button"
                             className="secondary-button"
-                            disabled={Boolean(busy)}
+                            disabled={Boolean(busy) || !loaded}
                             onClick={() => testSaved(connectionType)}
                           >
                             {busy === `saved-test-${connectionType}`
@@ -768,7 +658,7 @@ export default function ExternalMemoryConnections() {
                                 type="button"
                                 className="secondary-button"
                                 disabled={
-                                  Boolean(busy) || connection.enabled === false
+                                  Boolean(busy) || !loaded || connection.enabled === false
                                 }
                                 onClick={previewSupabaseMemory}
                               >
@@ -780,7 +670,7 @@ export default function ExternalMemoryConnections() {
                                 type="button"
                                 className="primary-button"
                                 disabled={
-                                  Boolean(busy) ||
+                                  Boolean(busy) || !loaded ||
                                   connection.enabled === false ||
                                   connection.last_status !== "connected"
                                 }
@@ -795,7 +685,7 @@ export default function ExternalMemoryConnections() {
                           <button
                             type="button"
                             className="danger-outline-button"
-                            disabled={Boolean(busy)}
+                            disabled={Boolean(busy) || !loaded}
                             onClick={() => removeConnection(connectionType)}
                           >
                             {busy === `remove-${connectionType}`
@@ -833,9 +723,7 @@ export default function ExternalMemoryConnections() {
                                     </span>
                                     {item.updated_at && (
                                       <time dateTime={item.updated_at}>
-                                        {new Date(
-                                          item.updated_at
-                                        ).toLocaleString("zh-CN")}
+                                        {Number.isNaN(new Date(item.updated_at).getTime()) ? "时间未知" : new Date(item.updated_at).toLocaleString("zh-CN")}
                                       </time>
                                     )}
                                   </li>

@@ -1,3 +1,5 @@
+import { CHAT_ERROR_FEEDBACK } from "./chat-error-feedback.js";
+
 export const FUN_LABS_SECTIONS = Object.freeze(["dates", "achievements", "shots"]);
 export const FUN_LABS_ERROR_FEEDBACK = Object.freeze({
   daily_shots_read_failed: { reason: "服务器未能读取每日照片。", action: "先重试读取，持续失败时查看脱敏日志；无需重新上传照片。" },
@@ -24,9 +26,9 @@ export function emptyFunLabsState() {
     sections: Object.fromEntries(FUN_LABS_SECTIONS.map(key => [key, { status: "idle", diagnostic: null }])) };
 }
 
-export function funLabsDiagnostic(error, fallback = "activity_load_failed") {
-  const code = /^[a-z][a-z0-9_]{0,63}$/.test(error?.code || "") ? error.code : fallback;
-  const logId = /^[a-zA-Z0-9_-]{1,100}$/.test(error?.error_log_id || "") ? error.error_log_id : undefined;
+export function funLabsDiagnostic(error, fallback = "activity_load_failed", feedbackByCode = {}) {
+  const code = Object.hasOwn(FUN_LABS_ERROR_FEEDBACK, error?.code) || Object.hasOwn(CHAT_ERROR_FEEDBACK, error?.code) || Object.hasOwn(feedbackByCode, error?.code) ? error.code : fallback;
+  const logId = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(error?.error_log_id || "") ? error.error_log_id : undefined;
   const status = value => Number.isInteger(value) && value >= 400 && value <= 599 ? value : undefined;
   return { error_code: code, error_log_id: logId, error_source: "dengta", http_status: status(error?.status), upstream_status: status(error?.upstream_status) };
 }
@@ -37,7 +39,10 @@ function validRows(rows, identity) {
 
 function sectionValue(key, data) {
   if (key === "dates" && validRows(data?.dates, "id") && data.dates.every(row => typeof row.event_date === "string")) return data.dates;
-  if (key === "achievements" && validRows(data?.achievements, "code")) return data.achievements;
+  if (key === "achievements" && Array.isArray(data?.achievements)
+    && data.achievements.every(row => row && typeof row === "object" && !Array.isArray(row)
+      && typeof row.code === "string" && row.code.trim().length > 0 && typeof row.title === "string" && typeof row.unlocked === "boolean")
+    && new Set(data.achievements.map(row => row.code)).size === data.achievements.length) return data.achievements;
   if (key === "shots" && data && Object.hasOwn(data, "today") && Array.isArray(data.recent)
     && (data.today === null || (typeof data.today === "object" && typeof data.today.id === "string"))
     && data.recent.every(row => row && typeof row.id === "string")) return { today: data.today, recent: data.recent };
@@ -86,17 +91,20 @@ export async function refreshFunLabsSections({ token, currentToken, isMounted, r
     return { ...next, status: overallStatus(next.sections) };
   });
   change(selected, (state, key) => ({ ...state, sections: { ...state.sections, [key]: { status: "busy", diagnostic: null } } }));
-  await Promise.all(selected.map(async key => {
+  const results = await Promise.all(selected.map(async key => {
     try {
       const [path, timeoutMs] = REQUESTS[key];
       const value = sectionValue(key, await request(path, { timeoutMs }));
-      if (!current(key)) return;
+      if (!current(key)) return [key, "stale"];
       change([key], state => ({ ...state, [key]: value, sections: { ...state.sections, [key]: { status: "success", diagnostic: null } } }));
       if (key === "achievements" && current(key)) onAchievements?.(value);
+      return [key, "success"];
     } catch (error) {
-      if (!current(key)) return;
+      if (!current(key)) return [key, "stale"];
       const diagnostic = funLabsDiagnostic(error, `${key}_load_failed`);
       change([key], state => ({ ...state, sections: { ...state.sections, [key]: { status: "error", diagnostic } } }));
+      return [key, "error"];
     }
   }));
+  return Object.fromEntries(results);
 }

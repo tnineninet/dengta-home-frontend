@@ -4,6 +4,7 @@ import TestRenderer from 'react-test-renderer';
 import { createServer } from 'vite';
 import { fileURLToPath } from 'node:url';
 import { storeDirectMediaSession, readDirectMediaSession } from '../src/direct-media.js';
+import { createAuthSessionManager } from '../src/auth-session.js';
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 globalThis.window = { setInterval, clearInterval, setTimeout, clearTimeout };
 globalThis.document = { hidden: false };
@@ -11,9 +12,18 @@ const storage = new Map();
 globalThis.sessionStorage = { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) };
 const requests = [];
 globalThis.__togetherRequest = (path, options = {}) => new Promise(resolve => requests.push({ path, options, resolve }));
+const healthAccount='11111111-1111-4111-8111-111111111111',healthCompanion='33333333-3333-4333-8333-333333333333';
+const authRows=new Map(),authStorage={getItem:key=>authRows.get(key),setItem:(key,value)=>authRows.set(key,value),removeItem:key=>authRows.delete(key)};
+const healthManager=createAuthSessionManager({supabaseUrl:'https://fictional.example.test',supabaseAnonKey:'fictional-public-placeholder',storage:authStorage,createClientFn:()=>({auth:{
+  getSession:async()=>({data:{session:{access_token:'fictional-session',user:{id:healthAccount}}},error:null}),
+  onAuthStateChange:()=>({data:{subscription:{unsubscribe(){}}}}),
+}})});
+await healthManager.initialize();healthManager.setActiveCompanionId(healthCompanion);globalThis.__togetherAuthManager=healthManager;
 const vite = await createServer({ root: fileURLToPath(new URL('..', import.meta.url)), appType: 'custom', logLevel: 'silent', server: { middlewareMode: true },
   plugins: [{ name: 'together-api-fixture', enforce: 'pre', load(id) {
     if (id.replaceAll('\\', '/').endsWith('/src/api.js')) return 'export const apiRequest = (...args) => globalThis.__togetherRequest(...args); export const apiFetch = apiRequest; export const API_BASE_URL = "http://fixture.invalid";';
+  }, transform(source,id) {
+    if(id.replaceAll('\\','/').endsWith('/src/auth-session.js'))return source.replace('export const authSession = createAuthSessionManager();','export const authSession = globalThis.__togetherAuthManager;');
   } }] });
 let tree, healthTree;
 const props = { aiName: 'Fixture', accountScope: 'test-account', companionScope: 'test-companion', screenState: {}, feedback: {}, onStopDirect: async () => ({ ok: true }) };
@@ -66,11 +76,11 @@ try {
   await act(async () => { healthTree = TestRenderer.create(React.createElement(Health)); });
   await act(async () => { const check = healthTree.root.findByType('button').props.onClick; check(); check(); await settle(); });
   const checks = requests.filter(item => item.path === '/api/v2/memory/health'); assert.equal(checks.length, 1);
-  await act(async () => { checks[0].resolve({ error: 'kiwi_mem_tenant_unverified' }); await settle(); });
+  await act(async () => { checks[0].resolve({ configured:true,reachable:false,error: 'kiwi_mem_tenant_unverified',status:200 }); await settle(); });
   assert.match(JSON.stringify(healthTree.toJSON()), /X-Tenant-Id/);
   await act(async () => { healthTree.root.findByType('button').props.onClick(); await settle(); });
   const late = requests.at(-1);
   await act(async () => healthTree.unmount()); assert.equal(late.options.signal.aborted, true);
-  late.resolve({ reachable: true, tenant_verified: true });
+  late.resolve({ configured:true,reachable:true,tenant_verified:true,memory_enabled:true,embedding_available:true,total_memories:0 });
   console.log('Together and memory health lifecycle passed: stale resolve, cache clear, double click, unmount');
-} finally { await vite.close(); delete globalThis.__togetherRequest; }
+} finally { await vite.close(); healthManager.destroy();delete globalThis.__togetherRequest;delete globalThis.__togetherAuthManager; }

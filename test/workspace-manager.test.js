@@ -9,7 +9,7 @@ import { workspaceCacheClear, workspaceCacheWrite, workspaceCacheList } from "..
 const priorAct = globalThis.IS_REACT_ACT_ENVIRONMENT;
 const priorWindow = globalThis.window;
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-globalThis.window = { setTimeout, confirm: () => true };
+globalThis.window = { setTimeout, clearTimeout, confirm: () => true };
 const apiNames = ["workspaceTree", "workspaceStats", "workspaceReadFile", "workspaceWriteFile", "workspaceDeleteFile", "workspaceAgentsMd"];
 let online = false, pending = null, currentContent = "cloud fixture", truncated = false;
 let notifyPendingRead;
@@ -17,14 +17,14 @@ const reads = [];
 globalThis.__workspaceTestApi = {
   async workspaceTree() {
     if (!online) throw new TypeError("fictional offline");
-    return { ok: true, path: "/", entries: [{ name: "empty.txt", type: "file" }, { name: "second.txt", type: "file" }] };
+    return { ok: true, path: "/", entries: [{ name: "empty.txt", type: "file", size: 0 }, { name: "second.txt", type: "file", size: 0 }] };
   },
-  async workspaceStats() { return { ok: true, files: 2, bytes: 2 }; },
+  async workspaceStats() { return { ok: true, files: 2, bytes: 2, partial: false }; },
   async workspaceReadFile(path) {
     reads.push(path);
     if (pending) { const value = pending; pending = null; notifyPendingRead?.(); return value; }
     if (!online) throw new TypeError("fictional offline");
-    return { ok: true, content: currentContent, truncated };
+    return { ok: true, path, content: currentContent, chars: currentContent.length, truncated };
   },
   async workspaceWriteFile() { return { ok: true }; },
   async workspaceDeleteFile() { return { ok: true }; },
@@ -50,6 +50,10 @@ try {
   const { default: Manager } = await vite.ssrLoadModule("/src/WorkspaceManager.jsx");
   await act(async () => { tree = TestRenderer.create(React.createElement(Manager, { accountScope: "manager-a" })); await settle(); });
   await act(settle);
+  await act(async () => {
+    const deadline = Date.now() + 3000;
+    while (!fileButton("empty.txt") && Date.now() < deadline) await settle();
+  });
   assert.ok(fileButton("empty.txt")); assert.equal(fileButton("secret.txt"), undefined);
   await click(fileButton("empty.txt"));
   assert.equal(tree.root.findByType("textarea").props.value, "");
@@ -61,7 +65,7 @@ try {
   pending = new Promise(resolve => { release = resolve; });
   await act(async () => { void fileButton("empty.txt").props.onClick(); await pendingReadStarted; });
   await click(fileButton("second.txt"));
-  await act(async () => { release({ ok: true, content: "stale fixture" }); await settle(); });
+  await act(async () => { release({ ok: true, path: "empty.txt", chars: 13, content: "stale fixture", truncated: false }); await settle(); });
   assert.equal(tree.root.findByType("textarea").props.value, "cloud fixture");
   truncated = true; currentContent = "preview fixture";
   await click(fileButton("empty.txt"));

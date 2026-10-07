@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { authSession } from "./auth-session.js";
+import { createScopedSettingsSession, settingsSaveScope } from "./settings-save-scope.js";
+import { describeOperationError } from "./operation-error-help.js";
 import "./workspace-polish.css";
 import {
   workspaceAgentsMd,
@@ -29,53 +32,130 @@ function fileLabel(entry) {
   return String(entry?.name || "").replace(/\/$/, "");
 }
 
-function safeFileName(name) {
-  return String(name || "")
-    .trim()
-    .replace(/[\\/:*?"<>|]/g, "_")
-    .split("").map((char) => char.charCodeAt(0) < 32 ? "_" : char).join("")
-    .replace(/\s+/g, " ")
-    .slice(0, 180);
+function checkedFilePath(value, directory = "") {
+  const name = String(value || "").trim();
+  const full = directory ? `${directory}/${name}` : name;
+  const parts = full.split("/");
+  if (!name || name.startsWith("/") || full.length > 500 || parts.length > 16 || parts.some(part => !part || part === "." || part === ".." || part.length > 120 || /[\\:*?"<>|]/.test(part) || Array.from(part).some(char => char.charCodeAt(0) < 32))) {
+    throw workspaceError("workspace_path_invalid");
+  }
+  return full;
+}
+
+function workspaceError(code) { return Object.assign(new Error("工作区操作未完成。"), { code }); }
+
+const LOCAL_FAILURES = {
+  workspace_path_invalid: "文件路径无效。请使用相对路径，例如 docs/note.md；每段最多 120 字符，不能含 . 或 .. 段。",
+  workspace_tree_receipt_invalid: "目录读取回执缺少有效路径或列表。云端目录尚未确认，请刷新重新读取。",
+  workspace_file_receipt_invalid: "文件读取回执与当前路径不一致或正文不完整。请重新读取文件；不要保存当前预览。",
+  workspace_write_receipt_invalid: "服务未返回与本次文件和字节数匹配的保存回执。草稿仍保留；先重新读取文件核对云端，再决定是否保存。",
+  workspace_delete_receipt_invalid: "服务未返回与目标文件匹配的删除回执。先刷新目录核对，不要直接重复删除。",
+  workspace_agents_receipt_invalid: "agents.md 预览回执无效。请重试读取；没有修改个性化指令或记忆。",
+  workspace_stats_receipt_invalid: "统计回执无效。文件仍可操作，请刷新重新核对统计。",
+  workspace_import_read_failed: "本地文件读取失败，未上传也未覆盖云端。请重新选择可读取的文本文件。",
+  workspace_import_read_timeout: "等待本地文件读取超过 15 秒，未上传任何内容。可以重新选择文件后再导入。",
+  workspace_import_too_large: "工作区单个文件目前最多 5MiB。聊天附件和聊天记录导入使用各自容量限制。",
+  workspace_clipboard_failed: "无法读取剪贴板，未上传任何内容。请检查浏览器权限，或使用新建文件后手动粘贴。",
+  workspace_clipboard_timeout: "等待剪贴板权限或读取超过 15 秒，未上传任何内容。可手动粘贴到新建文件，或检查浏览器权限后重试。",
+  workspace_download_failed: "当前浏览器未能发起下载。内容仍在编辑器中；可复制保留，或换浏览器后重新下载。",
+  workspace_cache_failed: "本账号离线缓存未完成读取或清理。云端文件不受影响，请刷新重试，或使用当前内容的下载按钮保留副本。",
+  workspace_operation_failed: "工作区没有确认本次操作的结果。先刷新目录或重新读取文件核对；仍失败时通过日志中的错误代码排查。",
+};
+
+function failureMessage(error, { write = false } = {}) {
+  const { code, reason, action } = describeOperationError(error);
+  const status = Number(error?.status);
+  return `${LOCAL_FAILURES[code] || `${reason}${action}`}${write ? "草稿仍保留；写入可能已经到达云端，先重新读取文件核对，避免重复提交。" : ""}（错误代码：${code}${Number.isInteger(status) && status >= 400 && status <= 599 ? `；HTTP：${status}` : ""}）`;
+}
+
+function requireReceipt(data, code, valid) {
+  if (data?.ok === false) throw workspaceError(data.code || "workspace_operation_failed");
+  if (data?.ok !== true || !valid(data)) throw workspaceError(code);
+  return data;
+}
+
+function cacheDate(value) {
+  const date = new Date(value);
+  return value && !Number.isNaN(date.getTime()) ? date.toLocaleString() : "时间未知";
+}
+
+function createWorkspaceLifecycle() {
+  const scope = settingsSaveScope(authSession.getSnapshot());
+  let controller = new AbortController();
+  let options = { signal: controller.signal, authSession: createScopedSettingsSession(authSession, scope, controller.signal) };
+  return {
+    get options() { return options; },
+    isCurrent: () => !controller.signal.aborted && settingsSaveScope(authSession.getSnapshot()) === scope,
+    reset() {
+      if (!controller.signal.aborted) return;
+      controller = new AbortController();
+      options = { signal: controller.signal, authSession: createScopedSettingsSession(authSession, scope, controller.signal) };
+    },
+    abort: () => controller.abort(),
+  };
 }
 
 function downloadTextFile(name, text) {
   const blob = new Blob([String(text ?? "")], { type: "text/plain;charset=utf-8" });
   const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = name || "workspace-file.txt";
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+  let anchor;
+  try {
+    anchor = document.createElement("a");
+    anchor.href = url; anchor.download = name || "workspace-file.txt";
+    document.body.appendChild(anchor); anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+  } catch {
+    URL.revokeObjectURL(url); throw workspaceError("workspace_download_failed");
+  } finally { anchor?.remove?.(); }
 }
 
-export default function WorkspaceManager({ accountScope = "" }) {
+export default function WorkspaceManager({ accountScope = "", registerLeaveGuard }) {
+  return <WorkspaceView key={JSON.stringify([accountScope, settingsSaveScope(authSession.getSnapshot())])} accountScope={accountScope} registerLeaveGuard={registerLeaveGuard} />;
+}
+
+function WorkspaceView({ accountScope, registerLeaveGuard }) {
   const [path, setPath] = useState("");
   const [entries, setEntries] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [stats, setStats] = useState(null);
+  const [statsError, setStatsError] = useState("");
   const [openPath, setOpenPath] = useState("");
   const [content, setContent] = useState("");
   const [cachedAt, setCachedAt] = useState("");
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState("");
-  const [cacheInfo, setCacheInfo] = useState({ files: 0, totalBytes: 0 });
+  const [cacheInfo, setCacheInfo] = useState({ files: null, totalBytes: null, error: "" });
   const [agentsMd, setAgentsMd] = useState(null);
   const [message, setMessage] = useState("");
   const [copied, setCopied] = useState(false);
   const [offline, setOffline] = useState(false);
   const [readOnly, setReadOnly] = useState(false);
+  const [previewTruncated, setPreviewTruncated] = useState(false);
+  const [cacheWarning, setCacheWarning] = useState("");
+  const [cloudSnapshot, setCloudSnapshot] = useState(null);
   const fileRequestRef = useRef(0);
   const treeRequestRef = useRef(0);
   const fileInputRef = useRef(null);
   const editorRef = useRef(null);
+  const mutationRef = useRef(false);
+  const openingRef = useRef(false);
+  const draftRef = useRef({ path: "", content: "", dirty: false, revision: 0 });
+  const timersRef = useRef(new Set());
+  const statsRequestRef = useRef(0);
+  const cacheRequestRef = useRef(0);
+  const [lifecycle] = useState(createWorkspaceLifecycle);
+
+  const later = useCallback((callback, delay) => {
+    const timer = window.setTimeout(() => { timersRef.current.delete(timer); if (lifecycle.isCurrent()) callback(); }, delay);
+    timersRef.current.add(timer);
+  }, [lifecycle]);
 
   const toast = useCallback((text, duration = 3500) => {
+    if (!lifecycle.isCurrent()) return;
     setMessage(text);
-    window.setTimeout(() => setMessage((current) => (current === text ? "" : current)), duration);
-  }, []);
+    later(() => setMessage((current) => (current === text ? "" : current)), duration);
+  }, [later, lifecycle]);
 
   const breadcrumbs = useMemo(() => {
     const parts = path ? path.split("/").filter(Boolean) : [];
@@ -89,292 +169,354 @@ export default function WorkspaceManager({ accountScope = "" }) {
   }, [path]);
 
   const refreshStats = useCallback(() => {
-    workspaceStats().then(setStats).catch(() => setStats(null));
-  }, []);
+    if (!lifecycle.isCurrent()) return;
+    const request = ++statsRequestRef.current;
+    workspaceStats(lifecycle.options).then(data => {
+      if (!lifecycle.isCurrent() || request !== statsRequestRef.current) return;
+      requireReceipt(data, "workspace_stats_receipt_invalid", value => Number.isInteger(value.files) && value.files >= 0 && Number.isFinite(value.bytes) && value.bytes >= 0 && typeof value.partial === "boolean");
+      setStats(data); setStatsError("");
+    }).catch(caught => {
+      if (lifecycle.isCurrent() && request === statsRequestRef.current) setStatsError(failureMessage(caught));
+    });
+  }, [lifecycle]);
 
   const refreshCacheInfo = useCallback(() => {
+    if (!lifecycle.isCurrent()) return;
+    const request = ++cacheRequestRef.current;
     workspaceCacheList(accountScope)
       .then((items) => {
+        if (!lifecycle.isCurrent() || request !== cacheRequestRef.current) return;
         const files = Array.isArray(items) ? items.length : 0;
         const totalBytes = Array.isArray(items)
           ? items.reduce((sum, item) => sum + new Blob([item.content || ""]).size, 0)
           : 0;
-        setCacheInfo({ files, totalBytes });
+        setCacheInfo({ files, totalBytes, error: "" });
       })
-      .catch(() => setCacheInfo({ files: 0, totalBytes: 0 }));
-  }, [accountScope]);
+      .catch(() => {
+        if (lifecycle.isCurrent() && request === cacheRequestRef.current) setCacheInfo(previous => ({ ...previous, error: failureMessage(workspaceError("workspace_cache_failed")) }));
+      });
+  }, [accountScope, lifecycle]);
 
-  const loadTree = useCallback(async (targetPath) => {
+  const loadTree = useCallback(async (targetPath, { clearError = true } = {}) => {
+    if (!lifecycle.isCurrent()) return;
     const request = ++treeRequestRef.current;
     setLoading(true);
-    setError("");
+    if (clearError) setError("");
     try {
-      const data = await workspaceTree(targetPath);
-      if (request !== treeRequestRef.current) return;
-      if (!data?.ok) throw new Error(data?.error || "读取失败。");
-      setEntries(data.entries || []);
-      setPath(data.path === "/" ? "" : data.path || targetPath || "");
-      setOffline(false);
-    } catch {
-      if (request !== treeRequestRef.current) return;
-      const cached = await workspaceCacheList(accountScope).catch(() => []);
-      if (request !== treeRequestRef.current) return;
+      const data = await workspaceTree(targetPath, lifecycle.options);
+      if (!lifecycle.isCurrent() || request !== treeRequestRef.current) return;
+      requireReceipt(data, "workspace_tree_receipt_invalid", value => value.path === (targetPath || "/") && Array.isArray(value.entries) && value.entries.every(entry => typeof entry?.name === "string" && fileLabel(entry) && !fileLabel(entry).includes("/") && !entry.name.includes("\\") && fileLabel(entry) !== "." && fileLabel(entry) !== ".." && ["file", "dir"].includes(entry.type) && Number.isFinite(entry.size) && entry.size >= 0));
+      setEntries(data.entries);
       setPath(targetPath);
-      setEntries(cachedWorkspaceEntries(cached, targetPath));
-      setOffline(true);
-      setError("云端暂时无法读取；当前显示本账号的离线副本。恢复连接后点“刷新”重试。");
+      setOffline(false);
+    } catch (caught) {
+      if (!lifecycle.isCurrent() || request !== treeRequestRef.current) return;
+      try {
+        const cached = await workspaceCacheList(accountScope);
+        if (!lifecycle.isCurrent() || request !== treeRequestRef.current) return;
+        setPath(targetPath); setEntries(cachedWorkspaceEntries(cached, targetPath)); setOffline(true);
+        setError(`云端暂时无法读取；当前显示本账号的离线副本。恢复连接后点“刷新”重试。${failureMessage(caught)}`);
+      } catch {
+        if (!lifecycle.isCurrent() || request !== treeRequestRef.current) return;
+        setOffline(true);
+        setError(`云端和离线缓存本次均未读到；不能据此认定目录为空。${failureMessage(caught)}${failureMessage(workspaceError("workspace_cache_failed"))}`);
+      }
     } finally {
-      if (request === treeRequestRef.current) setLoading(false);
+      if (lifecycle.isCurrent() && request === treeRequestRef.current) setLoading(false);
     }
-  }, [accountScope]);
+  }, [accountScope, lifecycle]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadTree("");
-    refreshStats();
-    refreshCacheInfo();
-    return () => { fileRequestRef.current += 1; treeRequestRef.current += 1; };
+    const activeTimers = timersRef.current;
+    lifecycle.reset();
+    const initial = window.setTimeout(() => { void loadTree(""); refreshStats(); refreshCacheInfo(); }, 0);
+    return () => {
+      lifecycle.abort(); fileRequestRef.current += 1; treeRequestRef.current += 1; statsRequestRef.current += 1; cacheRequestRef.current += 1;
+      window.clearTimeout(initial); activeTimers.forEach(timer => window.clearTimeout(timer)); activeTimers.clear();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = event => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener?.("beforeunload", warn);
+    return () => window.removeEventListener?.("beforeunload", warn);
+  }, [dirty]);
+
+  function discardAllowed() {
+    if (!lifecycle.isCurrent() || mutationRef.current) return false;
+    return !draftRef.current.dirty || window.confirm("当前文件有未保存修改。离开会丢弃草稿；可以取消后先保存或下载。确认离开？");
+  }
+
+  useEffect(() => {
+    const unregister = registerLeaveGuard?.(discardAllowed);
+    return () => unregister?.();
+    // draftRef holds the latest exact edit; the guard must not change on every keystroke.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [registerLeaveGuard]);
+
+  function updateDraft(target, text, changed = false) {
+    if (draftRef.current.path !== target) setCloudSnapshot(null);
+    draftRef.current = { path: target, content: text, dirty: changed, revision: draftRef.current.revision + 1 };
+    setOpenPath(target); setContent(text); setDirty(changed);
+  }
+
   const navigate = useCallback((target) => {
+    if (!discardAllowed()) return;
     fileRequestRef.current += 1;
-    setOpenPath("");
-    setDirty(false);
+    updateDraft("", ""); openingRef.current = false; setBusy(""); setCopied(false);
     void loadTree(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadTree]);
 
+  function cacheFile(target, text) {
+    if (!lifecycle.isCurrent()) return;
+    void workspaceCacheWrite(accountScope, target, text).then(() => {
+      if (!lifecycle.isCurrent()) return;
+      setCacheWarning(""); refreshCacheInfo();
+    }).catch(() => {
+      if (lifecycle.isCurrent()) setCacheWarning("云端已确认，离线副本未保存。可下载当前内容保留本地文件。（错误代码：workspace_cache_failed）");
+    });
+  }
+
   async function openFile(entry) {
+    if (!discardAllowed()) return;
     const name = fileLabel(entry);
     if (!name) return;
-    const full = path ? `${path}/${name}` : name;
+    const full = entry.path || (path ? `${path}/${name}` : name);
     const request = ++fileRequestRef.current;
+    openingRef.current = true;
     setReadOnly(true);
-    setOpenPath(full);
-    setContent("");
+    updateDraft(full, "");
     setCachedAt("");
-    setDirty(false);
+    setPreviewTruncated(false);
     setCopied(false);
     setBusy(`open:${full}`);
     setError("");
     try {
       const cached = await workspaceCacheRead(accountScope, full).catch(() => null);
-      if (request !== fileRequestRef.current) return;
+      if (!lifecycle.isCurrent() || request !== fileRequestRef.current) return;
       if (cached?.content != null) {
-        setContent(String(cached.content));
-        setCachedAt(cached.savedAt ? `（本地缓存 ${new Date(cached.savedAt).toLocaleString()}）` : "（本地缓存）");
+        updateDraft(full, String(cached.content));
+        setCachedAt(`（本地缓存 ${cacheDate(cached.savedAt)}）`);
       }
       let data;
-      try { data = await workspaceReadFile(full); }
+      try {
+        data = await workspaceReadFile(full, lifecycle.options);
+        if (!lifecycle.isCurrent() || request !== fileRequestRef.current) return;
+        requireReceipt(data, "workspace_file_receipt_invalid", value => value.path === full && typeof value.content === "string" && value.chars === value.content.length && typeof value.truncated === "boolean");
+      }
       catch (caught) {
         if (cached?.content == null) throw caught;
-        if (request !== fileRequestRef.current) return null;
-        setError("已打开本账号的离线副本；云端暂不可用，恢复连接后可重新打开。");
+        if (!lifecycle.isCurrent() || request !== fileRequestRef.current) return null;
+        setError(`已打开本账号的离线副本；云端暂不可用，恢复连接后可重新读取文件。${failureMessage(caught)}`);
         return { path: full, content: String(cached.content), truncated: false };
       }
-      if (request !== fileRequestRef.current) return;
-      if (data?.ok) {
-        setContent(data.content || "");
+      if (!lifecycle.isCurrent() || request !== fileRequestRef.current) return;
+      if (data.ok) {
+        updateDraft(full, data.content);
         setCachedAt("");
+        setPreviewTruncated(data.truncated);
         if (data.truncated) {
           setReadOnly(true);
           setError("文件较长，当前只显示前 200,000 字符；编辑已停用，避免覆盖完整文件。");
-          void workspaceCacheDelete(accountScope, full).then(refreshCacheInfo).catch(() => undefined);
+          void workspaceCacheDelete(accountScope, full).then(refreshCacheInfo).catch(() => { if (lifecycle.isCurrent()) setCacheWarning("截断预览没有写入缓存，但旧离线副本清理失败。请清理缓存后核对。（错误代码：workspace_cache_failed）"); });
         } else {
           setReadOnly(false);
-          void workspaceCacheWrite(accountScope, full, String(data.content || "")).then(refreshCacheInfo).catch(() => undefined);
+          cacheFile(full, data.content);
         }
         return { path: full, content: String(data.content || ""), truncated: data.truncated === true };
-      } else {
-        if (cached?.content == null) throw new Error(data?.error || "文件读取失败。");
-        setError("已打开本账号的离线副本；云端暂不可用，恢复连接后可重新打开。");
-        return { path: full, content: String(cached.content), truncated: false };
       }
     } catch (caught) {
-      if (request === fileRequestRef.current) setError(caught?.message || "文件读取失败。");
+      if (lifecycle.isCurrent() && request === fileRequestRef.current) setError(failureMessage(caught));
     } finally {
-      if (request === fileRequestRef.current) setBusy("");
+      if (lifecycle.isCurrent() && request === fileRequestRef.current) { openingRef.current = false; setBusy(""); }
     }
   }
 
   function beginNewFile() {
+    if (!discardAllowed()) return;
     const raw = window.prompt("新建文件（输入文件名，可含子目录如 docs/note.md）：");
     if (raw == null) return;
-    const name = safeFileName(raw);
-    if (!name) return;
-    const full = path ? `${path}/${name}` : name;
+    let full;
+    try { full = checkedFilePath(raw, path); } catch (caught) { setError(failureMessage(caught)); return; }
     fileRequestRef.current += 1;
+    openingRef.current = false;
     setReadOnly(false);
-    setOpenPath(full);
-    setContent("");
+    updateDraft(full, "");
     setCachedAt("（新文件）");
-    setDirty(false);
+    setPreviewTruncated(false); setBusy(""); setError("");
     setCopied(false);
-    window.setTimeout(() => editorRef.current?.focus?.(), 100);
+    later(() => editorRef.current?.focus?.(), 100);
     toast("已打开新文件，输入内容后点「保存」。");
   }
 
-  async function saveFile() {
-    if (!openPath || readOnly || busy) return;
-    setBusy("save");
-    setError("");
-    try {
-      const data = await workspaceWriteFile({ path: openPath, content });
-      if (data?.ok) {
-        setDirty(false);
-        toast(`已保存 ${openPath}（${formatBytes(data.chars)}）`);
-        void workspaceCacheWrite(accountScope, openPath, content).then(refreshCacheInfo).catch(() => undefined);
-        refreshStats();
-        void loadTree(path);
-      } else {
-        setDirty(true);
-        if (data?.code === "confirmation_required") {
-          // 覆盖确认：工作区页面由用户本人操作，视为已确认
-          const confirmed = await workspaceWriteFile({ path: openPath, content, confirm: true });
-          if (confirmed?.ok) {
-            setDirty(false);
-            toast(`已覆盖保存 ${openPath}。`);
-            void workspaceCacheWrite(accountScope, openPath, content).then(refreshCacheInfo).catch(() => undefined);
-            refreshStats();
-            void loadTree(path);
-          } else {
-            setError(confirmed?.error || "保存失败。");
-          }
-        } else {
-          setError(data?.error || "保存失败。");
-        }
+  function beginMutation(label) {
+    if (!lifecycle.isCurrent() || mutationRef.current || openingRef.current) return false;
+    mutationRef.current = true; setBusy(label); setError(""); setMessage("");
+    return true;
+  }
+
+  function endMutation() {
+    mutationRef.current = false;
+    if (lifecycle.isCurrent()) setBusy("");
+  }
+
+  async function readLocal(value, timeoutCode) {
+    const signal = lifecycle.options.signal;
+    let rejectAbort;
+    const canceled = new Promise((_, reject) => { rejectAbort = () => reject(signal.reason || new DOMException("已取消", "AbortError")); });
+    signal.addEventListener("abort", rejectAbort, { once: true });
+    let timeout;
+    const expired = new Promise((_, reject) => {
+      timeout = window.setTimeout(() => reject(workspaceError(timeoutCode)), 15_000);
+    });
+    try { if (signal.aborted) rejectAbort(); return await Promise.race([value, canceled, expired]); }
+    finally { window.clearTimeout(timeout); signal.removeEventListener("abort", rejectAbort); }
+  }
+
+  async function confirmedWrite(target, text) {
+    if (new Blob([text]).size > 5 * 1024 * 1024) throw workspaceError("workspace_import_too_large");
+    let data = await workspaceWriteFile({ path: target, content: text }, lifecycle.options);
+    if (!lifecycle.isCurrent()) return false;
+    if (data?.ok === false && data.code === "confirmation_required") {
+      if (!window.confirm(`云端已经存在「${target}」。确认用本次内容覆盖？取消会保留原云端文件和当前草稿。`)) {
+        toast("已取消覆盖，云端文件和当前草稿仍保留。"); return false;
       }
-    } catch (caught) {
-      setError(caught?.message || "保存失败。");
-    } finally {
-      setBusy("");
+      data = await workspaceWriteFile({ path: target, content: text, confirm: true }, lifecycle.options);
+      if (!lifecycle.isCurrent()) return false;
     }
+    requireReceipt(data, "workspace_write_receipt_invalid", value => value.path === target && value.mode === "overwrite" && value.chars === new Blob([text]).size);
+    cacheFile(target, text); refreshStats(); void loadTree(path, { clearError: false });
+    return true;
+  }
+
+  async function saveFile() {
+    if (!openPath || readOnly || !draftRef.current.dirty || !beginMutation("save")) return;
+    const submitted = { ...draftRef.current };
+    try {
+      if (!await confirmedWrite(submitted.path, submitted.content) || !lifecycle.isCurrent()) return;
+      if (draftRef.current.revision === submitted.revision) { draftRef.current.dirty = false; setDirty(false); }
+      toast(`已保存 ${submitted.path}（${formatBytes(new Blob([submitted.content]).size)}）${draftRef.current.dirty ? "；新输入的内容仍待保存。" : ""}`);
+    } catch (caught) {
+      if (lifecycle.isCurrent()) setError(failureMessage(caught, { write: true }));
+    } finally { endMutation(); }
+  }
+
+  async function rereadCurrentFile() {
+    const submitted = { ...draftRef.current };
+    if (!submitted.dirty) return openFile({ name: submitted.path.split("/").pop(), path: submitted.path });
+    if (!submitted.path || !beginMutation("verify")) return;
+    const request = ++fileRequestRef.current;
+    try {
+      const data = await workspaceReadFile(submitted.path, lifecycle.options);
+      if (!lifecycle.isCurrent() || request !== fileRequestRef.current) return;
+      requireReceipt(data, "workspace_file_receipt_invalid", value => value.path === submitted.path && typeof value.content === "string" && value.chars === value.content.length && typeof value.truncated === "boolean");
+      setCloudSnapshot({ path: data.path, content: data.content, truncated: data.truncated });
+      if (!data.truncated && draftRef.current.revision === submitted.revision && draftRef.current.content === data.content) {
+        draftRef.current.dirty = false; setDirty(false);
+        cacheFile(data.path, data.content);
+        toast("云端完整正文与当前草稿一致，保存结果已核对。没有重复提交。");
+      } else toast("已读取云端快照，当前草稿保持原样。可以展开快照核对；暂勿重复保存。", 6000);
+    } catch (caught) {
+      if (lifecycle.isCurrent() && request === fileRequestRef.current) setError(failureMessage(caught));
+    } finally { endMutation(); }
   }
 
   async function removeFile(name) {
+    if (!beginMutation(`delete:${name}`)) return;
     const target = path ? `${path}/${name}` : name;
-    if (!window.confirm(`确认删除工作区文件「${target}」？删除后不可恢复。`)) return;
-    setBusy(`delete:${target}`);
-    setError("");
     try {
-      const data = await workspaceDeleteFile({ path: target, confirm: true });
-      if (data?.ok) {
-        toast(`已删除 ${target}`);
-        if (openPath === target) {
-          setOpenPath("");
-          setContent("");
-          setDirty(false);
-        }
-        await workspaceCacheDelete(accountScope, target).catch(() => undefined);
-        refreshCacheInfo();
-        await loadTree(path);
-      } else {
-        setError(data?.error || "删除失败。");
-      }
+      if (!window.confirm(`确认删除工作区文件「${target}」？删除后不可恢复。${draftRef.current.path === target && draftRef.current.dirty ? "当前文件还有未保存草稿，也会关闭；可取消后先下载。" : ""}`)) return;
+      const data = await workspaceDeleteFile({ path: target, confirm: true }, lifecycle.options);
+      if (!lifecycle.isCurrent()) return;
+      requireReceipt(data, "workspace_delete_receipt_invalid", value => value.path === target);
+      toast(`已删除 ${target}`);
+      if (draftRef.current.path === target) { fileRequestRef.current += 1; updateDraft("", ""); }
+      try { await workspaceCacheDelete(accountScope, target); }
+      catch { if (lifecycle.isCurrent()) setCacheWarning("云端已确认删除，但本地离线副本清理失败。请使用“清理缓存”重试。（错误代码：workspace_cache_failed）"); }
+      if (!lifecycle.isCurrent()) return;
+      refreshCacheInfo(); await loadTree(path, { clearError: false });
     } catch (caught) {
-      setError(caught?.message || "删除失败。");
-    } finally {
-      setBusy("");
-    }
+      if (lifecycle.isCurrent()) setError(failureMessage(caught));
+    } finally { endMutation(); }
   }
 
   async function clearLocalCache() {
-    if (!window.confirm("确认清理当前账号的工作区离线副本？云端文件和其他账号的缓存不会被删除。")) return;
-    setBusy("clear-cache");
+    if (!beginMutation("clear-cache")) return;
     try {
+      if (!window.confirm("确认清理当前账号的工作区离线副本？云端文件和其他账号的缓存不会被删除。")) return;
       await workspaceCacheClear(accountScope);
-      refreshCacheInfo();
+      if (!lifecycle.isCurrent()) return;
+      setCacheWarning(""); refreshCacheInfo();
+      if (offline) await loadTree(path, { clearError: false });
       toast("本地缓存已清理。");
-    } catch (caught) {
-      setError(caught?.message || "缓存清理失败。");
-    } finally {
-      setBusy("");
-    }
+    } catch {
+      if (lifecycle.isCurrent()) setError(failureMessage(workspaceError("workspace_cache_failed")));
+    } finally { endMutation(); }
   }
 
   async function loadAgentsMd() {
+    if (!lifecycle.isCurrent() || mutationRef.current) return;
     if (agentsMd) { setAgentsMd(null); return; }
-    setBusy("agents-md");
+    if (!beginMutation("agents-md")) return;
     try {
-      const data = await workspaceAgentsMd();
-      if (data?.ok) {
-        setAgentsMd({ chars: data.chars, content: data.content });
-      } else {
-        setError(data?.error || "agents.md 读取失败。");
-      }
+      const data = await workspaceAgentsMd(lifecycle.options);
+      if (!lifecycle.isCurrent()) return;
+      requireReceipt(data, "workspace_agents_receipt_invalid", value => value.file === "agents.md" && typeof value.content === "string" && value.chars === value.content.length);
+      setAgentsMd({ chars: data.chars, content: data.content });
     } catch (caught) {
-      setError(caught?.message || "agents.md 读取失败。");
-    } finally {
-      setBusy("");
-    }
+      if (lifecycle.isCurrent()) setError(failureMessage(caught));
+    } finally { endMutation(); }
   }
 
   // —— 导入：从本地文件上传到当前目录 ——
   async function importFromFile(file) {
-    if (!file?.name) return;
-    if (file.size > 5 * 1024 * 1024) {
-      setError("工作区单个文件目前最多 5MB；聊天附件和聊天记录导入使用各自的容量限制。");
-      if (fileInputRef.current) fileInputRef.current.value = "";
-      return;
-    }
-    const text = await file.text().catch(() => "");
-    if (text === "" && file.size > 0) {
-      setError("文件读取失败或为空。");
-      return;
-    }
-    const name = safeFileName(file.name);
-    const full = path ? `${path}/${name}` : name;
-    setBusy(`import:${full}`);
+    if (!file?.name || !beginMutation("import")) return;
     try {
-      const data = await workspaceWriteFile({ path: full, content: text });
-      if (data?.ok) {
-        toast(`已导入 ${full}（${formatBytes(data.chars)}）`);
-        refreshCacheInfo();
-        refreshStats();
-        await loadTree(path);
-      } else if (data?.code === "confirmation_required") {
-        const confirmed = await workspaceWriteFile({ path: full, content: text, confirm: true });
-        if (confirmed?.ok) {
-          toast(`已覆盖导入 ${full}。`);
-          refreshCacheInfo();
-          refreshStats();
-          await loadTree(path);
-        } else {
-          setError(confirmed?.error || "导入失败。");
-        }
-      } else {
-        setError(data?.error || "导入失败。");
-      }
+      if (file.size > 5 * 1024 * 1024) throw workspaceError("workspace_import_too_large");
+      const full = checkedFilePath(file.name, path);
+      let text;
+      try { text = await readLocal(file.text(), "workspace_import_read_timeout"); } catch (caught) { throw caught?.code === "workspace_import_read_timeout" || caught?.name === "AbortError" ? caught : workspaceError("workspace_import_read_failed"); }
+      if (!lifecycle.isCurrent()) return;
+      if (typeof text !== "string" || (text === "" && file.size > 0)) throw workspaceError("workspace_import_read_failed");
+      if (new Blob([text]).size > 5 * 1024 * 1024) throw workspaceError("workspace_import_too_large");
+      if (await confirmedWrite(full, text)) toast(`已导入 ${full}（${formatBytes(new Blob([text]).size)}）`);
     } catch (caught) {
-      setError(caught?.message || "导入失败。");
+      if (lifecycle.isCurrent()) setError(failureMessage(caught));
     } finally {
-      setBusy("");
+      endMutation();
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
 
   // —— 导出：把已打开文件下载到本地 ——
   function exportOpenFile(file = null) {
-    const current = file?.path ? file : { path: openPath, content };
+    if (!lifecycle.isCurrent()) return;
+    const current = file?.path ? file : { path: openPath, content, truncated: previewTruncated };
     if (!current.path) return;
     const name = current.path.split("/").pop() || "workspace-file.txt";
-    downloadTextFile(name, current.content);
-    toast(`已导出 ${name}${current.truncated ? "（仅当前预览）" : ""}`);
+    try { downloadTextFile(name, current.content); toast(`已发起下载 ${name}${current.truncated ? "（仅当前预览）" : ""}`); }
+    catch { setError(failureMessage(workspaceError("workspace_download_failed"))); }
   }
 
   // —— 复制：把编辑器内容复制到剪贴板 ——
   async function copyContent() {
-    if (!openPath) return;
+    if (!openPath || !lifecycle.isCurrent()) return;
+    const request = fileRequestRef.current;
     try {
       await navigator.clipboard.writeText(content);
+      if (!lifecycle.isCurrent() || request !== fileRequestRef.current) return;
       setCopied(true);
-      window.setTimeout(() => setCopied(false), 1800);
+      later(() => setCopied(false), 1800);
     } catch {
+      if (!lifecycle.isCurrent() || request !== fileRequestRef.current) return;
       try {
         editorRef.current?.select?.();
-        document.execCommand("copy");
+        if (!document.execCommand("copy")) throw workspaceError("workspace_clipboard_failed");
         setCopied(true);
-        window.setTimeout(() => setCopied(false), 1800);
+        later(() => setCopied(false), 1800);
       } catch {
         setError("复制失败，请手动选择后复制。");
       }
@@ -383,72 +525,47 @@ export default function WorkspaceManager({ accountScope = "" }) {
 
   // —— 粘贴：从剪贴板建一个新文件 ——
   async function pasteFromClipboard() {
-    let text;
+    if (!beginMutation("paste")) return;
     try {
-      text = await navigator.clipboard.readText();
-    } catch {
-      setError("无法读取剪贴板。请先在系统里复制文本，再点此按钮。");
-      return;
-    }
-    if (!text) {
-      setError("剪贴板是空的。");
-      return;
-    }
-    const raw = window.prompt("粘贴为文件（输入文件名）：", "clipboard.txt");
-    if (raw == null) return;
-    const name = safeFileName(raw);
-    if (!name) return;
-    const full = path ? `${path}/${name}` : name;
-    setBusy(`paste:${full}`);
-    try {
-      const data = await workspaceWriteFile({ path: full, content: text });
-      if (data?.ok) {
-        toast(`已粘贴保存 ${full}（${formatBytes(data.chars)}）`);
-        refreshCacheInfo();
-        refreshStats();
-        await loadTree(path);
-      } else if (data?.code === "confirmation_required") {
-        const confirmed = await workspaceWriteFile({ path: full, content: text, confirm: true });
-        if (confirmed?.ok) {
-          toast(`已覆盖粘贴保存 ${full}。`);
-          refreshCacheInfo();
-          refreshStats();
-          await loadTree(path);
-        } else {
-          setError(confirmed?.error || "粘贴保存失败。");
-        }
-      } else {
-        setError(data?.error || "粘贴保存失败。");
-      }
+      let text;
+      try { text = await readLocal(navigator.clipboard.readText(), "workspace_clipboard_timeout"); } catch (caught) { throw caught?.code === "workspace_clipboard_timeout" || caught?.name === "AbortError" ? caught : workspaceError("workspace_clipboard_failed"); }
+      if (!lifecycle.isCurrent()) return;
+      if (!text) { setError("剪贴板是空的，没有上传任何内容。"); return; }
+      if (new Blob([text]).size > 5 * 1024 * 1024) throw workspaceError("workspace_import_too_large");
+      const raw = window.prompt("粘贴为文件（输入文件名，可含子目录）：", "clipboard.txt");
+      if (raw == null) return;
+      const full = checkedFilePath(raw, path);
+      if (await confirmedWrite(full, text)) toast(`已粘贴保存 ${full}（${formatBytes(new Blob([text]).size)}）`);
     } catch (caught) {
-      setError(caught?.message || "粘贴保存失败。");
-    } finally {
-      setBusy("");
-    }
+      if (lifecycle.isCurrent()) setError(failureMessage(caught));
+    } finally { endMutation(); }
   }
 
   return (
     <div className="fun-view workspace-view">
       <header className="fun-view-header">
         <h2>📁 工作区</h2>
-        <p>你和 AI 共用的文件空间 —— AI 写的代码、笔记都保存在这里，云端自动同步。</p>
+        <p>你和 AI 共用的文本文件空间。修改后点“保存”才写入云端；查看过的完整文件会留一份本账号离线副本。</p>
       </header>
 
       <div className="notification-feature-panel device-activity-panel">
         <div className="device-activity-heading">
           <div>
             <strong>存放位置</strong>
-            <span>{stats?.location || "云端用户工作区（Supabase Storage）"}</span>
+            <span>云端用户工作区（Supabase Storage）</span>
           </div>
           <div className="device-activity-actions">
-            <button type="button" onClick={() => { void loadTree(path); refreshStats(); }} disabled={loading}>刷新</button>
+            <button type="button" onClick={() => { void loadTree(path); refreshStats(); refreshCacheInfo(); }} disabled={loading || Boolean(busy)}>刷新</button>
             <button type="button" onClick={() => void clearLocalCache()} disabled={Boolean(busy)}>清理缓存</button>
           </div>
         </div>
         <p className="workspace-stats-line">
-          云端 {stats?.files ?? "…"} 个文件 · {formatBytes(stats?.bytes)}{stats?.partial ? "（部分统计）" : ""}；本账号离线副本 {cacheInfo.files} 个 · {formatBytes(cacheInfo.totalBytes)}
+          云端 {stats ? `${stats.files} 个文件 · ${formatBytes(stats.bytes)}${stats.partial ? "（部分统计）" : ""}` : statsError ? "统计未读到" : "统计读取中…"}；本账号离线副本 {cacheInfo.files == null ? cacheInfo.error ? "未读到" : "读取中…" : `${cacheInfo.files} 个 · ${formatBytes(cacheInfo.totalBytes)}`}
         </p>
+        {(statsError || cacheInfo.error) && <p className="workspace-storage-warning" role="status">{statsError || cacheInfo.error}</p>}
       </div>
+
+      <p className="workspace-capacity-note">文本文件最多 5MiB；超过 200,000 字符单位的云端正文显示只读预览。导入同名文件前会询问是否覆盖。</p>
 
       <div className="workspace-toolbar">
         <button type="button" onClick={beginNewFile} disabled={Boolean(busy)}>＋ 新建文件</button>
@@ -476,7 +593,7 @@ export default function WorkspaceManager({ accountScope = "" }) {
         type="button"
         className="workspace-agents-md-toggle"
         onClick={() => void loadAgentsMd()}
-        disabled={busy === "agents-md"}
+        disabled={Boolean(busy)}
       >
         {agentsMd ? "收起" : "预览"}每轮注入的 agents.md（个性化指令 + 记忆详情）
       </button>
@@ -488,7 +605,9 @@ export default function WorkspaceManager({ accountScope = "" }) {
       )}
 
       {error && <div className="media-settings-error" role="alert">{error}</div>}
+      {cacheWarning && <div className="workspace-storage-warning" role="status">{cacheWarning}</div>}
       {message && <div className="workspace-saved-note" role="status">{message}</div>}
+      {busy && <p className="workspace-capacity-note" role="status">{busy.startsWith("open:") ? "正在读取文件…" : busy === "save" ? "正在核对保存回执；可以继续编辑新内容。" : busy === "import" ? "正在读取并导入本地文本文件…" : busy === "paste" ? "正在读取剪贴板并核对保存回执…" : busy === "clear-cache" ? "正在清理本账号离线副本…" : busy === "agents-md" ? "正在读取 agents.md 预览…" : "正在核对文件操作回执…"}</p>}
 
       <nav className="workspace-breadcrumbs" aria-label="工作区路径">
         {breadcrumbs.map((crumb, index) => (
@@ -502,9 +621,8 @@ export default function WorkspaceManager({ accountScope = "" }) {
       </nav>
 
       <section className="workspace-files" aria-busy={loading}>
-        {loading ? (
-          <p className="notification-feature-feedback busy" role="status">加载中…</p>
-        ) : entries === null ? null : entries.length === 0 ? (
+        {loading && <p className="notification-feature-feedback busy" role="status">加载中…</p>}
+        {entries === null ? null : entries.length === 0 ? (
           <p className="media-empty-state">{offline ? "这个目录没有本账号的离线副本。连接恢复后点“刷新”。" : "这个目录还是空的。可以让 AI 写代码或记笔记到这里。"}</p>
         ) : (
           <ul className="workspace-file-list">
@@ -547,6 +665,7 @@ export default function WorkspaceManager({ accountScope = "" }) {
             })}
           </ul>
         )}
+        {!offline && entries?.length >= 200 && <p className="workspace-capacity-note">当前接口最多返回目录中的前 200 项；列表达到上限，不能据此确认已显示全部文件。</p>}
       </section>
 
       {openPath && (
@@ -554,24 +673,25 @@ export default function WorkspaceManager({ accountScope = "" }) {
           <div className="workspace-editor-heading">
             <div>
               <strong>{openPath}</strong>
-              <small>{cachedAt || "云端最新内容"}{dirty ? " · 有未保存修改" : ""}</small>
+              <small>{cachedAt || (readOnly && !previewTruncated ? "内容尚未完整读取；当前仅供查看" : "云端读取内容")}{dirty ? " · 有未保存修改" : ""}</small>
             </div>
             <div className="workspace-editor-actions">
               <button type="button" onClick={() => void copyContent()} disabled={Boolean(busy) || !openPath}>
                 {copied ? "已复制 ✓" : "复制"}
               </button>
               <button type="button" onClick={exportOpenFile} disabled={Boolean(busy) || !openPath}>下载当前内容</button>
+              <button type="button" onClick={() => void rereadCurrentFile()} disabled={Boolean(busy)}>重新读取文件</button>
               <button type="button" disabled={Boolean(busy) || readOnly || !dirty} onClick={() => void saveFile()}>
                 {busy === "save" ? "保存中…" : "保存"}
               </button>
-              <button type="button" disabled={Boolean(busy)} onClick={() => { setOpenPath(""); setDirty(false); setCopied(false); }}>关闭</button>
+              <button type="button" disabled={Boolean(busy)} onClick={() => { if (!discardAllowed()) return; fileRequestRef.current += 1; updateDraft("", ""); setCopied(false); }}>关闭</button>
             </div>
           </div>
           <textarea
             ref={editorRef}
             value={content}
-            readOnly={readOnly || Boolean(busy)}
-            onChange={(event) => { setContent(event.target.value); setDirty(true); }}
+            readOnly={readOnly}
+            onChange={(event) => updateDraft(openPath, event.target.value, true)}
             spellCheck={false}
             placeholder="在这里输入或粘贴文件内容…"
             aria-label={`编辑 ${openPath}`}
@@ -580,6 +700,11 @@ export default function WorkspaceManager({ accountScope = "" }) {
             <span>{content.length.toLocaleString()} 字符</span>
             {dirty && <span className="workspace-editor-dirty">● 未保存</span>}
           </div>
+          {cloudSnapshot?.path === openPath && <details className="workspace-cloud-snapshot">
+            <summary>核对云端快照{cloudSnapshot.truncated ? "（仅部分预览）" : ""}</summary>
+            <p>只读快照；编辑器中的内容保持原样。{cloudSnapshot.truncated ? "内容未完整读取，不能用来确认保存。" : "可比较内容，再决定下一步。"}</p>
+            <textarea value={cloudSnapshot.content} readOnly aria-label={`云端快照 ${openPath}`} />
+          </details>}
         </section>
       )}
     </div>

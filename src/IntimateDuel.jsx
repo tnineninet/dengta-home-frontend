@@ -1,6 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "./api";
-import TypewriterText from "./TypewriterText";
+import { authSession } from "./auth-session.js";
+import { createScopedSettingsSession, settingsSaveScope } from "./settings-save-scope.js";
+import { assertDuelNarration, awaitDuelResponse, duelFailureFeedback } from "./duel-request.js";
+import { recordOperationFailure } from "./operation-diagnostics.js";
 import {
   DUEL_SKILLS,
   beginDuelRound,
@@ -57,7 +60,12 @@ function FighterCard({ fighter, tone }) {
   );
 }
 
-export default function IntimateDuel({
+export default function IntimateDuel(props) {
+  const key = JSON.stringify([props.accountScope || "", props.companionScope || ""]);
+  return <DuelSession key={key} {...props} />;
+}
+
+function DuelSession({
   aiName,
   userName,
   conversationId,
@@ -74,52 +82,89 @@ export default function IntimateDuel({
   );
   const [duel, setDuel] = useState(() => readStoredDuel(names, storageKey));
   const [isNarrating, setIsNarrating] = useState(false);
-  const [notice, setNotice] = useState("");
-  const [typingEntryId, setTypingEntryId] = useState(null);
+  const [notice, setNotice] = useState(null);
+  const [retrySkill, setRetrySkill] = useState(null);
+  const [storageProblem, setStorageProblem] = useState(false);
   const logRef = useRef(null);
   const requestRef = useRef(null);
+  const lifecycleRef = useRef(null);
+  const scope = JSON.stringify([String(accountScope || "").trim(), companionScope || ""]);
 
-  useEffect(() => () => {
-    requestRef.current?.abort();
-    requestRef.current = null;
+  useLayoutEffect(() => {
+    const lifecycle = {};
+    lifecycleRef.current = lifecycle;
+    return () => {
+      const request = requestRef.current;
+      requestRef.current = null;
+      request?.controller.abort();
+      window.clearTimeout(request?.timeout);
+      if (lifecycleRef.current === lifecycle) lifecycleRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
+    if (!storageKey || isNarrating || settingsSaveScope(authSession.getSnapshot()) !== scope) return;
     try {
-      if (storageKey && !isNarrating) localStorage.setItem(storageKey, JSON.stringify(duel));
+      localStorage.setItem(storageKey, JSON.stringify(duel));
     } catch {
-      // A full local store must not interrupt an active round.
+      const lifecycle = lifecycleRef.current;
+      queueMicrotask(() => {
+        if (lifecycleRef.current === lifecycle && settingsSaveScope(authSession.getSnapshot()) === scope) setStorageProblem(true);
+      });
     }
-  }, [storageKey, duel, isNarrating]);
+  }, [storageKey, scope, duel, isNarrating]);
 
   useEffect(() => {
-    logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
+    logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "auto" });
   }, [duel.logs, isNarrating]);
 
   function restart() {
-    requestRef.current?.abort();
+    const request = requestRef.current;
     requestRef.current = null;
+    request?.controller.abort();
+    window.clearTimeout(request?.timeout);
     setDuel(createDuelState(names));
     setIsNarrating(false);
-    setNotice("");
-    setTypingEntryId(null);
+    setNotice(null);
+    setRetrySkill(null);
+  }
+
+  function cancelRound() {
+    const request = requestRef.current;
+    if (!request) return;
+    requestRef.current = null;
+    request.controller.abort();
+    window.clearTimeout(request.timeout);
+    setDuel(request.pending.current);
+    setIsNarrating(false);
+    setNotice({ message: "本回合已取消，体力与回合已恢复。已发出的模型请求可能仍在运行。" });
+    setRetrySkill(null);
   }
 
   async function handleSkill(skill) {
-    if (requestRef.current || isNarrating || duel.status !== "active") return;
+    if (requestRef.current || isNarrating || duel.status !== "active" || !storageKey ||
+      settingsSaveScope(authSession.getSnapshot()) !== scope) return;
+    if (!skillAvailability(duel.player, skill).available) return;
     const controller = new AbortController();
-    requestRef.current = controller;
-    const timeout = window.setTimeout(() => controller.abort(), 90_000);
+    const request = { controller, lifecycle: lifecycleRef.current, pending: null, timedOut: false };
+    requestRef.current = request;
+    request.timeout = window.setTimeout(() => { request.timedOut = true; controller.abort(); }, 90_000);
+    const isCurrent = () => requestRef.current === request && lifecycleRef.current === request.lifecycle &&
+      settingsSaveScope(authSession.getSnapshot()) === scope;
     let pending;
     try {
       pending = beginDuelRound(duel, skill.id);
+      request.pending = pending;
       setDuel(pending.previewState);
       setIsNarrating(true);
-      setNotice("");
+      setNotice(null);
+      setRetrySkill(null);
       const turn = pending.turn;
-      const data = await apiRequest("/api/v2/intimate-duel/narrate", {
+      const data = await awaitDuelResponse(apiRequest("/api/v2/intimate-duel/narrate", {
         method: "POST",
         signal: controller.signal,
+        authSession: createScopedSettingsSession(authSession, scope, controller.signal),
+        retry: false,
         body: JSON.stringify({
           conversation_id: conversationId || undefined,
           duel_id: pending.current.id,
@@ -141,45 +186,31 @@ export default function IntimateDuel({
           companion_combo: turn.companionCombo,
           winner: turn.winner,
         }),
-      });
-      if (requestRef.current !== controller) return;
-      if (data?.refused === true) {
-        // 上游/模型拒绝了成人内容：不显示空白回合，提示用户原因。
-        setNotice(
-          `${names.companionName}没有完成这一招（上游模型拒绝输出成人内容）。`,
-        );
-        setDuel(pending.current);
-        return;
-      }
+      }), controller.signal);
+      if (!isCurrent()) return;
+      assertDuelNarration(data, turn);
       const result = completeDuelRound(pending, {
         companionSkillId: data?.companion_skill || null,
         reaction: data?.reaction || "",
         narration: data?.narration || "",
       });
       setDuel(result.state);
-      setTypingEntryId(result.state.logs.at(-1)?.id || null);
     } catch (error) {
-      if (requestRef.current !== controller) return;
-      if (controller.signal.aborted) {
-        setDuel(pending?.current || duel);
-        setNotice("本回合等待模型超过 90 秒，状态已恢复，可以重新选择招式。（duel_request_timeout）");
-        return;
+      if (!isCurrent()) return;
+      setDuel(pending?.current || duel);
+      setRetrySkill(skill);
+      const feedback = duelFailureFeedback(request.timedOut ? { code: "duel_request_timeout" } : error);
+      if (["duel_response_invalid", "duel_narration_missing", "duel_request_timeout"].includes(feedback.code)) {
+        recordOperationFailure(scope, "/api/v2/intimate-duel/narrate", {
+          code: feedback.code, status: feedback.status, error_log_id: feedback.logId,
+        });
       }
-      if (pending) {
-        const fallback = completeDuelRound(pending);
-        setDuel(fallback.state);
-        setNotice(
-          error.message ||
-            `${names.companionName}这次没有连上模型，已按当前状态自行完成回应。`,
-        );
-      } else {
-        setNotice(error.message);
-      }
+      setNotice({ ...feedback, message: `本回合未完成，体力与回合已恢复。${feedback.message}` });
     } finally {
-      window.clearTimeout(timeout);
-      if (requestRef.current === controller) {
+      window.clearTimeout(request.timeout);
+      if (requestRef.current === request) {
         requestRef.current = null;
-        setIsNarrating(false);
+        if (lifecycleRef.current === request.lifecycle) setIsNarrating(false);
       }
     }
   }
@@ -196,43 +227,28 @@ export default function IntimateDuel({
         </button>
       </header>
 
+      <p className="duel-help">选择招式 → 查看伴侣回应 → 进入下一回合。等待时可以取消，不会扣除本回合体力。</p>
+      {storageProblem && <p role="status">本机存档不可用，当前仍可继续；离开后进度可能无法恢复。</p>}
+      {!storageKey && <p role="status">登录并选择伴侣后，再开始互动挑战。</p>}
+
       <div className="duel-fighters">
         <FighterCard fighter={duel.player} tone="player" />
         <FighterCard fighter={duel.companion} tone="companion" />
       </div>
 
       <section ref={logRef} className="duel-log" aria-live="polite">
-        {duel.logs.map((entry) => {
-          const typewriter = entry.id === typingEntryId;
-          return (
+        {duel.logs.map((entry) => (
             <article key={entry.id} className={entry.kind}>
               <small>{entry.title}</small>
               {entry.reaction && (
                 <div className="duel-visible-reaction">
                   <small>{duel.companion.name}此刻的反应</small>
-                  <span>
-                    {typewriter ? (
-                      <TypewriterText
-                        text={entry.reaction}
-                        stepMs={22}
-                        onDone={() => setTypingEntryId(null)}
-                      />
-                    ) : (
-                      entry.reaction
-                    )}
-                  </span>
+                  <span>{entry.reaction}</span>
                 </div>
               )}
-              <p>
-                {typewriter ? (
-                  <TypewriterText text={entry.text} stepMs={24} />
-                ) : (
-                  entry.text
-                )}
-              </p>
+              <p>{entry.text}</p>
             </article>
-          );
-        })}
+        ))}
         {isNarrating && (
           <div className="duel-narrating" role="status">
             <span aria-hidden="true" />
@@ -243,8 +259,20 @@ export default function IntimateDuel({
 
       {notice && (
         <div className="duel-notice" role="status">
-          <span>{notice}</span>
-          <button type="button" aria-label="关闭提示" onClick={() => setNotice("")}>×</button>
+          <span>
+            {notice.message}
+            {notice.code && <small>（错误代码：{notice.code}{notice.status ? `；HTTP ${notice.status}` : ""}）</small>}
+            {notice.logId && <small>日志编号：{notice.logId}。可在设置的错误日志中核对。</small>}
+          </span>
+          <button type="button" aria-label="关闭提示" onClick={() => { setNotice(null); setRetrySkill(null); }}>×</button>
+        </div>
+      )}
+
+      {(isNarrating || retrySkill) && (
+        <div className="duel-recovery-actions">
+          {isNarrating
+            ? <button type="button" className="duel-restart" onClick={cancelRound}>取消本回合</button>
+            : <button type="button" className="duel-restart" onClick={() => handleSkill(retrySkill)}>重试这一招</button>}
         </div>
       )}
 
@@ -253,7 +281,7 @@ export default function IntimateDuel({
         <div className="duel-skill-grid">
           {DUEL_SKILLS.map((skill) => {
             const availability = skillAvailability(duel.player, skill);
-            const disabled = !availability.available || isNarrating || duel.status !== "active";
+            const disabled = !availability.available || isNarrating || duel.status !== "active" || !storageKey;
             return (
               <button
                 type="button"
@@ -267,6 +295,10 @@ export default function IntimateDuel({
                   <em>
                     {availability.reason === "cooldown"
                       ? `${availability.cooldown} 回合`
+                      : availability.reason === "stamina"
+                        ? "体力不足"
+                      : availability.reason === "full"
+                        ? "已恢复"
                       : skill.kind === "recover"
                         ? "恢复"
                         : `-${skill.staminaCost} 体力`}

@@ -13,11 +13,16 @@ import {
   flushSettingsBeforeAccountExit,
   registerSettingsSaveGuard,
   releaseSettingsAccountExit,
+  settingsSaveScope,
 } from "../src/settings-save-scope.js";
 import { chooseChatModel, reconcileModelCatalog } from "../src/chat-models.js";
 
 const app = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
 const main = fs.readFileSync(new URL("../src/main.jsx", import.meta.url), "utf8");
+const authGate = fs.readFileSync(new URL("../src/AuthGate.jsx", import.meta.url), "utf8");
+const accountExitStart = authGate.indexOf("  async function signOut()", authGate.indexOf("export function AccountMenu"));
+const accountExitCode = authGate.slice(accountExitStart, authGate.indexOf("\n  return (", accountExitStart));
+assert.ok(accountExitStart >= 0 && accountExitCode.includes("flushSettingsBeforeAccountExit"));
 const saveFunctions = app.slice(
   app.indexOf("  function scheduleSettingsAutosave("),
   app.indexOf("  async function setDeviceActivityEnabled("),
@@ -58,6 +63,7 @@ function harness() {
     pendingAutosaveAfterFailure,
     createScopedSettingsSession,
     registerSettingsSaveGuard,
+    canLeaveWorkspace: () => true,
     chooseChatModel,
     reconcileModelCatalog,
     readStoredSessionChatModel: () => null,
@@ -163,6 +169,50 @@ function harness() {
     },
   };
 }
+
+function accountExit(h) {
+  const state = { signedOut: 0, feedback: "", busy: false };
+  const context = {
+    exiting: { current: false }, alive: { current: true }, snapshot: h.context.authSession.getSnapshot(),
+    sessionManager: { getSnapshot: h.context.authSession.getSnapshot, signOut: async () => { state.signedOut++; } },
+    settingsSaveScope, flushSettingsBeforeAccountExit, releaseSettingsAccountExit,
+    setBusy: value => { state.busy = value; }, setFeedback: value => { state.feedback = value; },
+  };
+  return { state, run: vm.runInNewContext(`${accountExitCode}\nsignOut;`, context) };
+}
+
+test("actual account-menu exit retains the workspace when its latest leave guard declines", async () => {
+  const h = harness(), calls = [];
+  h.context.canLeaveWorkspace = view => { calls.push(view); return false; };
+  const exit = accountExit(h);
+  try {
+    await exit.run(); assert.equal(exit.state.signedOut, 0);
+    assert.deepEqual(calls, ["account-exit"]); assert.match(exit.state.feedback, /工作区草稿.*仍保留/);
+    assert.equal(exit.state.busy, false); assert.equal(h.context.settingsExitBusyRef.current, false);
+    assert.equal(h.context.draftSettingsRef.current.unified_system_prompt, h.initialSettings.unified_system_prompt);
+  } finally { h.unmount(); }
+});
+
+test("account exit checks the workspace after settings flush so newer drafts remain protected", async () => {
+  const h = harness(), calls = []; h.subject.updateDraft("user_details", "  fictional changed settings\n");
+  h.context.canLeaveWorkspace = view => { calls.push(view); return false; };
+  const exit = accountExit(h);
+  try {
+    const pending = exit.run(); assert.equal(h.writes().length, 1); assert.equal(calls.length, 0);
+    h.writes()[0].resolveSettings(); await pending;
+    assert.deepEqual(calls, ["account-exit"]); assert.equal(exit.state.signedOut, 0);
+    assert.equal(h.context.settingsExitBusyRef.current, false); assert.match(exit.state.feedback, /退出已取消/);
+  } finally { h.unmount(); }
+});
+
+test("actual account-menu exit proceeds once when settings and workspace both confirm", async () => {
+  const h = harness(), calls = []; h.context.canLeaveWorkspace = view => { calls.push(view); return true; };
+  const exit = accountExit(h);
+  try {
+    await exit.run(); assert.equal(exit.state.signedOut, 1); assert.deepEqual(calls, ["account-exit"]);
+    assert.equal(exit.state.feedback, ""); assert.equal(h.context.settingsExitBusyRef.current, false);
+  } finally { h.unmount(); }
+});
 
 test("main remounts settings state when either account or companion changes", () => {
   const keyExpression = main.match(/<LoadedApp\s+key=\{([^\n]+?)\}/)?.[1];
