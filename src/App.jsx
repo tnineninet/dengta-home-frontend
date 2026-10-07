@@ -71,10 +71,11 @@ import ChatActivities from "./ChatActivities.jsx";
 import AchievementGuide from "./AchievementGuide.jsx";
 import CompanionInspiration from "./CompanionInspiration.jsx";
 import OperationErrorHelp from "./OperationErrorHelp.jsx";
+import { describeOperationError } from "./operation-error-help.js";
 import SettingsHome from "./SettingsHome.jsx";
 import PersonalizationEditor from "./PersonalizationEditor.jsx";
 import { authSession } from "./auth-session.js";
-import { createScopedSettingsSession, registerSettingsSaveGuard } from "./settings-save-scope.js";
+import { createScopedSettingsSession, registerSettingsSaveGuard, settingsSaveScope } from "./settings-save-scope.js";
 import { createCoWatchViewScope } from "./co-watch-view-scope.js";
 import LocalDiagnostics from "./LocalDiagnostics.jsx";
 import { diagnosticScopeKey } from "./operation-diagnostics.js";
@@ -942,6 +943,19 @@ async function prepareImageUpload(file) {
   };
 }
 
+function momentFailureMessage(error) {
+  const { code, reason, action } = describeOperationError(error);
+  const localFailures = {
+    moments_response_invalid: { reason: "动态列表回执不完整，已有列表已保留。", action: "请刷新动态重新读取。" },
+    moment_post_receipt_invalid: { reason: "动态发布回执不完整。", action: "请先刷新动态核对，避免重复发布。" },
+    moment_comment_receipt_invalid: { reason: "评论保存回执不完整。", action: "请先刷新动态核对，避免重复评论。" },
+    moment_like_receipt_invalid: { reason: "点赞回执不完整。", action: "请刷新动态核对结果。" },
+    moment_image_prepare_failed: { reason: "图片准备没有完成。", action: "请重新选择 JPG、PNG、WebP 或 GIF；GIF 须小于 5MB，其他原图须小于 15MB。" },
+  };
+  const feedback = Object.hasOwn(localFailures, code) ? localFailures[code] : { reason, action };
+  return `${feedback.reason}${feedback.action}（错误代码：${code}）`;
+}
+
 async function prepareMomentImage(file) {
   const prepared = await prepareImageUpload(file);
   const dataUrl = await readFileAsDataUrl(prepared.blob);
@@ -1060,6 +1074,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [memoryBusyId, setMemoryBusyId] = useState("");
   const [moments, setMoments] = useState([]);
   const [momentsAvailable, setMomentsAvailable] = useState(null);
+  const [momentsLoading, setMomentsLoading] = useState(false);
+  const [momentsLoadError, setMomentsLoadError] = useState("");
   const [momentDraft, setMomentDraft] = useState("");
   const [momentImages, setMomentImages] = useState([]);
   const [commentDrafts, setCommentDrafts] = useState({});
@@ -1249,6 +1265,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [isPostingMoment, setIsPostingMoment] = useState(false);
   const [pendingMomentLikes, setPendingMomentLikes] = useState({});
+  const [pendingMomentComments, setPendingMomentComments] = useState({});
   const [notice, setNotice] = useState("");
   const [dialog, setDialog] = useState(null);
   const [imageViewer, setImageViewer] = useState(null);
@@ -1402,6 +1419,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const pendingChatClientMessageRef = useRef(null);
   const createSessionPendingRef = useRef(false);
   const pendingMomentLikesRef = useRef({});
+  const pendingMomentCommentsRef = useRef({});
+  const momentPostPendingRef = useRef(null);
+  const momentsLoadTokenRef = useRef(0);
   const draftSettingsRef = useRef(draftSettings);
   const hasLoadedSettingsRef = useRef(false);
   const confirmedSettingsRef = useRef(settings);
@@ -3123,6 +3143,54 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     };
   }, [activeSessionId]);
 
+  const getMomentsRequestScope = useCallback(() => {
+    const controller = settingsScopeControllerRef.current;
+    const current = () => componentMountedRef.current && controller &&
+      controller === settingsScopeControllerRef.current && !controller.signal.aborted &&
+      settingsSaveScope(authSession.getSnapshot()) === privateMediaScope;
+    if (!current()) return null;
+    return {
+      current,
+      options: {
+        signal: controller.signal,
+        authSession: createScopedSettingsSession(authSession, privateMediaScope, controller.signal),
+      },
+    };
+  }, [privateMediaScope]);
+
+  const loadMoments = useCallback(async ({ silent = false } = {}) => {
+    const request = getMomentsRequestScope();
+    if (!request) return false;
+    const token = ++momentsLoadTokenRef.current;
+    if (!silent) setMomentsLoading(true);
+    try {
+      const data = await apiRequest("/api/v2/moments", request.options);
+      if (!request.current() || token !== momentsLoadTokenRef.current) return false;
+      if (typeof data?.available !== "boolean" || !Array.isArray(data?.entries) ||
+        data.entries.some((entry) => !entry?.id || !Array.isArray(entry.images) || !Array.isArray(entry.comments))) {
+        throw Object.assign(new Error("动态列表回执不完整。"), { code: "moments_response_invalid" });
+      }
+      setMomentsAvailable(data.available);
+      setMoments(
+        data.entries.map((entry) => {
+          const pending = pendingMomentLikesRef.current[String(entry.id)];
+          return pending ? { ...entry, user_liked: pending.liked } : entry;
+        }),
+      );
+      setMomentsLoadError("");
+      return true;
+    } catch (error) {
+      if (request.current() && token === momentsLoadTokenRef.current) {
+        const feedback = momentFailureMessage(error);
+        setMomentsLoadError(feedback);
+        if (!silent) setNotice(feedback);
+      }
+      return false;
+    } finally {
+      if (request.current() && token === momentsLoadTokenRef.current) setMomentsLoading(false);
+    }
+  }, [getMomentsRequestScope]);
+
   useEffect(() => {
     if (activeView === "memories") {
       apiRequest("/api/v2/memories")
@@ -3144,13 +3212,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       };
       document.addEventListener("visibilitychange", refreshWhenVisible);
       return () => {
+        momentsLoadTokenRef.current += 1;
         window.clearInterval(refreshTimer);
         document.removeEventListener("visibilitychange", refreshWhenVisible);
       };
     }
 
     return undefined;
-  }, [activeView]);
+  }, [activeView, loadMoments]);
 
   useEffect(() => {
     const refreshImportedMemories = () => {
@@ -6311,31 +6380,23 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     );
   }
 
-  async function loadMoments({ silent = false } = {}) {
-    try {
-      const data = await apiRequest("/api/v2/moments");
-      setMomentsAvailable(data.available);
-      setMoments(
-        (data.entries || []).map((entry) => {
-          const pending = pendingMomentLikesRef.current[String(entry.id)];
-          return pending
-            ? { ...entry, user_liked: pending.liked }
-            : entry;
-        }),
-      );
-    } catch (error) {
-      if (!silent) setNotice(error.message);
-    }
-  }
-
   async function postMoment(event) {
     event.preventDefault();
     const content = momentDraft.trim();
-    if ((!content && momentImages.length === 0) || isPostingMoment) return;
+    if ((!content && momentImages.length === 0) || momentPostPendingRef.current) return;
+    const request = getMomentsRequestScope();
+    if (!request) return;
+    const pending = {};
+    momentPostPendingRef.current = pending;
+    momentsLoadTokenRef.current += 1;
+    setMomentsLoading(false);
+    const submittedDraft = momentDraft;
+    const submittedImageIds = new Set(momentImages.map((item) => item.id));
 
     setIsPostingMoment(true);
     try {
-      await apiRequest("/api/v2/moments", {
+      const data = await apiRequest("/api/v2/moments", {
+        ...request.options,
         method: "POST",
         body: JSON.stringify({
           content,
@@ -6346,14 +6407,21 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           })),
         }),
       });
-      setMomentDraft("");
-      setMomentImages([]);
-      setNotice("动态已经发布。对方会不会留下痕迹，由当下的心情决定。");
-      await loadMoments();
+      if (!request.current()) return;
+      if (!data?.moment?.id || data.moment.author !== "user") {
+        throw Object.assign(new Error("动态发布回执不完整。"), { code: "moment_post_receipt_invalid" });
+      }
+      setMomentDraft((current) => current === submittedDraft ? "" : current);
+      setMomentImages((current) => current.filter((item) => !submittedImageIds.has(item.id)));
+      const refreshed = await loadMoments({ silent: true });
+      if (request.current()) setNotice(refreshed
+        ? "动态已经发布。对方会不会留下痕迹，由当下的心情决定。"
+        : "动态已经保存，但列表暂时无法确认。请刷新动态核对。对方是否回应由当下的心情决定。");
     } catch (error) {
-      setNotice(error.message);
+      if (request.current()) setNotice(`${momentFailureMessage(error)} 发布结果尚未确认，草稿已保留。请先刷新动态核对，再决定是否重试。`);
     } finally {
-      setIsPostingMoment(false);
+      if (momentPostPendingRef.current === pending) momentPostPendingRef.current = null;
+      if (request.current()) setIsPostingMoment(false);
     }
   }
 
@@ -6361,6 +6429,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     const files = Array.from(event.target.files || []);
     event.target.value = "";
     if (files.length === 0) return;
+    const request = getMomentsRequestScope();
+    if (!request) return;
 
     const remaining = Math.max(0, 4 - momentImages.length);
     if (remaining === 0) {
@@ -6380,6 +6450,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         });
       }
 
+      if (!request.current()) return;
       setMomentImages((current) => [...current, ...next].slice(0, 4));
       const messages = [
         ...(files.length > remaining
@@ -6389,7 +6460,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       ];
       setNotice(messages.join("；"));
     } catch (error) {
-      setNotice(error.message);
+      if (request.current()) setNotice(momentFailureMessage({ code: "moment_image_prepare_failed", status: error?.status }));
     }
   }
 
@@ -6400,6 +6471,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   async function toggleMomentLike(moment) {
     const momentId = String(moment?.id ?? "");
     if (!momentId || pendingMomentLikesRef.current[momentId]) return;
+    const request = getMomentsRequestScope();
+    if (!request) return;
+    momentsLoadTokenRef.current += 1;
+    setMomentsLoading(false);
 
     const pending = { liked: moment?.user_liked !== true };
     pendingMomentLikesRef.current = {
@@ -6411,38 +6486,70 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     try {
       await toggleMomentLikeOptimistically({
         moment,
-        updateMoments: setMoments,
-        persist(liked) {
-          return apiRequest(`/api/v2/moments/${moment.id}/like`, {
+        updateMoments(update) {
+          if (request.current()) setMoments(update);
+        },
+        async persist(liked) {
+          const data = await apiRequest(`/api/v2/moments/${moment.id}/like`, {
+            ...request.options,
             method: "POST",
             body: JSON.stringify({ liked }),
           });
+          if (!request.current()) return;
+          if (String(data?.moment?.id || "") !== momentId || data.moment.user_liked !== liked) {
+            throw Object.assign(new Error("点赞回执不完整。"), { code: "moment_like_receipt_invalid" });
+          }
         },
-        refresh: loadMoments,
+        async refresh() {
+          if (!request.current()) return;
+          const refreshed = await loadMoments({ silent: true });
+          if (!refreshed && request.current()) setNotice("点赞已经保存，但列表刷新失败。请刷新动态核对。");
+        },
       });
     } catch (error) {
-      setNotice(error.message);
+      if (request.current()) setNotice(momentFailureMessage(error));
     } finally {
       const nextPending = { ...pendingMomentLikesRef.current };
       delete nextPending[momentId];
       pendingMomentLikesRef.current = nextPending;
-      setPendingMomentLikes(nextPending);
+      if (request.current()) setPendingMomentLikes(nextPending);
     }
   }
 
   async function postComment(momentId) {
-    const content = (commentDrafts[momentId] || "").trim();
-    if (!content) return;
+    const submittedDraft = commentDrafts[momentId] || "";
+    const content = submittedDraft.trim();
+    if (!content || pendingMomentCommentsRef.current[momentId]) return;
+    const request = getMomentsRequestScope();
+    if (!request) return;
+    const pending = {};
+    pendingMomentCommentsRef.current = { ...pendingMomentCommentsRef.current, [momentId]: pending };
+    setPendingMomentComments(pendingMomentCommentsRef.current);
+    momentsLoadTokenRef.current += 1;
+    setMomentsLoading(false);
 
     try {
-      await apiRequest(`/api/v2/moments/${momentId}/comments`, {
+      const data = await apiRequest(`/api/v2/moments/${momentId}/comments`, {
+        ...request.options,
         method: "POST",
         body: JSON.stringify({ content }),
       });
-      setCommentDrafts((current) => ({ ...current, [momentId]: "" }));
-      await loadMoments();
+      if (!request.current()) return;
+      if (!data?.comment?.id || String(data.comment.moment_id) !== String(momentId) || data.comment.author !== "user") {
+        throw Object.assign(new Error("评论保存回执不完整。"), { code: "moment_comment_receipt_invalid" });
+      }
+      setCommentDrafts((current) => current[momentId] === submittedDraft ? { ...current, [momentId]: "" } : current);
+      const refreshed = await loadMoments({ silent: true });
+      if (request.current()) setNotice(refreshed ? "评论已经保存。" : "评论已经保存，但列表刷新失败。请刷新动态核对。");
     } catch (error) {
-      setNotice(error.message);
+      if (request.current()) setNotice(`${momentFailureMessage(error)} 评论结果尚未确认，草稿已保留。请先刷新动态核对，再决定是否重试。`);
+    } finally {
+      if (pendingMomentCommentsRef.current[momentId] === pending) {
+        const next = { ...pendingMomentCommentsRef.current };
+        delete next[momentId];
+        pendingMomentCommentsRef.current = next;
+        if (request.current()) setPendingMomentComments(next);
+      }
     }
   }
 
@@ -7033,6 +7140,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             请确认后端服务器正在运行，然后重新打开这个页面。
           </p>
           <span className="status-chip pending">暂时不可用</span>
+          {momentsLoadError && <p role="alert">{momentsLoadError}</p>}
+          <button type="button" onClick={() => void loadMoments()} disabled={momentsLoading}>
+            {momentsLoading ? "正在读取动态…" : "刷新动态"}
+          </button>
         </section>
       );
     }
@@ -7097,8 +7208,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         </form>
 
         <div className="moment-list">
+          {momentsLoadError && <div className="empty-card" role="alert">{momentsLoadError}</div>}
           {moments.length === 0 ? (
-            <div className="empty-card">这里还没有动态。</div>
+            <div className="empty-card">{momentsLoading ? "正在读取动态…" : momentsLoadError ? "暂时无法确认动态列表，请刷新重试。" : momentsAvailable === null ? "动态列表尚未读取。" : "这里还没有动态。"}</div>
           ) : (
             moments.map((item) => (
               <article className="moment-card" key={item.id}>
@@ -7215,7 +7327,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                       }}
                       placeholder="写一条评论"
                     />
-                    <button onClick={() => postComment(item.id)}>发送</button>
+                    <button disabled={Boolean(pendingMomentComments[item.id])} aria-busy={Boolean(pendingMomentComments[item.id])}
+                      onClick={() => postComment(item.id)}>{pendingMomentComments[item.id] ? "保存中" : "发送"}</button>
                   </div>
                 )}
               </article>
@@ -7765,6 +7878,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     return (
       <Suspense fallback={<DeferredFeature label="正在打开记忆手记…" />}>
         <CompanionDiary
+          key={privateMediaScope}
+          scopeKey={privateMediaScope}
           aiName={effectiveAiName}
           onNotice={setNotice}
         />
@@ -7782,6 +7897,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         }
       >
         <Nursery
+          key={privateMediaScope}
           aiName={effectiveAiName}
           onNotice={setNotice}
         />

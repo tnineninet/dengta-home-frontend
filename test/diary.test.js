@@ -25,7 +25,7 @@ const serviceWorker = await readFile(
 
 assert.match(app, /<CompanionDiary/);
 assert.doesNotMatch(app, /secret-crush-diary\.html|className="diary-frame"/);
-assert.match(diary, /apiRequest\("\/api\/v2\/diary"\)/);
+assert.match(diary, /apiRequest\("\/api\/v2\/diary", \{/);
 assert.match(diary, /source_message_count/);
 assert.match(diary, /source_window_start/);
 assert.doesNotMatch(diary, /现实核验|不能虚构|真实记忆/);

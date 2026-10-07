@@ -150,7 +150,7 @@ test("receiver route, SW bypass, Vercel rewrite and controller contract are wire
   assert.match(receiver, /NotAllowedError|再次确认播放|点击播放器的播放按钮/);
   assert.match(receiver, /onPlay=.*ack\("play"\)[\s\S]*onPause=.*ack\("pause"\)[\s\S]*onSeeked=.*ack\("seek"\)/);
   assert.match(receiver, /sequence: \+\+sequenceRef\.current/);
-  assert.match(receiver, /pairCastReceiver\(pairingSessionId, pairingCode, receiverName\)/);
+  assert.match(receiver, /pairCastReceiver\(pairingSessionId, pairingCode, receiverName, \{ signal: controller\.signal \}\)/);
   assert.match(together, /在电视上接收/);
   assert.match(together, /会话编号：\{castPairing\.sessionId\}/);
   assert.match(together, /不会显示媒体 URL 或接收端凭据/);
