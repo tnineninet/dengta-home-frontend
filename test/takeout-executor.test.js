@@ -36,6 +36,30 @@ try {
     const outcome = await executeTakeoutCommand(command, { plugin: { orderProduct: async () => ({ status, error: 'fixture private text' }) }, client: async (path, options) => { if (path.endsWith('/result')) body = options.body; return {}; } });
     assert.equal(outcome.ok, false); assert.equal(outcome.code, code); assert.ok(!body.includes('fixture private text'));
   }
+  for (const code of ['takeout_page_init_failed','takeout_page_renderer_failed','takeout_page_interrupted']) {
+    for (const action of ['search','order']) {
+      let resultBody;
+      const nativeValue = { status: 'error', code, error: 'fictional private cause' };
+      const nativePlugin = { searchShops: async () => nativeValue, orderProduct: async () => nativeValue };
+      const outcome = await executeTakeoutCommand({ ...command, command: { action, requirement: 'fictional' } }, { plugin: nativePlugin, client: async (path, options) => { if (path.endsWith('/result')) resultBody = JSON.parse(options.body); return {}; } });
+      assert.equal(outcome.ok, false); assert.equal(outcome.code, code); assert.equal(outcome.receipt_synced, true);
+      assert.equal(resultBody.result.code, code); assert.equal(resultBody.result.error, outcome.message);
+      assert.ok(!JSON.stringify(resultBody).includes('fictional private cause'));
+    }
+    let failureBody;
+    const outcome = await executeTakeoutCommand({ ...command, command: { action: 'search', requirement: 'fictional' } }, {
+      plugin: { searchShops: async () => { throw Object.assign(Error('fictional private cause'), { code }); } },
+      client: async (path, options) => { if (path.endsWith('/failure')) failureBody = JSON.parse(options.body); return {}; },
+    });
+    assert.equal(outcome.code, code); assert.equal(outcome.ok, false); assert.equal(outcome.receipt_synced, true);
+    assert.equal(failureBody.message, outcome.message); assert.ok(!outcome.message.includes('fictional private cause'));
+    const loggedOut = await executeTakeoutCommand(command, { plugin: { orderProduct: async () => ({ status: 'logged_out', code }) }, client: async () => ({}) });
+    assert.equal(loggedOut.code, 'takeout_login_expired', 'a technical code must not replace an existing explicit status');
+  }
+  const unknownNative = await executeTakeoutCommand(command, { plugin: { orderProduct: async () => ({ status: 'error', code: 'fictional_private_provider_code', error: 'fictional private cause' }) }, client: async () => ({}) });
+  assert.equal(unknownNative.code, 'takeout_page_execution_failed'); assert.ok(!JSON.stringify(unknownNative).includes('fictional_private_provider_code'));
+  const unknownReject = await executeTakeoutCommand(command, { plugin: { orderProduct: async () => { throw Object.assign(Error('fictional private cause'), { code: 'fictional_private_provider_code' }); } }, client: async () => ({}) });
+  assert.equal(unknownReject.code, 'takeout_native_execution_failed'); assert.ok(!JSON.stringify(unknownReject).includes('fictional private cause'));
   const incomplete = await executeTakeoutCommand({ ...command, command: { action: 'search', requirement: 'fixture' } }, { plugin: { searchShops: async () => ({ loading: true, shops: [] }) }, client: async () => ({}) });
   assert.equal(incomplete.code, 'takeout_search_incomplete'); assert.equal(incomplete.ok, false);
   const malformed = await executeTakeoutCommand(command, { plugin: { orderProduct: async () => null }, client: async () => ({}) });
@@ -70,6 +94,29 @@ try {
   assert.equal(entries[0].code, 'DT-TAKEOUT'); assert.equal(entries[0].reasonCode, 'takeout_login_expired');
   assert.ok(!JSON.stringify(entries).includes('fixture private text'));
   assert.equal(readOperationFailures('new-companion').length, 0);
+  for (const code of ['takeout_page_init_failed','takeout_page_renderer_failed','takeout_page_interrupted']) {
+    const scope = 'fictional-' + code;
+    const codeStop = startTakeoutRunner({ scope, capacitor,
+      plugin: { searchShops: async () => { throw Object.assign(Error('fictional private cause'), { code }); } },
+      client: async path => path.endsWith('/pending') ? { commands: [{ ...command, command: { action: 'search', requirement: 'fictional' } }] } : {},
+    });
+    interval.at(-1)(); await settle(); codeStop();
+    const diagnostics = readOperationFailures(scope);
+    assert.equal(diagnostics[0].reasonCode, code); assert.equal(diagnostics[0].code, 'DT-TAKEOUT');
+    assert.ok(!JSON.stringify(diagnostics).includes('fictional private cause'));
+  }
+  const search = deferred(), cancelledScopes = [], searchInputs = [], searchCalls = [];
+  const searchStop = startTakeoutRunner({ scope: 'fictional-search-old', capacitor,
+    plugin: { searchShops: input => { searchInputs.push(input); return search.promise; }, cancelSearch: async input => cancelledScopes.push(input.scope) },
+    onCommandDone: () => { done++; }, client: async path => { searchCalls.push(path); return path.endsWith('/pending') ? { commands: [{ ...command, command: { action: 'search', requirement: '虚构店铺' } }] } : {}; },
+  });
+  interval.at(-1)(); await settle();
+  assert.equal(searchInputs[0].scope, 'fictional-search-old');
+  searchStop(); searchStop(); assert.deepEqual(cancelledScopes, ['fictional-search-old']);
+  const beforeSearch = searchCalls.length;
+  search.resolve({ shops: [{ name: '虚构店铺' }] }); await settle();
+  assert.equal(searchCalls.length, beforeSearch, 'cancelled search cannot post into a later identity');
+  assert.equal(done, 0);
   let failedOtherDevice = false;
   storage.set('dengta_takeout_attempted_v2:claimed-elsewhere', JSON.stringify({ id: command.id }));
   const collisionStop = startTakeoutRunner({ scope: 'claimed-elsewhere', capacitor, plugin, client: async path => {

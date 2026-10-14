@@ -22,6 +22,13 @@ const snapshot = ({ mood = 20, name = null, child = true } = {}) => ({
   bonds: [], actions: [], utterances: [], milestones: [], events: [], portrait: null, provider_calls: 0, embedding_calls: 0,
 });
 const portrait = { language: { learned_characters: 3, unique_characters: 2, utterances: 1 }, milestones: 0 };
+const actionReceipt = (kind = "talk", actor = "user", overrides = {}) => ({
+  idempotent: false,
+  action: { id: "66666666-6666-4666-8666-666666666666", actor, kind,
+    effective_at: "2026-10-08T01:00:00.000Z", applied_at: "2026-10-08T01:00:00.000Z" },
+  ...snapshot({ mood: 77 }),
+  ...overrides,
+});
 const values = new Map();
 let sdkSession = sessionFor(ACCOUNT_A), authListener, signOutCalls = [], tree, manager;
 const timers = new Map(), requests = [], notices = [];
@@ -166,13 +173,13 @@ test("a confirmed speech preserves a new exact draft typed during its POST", asy
   await mountWithChild(); await editSpeech("  虚构提交内容  "); await submitSpeech();
   assert.equal(JSON.parse(mutations()[0].options.body).text, "虚构提交内容");
   const next = "  新的虚构草稿\r\n第二行🌱  "; await editSpeech(next);
-  await respond(mutations()[0], { idempotent: false, action: { kind: "talk" }, ...snapshot({ mood: 77 }) });
+  await respond(mutations()[0], actionReceipt());
   assert.equal(speech().props.value, next); assert.equal(mood(), "77");
 });
 
 test("a confirmed speech still clears its unchanged exact submitted draft", async () => {
   await mountWithChild(); await editSpeech("  虚构提交内容  "); await submitSpeech();
-  await respond(mutations()[0], { idempotent: false, action: { kind: "talk" }, ...snapshot({ mood: 77 }) });
+  await respond(mutations()[0], actionReceipt());
   assert.equal(speech().props.value, ""); assert.equal(mutations().length, 1);
 });
 
@@ -180,7 +187,7 @@ test("a late polling GET cannot replace a confirmed action snapshot", async () =
   await mountWithChild(); await runTimers("interval", 60 * 1000);
   const oldRead = reads()[1]; assert.ok(oldRead);
   await act(async () => { button("安抚").props.onClick(); await tick(); });
-  await respond(mutations()[0], { idempotent: false, action: { kind: "soothe" }, ...snapshot({ mood: 77 }) });
+  await respond(mutations()[0], actionReceipt("soothe"));
   await respond(oldRead, snapshot());
   assert.equal(mood(), "77"); assert.equal(mutations().length, 1);
 });
@@ -233,7 +240,7 @@ test("companion care uses its existing endpoint and one client action id under a
   await act(async () => { const click = button("让虚构伴侣陪她一会").props.onClick; click(); click(); await tick(); });
   assert.equal(mutations().length, 1); assert.equal(mutations()[0].path, `/api/v2/nursery/children/${CHILD}/companion-actions`);
   assert.deepEqual(Object.keys(JSON.parse(mutations()[0].options.body)), ["client_action_id"]);
-  await respond(mutations()[0], { idempotent: false, action: { actor: "companion", kind: "soothe" }, ...snapshot({ mood: 77 }) }); assert.equal(mood(), "77");
+  await respond(mutations()[0], actionReceipt("soothe", "companion")); assert.equal(mood(), "77");
 });
 
 test("naming keeps its existing candidate contract and a failed request preserves newer text", async () => {
@@ -251,7 +258,7 @@ test("portrait reads share the operation lock and cannot release a pending care 
   await mountWithChild();
   await act(async () => { button("安抚").props.onClick(); button("成长画像").props.onClick(); await tick(); });
   assert.equal(requests.length, 2); assert.equal(mutations().length, 1);
-  await respond(mutations()[0], { idempotent: false, action: { kind: "soothe" }, ...snapshot({ mood: 77 }) });
+  await respond(mutations()[0], actionReceipt("soothe"));
   await act(async () => { button("成长画像").props.onClick(); await tick(); });
   const portraitRead = requests.find(request => request.path.endsWith("/portrait")); assert.ok(portraitRead);
   await respond(portraitRead, { portrait }); assert.match(body(), /学过 .*3.* 个字/);
@@ -274,7 +281,7 @@ for (const route of ["initial", "action", "portrait"]) {
       if (route !== "initial") {
         await respond(pending, snapshot());
         await act(async () => { button(route === "action" ? "安抚" : "成长画像").props.onClick(); await tick(); });
-        pending = requests.at(-1); result = route === "portrait" ? { portrait } : { idempotent: false, action: { kind: "soothe" }, ...snapshot({ mood: 77 }) };
+        pending = requests.at(-1); result = route === "portrait" ? { portrait } : actionReceipt("soothe");
       }
       await unmount(); switchAccount(); const noticeCount = notices.length;
       await respond(pending, status === 401 ? { code: "invalid_session" } : result, status);
@@ -396,4 +403,97 @@ test("invalid or absent milestone dates remain visible with an unknown-time labe
   const times = tree.root.findAllByType("time").map(textOf);
   assert.deepEqual(times.slice(0, 2), ["时间未知", "时间未知"]);
   assert.notEqual(times[2], "时间未知"); assert.match(body(), /虚构旧记录/); assert.match(body(), /虚构小朋友/);
+});
+
+for (const [label, receipt] of [
+  ["GET snapshot without an action", snapshot({ mood: 77 })],
+  ["action without a write-confirmation flag", { action: actionReceipt().action, ...snapshot({ mood: 77 }) }],
+  ["unapplied action", actionReceipt("talk", "user", { action: { ...actionReceipt().action, applied_at: null } })],
+  ["wrong action kind", actionReceipt("teach")],
+  ["wrong caregiver", actionReceipt("talk", "companion")],
+]) {
+  test(`a speech POST ${label} preserves its exact draft and accepted state`, async () => {
+    await mountWithChild(); const raw = "  虚构原始草稿\r\n第二行🌱  ";
+    await editSpeech(raw); await submitSpeech(); await respond(mutations()[0], receipt);
+    assert.equal(speech().props.value, raw); assert.equal(mood(), "20");
+    assert.match(body(), /操作结果尚未确认/); assert.match(body(), /nursery_response_invalid/);
+    assert.equal(mutations().length, 1);
+  });
+}
+
+test("a birth POST containing only a GET snapshot does not confirm birth", async () => {
+  await mount(); await respond(reads()[0], snapshot({ child: false }));
+  await act(async () => { birthButton().props.onClick(); await tick(); });
+  await respond(mutations()[0], snapshot());
+  assert.match(body(), /操作结果尚未确认/); assert.doesNotMatch(body(), /虚构小朋友/);
+  assert.equal(mutations().length, 1); assert.ok(button("重新读取家庭状态"));
+});
+
+test("an existing-child birth receipt is valid without creating another child", async () => {
+  await mount(); await respond(reads()[0], snapshot({ child: false }));
+  await act(async () => { birthButton().props.onClick(); await tick(); });
+  await respond(mutations()[0], { created: false, ...snapshot() });
+  assert.match(body(), /虚构小朋友/); assert.doesNotMatch(body(), /操作结果尚未确认/);
+  assert.equal(mutations().length, 1);
+});
+
+for (const [label, receipt] of [
+  ["GET snapshot without chosen name", snapshot()],
+  ["name outside submitted candidates", { idempotent: false, chosen_name: "虚构丙", ...snapshot({ name: "虚构丙" }) }],
+  ["chosen name mismatching child", { idempotent: false, chosen_name: "虚构甲", ...snapshot() }],
+]) {
+  test(`a naming POST ${label} preserves the exact candidates`, async () => {
+    await mountWithChild(); const raw = "  虚构甲，虚构乙  ";
+    await act(async () => nameForm().findByType("input").props.onChange({ target: { value: raw } }));
+    await act(async () => { nameForm().props.onSubmit({ preventDefault() {} }); await tick(); });
+    await respond(mutations()[0], receipt);
+    assert.equal(nameForm().findByType("input").props.value, raw);
+    assert.match(body(), /操作结果尚未确认/); assert.equal(mutations().length, 1);
+  });
+}
+
+for (const idempotent of [false, true]) {
+  test(`a valid ${idempotent ? "idempotent" : "new"} naming receipt accepts the selected candidate`, async () => {
+    await mountWithChild();
+    await act(async () => nameForm().findByType("input").props.onChange({ target: { value: "虚构甲，虚构乙" } }));
+    await act(async () => { nameForm().props.onSubmit({ preventDefault() {} }); await tick(); });
+    await respond(mutations()[0], { idempotent, chosen_name: "虚构乙", ...snapshot({ name: "虚构乙" }) });
+    assert.equal(tree.root.findByType("h2").children.join(""), "虚构乙");
+    assert.doesNotMatch(body(), /操作结果尚未确认/); assert.equal(mutations().length, 1);
+    await unmount(); await mount(); await respond(reads()[1], snapshot({ name: "虚构乙" }));
+    assert.equal(tree.root.findByType("h2").children.join(""), "虚构乙");
+    assert.equal(mutations().length, 1);
+  });
+}
+
+test("a valid idempotent speech receipt is accepted without another POST", async () => {
+  await mountWithChild(); await editSpeech("虚构提交内容"); await submitSpeech();
+  await respond(mutations()[0], actionReceipt("talk", "user", { idempotent: true }));
+  assert.equal(speech().props.value, ""); assert.equal(mood(), "77");
+  assert.equal(mutations().length, 1); assert.doesNotMatch(body(), /操作结果尚未确认/);
+});
+
+test("zero attachment and trust values remain zero in the relationship cards", async () => {
+  await mount();
+  await respond(reads()[0], { ...snapshot(), bonds: [
+    { caregiver_kind: "user", attachment: 0, trust: 0 },
+    { caregiver_kind: "companion", attachment: 9, trust: 0 },
+  ] });
+  const cards = tree.root.findByProps({ className: "nursery-bonds" }).findAllByType("div");
+  assert.deepEqual(cards.map(card => card.findByType("strong").children.join("")), ["0", "9"]);
+  assert.deepEqual(cards.map(card => card.findByType("small").children.join("")), ["安心 0", "安心 0"]);
+});
+
+test("unconfirmed write blocks stale mutation handlers until an explicit successful state check", async () => {
+  await mountWithChild();await editSpeech("虚构保留草稿");
+  const oldSpeech=speechForm().props.onSubmit,oldCare=button("安抚").props.onClick;
+  await submitSpeech();await respond(mutations()[0],snapshot({mood:77}));
+  assert.equal(speechForm().findByProps({"aria-label":"发送给孩子"}).props.disabled,true);
+  assert.equal(button("安抚").props.disabled,true);
+  await act(async()=>{oldSpeech({preventDefault(){}});oldCare();await tick();});assert.equal(mutations().length,1);
+  await act(async()=>{button("重新读取家庭状态").props.onClick();await tick();});
+  await respond(reads()[1],{code:"api_request_failed"},503);assert.equal(button("安抚").props.disabled,true);
+  await act(async()=>{button("重新读取家庭状态").props.onClick();await tick();});
+  await respond(reads()[2],snapshot({mood:77}));assert.equal(button("安抚").props.disabled,false);
+  assert.equal(speech().props.value,"虚构保留草稿");assert.equal(mutations().length,1);
 });

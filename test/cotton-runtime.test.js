@@ -55,3 +55,4 @@ try {
   await vite.close();
   for (const [name, descriptor] of originals) { if (descriptor) Object.defineProperty(globalThis, name, descriptor); else delete globalThis[name]; }
 }
+await import('./cotton-runtime-resources.test.js');

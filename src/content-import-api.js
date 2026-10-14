@@ -10,7 +10,7 @@ const IMPORT_ERROR_MESSAGES = Object.freeze({
   file_too_large: "导入文件超过 100MB，请拆分后重试。",
   import_paged_file_too_large: "文本文件超过 1GB，请拆分后重试。",
   import_paged_preview_required: "此文件需要在数据导入面板分段预览，不能整份上传。",
-  import_record_too_large: "单条 CSV 或 JSONL 记录超过 1MB，请拆分该记录或导出为纯文本。",
+  import_record_too_large: "单条聊天消息、CSV 或 JSONL 记录超过分段读取容量，请拆分该记录后重试；本段尚未上传或推进。",
   import_file_too_large: "导入文件超过 100MB，请拆分后重试。",
   unsupported_file_type: "此入口不支持该格式，请选择 TXT、Markdown、JSON、CSV、TSV、JSONL、HTML、字幕、邮件、PDF 或 DOCX。",
   import_file_type_unsupported: "此格式不能作为文本读取；旧 DOC 请另存为 DOCX，表格或压缩包请先导出文本。",
@@ -24,6 +24,9 @@ const IMPORT_ERROR_MESSAGES = Object.freeze({
   import_csv_invalid: "CSV 的引号未闭合，请检查导出是否完整。",
   import_pdf_no_text: "扫描版 PDF 没有可提取的文字，请先进行 OCR 再导入。",
   invalid_import: "导入内容无法生成候选项，请检查文件或粘贴文本。",
+  import_no_candidates: "本次内容没有生成可导入的候选项，尚未写入。分段文件可以确认本段后继续读取。",
+  import_chat_boundary_invalid: "旧分段进度位于聊天消息续文，无法完整恢复该消息；本段尚未上传或推进。请保留原文件与进度，核对已保存内容后从完整消息起点重新预览。",
+  import_chat_message_too_large: "单条聊天消息超过现有 200,000 字符候选保存容量，请拆分该消息后重新预览；本段尚未上传或推进，正文没有被截短。",
   import_empty: "导入内容不能为空。",
   import_content_required: "请粘贴要导入的文本。",
   import_source_type_invalid: "请选择世界书或聊天记录后重试。",
@@ -133,6 +136,22 @@ async function formImportRequest(formData, client) {
 
 const defaultClient = { apiFetch, apiRequest };
 
+// Keep the same speaker labels as the backend's text-chat parser.
+const CHAT_SPEAKER_LINE = /^(?:(?:\[[^\]\r\n]+\][^\S\r\n]*)?(?:\d{4}-\d{2}-\d{2}[ \t]\d{2}:\d{2}(?::\d{2})?[ \t]+)?(?:我说|user|human|用户|我|对方说|对方|ta|他|她|assistant|ai|bot|助手|char|character|system|系统)[^\S\r\n]*(?:说)?[^\S\r\n]*[:：]|\d{4}-\d{2}-\d{2}T[^|\r\n]+[^\S\r\n]*\|[^\S\r\n]*(?:我说|user|human|用户|我|对方说|对方|ta|他|她|assistant|ai|bot|助手|char|character|system|系统)[^\S\r\n]*(?:说)?[^\S\r\n]*\|)/gim;
+
+function validateChatMessageCapacity(text) {
+  const speakers=chatSpeakerMatches(text);
+  for(let index=0;index<speakers.length;index++) {
+    const start=speakers[index].index+speakers[index][0].length;
+    const end=speakers[index+1]?.index??text.length;
+    if(text.slice(start,end).trim().length>200_000)throw importError({code:'import_chat_message_too_large'});
+  }
+}
+
+function chatSpeakerMatches(text) {
+  return [...text.matchAll(CHAT_SPEAKER_LINE)].filter(match=>!match.index||/[\r\n]/.test(text[match.index-1]));
+}
+
 function mediaTypeFor(format, content = "") {
   if (["sillytavern", "generic_json"].includes(format)) return "application/json";
   if (format === "plain_text") return "text/plain";
@@ -156,12 +175,45 @@ export async function previewContentImportPage({ file, kind, startByte = 0, sign
   if (!CONTENT_IMPORT_PAGED_EXTENSIONS.test(file.name)) throw importError({code:'unsupported_file_type'});
   let text = '';
   const suffix = file.name.split('.').pop().toLowerCase();
-  for await (const batch of readTextFileBatches(file, { startByte, chunkBytes: 64 * 1024, signal })) {
+  const chatText = kind === 'chat_history' && ['txt','text','md','markdown','log'].includes(suffix);
+  const lineBytes = new Map();
+  let speakerPaging;
+  if(chatText&&startByte>0) {
+    for await(const head of readTextFileBatches(file,{chunkBytes:64*1024,signal})) {
+      speakerPaging=chatSpeakerMatches(head.text).length>0;
+      break;
+    }
+  }
+  for await (const batch of readTextFileBatches(file, { startByte, chunkBytes: 64 * 1024, signal, includeLineOffsets: chatText })) {
+    const prefixLength=text.length;
     text += batch.text;
+    let endByte=batch.endByte;
+    if(chatText) {
+      for(const line of batch.lineStarts) {
+        const offset=prefixLength+line.characterOffset;
+        if(!offset||/[\r\n]/.test(text[offset-1]))lineBytes.set(offset,line.byteOffset);
+      }
+      const speakers=chatSpeakerMatches(text).map(match=>({offset:match.index,byteOffset:lineBytes.get(match.index)}))
+        .filter(item=>Number.isSafeInteger(item.byteOffset));
+      speakerPaging=speakerPaging||speakers.length>0;
+      if(speakerPaging) {
+        if(startByte>0&&speakers[0]?.offset!==0)throw importError({code:'import_chat_boundary_invalid'});
+        const boundaries=speakers.slice(1);
+        if(boundaries.length&&(batch.endByte<file.size||batch.endByte-startByte>64*1024)) {
+          const boundary=boundaries.filter(item=>item.byteOffset-startByte<=64*1024).at(-1)||boundaries[0];
+          text=text.slice(0,boundary.offset);endByte=boundary.byteOffset;
+        } else if(batch.endByte<file.size) {
+          validateChatMessageCapacity(text);
+          if(text.length>1024*1024)throw importError({code:'import_record_too_large'});
+          continue;
+        }
+        validateChatMessageCapacity(text);
+      }
+    }
     if (text.length > 1024 * 1024) throw importError({code:'import_record_too_large'});
     if (batch.endByte < file.size) {
       if (['jsonl','ndjson'].includes(suffix) && !/\r?\n$/.test(text)) continue;
-      if (suffix === 'csv') {
+      if (['csv','tsv'].includes(suffix)) {
         let quoted = false;
         for (let index=0;index<text.length;index++) if (text[index] === '"') {
           if (quoted && text[index+1] === '"') index++; else quoted = !quoted;
@@ -169,10 +221,16 @@ export async function previewContentImportPage({ file, kind, startByte = 0, sign
         if (quoted || !/\r?\n$/.test(text)) continue;
       }
     }
-    const part = new File([text], `part-${startByte}-${batch.endByte}.${suffix}`, { type: 'text/plain' });
+    const part = new File([text], `part-${startByte}-${endByte}.${suffix}`, { type: 'text/plain' });
     signal?.throwIfAborted();
-    const data = await previewContentImport({ file: part, kind, signal }, client);
-    return { data, page: { startByte, endByte: batch.endByte, totalBytes: file.size } };
+    const page = { startByte, endByte, totalBytes: file.size };
+    try {
+      const data = await previewContentImport({ file: part, kind, signal }, client);
+      return { data, page };
+    } catch (error) {
+      if (error?.code === 'import_no_candidates' && error.status === 422) error.page = page;
+      throw error;
+    }
   }
   throw importError({code:'import_empty'});
 }

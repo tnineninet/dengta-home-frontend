@@ -28,7 +28,7 @@ export const ACHIEVEMENT_ACTIONS = {
   first_chat: { label: "去聊一句", view: "chat" },
   onboarding_1: { label: "看看入门路线", view: "guide" },
   moment_1: { label: "去写动态", view: "moments" },
-  music_1: { label: "去听一首歌", view: "music" },
+  music_1: { label: "去保存音乐分析", view: "music" },
   watch_1: { label: "去一起看", view: "together" },
 };
 

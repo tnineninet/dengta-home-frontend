@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import "./cast-activity-lifecycle.test.js";
+import "./dlna-discovery-state.test.js";
 import {
   normalizeScreenGlanceConfig,
   normalizeScreenGlanceState,

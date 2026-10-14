@@ -9,7 +9,7 @@ try {
   const {default: Log} = await server.ssrLoadModule('/src/ChatErrorLog.jsx');
   let requests = 0;
   const diagnostic = { error_code: 'request_timeout', error_location: 'server.js:12:2' };
-  const loadLog = async () => { if (++requests === 1) throw Object.assign(new Error('private upstream text'), {status:503}); return {error_code:'provider_error_document', upstream_status:522,request_summary:{version:'0.29.5'}}; };
+  const loadLog = async () => { if (++requests === 1) throw Object.assign(new Error('private upstream text'), {status:503}); return {id:'test',error_code:'provider_error_document', upstream_status:522,request_summary:{version:'0.29.5'}}; };
   await act(async()=>{view=TestRenderer.create(React.createElement(Log,{logId:'test',diagnostic,loadLog}));});
   await act(async()=>view.root.findAllByType('button')[0].props.onClick());
   assert.match(JSON.stringify(view.toJSON()), /重试读取日志/);

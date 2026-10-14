@@ -24,8 +24,25 @@ export async function textFileEncoding(file) {
   throw fail('import_invalid_encoding','无法识别文本编码，请另存为 UTF-8 后重试。');
 }
 
+function encodedLineStarts(raw,codec,startByte) {
+  const unit=codec.startsWith('utf-16')?2:1;
+  const codeAt=index=>unit===1?raw[index]:codec==='utf-16le'?raw[index]+raw[index+1]*256:raw[index]*256+raw[index+1];
+  const decoder=new TextDecoder(codec,{fatal:true});
+  const starts=[{characterOffset:0,byteOffset:startByte}];
+  let decoded=0,previous=0;
+  for(let index=0;index+unit<=raw.length;index+=unit) {
+    const code=codeAt(index);
+    if(code!==10&&code!==13)continue;
+    let end=index+unit;
+    if(code===13&&end+unit<=raw.length&&codeAt(end)===10){end+=unit;index+=unit;}
+    decoded+=decoder.decode(raw.subarray(previous,end),{stream:true}).length;
+    starts.push({characterOffset:decoded,byteOffset:startByte+end});previous=end;
+  }
+  return starts;
+}
+
 // Each batch ends at an encoding boundary and exposes a resumable byte offset.
-export async function* readTextFileBatches(file,{startByte=0,chunkBytes=CHUNK_BYTES,encoding,signal,onProgress}={}) {
+export async function* readTextFileBatches(file,{startByte=0,chunkBytes=CHUNK_BYTES,encoding,signal,onProgress,includeLineOffsets=false}={}) {
   validateLargeTextFile(file);
   const codec=encoding||await textFileEncoding(file);
   const size=Math.max(1024,Math.min(8*1024*1024,chunkBytes));
@@ -33,6 +50,7 @@ export async function* readTextFileBatches(file,{startByte=0,chunkBytes=CHUNK_BY
   while(start<file.size) {
     if(signal?.aborted) throw fail('import_cancelled','读取已停止，可以继续导入。');
     const raw=new Uint8Array(await file.slice(start,Math.min(start+size,file.size)).arrayBuffer());
+    if(signal?.aborted) throw fail('import_cancelled','读取已停止，可以继续导入。');
     let length=raw.length;
     if(start+length<file.size) {
       const two=codec.startsWith('utf-16');
@@ -51,7 +69,8 @@ export async function* readTextFileBatches(file,{startByte=0,chunkBytes=CHUNK_BY
     }
     const end=start+length;
     if(!start) text=text.replace(/^\uFEFF/,'');
-    yield {text,startByte:start,endByte:end,encoding:codec,totalBytes:file.size};
+    yield {text,startByte:start,endByte:end,encoding:codec,totalBytes:file.size,
+      ...(includeLineOffsets?{lineStarts:encodedLineStarts(raw.subarray(0,length),codec,start)}:{})};
     start=end;onProgress?.({readBytes:start,totalBytes:file.size});
   }
 }

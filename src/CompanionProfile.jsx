@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest } from "./api";
-import { CompanionArtworkLibrary } from "./CompanionCreativeStudio";
 import {
   PROFILE_IDENTITY_FIELDS,
   PROFILE_STABLE_FIELDS,
@@ -33,7 +32,7 @@ function identityLabel(field) {
 export default function CompanionProfile({
   aiName = "伴侣",
   onNotice,
-  onOpenImageProviderSettings,
+  onOpenCreativeStudio,
 }) {
   const [payload, setPayload] = useState(() => normalizeProfilePayload());
   const [loading, setLoading] = useState(true);
@@ -251,11 +250,7 @@ export default function CompanionProfile({
               )}
             </div>
 
-            <CompanionArtworkLibrary
-              aiName={aiName}
-              onNotice={onNotice}
-              onOpenImageProviderSettings={onOpenImageProviderSettings}
-            />
+            {onOpenCreativeStudio && <button type="button" className="profile-art-studio-link" onClick={onOpenCreativeStudio}>打开涂鸦画室 · 头像、涂鸦与小礼物</button>}
 
             <div className="profile-section-heading profile-history-heading">
               <div>

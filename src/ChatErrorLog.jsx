@@ -1,34 +1,50 @@
-import { useEffect, useRef, useState } from "react";
-import { fetchErrorLogById } from "./api";
+import { useLayoutEffect, useRef, useState } from "react";
+import { apiRequest } from "./api";
 import { CHAT_ERROR_FEEDBACK } from "./chat-error-feedback";
+import { requestErrorLog, validateErrorLog } from "./error-log-request.js";
+import "./error-log-ui.css";
+
+const defaultLoadLog = (id, options) => requestErrorLog(id, apiRequest, 15000, options);
 
 function failureLabel(error) {
   if (error?.status === 404) return "服务器暂时找不到这条日志。可重试，或提供下面的本轮诊断。";
   if (error?.status === 401 || error?.status === 403) return "日志访问未获授权，请检查登录状态及当前伴侣。";
   if (error?.code === "request_timeout") return "日志读取超时，请检查网络后重试。";
+  if (error?.code === "error_log_receipt_invalid") return "日志回执与本轮编号不匹配或不完整，请重新读取。（error_log_receipt_invalid）";
   return "日志暂时无法读取，可以重试。下面仍保留本轮诊断。";
 }
 
-export default function ChatErrorLog({ logId, diagnostic = {}, loadLog = fetchErrorLogById, feedbackByCode = CHAT_ERROR_FEEDBACK }) {
-  const [expanded, setExpanded] = useState(false);
-  const [result, setResult] = useState({ loading: false, data: null, error: "" });
+export default function ChatErrorLog({ logId, diagnostic = {}, loadLog = defaultLoadLog, feedbackByCode = CHAT_ERROR_FEEDBACK }) {
+  const [expansion, setExpansion] = useState({ logId, expanded: false });
+  const [storedResult, setResult] = useState({ logId, loading: false, data: null, error: "" });
+  const expanded = expansion.logId === logId && expansion.expanded;
+  const result = storedResult.logId === logId ? storedResult : { loading: false, data: null, error: "" };
   const generation = useRef(0);
-  useEffect(() => () => { generation.current += 1; }, []);
+  const pending = useRef(null);
+  useLayoutEffect(() => {
+    generation.current += 1;
+    return () => { generation.current += 1; pending.current?.abort(); pending.current = null; };
+  }, [logId]);
 
   async function load() {
-    if (!logId || result.loading) return;
+    if (!logId || pending.current) return;
     const token = ++generation.current;
-    setResult({ loading: true, data: null, error: "" });
+    const controller = new AbortController();
+    pending.current = controller;
+    setResult({ logId, loading: true, data: null, error: "" });
     try {
-      const data = await loadLog(logId);
+      const data = await loadLog(logId, { signal: controller.signal });
       if (!data) throw Object.assign(new Error(), { status: 404 });
-      if (token === generation.current) setResult({ loading: false, data, error: "" });
+      validateErrorLog(data, logId);
+      if (token === generation.current && !controller.signal.aborted) setResult({ logId, loading: false, data, error: "" });
     } catch (error) {
-      if (token === generation.current) setResult({ loading: false, data: null, error: failureLabel(error) });
+      if (token === generation.current && !controller.signal.aborted) setResult({ logId, loading: false, data: null, error: failureLabel(error) });
+    } finally {
+      if (pending.current === controller) pending.current = null;
     }
   }
   function toggle() {
-    setExpanded(!expanded);
+    setExpansion({ logId, expanded: !expanded });
     if (!expanded && !result.data && !result.loading) void load();
   }
   const detail = result.data || diagnostic;

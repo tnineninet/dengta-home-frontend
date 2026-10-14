@@ -47,3 +47,45 @@ test("actual co-watch reply adapter supplies an empty list for absent or malform
     assert.deepEqual(result.danmaku, []);
   }
 });
+
+test("rejects abnormal reaction types before normalization can turn them into text", async () => {
+  for (const reaction of [{}, [], ["fictional"], true, false, 0, 12]) {
+    receipt = { reaction };
+    await assert.rejects(sendCoWatchReply("fictional-session", "Fictional input"), { code: "co_watch_reply_receipt_invalid" });
+  }
+});
+
+test("rejects abnormal assistant message or content types without falling back to object text", async () => {
+  for (const assistant_message of ["fictional", [], { content: {} }, { content: true }, { content: ["fictional"] }]) {
+    receipt = { assistant_message };
+    await assert.rejects(sendCoWatchReply("fictional-session", "Fictional input"), { code: "co_watch_reply_receipt_invalid" });
+  }
+});
+
+test("rejects empty or nonobject successful envelopes without echoing raw data", async () => {
+  for (const value of [null, {}, [], "fictional response", { status: "failed" }, { reaction: "  " }]) {
+    receipt = value;
+    await assert.rejects(sendCoWatchReply("fictional-session", "Fictional input"), error => {
+      assert.equal(error.code, "co_watch_reply_receipt_invalid");
+      assert.match(error.message, /刷新/);
+      assert.doesNotMatch(error.message, /fictional response|failed/);
+      return true;
+    });
+  }
+});
+
+test("preserves legitimate string literals without keyword rejection", async () => {
+  for (const reaction of ["true", "false", "0", "[object Object]", "剧情中她拒绝了邀请", "普通虚构对白💙"]) {
+    receipt = { reaction };
+    assert.equal((await sendCoWatchReply("fictional-session", "Fictional input")).reaction, reaction);
+  }
+});
+
+test("accepts a plain assistant message fallback and preserves its original content", async () => {
+  const assistant = { id: "fictional-assistant", content: "  虚构后备回复\n💙  " };
+  receipt = { reaction: null, assistant_message: assistant };
+  const result = await sendCoWatchReply("fictional-session", "Fictional input");
+  assert.equal(result.reaction, "");
+  assert.equal(result.assistantMessage, assistant);
+  assert.equal(result.assistantMessage.content, assistant.content);
+});

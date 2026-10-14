@@ -33,8 +33,8 @@ const vite=await createServer({root:fileURLToPath(new URL('..',import.meta.url))
     if(id==='\0virtual:watch-placeholder')return 'export default function Placeholder(){return null;}';
   },
 }]});
-let tree, reloads=0;
-async function mount(Component,props){await act(async()=>{tree=TestRenderer.create(React.createElement(Component,props),{createNodeMock: node=>node.type==='video'?{load(){reloads++;},pause(){},currentTime:0,duration:120,paused:true}:null});});}
+let tree, mediaNode, reloads=0;
+async function mount(Component,props){await act(async()=>{tree=TestRenderer.create(React.createElement(Component,props),{createNodeMock: node=>node.type==='video'?(mediaNode={load(){reloads++;},pause(){},currentTime:0,duration:120,paused:true,currentSrc:node.props.src}):null});});}
 async function unmount(){if(tree){await act(async()=>tree.unmount());tree=null;}}
 try{
   const {WatchQueryPanel,TakeoutQueryPanel}=await vite.ssrLoadModule('/src/ActivityQueryPanels.jsx');
@@ -78,8 +78,11 @@ try{
   storeDirectMediaSession(globalThis.sessionStorage,'account-a',{url:'https://media.example.test/video.mp4',positionSeconds:42,durationSeconds:120},'companion-a');
   await mount(Together,props);
   assert.equal(tree.root.findByType('video').props.src,'https://media.example.test/video.mp4');
+  await act(async()=>tree.root.findByType('video').props.onError({currentTarget:{error:{code:2}}}));
+  assert.ok(!JSON.stringify(tree.toJSON()).includes('media_network'),'foreign media nodes must not add a current-player error');
   for(const code of [1,2,3,4,0]) {
-    await act(async()=>tree.root.findByType('video').props.onError({currentTarget:{error:{code,message:'PRIVATE_MEDIA_URL'}}}));
+    mediaNode.error={code,message:'PRIVATE_MEDIA_URL'};
+    await act(async()=>tree.root.findByType('video').props.onError({currentTarget:mediaNode}));
     assert.ok(JSON.stringify(tree.toJSON()).includes(mediaPlaybackFeedback({code}).code));
     assert.ok(!JSON.stringify(tree.toJSON()).includes('PRIVATE_MEDIA_URL'));
     const before=reloads;
@@ -90,7 +93,7 @@ try{
   assert.equal(tree.root.findAllByType('video').length,0);await unmount();
   storage.set(key,JSON.stringify({...page,provider:'bilibili',bvid:'BV1234567890'}));
   await mount(Together,props);
-  await act(async()=>tree.root.findByType('video').props.onError({currentTarget:{error:{code:2}}}));
+  mediaNode.error={code:2}; await act(async()=>tree.root.findByType('video').props.onError({currentTarget:mediaNode}));
   assert.ok(JSON.stringify(tree.toJSON()).includes('media_network'));
   const before=reloads;
   await act(async()=>tree.root.findAllByType('button').find(node=>node.children.some(child=>child==='重新载入视频')).props.onClick());

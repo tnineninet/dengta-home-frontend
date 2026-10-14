@@ -20,13 +20,20 @@ const textOf = value => typeof value === "string" ? value : (value?.children || 
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 async function tick() { for (let index = 0; index < 50; index++) await Promise.resolve(); }
 
-async function harness({ stored, storageFails = false, strict = false, withScope = true } = {}) {
+async function harness({ stored, storageFails = false, storageReadFailures = 0, storageWriteFailures = 0, strict = false, withScope = true } = {}) {
   const names = ["window", "fetch", "localStorage", "IS_REACT_ACT_ENVIRONMENT", "__duelLifecycleFixture"];
   const descriptors = Object.fromEntries(names.map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
-  const values = new Map(stored || []), writes = [], requests = [], timers = new Map();
+  const values = new Map(stored || []), reads = [], writes = [], requests = [], timers = new Map();
   const storage = {
-    getItem(key) { if (storageFails && key.startsWith("dengta_intimate_duel")) throw new Error("fictional storage failure"); return values.get(key) ?? null; },
-    setItem(key, value) { if (storageFails && key.startsWith("dengta_intimate_duel")) throw new Error("fictional storage failure"); writes.push({ key, value }); values.set(key, String(value)); },
+    getItem(key) {
+      reads.push(key);
+      if (key.startsWith("dengta_intimate_duel") && (storageFails || storageReadFailures-- > 0)) throw new Error("FICTIONAL_PRIVATE_ARCHIVE_READ");
+      return values.get(key) ?? null;
+    },
+    setItem(key, value) {
+      if (key.startsWith("dengta_intimate_duel") && (storageFails || storageWriteFailures-- > 0)) throw new Error("FICTIONAL_PRIVATE_ARCHIVE_WRITE");
+      writes.push({ key, value }); values.set(key, String(value));
+    },
     removeItem: key => values.delete(key),
   };
   const sessionFor = account => ({ access_token: `fictional-${account}`, user: { id: account, email: "fixture@example.test" } });
@@ -76,7 +83,7 @@ async function harness({ stored, storageFails = false, strict = false, withScope
   }
   await render();
   return {
-    manager, values, writes, timers, requests, render,
+    manager, values, reads, writes, timers, requests, render,
     text: () => textOf(tree.toJSON()),
     button: text => nodes().find(node => textOf(node) === text || node.props["aria-label"] === text),
     skill: () => nodes().find(node => node.props.className === "attack" && !node.props.disabled),
@@ -331,5 +338,100 @@ test("HTTP failures keep the real API's diagnosis without recording it again in 
   const h = await harness(); try {
     await h.startTwice(); await h.respond(0, { code: "provider_balance_insufficient", message: "FICTIONAL_PRIVATE_UPSTREAM" }, 402);
     assert.equal(h.failures().length, 1); assert.equal(h.failures()[0].status, 402); assert.doesNotMatch(JSON.stringify(h.failures()), /FICTIONAL_PRIVATE/);
+  } finally { await h.close(); }
+});
+
+test("a transient archive read failure cannot overwrite the original while in-memory rounds remain usable", async () => {
+  const archived = JSON.stringify(playDuelRound(createDuelState({ playerName: "虚构存档用户", companionName: "虚构存档伴侣" }), "neck", () => 0).state);
+  const h = await harness({ stored: [[storageKey(), archived]], storageReadFailures: 1 }); try {
+    assert.equal(h.values.get(storageKey()), archived, "opening after a failed read preserves every saved byte");
+    assert.equal(h.writes.filter(write => write.key === storageKey()).length, 0);
+    assert.match(h.text(), /duel_archive_read_failed/);
+    assert.doesNotMatch(h.text(), /FICTIONAL_PRIVATE_ARCHIVE_READ/);
+    await h.startTwice(); await h.respond(0); assert.match(h.text(), /虚构回合正文已完整收到。/);
+    assert.equal(h.values.get(storageKey()), archived, "successful temporary play cannot write over an unread archive");
+    await h.click("重新读取本机存档"); assert.equal(h.saved().id, JSON.parse(archived).id);
+    assert.match(h.text(), /虚构存档伴侣/); assert.doesNotMatch(h.text(), /duel_archive_read_failed/);
+    assert.equal(h.requests.length, 1, "archive recovery must never request a new narration");
+  } finally { await h.close(); }
+});
+
+for (const [label, archived] of [
+  ["truncated JSON", '{"version":3,"logs":['], ["empty saved value", ""],
+  ["unsupported version", '{"version":99,"text":"FICTIONAL_ARCHIVE"}'],
+  ["null JSON", "null"], ["array JSON", "[]"], ["incomplete version-3 object", '{"version":3,"text":"FICTIONAL_ARCHIVE"}'],
+]) {
+  test(`a ${label} archive stays untouched after reading, retrying, cancellation, and restart`, async () => {
+    const h = await harness({ stored: [[storageKey(), archived]] }); try {
+      assert.equal(h.values.get(storageKey()), archived); assert.match(h.text(), /duel_archive_invalid/);
+      assert.doesNotMatch(h.text(), /FICTIONAL_ARCHIVE/);
+      await h.click("重新读取本机存档"); assert.equal(h.values.get(storageKey()), archived);
+      await h.startTwice(); await h.click("取消本回合"); await h.respond(0);
+      assert.equal(h.values.get(storageKey()), archived); assert.doesNotMatch(h.text(), /虚构回合正文已完整收到。/);
+      await h.click("重新开始"); assert.equal(h.values.get(storageKey()), archived);
+      assert.equal(h.writes.filter(write => write.key === storageKey()).length, 0);
+    } finally { await h.close(); }
+  });
+}
+
+test("an archive recovery callback captured in a previous scope cannot read or replace the next companion", async () => {
+  const archived = JSON.stringify(createDuelState({ playerName: "虚构甲用户", companionName: "虚构甲伴侣" }));
+  const nextArchive = JSON.stringify(playDuelRound(createDuelState({ playerName: "虚构乙用户", companionName: "虚构乙伴侣" }), "neck", () => 0).state);
+  const h = await harness({ stored: [[storageKey(), archived], [storageKey(ACCOUNT_A, COMPANION_B), nextArchive]], storageReadFailures: 1 }); try {
+    const recovery = h.button("重新读取本机存档"); assert.ok(recovery); const click = recovery.props.onClick;
+    await h.switchCompanion({ renderNow: true });
+    await act(async () => { click(); await tick(); });
+    assert.equal(h.values.get(storageKey()), archived); assert.equal(h.values.get(storageKey(ACCOUNT_A, COMPANION_B)), nextArchive);
+    assert.match(h.text(), /虚构乙伴侣/); assert.doesNotMatch(h.text(), /虚构甲伴侣/); assert.equal(h.requests.length, 0);
+  } finally { await h.close(); }
+});
+
+test("archive recovery checks the latest bytes and preserves valid raw formatting until a confirmed state change", async () => {
+  const archived = JSON.stringify(createDuelState({ playerName: "虚构存档用户", companionName: "虚构原存档伴侣" }), null, 2);
+  const h = await harness({ stored: [[storageKey(), archived]], storageReadFailures: 1 }); try {
+    await h.startTwice(); await h.respond(0); assert.match(h.text(), /虚构回合正文已完整收到。/);
+    const replaced = '{"version":99,"text":"FICTIONAL_ARCHIVE_CHANGED"}'; h.values.set(storageKey(), replaced);
+    await h.click("重新读取本机存档"); assert.equal(h.values.get(storageKey()), replaced);
+    assert.match(h.text(), /duel_archive_invalid/); assert.match(h.text(), /虚构回合正文已完整收到。/);
+    assert.doesNotMatch(h.text(), /FICTIONAL_ARCHIVE_CHANGED/);
+    h.values.set(storageKey(), archived); await h.click("重新读取本机存档");
+    assert.equal(h.values.get(storageKey()), archived); assert.equal(h.writes.filter(write => write.key === storageKey()).length, 0);
+    assert.match(h.text(), /虚构原存档伴侣/); assert.doesNotMatch(h.text(), /duel_archive_invalid|虚构回合正文已完整收到。/);
+    await h.startTwice(); await h.respond(1); assert.equal(h.saved().round, 2);
+  } finally { await h.close(); }
+});
+
+test("archive recovery ignores busy, changed-account, and unmounted callbacks before reading storage", async () => {
+  const archived = JSON.stringify(createDuelState({ playerName: "虚构用户", companionName: "虚构伴侣" }));
+  const h = await harness({ stored: [[storageKey(), archived]], storageReadFailures: 1 }); try {
+    const click = h.button("重新读取本机存档").props.onClick;
+    await h.startTwice(); assert.equal(h.button("重新读取本机存档").props.disabled, true);
+    const before = h.reads.filter(key => key === storageKey()).length;
+    await act(async () => { click(); await tick(); }); assert.equal(h.reads.filter(key => key === storageKey()).length, before);
+    await h.respond(0); await h.switchAccount();
+    await act(async () => { click(); await tick(); }); assert.equal(h.reads.filter(key => key === storageKey()).length, before);
+    await h.unmount(); await act(async () => { click(); await tick(); });
+    assert.equal(h.reads.filter(key => key === storageKey()).length, before); assert.equal(h.values.get(storageKey()), archived);
+    assert.equal(h.requests.length, 1); assert.equal(h.signOuts(), 0);
+  } finally { await h.close(); }
+});
+
+test("a failed write preserves the last archive and requires a fresh read before persistence resumes", async () => {
+  const archived = JSON.stringify(createDuelState({ playerName: "虚构用户", companionName: "虚构存档伴侣" }));
+  const h = await harness({ stored: [[storageKey(), archived]], storageWriteFailures: 1 }); try {
+    await h.startTwice(); await h.respond(0); assert.match(h.text(), /duel_archive_write_failed/);
+    assert.match(h.text(), /虚构回合正文已完整收到。/); assert.doesNotMatch(h.text(), /FICTIONAL_PRIVATE_ARCHIVE_WRITE/);
+    assert.equal(h.values.get(storageKey()), archived); await h.click("重新开始"); assert.equal(h.values.get(storageKey()), archived);
+    await h.click("重新读取本机存档"); assert.equal(h.values.get(storageKey()), archived); assert.doesNotMatch(h.text(), /duel_archive_write_failed/);
+    assert.equal(h.requests.length, 1); await h.startTwice(); await h.respond(1); assert.equal(h.saved().round, 2);
+  } finally { await h.close(); }
+});
+
+test("StrictMode preserves an unreadable archive while temporary play remains available", async () => {
+  const archived = '{"version":3,"text":"FICTIONAL_ARCHIVE_STRICT"}';
+  const h = await harness({ stored: [[storageKey(), archived]], strict: true }); try {
+    assert.match(h.text(), /duel_archive_invalid/); assert.equal(h.values.get(storageKey()), archived);
+    await h.startTwice(); await h.respond(0); assert.match(h.text(), /虚构回合正文已完整收到。/);
+    assert.equal(h.values.get(storageKey()), archived); assert.equal(h.writes.filter(write => write.key === storageKey()).length, 0);
   } finally { await h.close(); }
 });

@@ -7,7 +7,6 @@ import {
 } from "./settings-save-scope.js";
 import { describeOperationError } from "./operation-error-help.js";
 import FeatureAtmosphere from "./FeatureAtmosphere";
-import TypewriterText from "./TypewriterText";
 
 function requestFailureMessage(error) {
   const { code, reason, action } = describeOperationError(error);
@@ -32,6 +31,21 @@ function formatSourceWindow(entry) {
   return `${formatDiaryDate(entry.source_window_start)} 至 ${formatDiaryDate(
     entry.source_window_end,
   )}`;
+}
+
+function isDiaryEntry(entry) {
+  return (
+    entry !== null &&
+    typeof entry === "object" &&
+    !Array.isArray(entry) &&
+    typeof entry.id === "string" &&
+    entry.id.length > 0 &&
+    typeof entry.title === "string" &&
+    typeof entry.content === "string" &&
+    (entry.mood == null || typeof entry.mood === "string") &&
+    (entry.source_message_count == null ||
+      (Number.isSafeInteger(entry.source_message_count) && entry.source_message_count >= 0))
+  );
 }
 
 export default function CompanionDiary({
@@ -84,7 +98,8 @@ export default function CompanionDiary({
         if (!isCurrent()) return;
         if (
           typeof data?.available !== "boolean" ||
-          !Array.isArray(data?.entries)
+          !Array.isArray(data?.entries) ||
+          !data.entries.every(isDiaryEntry)
         ) {
           const error = new Error("日记读取回执无效。");
           error.code = "diary_receipt_invalid";
@@ -133,7 +148,7 @@ export default function CompanionDiary({
         className="diary-generation-state state-watching"
         role="status"
       >
-        <img src="/app-icon.svg" alt="" />
+        <img src="/app-icon-192.png" alt="" />
         <div>
           <strong>记忆手记自动更新</strong>
           <span>
@@ -197,13 +212,7 @@ export default function CompanionDiary({
                 </div>
                 {entry.mood && <span>{entry.mood}</span>}
               </header>
-              <p>
-                {index === 0 ? (
-                  <TypewriterText text={entry.content} stepMs={16} />
-                ) : (
-                  entry.content
-                )}
-              </p>
+              <p>{entry.content}</p>
               <footer>
                 <span>
                   依据 {entry.source_message_count || 0} 条真实消息

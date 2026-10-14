@@ -39,13 +39,17 @@ const vite = await createServer({
       const code = `
         import {useState as realUseState,useRef,useEffect,useCallback} from "react";
         import OperationErrorHelp from "/src/OperationErrorHelp.jsx";
-        import {diagnosticScopeKey} from "/src/operation-diagnostics.js";
+        import {diagnosticScopeKey,recordOperationFailure} from "/src/operation-diagnostics.js";
+        import {describeOperationError} from "/src/operation-error-help.js";
+        import {requestErrorLogs} from "/src/error-log-request.js";
+        import {createScopedSettingsSession,settingsSaveScope} from "/src/settings-save-scope.js";
         const fixture=globalThis.__errorLogExplanationFixture;
         function useState(initial) {
           const [value,setValue]=realUseState(initial);
           return [value,next=>{fixture.stateWrites++;setValue(next);}];
         }
-        const fetchErrorLogs=limit=>fixture.fetch(limit);
+        const apiRequest=async(path,options)=>({logs:await fixture.fetch(Number(new URL(path,"https://example.test").searchParams.get("limit")))});
+        const authSession={getSnapshot:()=>({user:{id:fixture.accountScope},activeCompanionId:"fictional-companion-a"})};
         const LocalDiagnostics=()=>null;
         ${panelSource}
         export default ErrorLogsPanel;
@@ -71,6 +75,7 @@ const snapshot = () => JSON.stringify(tree.toJSON());
 try {
   const { default: ErrorLogsPanel } = await vite.ssrLoadModule("virtual:error-logs-panel");
   const mount = async (accountScope = "fictional-account-a") => {
+    fixture.accountScope = accountScope;
     fixture.calls = []; fixture.stateWrites = 0; routes.length = 0;
     await act(async () => {
       tree = TestRenderer.create(React.createElement(ErrorLogsPanel, {
@@ -128,22 +133,16 @@ try {
 
   let button = refreshButton();
   await act(async () => { button.props.onClick(); button.props.onClick(); });
-  assert.equal(fixture.calls.length, 3);
-  await resolve(2, [newerLog]);
-  const acceptedNewer = snapshot(), writesAfterNewer = fixture.stateWrites;
-  await reject(1);
-  assert.equal(snapshot(), acceptedNewer, "an older failure cannot replace a newer accepted log list or display a stale login warning");
-  assert.equal(fixture.stateWrites, writesAfterNewer, "stale completion must skip state setters, including loading and feedback");
+  assert.equal(fixture.calls.length, 2, "same-tick refresh clicks must share one request");
+  await resolve(1, [newerLog]);
   assert.match(snapshot(), /provider_model_unavailable/);
   assert.doesNotMatch(snapshot(), /provider_balance_insufficient/);
 
   button = refreshButton();
   await act(async () => { button.props.onClick(); button.props.onClick(); });
-  await reject(4);
-  const acceptedFailure = snapshot(), writesAfterFailure = fixture.stateWrites;
-  await resolve(3, [balanceLog]);
-  assert.equal(snapshot(), acceptedFailure, "an older success cannot overwrite logs or clear the latest failed refresh");
-  assert.equal(fixture.stateWrites, writesAfterFailure);
+  assert.equal(fixture.calls.length, 3);
+  await reject(2);
+  assert.match(snapshot(), /provider_model_unavailable/, "a failed refresh preserves previously accepted logs");
   assert.match(snapshot(), /重新登录/);
   assert.doesNotMatch(snapshot(), new RegExp(privateBody));
   await unmount();

@@ -23,11 +23,12 @@ stub('window', events);
 stub('document', doc);
 stub('localStorage', { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) });
 stub('IS_REACT_ACT_ENVIRONMENT', true);
-let calls, listeners, inviteRequests, launches, activeRead, replyRead, frameRead, roomRead, roomEvents, listenerDelay, playbackResult, playbackRead, captureResult, roomJoinRead, roomLeaveRead, roomUserRead, roomHistoryRead, messageSequence, stopRead;
+let calls, listeners, inviteRequests, launches, activeRead, replyRead, frameRead, roomRead, roomEvents, listenerDelay, playbackResult, playbackRead, captureResult, roomJoinRead, roomLeaveRead, roomUserRead, roomHistoryRead, messageSequence, stopRead, roomCreateError, roomCreateResult, roomLeaveResult;
 function reset() {
   calls = []; listeners = []; inviteRequests = []; launches = [];
   captureResult = null;
   stopRead = null;
+  roomCreateError = null; roomCreateResult = { id: 'room-fixture', joinCode: 'ROOMAA', mediaUrl: 'https://example.test/video' }; roomLeaveResult = { status: 'left' };
   roomJoinRead = null; roomLeaveRead = null; roomUserRead = null; roomHistoryRead = null; messageSequence = 0;
   activeRead = null; replyRead = null; frameRead = null; roomRead = null; roomEvents = null; listenerDelay = false; playbackResult = null; playbackRead = null; doc.visibilityState = 'visible';
   storage.clear();
@@ -58,13 +59,13 @@ stub('__castFixture', {
   readActiveCoWatchSession() { calls.push(['readSession']); return activeRead?.promise || Promise.resolve(null); },
   createCoWatchSession(input) { calls.push(['createSession', input]); return Promise.resolve({ id: 'session-fixture' }); },
   sendCoWatchReply(...args) { calls.push(['reply', ...args]); return replyRead?.promise || Promise.resolve({ reaction: '真实接口模拟回应' }); },
-  createWatchRoom() { return Promise.resolve({ id: 'room-fixture', joinCode: 'ROOMAA', mediaUrl: 'https://example.test/video' }); },
+  createWatchRoom() { calls.push(['createRoom']); return roomCreateError ? Promise.reject(roomCreateError) : Promise.resolve(roomCreateResult); },
   joinWatchRoom(code) { calls.push(['join', code]); return roomJoinRead?.promise || Promise.resolve({ id: code, joinCode: code, mediaUrl: 'https://example.test/video' }); },
   readWatchRoom(id) { calls.push(['readRoom', id]); return roomRead?.promise || Promise.resolve({ participants: [] }); },
   readRoomMessages(id) { calls.push(['roomHistory', id]); return roomHistoryRead?.promise || Promise.resolve([]); },
   sendRoomMessage(...args) { calls.push(['roomUser', ...args]); if (roomUserRead) return roomUserRead.promise; const saved = { id: ++messageSequence, senderType: 'user', content: args[1], senderName: '测试成员' }; roomEvents?.onMessage(saved); return Promise.resolve(saved); },
   sendRoomAiMessage(...args) { calls.push(['roomAi', ...args]); const saved = { id: ++messageSequence, senderType: 'ai', content: args[1], senderName: '测试伴侣' }; roomEvents?.onMessage(saved); return Promise.resolve(saved); },
-  leaveWatchRoom(id) { calls.push(['leave', id]); return roomLeaveRead?.promise || Promise.resolve(); },
+  leaveWatchRoom(id) { calls.push(['leave', id]); return roomLeaveRead?.promise || Promise.resolve(roomLeaveResult); },
   subscribeRoomEvents(id, handlers) { roomEvents = handlers; calls.push(['subscribe', id]); return () => calls.push(['unsubscribe', id]); },
 });
 const vite = await createServer({ root: fileURLToPath(new URL('..', import.meta.url)), appType: 'custom', logLevel: 'silent', server: { middlewareMode: true }, plugins: [{
@@ -103,6 +104,50 @@ async function invite(code) {
 }
 try {
   const { default: Player } = await vite.ssrLoadModule('/src/DlnaCastPlayer.jsx');
+
+  for (const uncertain of [new Error('fictional response lost after commit'), Object.assign(new Error('fictional timeout'), { status: 408 }), Object.assign(new Error('fictional gateway error'), { status: 502 })]) {
+    reset(); roomCreateError = uncertain;
+    await mount(Player, { info: { uri: 'https://example.test/video' } });
+    const create = button('🎬 创建放映厅');
+    await act(async () => { void create.props.onClick(); void create.props.onClick(); });
+    assert.equal(count('createRoom'), 1);
+    assert.ok(text().includes('watch_room_create_unconfirmed'));
+    assert.equal(button('请先核对创建结果').props.disabled, true);
+    await act(async () => create.props.onClick());
+    assert.equal(count('createRoom'), 1, 'even a stale handler cannot retry an unconfirmed creation');
+    await act(async () => input('输入邀请码加入…').props.onChange({ target: { value: 'ROOMAA' } }));
+    await act(async () => button('加入').props.onClick());
+    await act(async () => (button('退出') || button('退出放映厅')).props.onClick());
+    assert.equal(button('🎬 创建放映厅').props.disabled, false, 'confirmed join and leave recover creation availability');
+    await unmount();
+  }
+  reset(); roomCreateResult = { id: '' };
+  await mount(Player, { info: { uri: 'https://example.test/video' } });
+  await act(async () => button('🎬 创建放映厅').props.onClick());
+  assert.ok(text().includes('watch_room_create_unconfirmed'));
+  await unmount();
+  reset(); roomCreateError = Object.assign(new Error('fictional denied creation'), { status: 403 });
+  await mount(Player, { info: { uri: 'https://example.test/video' } });
+  await act(async () => button('🎬 创建放映厅').props.onClick());
+  assert.equal(button('🎬 创建放映厅').props.disabled, false, 'definitive rejection can be retried after fixing permissions');
+  assert.ok(text().includes('fictional denied creation'));
+  await unmount();
+  for (const receipt of [undefined, {}, { status: 'unconfirmed' }]) {
+    reset(); roomLeaveResult = receipt;
+    await mount(Player);
+    await act(async () => input('输入邀请码加入…').props.onChange({ target: { value: 'ROOMAA' } }));
+    await act(async () => button('加入').props.onClick());
+    await act(async () => roomEvents.onMessage({ id: 900, senderType: 'user', content: '虚构保留消息' }));
+    await act(async () => button('退出').props.onClick());
+    assert.ok(button('退出'), 'unconfirmed leave must retain the room');
+    assert.ok(text().includes('虚构保留消息'));
+    assert.ok(text().includes('watch_room_leave_unconfirmed'));
+    roomLeaveResult = { status: 'left' };
+    await act(async () => button('退出').props.onClick());
+    assert.ok(button('加入')); assert.ok(!text().includes('虚构保留消息'));
+    await unmount();
+  }
+  reset();
 
   listenerDelay = true;
   await mount(Player);

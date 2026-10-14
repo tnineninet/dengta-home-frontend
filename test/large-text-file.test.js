@@ -42,3 +42,18 @@ test('large samples scan every byte with bounded slices and mark incomplete mode
   assert.ok(maxRead <= 1024*1024);
   assert.equal(readBytes,bytes+65536);
 });
+
+test('optional line offsets preserve original encoded byte coordinates including BOM, CRLF and CR',async()=>{
+  const text='灯塔 first\r\nsecond\rthird\n'.repeat(200);
+  const utf16=Buffer.from(text,'utf16le');const be=Buffer.from(utf16);for(let i=0;i<be.length;i+=2)[be[i],be[i+1]]=[be[i+1],be[i]];
+  const gb=Buffer.concat(text.split('灯塔').flatMap((part,index)=>index?[Buffer.from([0xb5,0xc6,0xcb,0xfe]),Buffer.from(part)]:[Buffer.from(part)]));
+  for(const [codec,bytes] of [['utf-8',Buffer.from(text)],['utf-16le',Buffer.concat([Buffer.from([255,254]),utf16])],['utf-16be',Buffer.concat([Buffer.from([254,255]),be])],['gb18030',gb]]) {
+    for await(const batch of readTextFileBatches(file(bytes),{chunkBytes:1024,includeLineOffsets:true})) {
+      assert.equal(batch.lineStarts[0].characterOffset,0);assert.equal(batch.lineStarts[0].byteOffset,batch.startByte);
+      for(const line of batch.lineStarts) {
+        assert.equal(new TextDecoder(codec).decode(bytes.subarray(batch.startByte,line.byteOffset)),batch.text.slice(0,line.characterOffset));
+        if(line.characterOffset)assert.match(batch.text.slice(0,line.characterOffset),/[\r\n]$/);
+      }
+    }
+  }
+});

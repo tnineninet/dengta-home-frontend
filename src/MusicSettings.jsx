@@ -137,7 +137,7 @@ function MusicSettingsPanel({ providerStatus = null, onOpenMcpDeviceCenter, onIm
       if (importRequestRef.current?.signature !== signature) importRequestRef.current = { signature, requestId: crypto.randomUUID() };
       return importMusicPlaylist({ ...payload, requestId: importRequestRef.current.requestId }, token.options);
     }, {
-      onStart: () => { setBusy(true); setError(""); setMessage(""); },
+      onStart: () => { onBusyChange?.(true); setBusy(true); setError(""); setMessage(""); },
       onSuccess: async (imported, token) => {
         importRequestRef.current = null;
         setContent(current => current === content ? "" : current);
@@ -182,7 +182,7 @@ function MusicSettingsPanel({ providerStatus = null, onOpenMcpDeviceCenter, onIm
   }
   async function removePlaylist(id) {
     await runMusicTask(musicScope, "import", (token) => deleteMusicPlaylist(id, token.options), {
-      onStart: () => { setBusy(true); setError(""); },
+      onStart: () => { onBusyChange?.(true); setBusy(true); setError(""); },
       onSuccess: () => { musicScope.cancelKey("selection"); setSelected(null); setMessage("歌单已删除。"); void refresh({ quiet: true }); },
       onError: (caught) => setError(musicErrorMessage(caught, "删除失败，歌单仍保留，请重试。")), onFinish: () => setBusy(false),
     });
@@ -208,7 +208,7 @@ function MusicSettingsPanel({ providerStatus = null, onOpenMcpDeviceCenter, onIm
     const input = event.currentTarget, file = input.files?.[0];
     if (!file) return;
     await runMusicTask(musicScope, "file", () => readPlaylistTextFile(file), {
-      replace: true, onStart: () => { setFileBusy(true); setError(""); },
+      replace: true, onStart: () => { onBusyChange?.(true); setFileBusy(true); setError(""); },
       onSuccess: (value) => { const lower = file.name.toLowerCase(); setFileName(file.name); setFormat(lower.endsWith(".json") ? "json" : /\.m3u8?$/.test(lower) ? "m3u" : "txt"); setContent(value); setMessage(`已读取歌单文件：${file.name}`); },
       onError: (caught) => setError(musicErrorMessage(caught, "歌单文件读取失败，请重新选择。")), onFinish: () => setFileBusy(false),
     });
@@ -230,7 +230,7 @@ function MusicSettingsPanel({ providerStatus = null, onOpenMcpDeviceCenter, onIm
     await runMusicTask(musicScope, "import", token => file
       ? recovery.start(file, musicScope, token, setPendingAudio)
       : recovery.resume(musicScope, token), {
-      onStart: () => { setFileBusy(true); setError(""); setMessage(""); },
+      onStart: () => { onBusyChange?.(true); setFileBusy(true); setError(""); setMessage(""); },
       onSuccess: async ({ audio, imported }, token) => {
         setPendingAudio(null); setSelected(imported);
         setMessage(`已把「${audio.title}」导入歌单「${imported.name}」。音频能否播放以播放器实际结果为准。`);

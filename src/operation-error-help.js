@@ -5,6 +5,9 @@ export function describeOperationError(source = {}) {
   const code = /^[a-z0-9_:-]{1,80}$/i.test(raw) && !/^(?:sk-|sb_secret_|ghp_|eyJ)/.test(raw) ? raw : "unknown";
   const known = Object.hasOwn(CHAT_ERROR_FEEDBACK, code) ? CHAT_ERROR_FEEDBACK[code] : null;
   if (known) return { code, ...known, settingsCategory: code.startsWith("provider_") || code === "context_budget_exceeded" ? "services" : null };
+  if (code === "error_logs_receipt_invalid" || code === "error_log_receipt_invalid") return { code, reason: "日志接口返回的数据不完整或编号不匹配，本次读取未确认。", action: "点击刷新或重新读取；已显示的有效日志与本轮诊断会保留。持续出现时用此错误代码检查日志接口回执。", settingsCategory: null };
+  if (code === "diary_receipt_invalid") return { code, reason: "服务器返回的手记列表格式不完整，无法确认这次读取。", action: "点击重新读取；如果再次出现，请用错误代码检查手记接口的回执格式。已有有效手记不会被这次异常覆盖。", settingsCategory: null };
+  if (code === "nursery_response_invalid") return { code, reason: "服务器返回的家庭状态或操作回执不完整，本次结果尚未确认。", action: "先重新读取家庭状态，核对操作是否已生效，再决定是否重新操作；当前输入会保留。", settingsCategory: null };
   const status = Number(source.status);
   if (status === 401) return { code, reason: "当前请求没有有效的灯塔登录状态。", action: "重新登录后，再刷新这项数据。", settingsCategory: null };
   if (status === 403) return { code, reason: "当前账号没有读取这项数据的权限。", action: "核对当前账号和伴侣；不要重复提交，确认权限后再刷新。", settingsCategory: null };

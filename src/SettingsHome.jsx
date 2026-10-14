@@ -24,8 +24,11 @@ export default function SettingsHome({ categories = [], onSelectCategory, prefer
   const searchId = useId();
   const guideId = useId();
   const quickEditorId = useId();
+  const quickLimitId = useId();
   const storedQuickIds = useMemo(() => readSettingsQuickLinks(categories, preferenceScope), [categories, preferenceScope]);
   const quickIds = normalizeSettingsQuickLinks(quickLinkEdits?.scope === preferenceScope ? quickLinkEdits.ids : storedQuickIds, categories);
+  const quickIdsRef = useRef(quickIds);
+  const quickCategoriesRef = useRef(categories);
   const groups = buildSettingsGroups(categories, query);
   const isSearching = query.trim().length > 0;
   const resultCount = groups.reduce((total, group) => total + group.categories.length, 0);
@@ -38,8 +41,10 @@ export default function SettingsHome({ categories = [], onSelectCategory, prefer
 
   useLayoutEffect(() => {
     currentScopeRef.current = preferenceScope;
+    quickIdsRef.current = quickIds;
+    quickCategoriesRef.current = categories;
     return () => { currentScopeRef.current = null; };
-  }, [preferenceScope]);
+  }, [preferenceScope, quickIds, categories]);
 
   function clearSearch() {
     setQuery("");
@@ -47,21 +52,38 @@ export default function SettingsHome({ categories = [], onSelectCategory, prefer
   }
 
   function handleSearchKeyDown(event) {
-    if (event.isComposing || event.nativeEvent?.isComposing || event.keyCode === 229 || event.nativeEvent?.keyCode === 229) return;
+    if (event.isComposing || event.nativeEvent?.isComposing || event.keyCode === 229 || event.nativeEvent?.keyCode === 229 || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
     if (event.key === "Escape" && query) {
       event.preventDefault();
       clearSearch();
     } else if (event.key === "Enter" && isSearching && resultCount === 1) {
       event.preventDefault();
-      onSelectCategory?.(groups[0].categories[0].id);
+      onSelectCategory?.(groups[0].categories[0].id, event.currentTarget);
     }
+  }
+
+  function handlePanelKeyDown(event, closePanel, toggleRef) {
+    if (event.key !== "Escape" || event.isComposing || event.nativeEvent?.isComposing || event.keyCode === 229 || event.nativeEvent?.keyCode === 229 || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+    event.preventDefault();
+    event.stopPropagation();
+    closePanel(false);
+    toggleRef.current?.focus();
   }
 
   function saveQuickIds(ids) {
     if (currentScopeRef.current !== preferenceScope) return;
-    const saved = writeSettingsQuickLinks(ids, categories, preferenceScope);
+    const saved = writeSettingsQuickLinks(ids, quickCategoriesRef.current, preferenceScope);
+    quickIdsRef.current = saved.ids;
     setQuickLinkEdits({ scope: preferenceScope, ids: saved.ids });
     setQuickLinkFeedback({ scope: preferenceScope, message: saved.persisted ? "常用入口已保存。" : "本次已调整；此设备暂时无法保存，重新打开可能恢复默认。" });
+  }
+
+  function toggleQuickId(id) {
+    if (currentScopeRef.current !== preferenceScope || !quickCategoriesRef.current.some(category => category.id === id)) return;
+    const current = quickIdsRef.current;
+    const selected = current.includes(id);
+    if (!selected && current.length >= SETTINGS_QUICK_LINK_LIMIT) return;
+    saveQuickIds(selected ? current.filter(value => value !== id) : [...current, id]);
   }
 
   return (
@@ -97,26 +119,27 @@ export default function SettingsHome({ categories = [], onSelectCategory, prefer
           {quickLinks.length > 0 ? (
             <nav className="settings-home-quick-links" aria-label="常用设置入口">
               {quickLinks.map((link) => (
-                <button key={link.categoryId} type="button" data-settings-quick-link={link.categoryId} onClick={() => onSelectCategory?.(link.categoryId)}>
+                <button key={link.categoryId} type="button" data-settings-quick-link={link.categoryId} onClick={event => onSelectCategory?.(link.categoryId, event?.currentTarget)}>
                   {link.label}<ArrowRight aria-hidden="true" />
                 </button>
               ))}
             </nav>
           ) : <p className="settings-home-shortcuts-empty">可以在“整理常用入口”中固定需要的设置。</p>}
           {showQuickEditor ? (
-            <div id={quickEditorId} className="settings-home-quick-editor">
+            <div id={quickEditorId} className="settings-home-quick-editor" onKeyDown={(event) => handlePanelKeyDown(event, setShowQuickEditor, quickEditRef)}>
               <p>最多固定 {SETTINGS_QUICK_LINK_LIMIT} 个入口，仅保存在此设备的当前账号与伴侣中。</p>
-              <div className="settings-home-quick-options" aria-label="选择常用设置入口">
+              <p id={quickLimitId} className="settings-home-quick-count" role="status">已固定 {quickIds.length} / {SETTINGS_QUICK_LINK_LIMIT} 个入口{quickIds.length >= SETTINGS_QUICK_LINK_LIMIT ? " · 取消一项后可添加新入口" : ""}</p>
+              <div className="settings-home-quick-options" role="group" aria-label="选择常用设置入口" aria-describedby={quickLimitId}>
                 {categories.map(({ id, label }) => {
                   const selected = quickIds.includes(id);
-                  return <button key={id} type="button" data-settings-quick-toggle={id} aria-pressed={selected} disabled={!selected && quickIds.length >= SETTINGS_QUICK_LINK_LIMIT} onClick={() => saveQuickIds(selected ? quickIds.filter((current) => current !== id) : [...quickIds, id])}>
+                  return <button key={id} type="button" data-settings-quick-toggle={id} aria-pressed={selected} disabled={!selected && quickIds.length >= SETTINGS_QUICK_LINK_LIMIT} onClick={() => toggleQuickId(id)}>
                     <span className="settings-home-quick-check" aria-hidden="true">{selected ? <Check /> : null}</span>{label}
                   </button>;
                 })}
               </div>
               <div className="settings-home-quick-actions">
                 <button type="button" onClick={() => saveQuickIds(null)}>恢复默认入口</button>
-                <button type="button" onClick={() => { setShowQuickEditor(false); quickEditRef.current?.focus(); }}>完成整理</button>
+                <button type="button" className="settings-home-quick-done" onClick={() => { setShowQuickEditor(false); quickEditRef.current?.focus(); }}>完成整理</button>
               </div>
             </div>
           ) : null}
@@ -144,7 +167,7 @@ export default function SettingsHome({ categories = [], onSelectCategory, prefer
                   key={id}
                   type="button"
                   data-settings-category={id}
-                  onClick={() => onSelectCategory?.(id)}
+                  onClick={event => onSelectCategory?.(id, event?.currentTarget)}
                 >
                   {Icon ? <span className="settings-home-entry-icon" aria-hidden="true"><Icon /></span> : null}
                   <span className="settings-home-entry-text"><strong>{label}</strong><small>{description}</small></span>
@@ -174,12 +197,12 @@ export default function SettingsHome({ categories = [], onSelectCategory, prefer
             <ChevronDown aria-hidden="true" />
           </button>
           {showGuide ? (
-            <div id={guideId} className="settings-home-guide-content">
+            <div id={guideId} className="settings-home-guide-content" onKeyDown={(event) => handlePanelKeyDown(event, setShowGuide, guideToggleRef)}>
               <p>挑一项你现在需要的设置，其他功能可以随时回来看看。</p>
               <ol>
                 {guideSteps.map((step) => (
                   <li key={step.categoryId}>
-                    <button type="button" onClick={() => onSelectCategory?.(step.categoryId)}>{step.label}<ArrowRight aria-hidden="true" /></button>
+                    <button type="button" onClick={event => onSelectCategory?.(step.categoryId, event?.currentTarget)}>{step.label}<ArrowRight aria-hidden="true" /></button>
                     <p>{step.description}</p>
                   </li>
                 ))}

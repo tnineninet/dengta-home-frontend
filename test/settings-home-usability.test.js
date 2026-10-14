@@ -234,3 +234,45 @@ test("navigation storage handles malformed, unavailable and unscoped data withou
   assert.equal(reads.length, 1);
   assert.deepEqual(readSettingsQuickLinks(categories, "account-b", { getItem() { throw new Error("restricted"); } }), ["persona", "services", "fun"]);
 });
+
+test("same-tick shortcut edits compose against the latest selection rather than restoring removed entries", async () => {
+  const ui = await fixture();
+  try {
+    await ui.click("整理常用入口");
+    const removeServices = ui.toggle("services").props.onClick;
+    const addLogs = ui.toggle("logs").props.onClick;
+    await act(async () => { removeServices(); addLogs(); });
+    assert.deepEqual(ui.quickLinks(), ["persona", "fun", "logs"]);
+    assert.deepEqual(JSON.parse(ui.writes.at(-1).value), ["persona", "fun", "logs"]);
+  } finally { await ui.unmount(); }
+});
+
+test("an old shortcut callback uses current choices and cannot overfill the four-entry limit", async () => {
+  const ui = await fixture();
+  try {
+    await ui.click("整理常用入口");
+    const addLogs = ui.toggle("logs").props.onClick;
+    const addVoice = ui.toggle("voice").props.onClick;
+    await act(async () => ui.toggle("services").props.onClick());
+    await act(async () => addVoice());
+    await act(async () => addLogs());
+    assert.deepEqual(ui.quickLinks(), ["persona", "fun", "voice", "logs"]);
+    const writes = ui.writes.length;
+    await act(async () => ui.toggle("services").props.onClick());
+    assert.equal(ui.writes.length, writes);
+    assert.equal(ui.quickLinks().length, 4);
+  } finally { await ui.unmount(); }
+});
+
+test("a stale shortcut for a removed category cannot rewrite current preferences", async () => {
+  const ui = await fixture();
+  try {
+    await ui.click("整理常用入口");
+    const addLogs = ui.toggle("logs").props.onClick;
+    await ui.update({ categories: categories.filter(category => category.id !== "logs") });
+    const writes = ui.writes.length;
+    await act(async () => addLogs());
+    assert.equal(ui.writes.length, writes);
+    assert.deepEqual(ui.quickLinks(), ["persona", "services", "fun"]);
+  } finally { await ui.unmount(); }
+});

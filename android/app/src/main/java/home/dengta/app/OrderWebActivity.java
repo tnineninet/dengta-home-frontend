@@ -45,9 +45,13 @@ import java.util.Random;
 public class OrderWebActivity extends Activity {
     private WebView webView;
     private String mode;
+    private String requestId = "";
+    private TextView operationStatus;
+    private final OrderPageResultState resultState = new OrderPageResultState();
     private String configJson;
     private int orderStep = 0;
-    private boolean reloadAttempted = false;
+    private boolean automationStopped = false;
+    private String technicalErrorCode = "";
     private boolean backHintShown = false;
     private String currentUrl = "";
     private int searchRetries = 0;
@@ -64,15 +68,18 @@ public class OrderWebActivity extends Activity {
     // 坑 13：真人节奏——每步之间 1.5s~4.2s 随机。
     // 必须 postDelayed 而非 Thread.sleep：evaluateJavascript 回调跑在主线程，sleep 会冻住 UI。
     private void slow(Runnable next) {
-        webView.postDelayed(next, 1500 + random.nextInt(2701));
+        if (!canAutomate()) return;
+        webView.postDelayed(() -> { if (canAutomate()) next.run(); }, 1500 + random.nextInt(2701));
     }
     private void postSlow(Runnable r) {
-        webView.postDelayed(r, 1500 + random.nextInt(2701));
+        if (!canAutomate()) return;
+        webView.postDelayed(() -> { if (canAutomate()) r.run(); }, 1500 + random.nextInt(2701));
     }
 
     // 坑 8 / 30：真触摸打坐标——构造 DOWN/UP 触摸序列注入 WebView。
     // 坐标是视口坐标（getBoundingClientRect 得来），WebView 全屏即视口。
     private void realTap(final float x, final float y) {
+        if (!canAutomate()) return;
         try {
             final long downTime = SystemClock.uptimeMillis();
             MotionEvent down = MotionEvent.obtain(
@@ -80,6 +87,7 @@ public class OrderWebActivity extends Activity {
             webView.dispatchTouchEvent(down);
             down.recycle();
             webView.postDelayed(() -> {
+                if (!canAutomate()) return;
                 try {
                     long upTime = SystemClock.uptimeMillis();
                     MotionEvent up = MotionEvent.obtain(
@@ -96,6 +104,7 @@ public class OrderWebActivity extends Activity {
     // 坑 8 / 30 / 45：取元素中心视口坐标 → 落点前验身（九宫格换点）→ 真触摸。
     // js 里打标记后用这一个函数做点击。
     private void tapMarked(final String selector) {
+        if (!canAutomate()) return;
         String js = "(function(){"
             + "function inView(e){if(!e)return null;var r=e.getBoundingClientRect();"
             + "if(r.width<2||r.height<2)return null;return r;}"
@@ -126,6 +135,7 @@ public class OrderWebActivity extends Activity {
 
     // 坑 14 / 24：三路认人机验证——正文正则 / DOM 选择器 / 可见壳（display:none 的壳不算）
     private void checkVerification(Runnable next) {
+        if (!canAutomate()) return;
         String js = "(function(){"
             + "var t=document.body.innerText||'';"
             + "// 只认验证专用句式，避免正文偶带“验证码”字样误报（坑 14 / 24）"
@@ -138,6 +148,7 @@ public class OrderWebActivity extends Activity {
             + "return {verify:false};"
             + "})();";
         webView.evaluateJavascript(js, value -> {
+            if (!canAutomate()) return;
             boolean verified = false;
             if (value != null && !value.equals("null") && !String.valueOf(value).contains("verify:false")) {
                 try {
@@ -162,6 +173,7 @@ public class OrderWebActivity extends Activity {
     }
 
     private void checkLoginState(Runnable next) {
+        if (!canAutomate()) return;
         if (looksLoggedOut()) {
             finishWithResult("{\"status\":\"logged_out\",\"error\":\"掉登录了：页面把我踢到了登录页。请点「扫码登录外卖」重新登录后再试。\"}");
             return;
@@ -171,6 +183,7 @@ public class OrderWebActivity extends Activity {
             + "if(t.length<120&&foot.test(t)){return true;}"
             + "return false;})();";
         webView.evaluateJavascript(js, value -> {
+            if (!canAutomate()) return;
             boolean emptyShell = "true".equals(String.valueOf(value).replace("\"", "").trim());
             if (emptyShell) {
                 finishWithResult("{\"status\":\"logged_out\",\"error\":\"登录态失效了（页面只剩空壳）。请重新扫码登录后再试。\"}");
@@ -184,11 +197,19 @@ public class OrderWebActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         try {
+            Intent intent = getIntent();
+            mode = intent == null ? "" : intent.getStringExtra("mode");
+            requestId = intent == null ? "" : intent.getStringExtra("request_id");
+            if (savedInstanceState != null) {
+                automationStopped = savedInstanceState.getBoolean("dengta_order_automation_stopped", true);
+                if (savedInstanceState.getBoolean("dengta_order_result_published", false)) resultState.markPublished();
+                showTechnicalError("takeout_page_interrupted");
+                return;
+            }
             onCreateGuarded(savedInstanceState);
-        } catch (Throwable error) {
-            // 页面创建失败时优雅结束,不让整个 App 进程崩溃；记录原因便于排查。
-            android.util.Log.e(TAG, "onCreate failed", error);
-            finish();
+        } catch (Throwable ignored) {
+            android.util.Log.e(TAG, "takeout_page_init_failed");
+            showTechnicalError("takeout_page_init_failed");
         }
     }
 
@@ -204,7 +225,6 @@ public class OrderWebActivity extends Activity {
             );
         }
         String url = getIntent().getStringExtra("url");
-        mode = getIntent().getStringExtra("mode");
         configJson = getIntent().getStringExtra("config");
         String title = getIntent().getStringExtra("title");
         // 从 config 解析帖子 11 节的钱闸参数
@@ -231,6 +251,10 @@ public class OrderWebActivity extends Activity {
         header.setPadding(24, 24, 24, 12);
         root.addView(header, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        operationStatus = new TextView(this);
+        operationStatus.setText("search".equals(mode) ? "正在读取店铺。结果会交给 AI，页面保留到你手动返回。" : "页面由你手动返回；付款仍需你亲自确认。");
+        operationStatus.setPadding(24, 8, 24, 12);
+        root.addView(operationStatus, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         webView = new WebView(this);
         WebSettings settings = webView.getSettings();
@@ -262,26 +286,19 @@ public class OrderWebActivity extends Activity {
             @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
                 super.onPageStarted(view, url, favicon);
+                if (automationStopped || view != webView || isFinishing() || isDestroyed()) return;
                 // document-start 注入不可靠时的兜底：页面加载早期覆盖 geolocation。
                 LocationFix.injectMock(view);
             }
 
             @Override
             public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
-                // 渲染进程崩溃：先尝试重新加载一次（页面可能只是短暂内存压力），
-                // 仍失败才结束页面并返回结果（带原因），避免用户看到"搜索被取消"。
-                if (!reloadAttempted) {
-                    reloadAttempted = true;
-                    view.post(() -> {
-                        try {
-                            if (currentUrl != null && !currentUrl.isEmpty()) view.loadUrl(currentUrl);
-                        } catch (Exception ignored) {
-                            finishWithResult("{\"status\":\"error\",\"error\":\"外卖页面渲染异常，请重试\"}");
-                        }
-                    });
+                if (view != webView || isFinishing() || isDestroyed()) {
+                    disposeWebView(view);
+                    if (view == webView) webView = null;
                     return true;
                 }
-                finishWithResult("{\"status\":\"error\",\"error\":\"外卖页面多次渲染异常，请稍后重试\"}");
+                showTechnicalError("takeout_page_renderer_failed");
                 return true;
             }
 
@@ -289,6 +306,7 @@ public class OrderWebActivity extends Activity {
             public void onPageFinished(WebView view, String finishedUrl) {
                 super.onPageFinished(view, finishedUrl);
                 currentUrl = finishedUrl;
+                if (!canAutomate()) return;
                 if ("search".equals(mode)) {
                     view.postDelayed(() -> runSearchStep(view), 2500);
                 } else if ("order".equals(mode)) {
@@ -316,13 +334,19 @@ public class OrderWebActivity extends Activity {
         Button done = new Button(this);
         done.setText("完成后点这里返回");
         done.setOnClickListener(v -> {
+            if ("search".equals(mode)) {
+                if (resultState.result() == null) cancelUnreadySearch();
+                else returnToDengTa(resultState.result());
+                return;
+            }
+            if (resultState.result() != null) { returnToDengTa(resultState.result()); return; }
             captureScreenshot();
             String result = "{\"status\":\"awaiting_payment\",\"note\":\"用户已在页面确认\"";
             if (!screenshotBase64.isEmpty()) {
                 result += ",\"screenshot\":\"" + screenshotBase64 + "\"";
             }
             result += "}";
-            finishWithResult(result);
+            returnToDengTa(result);
         });
         root.addView(done, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
@@ -334,6 +358,7 @@ public class OrderWebActivity extends Activity {
     }
 
     private void runSearchStep(WebView view) {
+        if (!canAutomate()) return;
         // 坑 2：等真数据——轮询直到出现店卡身份证（"分"评分为主，起送只是可选牌子，坑 40）。
         String waitJs = "(function(){var t=document.body.innerText||'';"
             + "return /分\\s*\\|/.test(t)||/起送¥/.test(t)||t.indexOf('起送')>=0;})();";
@@ -371,6 +396,7 @@ public class OrderWebActivity extends Activity {
     }
 
     private void runOrderStep(WebView view) {
+        if (!canAutomate()) return;
         try {
             JSONObject config = new JSONObject(configJson);
             String shopName = config.optString("shop_name", "");
@@ -421,6 +447,7 @@ public class OrderWebActivity extends Activity {
     //  - 小柜台（ITEM_STICKY_CATEGORY_SCHEME「猜你喜欢」）→ 拿 shopId 重建正门
     //  - 还在搜索/中间页 → 再认一拍（坑 19），认不出就按小柜台兜底找 shopId
     private void enterShop(WebView view, int attempt) {
+        if (!canAutomate()) return;
         if (attempt > 4) {
             // 实在认不出门：直接从当前页尝试选品，至少不会卡死
             addProductStep(view);
@@ -449,6 +476,7 @@ public class OrderWebActivity extends Activity {
 
     // 坑 50：小柜台里必然带着 shopId，抽出数字 id 重建 SHOP_SCHEME 正门再进。
     private void reloadShopDoor(final WebView view) {
+        if (!canAutomate()) return;
         String js = "(function(){"
             + "var m=location.href.match(/shopId[=:]\\s*(\\d{4,})/)||location.href.match(/[?&]id=(\\d{4,})/);"
             + "if(m)return m[1];"
@@ -457,6 +485,7 @@ public class OrderWebActivity extends Activity {
             + "var m2=h.match(/(\\d{4,})/);if(m2)return m2[1];}"
             + "return '';})();";
         view.evaluateJavascript(js, value -> {
+            if (!canAutomate()) return;
             String shopId = String.valueOf(value).replace("\"", "").trim();
             if (shopId.length() >= 4 && shopId.matches("\\d+") && !"null".equals(shopId)) {
                 String door = "https://h5.ele.me/minisite/pages-poi/restaurant/index?shopId="
@@ -472,6 +501,7 @@ public class OrderWebActivity extends Activity {
 
     // 坑 5 / 46：加购两段 + 三重门铃（卡身 → 卡图 → 「选规格」小钮）
     private void addProductStep(WebView view) {
+        if (!canAutomate()) return;
         try {
             JSONObject config = new JSONObject(configJson);
             final String product = config.optString("product", "");
@@ -530,6 +560,7 @@ public class OrderWebActivity extends Activity {
                     } else if (v.contains("add")) {
                         tapMarked("[data-dengta-any='1']");
                         webView.postDelayed(() -> {
+                            if (!canAutomate()) return;
                             String js2 = "(function(){var s=document.querySelector('.sku__button');"
                                 + "if(s&&s.getBoundingClientRect().height>20){s.setAttribute('data-dengta-any','1');return true;}"
                                 + "return false;})();";
@@ -554,8 +585,10 @@ public class OrderWebActivity extends Activity {
 
     // 坑 7：加完购回购物车页（详情页里没有「去结算」），停那儿让人付款。
     private void goToCart() {
+        if (!canAutomate()) return;
         try {
             webView.postDelayed(() -> {
+                if (!canAutomate()) return;
                 try {
                     webView.loadUrl("https://h5.ele.me/msite/cart");
                 } catch (Exception ignored) {
@@ -569,7 +602,7 @@ public class OrderWebActivity extends Activity {
     // 若超出 maxAmount 或车里有旧货时停手，否则继续。
     // 帖子 14 节「截图」：拍下购物车页截图，base64 带回。
     private void settlementCheck() {
-        if (webView == null) return;
+        if (!canAutomate()) return;
         String js = "(function(){"
             + "var t=document.body.innerText||'';"
             + "// 读合计（帖子 11 节：两种写法 A/B）"
@@ -585,6 +618,7 @@ public class OrderWebActivity extends Activity {
             + "return {total:isNaN(total)?0:total,items:items};"
             + "})();";
         webView.evaluateJavascript(js, value -> {
+            if (!canAutomate()) return;
             try {
                 double total = 0;
                 int items = 0;
@@ -637,6 +671,72 @@ public class OrderWebActivity extends Activity {
     }
 
     private void finishWithResult(String resultJson) {
+        if (automationStopped || isFinishing() || isDestroyed() || !resultState.stage(resultJson == null ? "{\"status\":\"error\"}" : resultJson)) return;
+        String status = "";
+        try { status = new JSONObject(resultState.result()).optString("status", "done"); } catch (Exception ignored) {}
+        if (operationStatus != null) operationStatus.setText("verification".equals(status) ? "页面需要验证，自动操作已停止。你可以完成验证后手动返回。"
+            : "logged_out".equals(status) ? "页面需要登录，自动操作已停止。你可以登录后手动返回。"
+            : "search".equals(mode) ? "搜索结果已交回 AI。你可以继续查看，完成后手动返回。"
+            : "自动操作已停止，请核对页面后手动返回。");
+        if ("search".equals(mode) && requestId != null && !requestId.isEmpty()) {
+            resultState.markPublished();
+            OrderBrowserPlugin.publishSearchResult(this, requestId, resultState.result(), null);
+        }
+    }
+
+    private boolean canAutomate() { return webView != null && !automationStopped && !isFinishing() && !isDestroyed() && !resultState.stopped(); }
+
+    private void disposeWebView(WebView view) {
+        if (view == null) return;
+        try {
+            if (view.getParent() instanceof ViewGroup) ((ViewGroup) view.getParent()).removeView(view);
+        } catch (Exception ignored) {}
+        try { view.destroy(); } catch (Exception ignored) {}
+    }
+
+    private String technicalErrorResult() {
+        return "{\"status\":\"error\",\"code\":\"" + technicalErrorCode + "\",\"loading\":false,\"shops\":[]}";
+    }
+
+    private void showTechnicalError(String code) {
+        automationStopped = true;
+        technicalErrorCode = code;
+        WebView failed = webView;
+        webView = null;
+        disposeWebView(failed);
+        if ("search".equals(mode) && !resultState.published() && requestId != null && !requestId.isEmpty()) {
+            resultState.markPublished();
+            try { OrderBrowserPlugin.publishSearchResult(this, requestId, null, code); } catch (Exception ignored) {}
+        }
+        try {
+            LinearLayout root = new LinearLayout(this);
+            root.setOrientation(LinearLayout.VERTICAL);
+            root.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+            operationStatus = new TextView(this);
+            operationStatus.setText(OrderBrowserPlugin.technicalErrorMessage(code));
+            operationStatus.setPadding(24, 24, 24, 24);
+            root.addView(operationStatus, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            Button done = new Button(this);
+            done.setText("完成后点这里返回");
+            done.setOnClickListener(v -> returnToDengTa(technicalErrorResult()));
+            root.addView(done, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+            setContentView(root);
+            SafeWindow.apply(this, root);
+        } catch (Throwable ignored) {
+            android.util.Log.e(TAG, "takeout_error_ui_failed");
+        }
+    }
+
+    private void cancelUnreadySearch() {
+        if (!resultState.published() && requestId != null && !requestId.isEmpty()) {
+            resultState.markPublished();
+            OrderBrowserPlugin.publishSearchResult(this, requestId, null, "cancelled");
+        }
+        setResult(Activity.RESULT_CANCELED);
+        finish();
+    }
+
+    private void returnToDengTa(String resultJson) {
         Intent data = new Intent();
         data.putExtra("result", resultJson);
         setResult(Activity.RESULT_OK, data);
@@ -645,6 +745,15 @@ public class OrderWebActivity extends Activity {
 
     @Override
     public void onBackPressed() {
+        if (!technicalErrorCode.isEmpty()) {
+            returnToDengTa(technicalErrorResult());
+            return;
+        }
+        if ("search".equals(mode)) {
+            if (resultState.result() == null) cancelUnreadySearch();
+            else returnToDengTa(resultState.result());
+            return;
+        }
         // 第一次返回键不直接取消：点餐页还开着，提示用户用页面内“完成后点这里返回”。
         // 避免误触返回导致“外卖搜索被取消、页面关闭”。
         if (!backHintShown) {
@@ -664,6 +773,23 @@ public class OrderWebActivity extends Activity {
         data.putExtra("message", "用户关闭了点餐页面。");
         setResult(Activity.RESULT_CANCELED, data);
         super.onBackPressed();
+    }
+
+    @Override protected void onSaveInstanceState(Bundle state) {
+        state.putBoolean("dengta_order_automation_stopped", true);
+        state.putBoolean("dengta_order_result_published", resultState.published());
+        super.onSaveInstanceState(state);
+    }
+
+    @Override protected void onDestroy() {
+        if ("search".equals(mode) && !isChangingConfigurations() && !resultState.published() && requestId != null && !requestId.isEmpty()) {
+            resultState.markPublished();
+            OrderBrowserPlugin.publishSearchResult(this, requestId, null, "cancelled");
+        }
+        WebView current = webView;
+        webView = null;
+        disposeWebView(current);
+        super.onDestroy();
     }
 
     private static final class OrderBridge {

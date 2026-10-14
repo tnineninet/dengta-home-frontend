@@ -56,8 +56,14 @@ try {
   await act(async()=>{tree=TestRenderer.create(React.createElement(Together,{...props,onStartDirect:()=>{starts++;return new Promise(resolve=>{startResolve=resolve;});}}));});
   await act(async()=>{const click=button('开始直链共看').props.onClick;void click();void click();});
   assert.equal(starts,1);assert.equal(button('载入播放器').props.disabled,true);
+  assert.equal(button('网页一起看').props.disabled, true, 'pending media operation locks the mode selector');
+  await act(async()=>button('网页一起看').props.onClick());
+  assert.equal(button('DengTa 视频直链').props['aria-selected'], true, 'stale click handler cannot change mode before the receipt');
   await act(async()=>startResolve({ok:false,message:'测试启动失败'}));
   assert.match(JSON.stringify(tree.toJSON()),/测试启动失败/);assert.ok(readDirectMediaSession(globalThis.sessionStorage,props.accountScope,props.companionScope));
+  assert.equal(button('网页一起看').props.disabled, false, 'failed start releases the mode selector');
+  await act(async()=>button('网页一起看').props.onClick());
+  assert.equal(button('网页一起看').props['aria-selected'], true);
   await act(async()=>tree.unmount());
   let stopped=0,stopResolve;
   const active={id:'direct-fixture',status:'active',sourceApp:'dengta-direct-media'};

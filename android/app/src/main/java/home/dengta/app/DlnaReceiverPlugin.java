@@ -154,10 +154,6 @@ public final class DlnaReceiverPlugin extends Plugin {
 
     @PluginMethod
     public void start(PluginCall call) {
-        if (DlnaReceiverService.isRunning()) {
-            call.resolve(DlnaReceiverService.buildState(getContext()));
-            return;
-        }
         ContextCompat.startForegroundService(
             getContext(),
             DlnaReceiverService.startIntent(getContext())
@@ -349,7 +345,7 @@ public final class DlnaReceiverPlugin extends Plugin {
                 currentUri,
                 domain,
                 0, // proxyPort 在服务端并非持久字段，前端可从日志获取
-                DlnaReceiverService.isRunning(),
+                DlnaReceiverService.isReady(),
                 DlnaReceiverService.transportState
             );
             diag.put("diagnosticInfo", diagnostic);

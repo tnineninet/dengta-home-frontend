@@ -377,3 +377,70 @@ test("invalid successful poll receipt retains the last valid list and supports G
     assert.ok(h.requests.every(request => request.method === "GET" && request.body === undefined));
   } finally { await h.finish(); }
 });
+
+test("saved diary text is readable immediately after GET and after reopening", async () => {
+  const h = await harness();
+  const content = "虚构角色一起在灯下拼完了地图，明天还要继续寻找那条小路。";
+  const saved = { ...entry("fictional-readable-entry"), content };
+  try {
+    await h.respond(0, 200, { available: true, entries: [saved] });
+    assert.ok(h.text().includes(content), "a completed saved entry does not make the reader wait for artificial typing");
+    await h.unmount();
+    await h.render();
+    assert.equal(h.requests.length, 2);
+    await h.respond(1, 200, { available: true, entries: [saved] });
+    assert.ok(h.text().includes(content), "reopening reads the completed text without replaying a typing animation");
+    assert.ok(h.requests.every(request => request.method === "GET" && request.body === undefined));
+  } finally { await h.finish(); }
+});
+
+for (const [label, malformed] of [
+  ["null entry", null],
+  ["object title", { ...entry("fictional-invalid-title"), title: { text: "fictional" } }],
+  ["object content", { ...entry("fictional-invalid-content"), content: { text: "fictional" } }],
+  ["object mood", { ...entry("fictional-invalid-mood"), mood: { text: "fictional" } }],
+  ["object source count", { ...entry("fictional-invalid-count"), source_message_count: { count: 8 } }],
+]) {
+  test(`invalid diary entry (${label}) reports a recoverable receipt error without losing the last valid text`, async () => {
+    const h = await harness();
+    try {
+      await h.respond(0, 200, { available: true, entries: [entry("fictional-safe-before-invalid-entry")] });
+      await h.poll();
+      await h.respond(1, 200, { available: true, entries: [malformed] });
+      assert.match(h.text(), /fictional-safe-before-invalid-entry/);
+      assert.match(h.text(), /错误代码：diary_receipt_invalid/);
+      assert.equal(h.notices.length, 0, "poll failure remains local to the page");
+      await h.clickTwice();
+      await h.respond(2, 200, { available: true, entries: [entry("fictional-safe-after-invalid-entry")] });
+      assert.match(h.text(), /fictional-safe-after-invalid-entry/);
+      assert.equal(h.button(), undefined);
+      assert.equal(h.requests.length, 3);
+      assert.ok(h.requests.every(request => request.method === "GET" && request.body === undefined));
+    } finally { await h.finish(); }
+  });
+}
+
+test("new completed diary received by a poll exposes the full body without changing its source window", async () => {
+  const h = await harness();
+  const content = "虚构的新手记保留整段正文和标点，不需要等待逐字回放。";
+  const saved = {
+    ...entry("fictional-new-completed-diary"), content,
+    source_window_start: "2026-10-06T07:00:00Z",
+    source_window_end: "2026-10-06T08:00:00Z",
+  };
+  try {
+    await h.respond(0, 200, { available: true, entries: [] });
+    await h.poll();
+    await h.respond(1, 200, { available: true, entries: [saved] });
+    assert.ok(h.text().includes(content));
+    assert.match(h.text(), /依据 8 条真实消息/);
+    const article = h.text();
+    assert.match(article, /2026年10月6日/);
+    assert.match(article, / 至 /);
+    assert.deepEqual(saved, {
+      ...entry("fictional-new-completed-diary"), content,
+      source_window_start: "2026-10-06T07:00:00Z",
+      source_window_end: "2026-10-06T08:00:00Z",
+    });
+  } finally { await h.finish(); }
+});

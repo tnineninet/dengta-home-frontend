@@ -75,9 +75,19 @@ const NATIVE_FAILURES = {
   error: ["takeout_page_execution_failed", "外卖页面未完成操作，请检查页面和购物车后再重试。"],
 };
 
+const NATIVE_PAGE_FAILURES = {
+  takeout_page_init_failed: "外卖页面初始化失败，自动操作已停止。请核对页面后手动返回。",
+  takeout_page_renderer_failed: "外卖页面渲染异常，自动操作已停止。请核对购物车后手动返回。",
+  takeout_page_interrupted: "外卖页面因系统重建中断，未重复自动操作。请核对购物车后手动返回。",
+};
+
+function nativePageFailure(code) {
+  return typeof code === "string" && Object.hasOwn(NATIVE_PAGE_FAILURES, code) ? [code, NATIVE_PAGE_FAILURES[code]] : null;
+}
+
 function nativeFeedback(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("takeout_native_result_invalid");
-  const failure = (Object.hasOwn(NATIVE_FAILURES, value.status) ? NATIVE_FAILURES[value.status] : null) || (value.loading === true
+  const failure = (value.status === "error" ? nativePageFailure(value.code) : null) || (Object.hasOwn(NATIVE_FAILURES, value.status) ? NATIVE_FAILURES[value.status] : null) || (value.loading === true
     ? ["takeout_search_incomplete", "外卖搜索页面尚未加载完整，请检查网络或登录状态后重试。"]
     : value.error ? NATIVE_FAILURES.error : null);
   return failure ? { ok: false, code: failure[0], message: failure[1], error: failure[1] } : { ok: true };
@@ -85,7 +95,7 @@ function nativeFeedback(value) {
 
 export async function executeTakeoutCommand(
   command,
-  { client = apiRequest, plugin = OrderBrowser, onProgress = () => {}, shouldContinue = () => true } = {}
+  { client = apiRequest, plugin = OrderBrowser, onProgress = () => {}, shouldContinue = () => true, scope = "" } = {}
 ) {
   const id = command?.id;
   const payload = command?.command || {};
@@ -112,7 +122,7 @@ export async function executeTakeoutCommand(
     }
     if (payload.action === "search") {
       report("正在打开外卖页面搜索…");
-      const value = await plugin.searchShops({ keyword: payload.requirement });
+      const value = await plugin.searchShops({ keyword: payload.requirement, scope });
       result = {
         ...nativeFeedback(value),
         status: value?.status || "done",
@@ -138,8 +148,9 @@ export async function executeTakeoutCommand(
     }
   } catch (error) {
     if (!shouldContinue()) return null;
-    const code = ["takeout_command_invalid", "takeout_native_result_invalid"].includes(error?.message) ? error.message : "takeout_native_execution_failed";
-    const message = code === "takeout_command_invalid" ? "点餐指令不完整，未打开外卖页面。" : code === "takeout_native_result_invalid" ? "外卖页面返回了无效结果，请先核对购物车，再决定是否重试。" : "外卖页面执行未完成，请先检查页面和购物车，再决定是否重试。";
+    const pageFailure = nativePageFailure(error?.code);
+    const code = pageFailure?.[0] || (["takeout_command_invalid", "takeout_native_result_invalid"].includes(error?.message) ? error.message : "takeout_native_execution_failed");
+    const message = pageFailure?.[1] || (code === "takeout_command_invalid" ? "点餐指令不完整，未打开外卖页面。" : code === "takeout_native_result_invalid" ? "外卖页面返回了无效结果，请先核对购物车，再决定是否重试。" : "外卖页面执行未完成，请先检查页面和购物车，再决定是否重试。");
     let receiptSynced = false;
     try {
       await client(`/api/v2/takeout/${id}/failure`, {
@@ -228,7 +239,7 @@ export function startTakeoutRunner({
       } catch {
         // 存储不可用时仍然继续,由服务端 pending 状态兜底。
       }
-      const outcome = await executeTakeoutCommand(command, { client: scopedClient, plugin, shouldContinue: () => !stopped });
+      const outcome = await executeTakeoutCommand(command, { client: scopedClient, plugin, scope, shouldContinue: () => !stopped });
       if (!stopped && outcome?.receipt_synced) {
         try {
           window.localStorage.removeItem(markerKey);
@@ -252,9 +263,11 @@ export function startTakeoutRunner({
     void tick();
   }, 10_000);
   return () => {
+    if (stopped) return;
     stopped = true;
     controller.abort();
     clearInterval(timer);
     clearTimeout(firstTimer);
+    try { Promise.resolve(plugin.cancelSearch?.({ scope })).catch(() => {}); } catch { /* Older native builds have no independent search wait. */ }
   };
 }

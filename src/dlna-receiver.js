@@ -22,15 +22,24 @@ export function dlnaPluginAvailable(capacitor = Capacitor) {
 }
 
 export function normalizeDlnaState(value = {}) {
+  const hasReadiness = typeof value.ssdpReady === "boolean" || typeof value.httpReady === "boolean";
+  const errorCode = String(value.errorCode || "");
+  const discoveryStatus = String(value.discoveryStatus || (value.active === true ? "ready" : "stopped"));
+  const wifiName = String(value.wifiName || "");
   return Object.freeze({
     supported: value.supported === true,
-    active: value.active === true,
+    active: value.active === true && !errorCode && discoveryStatus === "ready"
+      && (!hasReadiness || (value.ssdpReady === true && value.httpReady === true)),
     enabled: value.enabled === true,
+    ssdpReady: value.ssdpReady === true,
+    httpReady: value.httpReady === true,
+    discoveryStatus,
+    errorCode,
     port: Number(value.port) || 0,
     transportState: String(value.transportState || "STOPPED"),
     currentUri: String(value.currentUri || ""),
     wifiAware: value.wifiAware === true,
-    wifiName: String(value.wifiName || ""),
+    wifiName: wifiName.toLowerCase() === "<unknown ssid>" ? "" : wifiName,
   });
 }
 

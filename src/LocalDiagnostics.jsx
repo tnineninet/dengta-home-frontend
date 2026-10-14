@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { readOperationFailures, clearOperationFailures, subscribeOperationFailures } from "./operation-diagnostics.js";
+import "./error-log-ui.css";
 
 export default function LocalDiagnostics({ scope }) {
   const entries = useSyncExternalStore(subscribeOperationFailures, () => readOperationFailures(scope), () => readOperationFailures(scope));

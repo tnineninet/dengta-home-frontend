@@ -419,6 +419,8 @@ public final class DeviceActivityPlugin extends Plugin {
             // A cached notification alone does not confirm playback.
             song.put("isPlaying", false);
             song.put("playbackStateKnown", false);
+            song.put("canControl", false);
+            song.put("availableActions", new JSArray());
             song.put("duration", 0L);
             song.put("position", 0L);
 
@@ -537,6 +539,9 @@ public final class DeviceActivityPlugin extends Plugin {
         JSObject song = buildNowPlayingIdentity(controller);
         song.put("isPlaying", state != null && state.getState() == PlaybackState.STATE_PLAYING);
         song.put("playbackStateKnown", state != null);
+        String[] availableActions = NowPlayingCapabilities.availableActions(state == null ? 0L : state.getActions());
+        song.put("canControl", availableActions.length > 0);
+        song.put("availableActions", new JSArray(java.util.Arrays.asList(availableActions)));
         // PlaybackState 没有 getDuration；时长从元数据取（毫秒）。
         long durationMs = 0L;
         if (metadata != null) {

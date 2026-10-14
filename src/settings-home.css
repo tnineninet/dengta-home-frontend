@@ -20,6 +20,16 @@
 .settings-home button {
   cursor: pointer;
   color: inherit;
+  touch-action: manipulation;
+  transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+
+.settings-home button:not(:disabled):active {
+  transform: translateY(1px);
+}
+
+.app-shell .settings-home button:not(.settings-home-entry):not(.settings-home-guide-toggle) {
+  min-height: 44px;
 }
 
 .settings-home button:focus-visible,
@@ -49,6 +59,10 @@
   border: 1px solid rgb(var(--theme-ink-rgb) / .14);
   border-radius: 12px;
   background: rgb(var(--theme-card-rgb) / .88);
+}
+
+.settings-home-search-field:focus-within {
+  border-color: rgb(var(--theme-accent-rgb) / .65);
 }
 
 .settings-home-search-field > svg {
@@ -138,6 +152,13 @@
   background: rgb(var(--theme-accent-rgb) / .08);
 }
 
+.settings-home .settings-home-quick-done {
+  padding-inline: 15px;
+  border: 1px solid rgb(var(--theme-accent-rgb) / .3);
+  background: rgb(var(--theme-accent-rgb) / .12);
+  font-weight: 600;
+}
+
 .settings-home-quick-editor {
   display: grid;
   min-width: 0;
@@ -156,6 +177,11 @@
   font-size: 12px;
   line-height: 1.6;
   overflow-wrap: anywhere;
+}
+
+.settings-home-quick-editor > .settings-home-quick-count {
+  color: var(--theme-ink);
+  font-weight: 600;
 }
 
 .settings-home-quick-options {
@@ -210,6 +236,7 @@
 .settings-home-quick-links button,
 .settings-home-reset {
   display: flex;
+  min-width: 0;
   min-height: 44px;
   align-items: center;
   justify-content: center;
@@ -219,6 +246,16 @@
   border-radius: 10px;
   background: rgb(var(--theme-accent-rgb) / .08);
   font-size: 13px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.settings-home-quick-links button:hover,
+.settings-home-reset:hover,
+.settings-home-quick-options button:not(:disabled):hover,
+.settings-home-guide-close:hover {
+  border-color: rgb(var(--theme-accent-rgb) / .4);
+  background: rgb(var(--theme-accent-rgb) / .12);
 }
 
 .settings-home-quick-links button svg,
@@ -289,6 +326,7 @@
 }
 
 .settings-home-entry:hover,
+.settings-home-entry:focus-visible,
 .settings-home-search-field button:hover,
 .settings-home-guide-toggle:hover {
   background: rgb(var(--theme-accent-rgb) / .08);
@@ -381,6 +419,7 @@
   width: 18px;
   height: 18px;
   flex: 0 0 auto;
+  transition: transform 160ms ease;
 }
 
 .settings-home-guide-toggle[aria-expanded="true"] > svg {
@@ -444,4 +483,24 @@
   .settings-home-quick-links button {
     flex: 1 1 auto;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-home button,
+  .settings-home-guide-toggle > svg {
+    transition: none;
+  }
+
+  .settings-home button:not(:disabled):active {
+    transform: none;
+  }
+}
+
+:root[data-dengta-reduced-motion="true"] .settings-home button,
+:root[data-dengta-reduced-motion="true"] .settings-home-guide-toggle > svg {
+  transition: none;
+}
+
+:root[data-dengta-reduced-motion="true"] .settings-home button:not(:disabled):active {
+  transform: none;
 }

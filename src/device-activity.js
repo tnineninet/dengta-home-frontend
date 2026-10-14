@@ -1,4 +1,5 @@
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { normalizeNowPlayingCapabilities, nowPlayingActionState } from "./now-playing-capabilities.js";
 
 export const DEVICE_ACTIVITY_WINDOW_MINUTES = 30;
 export const DEVICE_ACTIVITY_REFRESH_MS = 5 * 60 * 1000;
@@ -109,6 +110,7 @@ export function normalizeNowPlaying(value) {
     sessionId: String(song.sessionId || "").slice(0, 160),
     isPlaying: song.isPlaying === true && song.playbackStateKnown !== false,
     playbackStateKnown: song.playbackStateKnown !== false,
+    ...normalizeNowPlayingCapabilities(song),
     durationSeconds: Number(song.duration) > 0 ? Math.round(Number(song.duration) / 1000) : 0,
     positionSeconds: Number(song.position) > 0 ? Math.round(Number(song.position) / 1000) : 0,
     cover: typeof song.cover === "string" && song.cover.startsWith("data:image") ? song.cover : "",
@@ -144,6 +146,7 @@ export async function controlNowPlaying(action, {
   }[code]), { code });
   if (!deviceActivityPluginAvailable(capacitor)) throw failure("music_control_unavailable");
   if (!["play", "pause", "next"].includes(action) || !expectedSong?.packageName || !expectedSong?.title) throw failure("music_control_invalid");
+  if (!nowPlayingActionState(expectedSong, action).available) throw failure("music_control_unsupported");
   let result;
   try {
     result = await plugin.controlNowPlaying({ action, expectedPackage: expectedSong.packageName, expectedTitle: expectedSong.title, expectedArtist: expectedSong.artist || "", expectedSessionId: expectedSong.sessionId || "" });

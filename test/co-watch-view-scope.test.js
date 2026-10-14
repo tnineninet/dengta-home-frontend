@@ -63,8 +63,10 @@ function actualAppRefresh({ session = null, readSession } = {}) {
     DIRECT_MEDIA_SOURCE_APP: "dengta-direct-media", WEB_PAGE_SOURCE_APP: "dengta-web-page",
     resolveCoWatchSessionMode: mode => ({ music: "listening", direct: "direct_media", web: "web_page" }[mode] || "screen"),
     coWatchSessionRef: { current: session }, coWatchIdentityRef: { current: identity }, applied: [], requested: [],
+    danmaku: [{ text: "虚构旧场次弹幕" }], danmakuClears: 0,
     coWatchPollStampRef: { current: null },
     setCoWatchSession(next) { context.applied.push(next); },
+    setCoWatchDanmaku(next) { context.danmaku = next; context.danmakuClears++; },
     setCoWatchDialog() {}, setCoWatchPreview() {}, setScreenGlanceFeedback() {},
     readActiveCoWatchSession: async ({ sessionMode }) => { context.requested.push(sessionMode); return readSession(sessionMode); },
     readCoWatchPreview: async () => ({}), refreshScreenGlanceState: async () => ({}), readCoWatchDialog: async () => [],
@@ -83,6 +85,7 @@ test("actual App poll retains an active direct session after the user's explicit
   await f.refreshActual({ silent: true, poll: true });
   assert.deepEqual(f.requested, ["direct_media", "direct_media"]);
   assert.equal(f.coWatchSessionRef.current?.id, session.id);
+  assert.equal(f.danmaku.length, 1); assert.equal(f.danmakuClears, 0, "same-session polling must preserve its comments");
 });
 
 test("actual App video selection rejects a slower read for the earlier mode", async () => {
@@ -127,6 +130,7 @@ test("actual App skips overlapping slow polls, accepts the first response, and r
   assert.equal(f.requested.length, 1, "slow network must not create a new poll every ten seconds");
   waiting.resolve({ id: "fictional-slow-screen", status: "active", sessionMode: "screen" }); await first;
   assert.equal(f.coWatchSessionRef.current?.id, "fictional-slow-screen");
+  assert.equal(f.danmaku.length, 0, "a different restored session clears old comments");
   assert.equal(f.coWatchPollStampRef.current, null);
   await f.refreshActual({ silent: true, poll: true });
   assert.equal(f.requested.length, 2, "a completed poll releases its own lock");

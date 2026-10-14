@@ -181,7 +181,7 @@ assert.match(directStart, /mediaUrl:\s*options\.mediaUrl/);
 assert.match(app, /clearDirectMediaSession\(globalThis\.sessionStorage, accountStorageScope, companionScope\)/);
 assert.match(
   app,
-  /playbackPositionSeconds \?\? coWatchSession\.mediaPositionSeconds/,
+  /playbackPositionSeconds \?\? target\.mediaPositionSeconds/,
   "manual co-watch replies must carry the current player position",
 );
 

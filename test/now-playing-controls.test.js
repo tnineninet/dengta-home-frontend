@@ -11,7 +11,7 @@ const deferred = () => { let resolve; const promise = new Promise(r => { resolve
 let identity = { accountScope: "account-a", companionScope: "companion-a" };
 const scope = createMusicRequestScope({ getSnapshot: () => ({ user: { id: identity.accountScope }, activeCompanionId: identity.companionScope }) });
 scope.bind(identity);
-const song = { packageName: "music.fixture", title: "Fictional song", artist: "Artist", sessionId: "fixture-session", isPlaying: true };
+const song = { packageName: "music.fixture", title: "Fictional song", artist: "Artist", sessionId: "fixture-session", isPlaying: true, canControl: true, availableActions: ["play", "pause", "next"] };
 const messages = [], observations = [], busy = [];
 const options = { scope, song, action: "pause", onBusy: value => busy.push(value), onSong: value => observations.push(value), onFeedback: value => messages.push(value) };
 let calls = 0;

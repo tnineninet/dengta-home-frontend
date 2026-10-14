@@ -262,6 +262,15 @@ assert.equal(isSynchronizedVisibleMonologue(missingStream), true);
 assert.equal(canRequestVisibleMonologue({ visibleMonologue: missingStream }), true);
 assert.equal(canRequestVisibleMonologue({ visibleMonologue: completedStream }), false);
 assert.equal(canRequestVisibleMonologue({ visibleMonologue: missingStream, chatError: true }), false);
+for (const state of ["complete", "missing", "truncated", "failed"]) {
+  const empty = { ...missingStream, state };
+  assert.equal(canRequestVisibleMonologue({ visibleMonologue: empty }), true);
+  assert.equal(canRequestVisibleMonologue({ visibleMonologue: empty, generationInProgress: true }), false);
+  assert.equal(canRequestVisibleMonologue({ visibleMonologue: { ...empty, text: "已有可见心声" } }), false);
+}
+assert.equal(canRequestVisibleMonologue({ tool_calls: { visible_monologue: null } }), true);
+assert.equal(canRequestVisibleMonologue({ role: "user" }), false);
+assert.equal(canRequestVisibleMonologue({ tool_calls: { refusal_detected: { source: "upstream" } } }), false);
 assert.equal(
   reduceVisibleMonologueEvent(null, {
     type: "monologue",
@@ -388,11 +397,6 @@ assert.match(appSource, /<ChatTranscript/);
 assert.match(readFileSync(new URL("../src/ChatTranscript.jsx", import.meta.url), "utf8"), /visibleMonologueForMessage\(item\)/);
 assert.match(messageExtrasSource, /AI 生成的可见心声/);
 assert.match(messageExtrasSource, /不是模型隐藏的原始思考链/);
-assert.match(
-  messageExtrasSource,
-  /completed\s*&&\s*!message.chatError\s*&&\s*\(!synchronizedMonologue \|\| monologueState === "missing"\)/,
-  "completed messages with missing monologues may expose a separate recovery action",
-);
 const requestHandlerStart = appSource.indexOf(
   "async function requestVisibleInnerMonologue(item)",
 );

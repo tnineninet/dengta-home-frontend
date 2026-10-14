@@ -1,4 +1,4 @@
-const kinds = new Set(["music", "watch", "takeout", "bilibili"]);
+const kinds = new Set(["music", "watch", "takeout", "bilibili", "art"]);
 
 export function normalizeCompanionActivities(value) {
   if (!Array.isArray(value)) return [];

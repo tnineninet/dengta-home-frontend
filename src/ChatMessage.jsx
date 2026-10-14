@@ -13,13 +13,18 @@ import { formatVoiceConfidence } from "./voice";
 import ChatSkinOrnament from "./ChatSkinOrnament";
 import { privateMediaAsset, privateMediaContentPath } from "./private-media";
 import ChatErrorLog from "./ChatErrorLog";
+import { readChatDisplayContent } from "./chat-display-content.js";
+
+const messageTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
+  hour: "2-digit",
+  minute: "2-digit",
+});
 
 function formatMessageTime(value) {
   if (!value) return "刚刚";
-  return new Intl.DateTimeFormat("zh-CN", {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return "时间未知";
+  return messageTimeFormatter.format(date);
 }
 
 function ChatMessage({
@@ -80,7 +85,12 @@ function ChatMessage({
   const artworkAlt =
     item.tool_calls?.artwork_alt || `${aiName}创作的图片`;
   const isGenerating = item.isStreaming === true || item.generationInProgress === true;
+  const displayContent = useMemo(() => readChatDisplayContent(item), [item]);
   const [thinkingDetailOpen, setThinkingDetailOpen] = useState(false);
+  const formattedTime = useMemo(() =>
+    typeof item.formattedTime === "string" && item.formattedTime
+      ? item.formattedTime : formatMessageTime(item.created_at),
+  [item.formattedTime, item.created_at]);
 
   // 流式进度条：将 thinkingStatuses 映射到 0~100% + 已接收字数
   const streamProgress = useMemo(() => {
@@ -259,8 +269,9 @@ function ChatMessage({
             </div>
           )}
           {item.content && (
-            <div className="message-content">{item.content}</div>
+            <div className="message-content">{displayContent.content}</div>
           )}
+          {displayContent.nextActions.length > 0 && <aside className="message-next-actions" aria-label="伴侣的小提议"><strong>接下来可以…</strong><ul>{displayContent.nextActions.map((action, index) => <li key={index}>{action}</li>)}</ul></aside>}
           {!isUser && streamProgress && (
             <div className="stream-progress-bar" aria-label="回复进度">
               <i className="stream-progress-track"><b style={{ width: `${streamProgress.pct}%` }} /></i>
@@ -408,7 +419,7 @@ function ChatMessage({
               </button>
             )}
             <time>
-              {item.formattedTime || formatMessageTime(item.created_at)}
+              {formattedTime}
             </time>
           </div>
         </div>

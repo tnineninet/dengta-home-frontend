@@ -73,6 +73,30 @@ function assertNurseryPortrait(data) {
   }
 }
 
+function assertNurseryReceipt(data, { label, actionKind, candidates }) {
+  if (label === "birth") {
+    if (typeof data.created !== "boolean") throw invalidNurseryResponse();
+    return;
+  }
+  if (typeof data.idempotent !== "boolean") throw invalidNurseryResponse();
+  if (label === "name") {
+    if (typeof data.chosen_name !== "string" || !data.chosen_name ||
+      data.child.name !== data.chosen_name || !candidates.includes(data.chosen_name)) {
+      throw invalidNurseryResponse();
+    }
+    return;
+  }
+  const action = data.action;
+  const companion = label === "companion";
+  const expectedKind = label === "speech" ? actionKind : label;
+  if (!isRecord(action) || typeof action.id !== "string" || !action.id.trim() ||
+    action.actor !== (companion ? "companion" : "user") ||
+    (companion ? !["talk", "soothe"].includes(action.kind) : action.kind !== expectedKind) ||
+    typeof action.applied_at !== "string" || !Number.isFinite(Date.parse(action.applied_at))) {
+    throw invalidNurseryResponse();
+  }
+}
+
 function formatTime(value) {
   if (typeof value !== "string" || !value.trim()) return "时间未知";
   const date = new Date(value);
@@ -106,6 +130,7 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
   const [reading, setReading] = useState(false);
   const [readError, setReadError] = useState("");
   const [actionError, setActionError] = useState("");
+  const [needsRecheck, setNeedsRecheck] = useState(false);
   const [busy, setBusy] = useState("");
   const [speechAction, setSpeechAction] = useState("talk");
   const [speechText, setSpeechText] = useState("");
@@ -115,6 +140,7 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
   const [scope] = useState(() => settingsSaveScope(authSession.getSnapshot()));
   const lifecycleRef = useRef(null);
   const busyRef = useRef(false);
+  const recheckRef = useRef(false);
   const readVersionRef = useRef(0);
   const noticeRef = useRef(onNotice);
 
@@ -146,6 +172,7 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
         setSnapshot(data);
         setReadError("");
         setActionError("");
+        if (data.available === true) { recheckRef.current = false; setNeedsRecheck(false); }
       } catch (error) {
         if (!acceptsRead()) return;
         const message = requestFailureMessage(error);
@@ -178,6 +205,7 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
       controller.abort();
       if (lifecycleRef.current === lifecycle) lifecycleRef.current = null;
       busyRef.current = false;
+      recheckRef.current = false;
       readVersionRef.current += 1;
       window.clearTimeout(initialTimer);
       window.clearInterval(timer);
@@ -194,9 +222,9 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
     [snapshot?.bonds],
   );
 
-  async function perform(label, request, { portraitOnly = false } = {}) {
+  async function perform(label, request, { portraitOnly = false, actionKind, candidates } = {}) {
     const lifecycle = lifecycleRef.current;
-    if (busyRef.current || !isCurrent(lifecycle)) return null;
+    if (busyRef.current || (!portraitOnly && recheckRef.current) || !isCurrent(lifecycle)) return null;
     busyRef.current = true;
     readVersionRef.current += 1;
     setReading(false);
@@ -215,6 +243,7 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
       }
       else {
         assertNurserySnapshot(data, { requireChild: true, childId: child?.id });
+        assertNurseryReceipt(data, { label, actionKind, candidates });
         setSnapshot(data);
         setPortrait(null);
         setReadError("");
@@ -223,6 +252,7 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
     } catch (error) {
       if (!isCurrent(lifecycle)) return null;
       if (portraitOnly) setPortraitOpen(false);
+      else { recheckRef.current = true; setNeedsRecheck(true); }
       const message = requestFailureMessage(error);
       setActionError(portraitOnly
         ? `成长画像读取失败。${message}`
@@ -262,6 +292,7 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
           client_action_id: clientActionId(speechAction),
         }),
       }),
+      { actionKind: speechAction },
     );
     if (result) setSpeechText((current) => current === submitted ? "" : current);
   }
@@ -315,6 +346,7 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
           client_action_id: clientActionId("name"),
         }),
       }),
+      { candidates },
     );
     if (result) setNameDraft((current) => current === submitted ? "" : current);
   }
@@ -366,7 +398,7 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
         <div className="nursery-birth-scene">
           <span className="nursery-birth-mark" aria-hidden="true">✦</span>
           <h2>我们的小朋友</h2>
-          <button type="button" disabled={Boolean(busy)} onClick={createChild}>
+          <button type="button" disabled={Boolean(busy) || needsRecheck} onClick={createChild}>
             {busy === "birth" ? "正在出生…" : "迎接她回家"}
           </button>
         </div>
@@ -405,7 +437,7 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
             onChange={(event) => setNameDraft(event.target.value)}
             placeholder="一个名字，或最多三个候选"
           />
-          <button type="submit" disabled={Boolean(busy) || !nameDraft.trim()}>
+          <button type="submit" disabled={Boolean(busy) || needsRecheck || !nameDraft.trim()}>
             {busy === "name" ? "…" : "定名"}
           </button>
         </form>
@@ -443,7 +475,7 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
             onChange={(event) => setSpeechText(event.target.value)}
             placeholder="说给孩子听…"
           />
-          <button type="submit" disabled={Boolean(busy) || !speechText.trim()} aria-label="发送给孩子">
+          <button type="submit" disabled={Boolean(busy) || needsRecheck || !speechText.trim()} aria-label="发送给孩子">
             {busy === "speech" ? "…" : "↑"}
           </button>
         </div>
@@ -454,7 +486,7 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
           <button
             type="button"
             key={action.id}
-            disabled={Boolean(busy)}
+            disabled={Boolean(busy) || needsRecheck}
             onClick={() => care(action.id)}
           >
             <span aria-hidden="true">{action.symbol}</span>
@@ -466,7 +498,7 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
       <button
         type="button"
         className="nursery-companion-action"
-        disabled={Boolean(busy)}
+        disabled={Boolean(busy) || needsRecheck}
         onClick={letCompanionCare}
       >
         <span>{aiName.slice(0, 1)}</span>
@@ -480,8 +512,8 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
         ].map(([key, label]) => (
           <div key={key}>
             <span>{label}</span>
-            <strong>{Math.round(Number(bonds[key]?.attachment || 20))}</strong>
-            <small>安心 {Math.round(Number(bonds[key]?.trust || 20))}</small>
+            <strong>{Math.round(Number(bonds[key]?.attachment ?? 20))}</strong>
+            <small>安心 {Math.round(Number(bonds[key]?.trust ?? 20))}</small>
           </div>
         ))}
       </section>

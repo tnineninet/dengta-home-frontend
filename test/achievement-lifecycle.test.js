@@ -25,7 +25,7 @@ const deferred = () => { let resolve; const promise = new Promise(yes => { resol
 const json = (data, status = 200, headers = {}) => new Response(status === 204 ? null : JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...headers } });
 const row = (code = "first_chat", unlocked = true) => ({ code, title: "Fictional achievement", unlocked, custom: false });
 const list = () => json({ achievements: [row()] });
-const custom = () => ({ id: "custom-id", code: "custom:fixture", title: "Fixture title", unlocked: false, custom: true });
+const custom = () => ({ id: "custom-id", code: "custom:fixture", title: "Fixture title", description: "condition", emoji: "🎯", unlocked: false, custom: true });
 const receipt = kind => kind === "create" ? json({ achievement: custom() }) : kind === "delete" ? json({ removed: "custom-id" })
   : kind === "unlock" ? json({ unlocked: { code: "custom:fixture", unlocked: true } })
     : json({ unlocked: { code: "onboarding_1", unlocked: true }, achievements: [row(), row("onboarding_1")] });
@@ -65,8 +65,8 @@ const vite = await createServer({ configFile: false, root: fileURLToPath(new URL
         ${actions}
         const changeView=()=>{},handleGuideAction=()=>{};
         ${guide}
-        fixture.api={addCustomAchievement,unlockCustomAchievement,removeCustomAchievement,completeOnboarding,refreshFunLabs,openAchievementGuide,setCustomAchievement,
-          read:()=>({customAchievement,customAchievementBusy,notice,funLabsState})};
+        fixture.api={addCustomAchievement,reviewCustomAchievementCreation,resumeCustomAchievementCreation,unlockCustomAchievement,removeCustomAchievement,completeOnboarding,refreshFunLabs,handleMusicUnderstandingSaved,openAchievementGuide,setCustomAchievement,
+          read:()=>({customAchievement,customAchievementBusy,customAchievementRecovery,notice,funLabsState})};
         return renderAchievementGuide();
       }
     `.replace("companionScope=A", `companionScope=${JSON.stringify(A)}`), "achievement-lifecycle.jsx", {lang:"jsx",jsx:{runtime:"automatic"}})).code;
@@ -106,7 +106,12 @@ for(const kind of ["create","unlock","delete","onboarding"]){
   for(const body of [{},null])test(`${kind}: incomplete HTTP 200 never confirms success (${JSON.stringify(body)})`,async()=>{
     await mount();await fill();fixture.transport=call=>call.method==="GET"?list():json(body);
     await act(async()=>{await Promise.allSettled([invoke()]);});
-    if(kind==="create")assert.equal(read().customAchievement.title,"  Fixture title  ");
+    if(kind==="create"){
+      assert.equal(read().customAchievement.title,"  Fixture title  ");
+      assert.equal(read().customAchievementRecovery.status,"pending");
+      await act(async()=>fixture.api.addCustomAchievement());
+      assert.equal(writes().length,1);
+    }
     assert.match(read().notice,/回执|尚未确认/);
     assert.equal(fixture.calls.filter(call=>call.method==="GET").length,0);
   });
@@ -147,7 +152,7 @@ test("explicit guide opening is consumed once and later collapse survives remoun
   await act(async()=>{tree.unmount();tree=TestRenderer.create(React.createElement(Harness));});
   assert.equal(tree.root.findAllByType("nav").length,0);
 });
-test("mutation JSON deadline releases the lock, retains the exact draft and rejects late confirmation",async()=>{
+test("creation JSON deadline stops busy feedback, keeps adding paused and rejects late confirmation",async()=>{
   await mount();await fill();const body=deferred(),started=deferred();let deadline;
   fixture.transport=()=>({ok:true,status:200,headers:new Headers(),json:()=>{started.resolve();return body.promise;}});
   const previous=globalThis.setTimeout;
@@ -156,7 +161,83 @@ test("mutation JSON deadline releases the lock, retains the exact draft and reje
     let run;await act(async()=>{run=fixture.api.addCustomAchievement();await started.promise;});
     assert.equal(typeof deadline,"function");await act(async()=>{deadline();await run;});
     assert.equal(read().customAchievementBusy,false);assert.equal(read().customAchievement.title,"  Fixture title  ");assert.match(read().notice,/request_timeout/);
+    assert.equal(read().customAchievementRecovery.status,"pending");
+    await act(async()=>fixture.api.addCustomAchievement());assert.equal(writes().length,1);
     await act(async()=>{body.resolve({achievement:custom()});await tick();});
     assert.equal(read().customAchievement.title,"  Fixture title  ");assert.equal(writes().length,1);assert.equal(fixture.calls.filter(call=>call.method==="GET").length,0);
   } finally {globalThis.setTimeout=previous;}
+});
+
+for (const status of [408,503]) test(`real HTTP ${status} creation failure requires a scoped list read and explicit review before retry`,async()=>{
+  await mount();await fill();
+  fixture.transport=call=>call.method==="GET"?list():json({code:"synthetic_write_failure",error:"FICTIONAL_PRIVATE_BODY"},status);
+  await act(async()=>fixture.api.addCustomAchievement());
+  assert.equal(writes().length,1);assert.equal(read().customAchievementRecovery.status,"pending");
+  await act(async()=>{fixture.api.resumeCustomAchievementCreation();await fixture.api.addCustomAchievement();});
+  assert.equal(writes().length,1);
+  await act(async()=>fixture.api.reviewCustomAchievementCreation());
+  const get=fixture.calls.find(call=>call.method==="GET");
+  assert.ok(get.url.endsWith("/api/v2/fun-labs/achievements"));
+  assert.equal(get.options.headers.get("X-DengTa-Companion-Id"),A);
+  assert.equal(read().customAchievementRecovery.status,"reviewed");
+  assert.equal(read().customAchievement.title,"  Fixture title  ");
+  assert.doesNotMatch(read().notice,/FICTIONAL_PRIVATE_BODY/);
+  await act(async()=>fixture.api.addCustomAchievement());assert.equal(writes().length,1);
+  await act(async()=>fixture.api.resumeCustomAchievementCreation());assert.equal(read().customAchievementRecovery,null);
+  fixture.transport=call=>call.method==="GET"?list():receipt("create");
+  await act(async()=>fixture.api.addCustomAchievement());assert.equal(writes().length,2);
+});
+
+test("real explicit rejection allows retry while an ok:false response never clears a draft",async()=>{
+  await mount();await fill();fixture.transport=()=>json({code:"achievement_title_required",error:"FICTIONAL_PRIVATE_BODY"},400);
+  await act(async()=>fixture.api.addCustomAchievement());
+  assert.equal(read().customAchievementRecovery,null);assert.match(read().notice,/未被接受/);
+  fixture.transport=()=>json({ok:false,achievement:custom(),error:"FICTIONAL_PRIVATE_BODY"});
+  await act(async()=>fixture.api.addCustomAchievement());
+  assert.equal(writes().length,2);assert.equal(read().customAchievementRecovery,null);
+  assert.equal(read().customAchievement.title,"  Fixture title  ");
+  assert.equal(fixture.calls.filter(call=>call.method==="GET").length,0);
+  assert.doesNotMatch(read().notice,/FICTIONAL_PRIVATE_BODY/);
+});
+
+test("companion changed before recovery list transport prevents cross-companion reads and old resume",async()=>{
+  await mount();await fill();fixture.transport=()=>json({},503);
+  await act(async()=>fixture.api.addCustomAchievement());
+  const stateBefore=read().customAchievementRecovery;
+  fixture.manager.setActiveCompanionId(B);
+  await act(async()=>{await fixture.api.reviewCustomAchievementCreation();fixture.api.resumeCustomAchievementCreation();});
+  assert.equal(fixture.calls.filter(call=>call.method==="GET").length,0);
+  assert.equal(read().customAchievementRecovery,stateBefore);
+  assert.equal(read().customAchievement.title,"  Fixture title  ");
+});
+
+test("confirmed music analysis refreshes scoped achievements with GET only", async()=>{
+  await mount();
+  await act(async()=>fixture.api.handleMusicUnderstandingSaved({scope:JSON.stringify([ACCOUNT,A]),providerTrackId:"1001"}));
+  assert.equal(fixture.calls.length,1);
+  assert.ok(fixture.calls[0].url.endsWith("/api/v2/fun-labs/achievements"));
+  assert.equal(fixture.calls[0].options.headers.get("X-DengTa-Companion-Id"),A);
+  assert.equal(writes().length,0);
+});
+
+test("old music save callbacks cannot refresh after companion change or unmount",async()=>{
+  await mount();const oldSaved=fixture.api.handleMusicUnderstandingSaved;
+  fixture.manager.setActiveCompanionId(B);
+  await act(async()=>oldSaved({scope:JSON.stringify([ACCOUNT,A])}));
+  assert.equal(fixture.calls.length,0);
+  await act(async()=>tree.update(React.createElement(Harness,{companionScope:B})));
+  await act(async()=>oldSaved({scope:JSON.stringify([ACCOUNT,A])}));
+  assert.equal(fixture.calls.length,0);
+  const currentSaved=fixture.api.handleMusicUnderstandingSaved;
+  await act(async()=>tree.unmount());tree=null;
+  await act(async()=>currentSaved({scope:JSON.stringify([ACCOUNT,B])}));
+  assert.equal(fixture.calls.length,0);
+});
+
+test("music save receipt from another account or companion never refreshes achievements",async()=>{
+  await mount();
+  for(const scope of [JSON.stringify(["other-account",A]),JSON.stringify([ACCOUNT,B]),undefined]) {
+    await act(async()=>fixture.api.handleMusicUnderstandingSaved({scope}));
+  }
+  assert.equal(fixture.calls.length,0);
 });

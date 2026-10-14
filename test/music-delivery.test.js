@@ -99,5 +99,5 @@ assert.equal((await openNeteasePlayback("playlist", "123")).opened, true); asser
 const app = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
 assert.doesNotMatch(app, /drainAiPlayRequests|nowPlayingPollRef/);
 assert.match(app, /createAiMusicConsumer[\s\S]*consumer\.drain\(\)[\s\S]*consumer\.cancel\(\)/);
-assert.match(app, /notificationAccess\.granted\]/, "notification recognition resumes after permission changes");
+assert.match(app, /notificationAccess\.granted\s*[,\]]/, "notification recognition resumes after permission changes");
 console.log("Music delivery: scoped polling, serial consumption, result-only retry/recovery, cancellation, truthful external receipts and blocked popup passed");

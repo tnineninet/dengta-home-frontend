@@ -68,12 +68,12 @@ assert.match(
   /disabled=\{\s*Boolean\(busy\)\s*\|\|\s*status\.settings\.generation_mode === "off"\s*\}/,
 );
 assert.match(studio, /disabled=\{Boolean\(busy\)\}\s*onChange=\{uploadArtwork\}/);
-assert.match(profile, /onOpenImageProviderSettings/);
+assert.match(profile, /onOpenCreativeStudio/);
 assert.match(css, /\.creative-credential-recovery/);
 assert.match(app, /openCreativeProviderSettings/);
 assert.match(app, /scrollIntoView/);
 assert.doesNotMatch(studio, /供应商错误：\{artwork\.failure_code\}/);
-assert.match(profile, /<CompanionArtworkLibrary/);
+assert.match(app, /<CompanionArtStudio/);
 assert.doesNotMatch(profile, /还没有接入绘图能力/);
 assert.match(chatMessage, /is_surprise_reveal/);
 assert.match(chatMessage, /AuthenticatedImage/);

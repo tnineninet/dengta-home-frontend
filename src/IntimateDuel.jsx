@@ -22,11 +22,29 @@ function duelStorageKey(accountScope = "", companionScope = "") {
 }
 
 function readStoredDuel(names, storageKey) {
+  let stored;
   try {
-    const stored = storageKey ? localStorage.getItem(storageKey) : null;
-    return stored ? normalizeDuelState(JSON.parse(stored), names) : createDuelState(names);
+    stored = storageKey ? localStorage.getItem(storageKey) : null;
   } catch {
-    return createDuelState(names);
+    return { duel: createDuelState(names), problem: "duel_archive_read_failed" };
+  }
+  if (stored === null || stored === undefined) return { duel: createDuelState(names), problem: null };
+  try {
+    const value = JSON.parse(stored);
+    const record = (item) => item && typeof item === "object" && !Array.isArray(item);
+    const fighter = (item) => record(item) && typeof item.name === "string" &&
+      ["stamina", "pleasure", "combo"].every((field) => Number.isFinite(item[field])) && record(item.cooldowns);
+    if (!record(value) || value.version !== 3 || typeof value.id !== "string" || !value.id ||
+      !Number.isInteger(value.round) || value.round < 1 || !["active", "finished"].includes(value.status) ||
+      !["player", "companion", "draw", null].includes(value.winner) || !fighter(value.player) || !fighter(value.companion) ||
+      !Array.isArray(value.logs) || !value.logs.length || value.logs.some((entry) =>
+        !record(entry) || typeof entry.id !== "string" || typeof entry.title !== "string" || typeof entry.text !== "string")) {
+      return { duel: createDuelState(names), problem: "duel_archive_invalid" };
+    }
+    const duel = normalizeDuelState(value, names);
+    return { duel, savedDuel: duel, problem: null };
+  } catch {
+    return { duel: createDuelState(names), problem: "duel_archive_invalid" };
   }
 }
 
@@ -80,11 +98,13 @@ function DuelSession({
     }),
     [aiName, userName],
   );
-  const [duel, setDuel] = useState(() => readStoredDuel(names, storageKey));
+  const [initialArchive] = useState(() => readStoredDuel(names, storageKey));
+  const [duel, setDuel] = useState(initialArchive.duel);
   const [isNarrating, setIsNarrating] = useState(false);
   const [notice, setNotice] = useState(null);
   const [retrySkill, setRetrySkill] = useState(null);
-  const [storageProblem, setStorageProblem] = useState(false);
+  const [storageProblem, setStorageProblem] = useState(initialArchive.problem);
+  const archiveRef = useRef({ ...initialArchive });
   const logRef = useRef(null);
   const requestRef = useRef(null);
   const lifecycleRef = useRef(null);
@@ -103,13 +123,17 @@ function DuelSession({
   }, []);
 
   useEffect(() => {
-    if (!storageKey || isNarrating || settingsSaveScope(authSession.getSnapshot()) !== scope) return;
+    if (!storageKey || isNarrating || archiveRef.current.problem || archiveRef.current.savedDuel === duel ||
+      settingsSaveScope(authSession.getSnapshot()) !== scope) return;
     try {
       localStorage.setItem(storageKey, JSON.stringify(duel));
+      archiveRef.current.savedDuel = duel;
     } catch {
+      archiveRef.current.problem = "duel_archive_write_failed";
       const lifecycle = lifecycleRef.current;
       queueMicrotask(() => {
-        if (lifecycleRef.current === lifecycle && settingsSaveScope(authSession.getSnapshot()) === scope) setStorageProblem(true);
+        if (lifecycleRef.current === lifecycle && archiveRef.current.problem === "duel_archive_write_failed" &&
+          settingsSaveScope(authSession.getSnapshot()) === scope) setStorageProblem("duel_archive_write_failed");
       });
     }
   }, [storageKey, scope, duel, isNarrating]);
@@ -117,6 +141,18 @@ function DuelSession({
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "auto" });
   }, [duel.logs, isNarrating]);
+
+  function rereadArchive() {
+    if (!storageKey || !lifecycleRef.current || requestRef.current || isNarrating ||
+      settingsSaveScope(authSession.getSnapshot()) !== scope) return;
+    const archive = readStoredDuel(names, storageKey);
+    archiveRef.current = archive;
+    setStorageProblem(archive.problem);
+    if (archive.problem) return;
+    setDuel(archive.duel);
+    setNotice(null);
+    setRetrySkill(null);
+  }
 
   function restart() {
     const request = requestRef.current;
@@ -228,7 +264,20 @@ function DuelSession({
       </header>
 
       <p className="duel-help">选择招式 → 查看伴侣回应 → 进入下一回合。等待时可以取消，不会扣除本回合体力。</p>
-      {storageProblem && <p role="status">本机存档不可用，当前仍可继续；离开后进度可能无法恢复。</p>}
+      {storageProblem && (
+        <div role="status">
+          <p>
+            {storageProblem === "duel_archive_invalid"
+              ? "本机存档格式无法识别，原存档未被覆盖。"
+              : storageProblem === "duel_archive_read_failed"
+                ? "本机存档不可用，读取失败，原存档未被覆盖。"
+                : "本机存档不可用，当前进度未保存。"}
+            当前仍可继续；临时进度在离开后可能无法恢复。重新读取成功后，将用本机存档替换临时进度。
+            <small>（错误代码：{storageProblem}）</small>
+          </p>
+          <button type="button" className="duel-restart" disabled={isNarrating} onClick={rereadArchive}>重新读取本机存档</button>
+        </div>
+      )}
       {!storageKey && <p role="status">登录并选择伴侣后，再开始互动挑战。</p>}
 
       <div className="duel-fighters">

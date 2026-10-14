@@ -1118,11 +1118,11 @@ body,
 .celestial-prototype-sky .celestial-milky-way {
   position: absolute;
   z-index: 1;
+  inset: auto;
   left: -14%;
   top: 15%;
   width: 132%;
   height: 42%;
-  inset: auto;
   opacity: clamp(0, calc(var(--milky-opacity, 0) * var(--moon-light-intensity, .86)), 1);
   transform: rotate(-23deg);
   transform-origin: center;

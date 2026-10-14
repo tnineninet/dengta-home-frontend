@@ -52,7 +52,12 @@ a,
 .music-cookie-operations-tabs button,
 .music-cookie-playlist-name,
 .music-cookie-track-actions button {
-  transition: all 0.2s cubic-bezier(0.32, 0.94, 0.6, 1);
+  transition:
+    transform 160ms cubic-bezier(0.32, 0.94, 0.6, 1),
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    opacity 160ms ease;
 }
 
 /* Global scroll containers — smooth native feel */
@@ -1717,10 +1722,11 @@ select:focus-visible {
   padding: 10px 12px;
   border-left: 3px solid rgba(214, 125, 165, 0.72);
   background: rgba(214, 125, 165, 0.09);
+  color: #f1e7ed;
 }
 
 .duel-visible-reaction small {
-  color: rgba(142, 72, 105, 0.78);
+  color: #d9a9be;
   font-size: 11px;
 }
 

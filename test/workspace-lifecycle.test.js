@@ -63,6 +63,7 @@ const tick = async () => { for (let index = 0; index < 8; index++) await new Pro
 const textOf = node => typeof node === "string" ? node : node.children.map(textOf).join("");
 const button = text => tree.root.findAllByType("button").find(node => textOf(node).includes(text));
 const fileButton = name => tree.root.findAllByProps({ className: "workspace-file-name" }).find(node => textOf(node.findByType("strong")) === name);
+const deleteButton = () => tree.root.findAllByType("button").find(node => textOf(node) === "删除");
 const editor = () => tree.root.findAllByType("textarea").find(node => String(node.props["aria-label"]).startsWith("编辑 "));
 const body = () => JSON.stringify(tree?.toJSON());
 const reads = () => requests.filter(row => row.method === "GET" && row.path.endsWith("/tree"));
@@ -119,7 +120,7 @@ test("same-tick save handler starts one PUT and preserves a newer draft after re
 });
 test("an incomplete success receipt cannot clear dirty text or report save success", async () => {
   await ready(); await newDraft(); await click(button("保存")); await respond(writes()[0], { ok: true });
-  assert.match(body(), /workspace_write_receipt_invalid/); assert.equal(button("保存").props.disabled, false); assert.doesNotMatch(body(), /已保存 new.txt/);
+  assert.match(body(), /workspace_write_receipt_invalid/); assert.equal(button("保存").props.disabled, true); assert.doesNotMatch(body(), /已保存 new.txt/);
 });
 test("an error envelope must not expose its raw storage diagnostic", async () => {
   await ready(); await newDraft(); await click(button("保存")); await respond(writes()[0], { ok: false, error: "fictional private storage message", code: "fictional_storage_failure" });
@@ -215,7 +216,7 @@ test("acknowledged overwrite sends one explicit confirmation and caches the subm
 });
 test("a wrong write path cannot satisfy the save even with matching bytes", async () => {
   await ready(); await newDraft(); await click(button("保存")); await respond(writes()[0], { ok: true, path: "other.txt", mode: "overwrite", chars: new Blob(["虚构待保存草稿"]).size });
-  assert.match(body(), /workspace_write_receipt_invalid/); assert.equal(button("保存").props.disabled, false); assert.equal(await cache.workspaceCacheRead(A, "new.txt"), undefined);
+  assert.match(body(), /workspace_write_receipt_invalid/); assert.equal(button("保存").props.disabled, true); assert.equal(await cache.workspaceCacheRead(A, "new.txt"), undefined);
 });
 test("a pending local import is canceled by unmount before any PUT reaches the network", async () => {
   await ready(); let release; const text = new Promise(resolve => { release = resolve; }); await importFile({ name: "note.txt", size: 4, text: () => text });
@@ -239,16 +240,16 @@ test("a full 200-row cloud listing is explicitly described as potentially partia
   await mount(); await respond(reads()[0], { ok: true, path: "/", entries: Array.from({ length: 200 }, (_, index) => ({ name: `file-${index}.txt`, type: "file", size: 0 })) });
   assert.match(body(), /不能据此确认已显示全部文件/); assert.equal(tree.root.findAllByProps({ className: "workspace-file-row" }).length, 200);
 });
-test("request timeout unlocks an unconfirmed write without repeating it and retains draft", async () => {
+test("request timeout releases busy state, guards the unconfirmed write and retains draft", async () => {
   await ready(); await newDraft(); await click(button("保存"));
   await act(async () => { for (const [id, timer] of [...timers]) if (timer.delay === 15_000) { timers.delete(id); timer.callback(); } await tick(); });
-  assert.match(body(), /request_timeout/); assert.equal(writes().length, 1); assert.equal(writes()[0].options.signal.aborted, true); assert.equal(editor().props.value, "虚构待保存草稿"); assert.equal(button("保存").props.disabled, false);
+  assert.match(body(), /request_timeout/); assert.equal(writes().length, 1); assert.equal(writes()[0].options.signal.aborted, true); assert.equal(editor().props.value, "虚构待保存草稿"); assert.equal(button("保存").props.disabled, true); assert.equal(button("核对未确认文件").props.disabled, false);
 });
 test("timeout bounds JSON body parsing too and a late write receipt cannot clear the draft", async () => {
   await ready(); await newDraft(); await click(button("保存")); let release;
   await act(async () => { writes()[0].raw({ status: 200, ok: true, headers: new Headers(), json: () => new Promise(resolve => { release = resolve; }) }); await tick(); });
   await act(async () => { for (const [id, timer] of [...timers]) if (timer.delay === 15_000) { timers.delete(id); timer.callback(); } await tick(); });
-  assert.match(body(), /request_timeout/); assert.equal(button("保存").props.disabled, false);
+  assert.match(body(), /request_timeout/); assert.equal(button("保存").props.disabled, true); assert.equal(button("核对未确认文件").props.disabled, false);
   await act(async () => { release({ ok: true, path: "new.txt", mode: "overwrite", chars: new Blob(["虚构待保存草稿"]).size }); await tick(); });
   assert.match(body(), /未保存/); assert.doesNotMatch(body(), /已保存 new.txt/); assert.equal(await cache.workspaceCacheRead(A, "new.txt"), undefined);
 });
@@ -331,4 +332,185 @@ for (const kind of ["different", "same", "truncated", "failure", "new-edit"]) te
   else assert.match(body(), /● 未保存/);
   if (kind === "truncated") assert.match(body(), /仅部分预览|不能用来确认保存/);
   if (kind === "failure") assert.doesNotMatch(body(), /fictional private body/);
+});
+
+test("same-tick clicks on one file start only one cloud read", async () => {
+  await ready(); const handler = fileButton("note.txt").props.onClick;
+  await act(async () => { handler(); handler(); await tick(); });
+  assert.equal(fileReads().length, 1);
+  await respond(fileReads()[0], fileReceipt("note.txt"));
+  assert.equal(editor().props.value, "虚构原文"); assert.equal(writes().length, 0);
+});
+
+test("same-tick typing and copying use the exact latest editor draft", async () => {
+  await ready(); await open(); const copy = button("复制").props.onClick;
+  const previous = navigator.clipboard.writeText, copied = [], raw = "  虚构最新正文\r\n🌱  ";
+  navigator.clipboard.writeText = async text => copied.push(text);
+  try {
+    await act(async () => { editor().props.onChange({ target: { value: raw } }); copy(); await tick(); });
+    assert.deepEqual(copied, [raw]); assert.equal(writes().length, 0);
+  } finally { navigator.clipboard.writeText = previous; }
+});
+
+test("same-tick typing and downloading use the exact latest editor draft", async () => {
+  await ready(); await open(); const download = button("下载当前内容").props.onClick;
+  const previous = URL.createObjectURL, blobs = [], raw = "  虚构下载原文\r\n🌱  ";
+  URL.createObjectURL = blob => { blobs.push(blob); return "blob:fictional-workspace-download"; };
+  try {
+    await act(async () => { editor().props.onChange({ target: { value: raw } }); download(); await tick(); });
+    assert.equal(blobs.length, 1); assert.equal(await blobs[0].text(), raw); assert.equal(writes().length, 0);
+  } finally { URL.createObjectURL = previous; }
+});
+
+test("an unconfirmed save blocks stale writes until the same file is checked and the user explicitly continues", async () => {
+  await ready(); await newDraft(); const save = button("保存").props.onClick, paste = button("粘贴为文件").props.onClick;
+  await click(button("保存")); await respond(writes()[0], { ok: true });
+  await act(async () => { save(); paste(); await tick(); });
+  assert.equal(writes().length, 1); assert.equal(button("保存").props.disabled, true);
+  await click(button("重新读取文件")); await respond(fileReads()[0], { ok: false, code: "workspace_file_unavailable" });
+  assert.equal(button("保存").props.disabled, true); assert.equal(editor().props.value, "虚构待保存草稿");
+  await click(button("重新读取文件")); await respond(fileReads()[1], fileReceipt("new.txt", "虚构云端旧正文"));
+  assert.equal(writes().length, 1); assert.equal(button("保存").props.disabled, true);
+  await click(button("已核对现状，继续手动操作")); assert.equal(button("保存").props.disabled, false);
+  assert.equal(editor().props.value, "虚构待保存草稿");
+});
+
+test("an unconfirmed delete remains guarded after ordinary refresh and requires checking its target then explicit continuation", async () => {
+  await ready(); const remove = deleteButton().props.onClick;
+  await click(deleteButton()); await respond(deletes()[0], { ok: true });
+  await act(async () => { remove(); await tick(); });
+  assert.equal(deletes().length, 1); assert.equal(deleteButton().props.disabled, true);
+  await click(button("刷新")); await respond(reads()[1], { ok: true, path: "/" });
+  assert.equal(button("粘贴为文件").props.disabled, true);
+  await click(button("刷新")); await respond(reads()[2], treeReceipt());
+  assert.equal(deleteButton().props.disabled, true);
+  await click(button("核对删除目标目录")); await respond(reads()[3], treeReceipt());
+  assert.equal(deleteButton().props.disabled, true); assert.match(body(), /这不是前次删除回执/);
+  await click(button("已核对现状，继续手动操作"));
+  assert.equal(deleteButton().props.disabled, false); assert.equal(deletes().length, 1);
+});
+
+test("a failed clipboard write retains its exact candidate for download without replacing another dirty file", async () => {
+  await ready(); await newDraft(); clipboard = "  虚构粘贴候选\r\n🌱  "; promptAnswer = "docs/pasted.txt";
+  await click(button("粘贴为文件")); await respond(writes()[0], { ok: true });
+  assert.equal(editor().props.value, "虚构待保存草稿");
+  const download = button("下载未确认内容"); assert.ok(download);
+  const previous = URL.createObjectURL, blobs = [];
+  URL.createObjectURL = blob => { blobs.push(blob); return "blob:fictional-workspace-candidate"; };
+  try { await click(download); assert.equal(await blobs[0].text(), clipboard); }
+  finally { URL.createObjectURL = previous; }
+  assert.equal(downloads[0].name, "pasted.txt"); assert.equal(writes().length, 1);
+});
+
+test("confirmed exact text survives close, directory return, unmount and reopening through GET only", async () => {
+  await ready(); await open(); const raw = "  虚构已确认正文\r\n🌱  "; await draft(raw);
+  await click(button("保存")); await respond(writes()[0], { ok: true, path: "note.txt", mode: "overwrite", chars: new Blob([raw]).size });
+  assert.equal(JSON.parse(writes()[0].options.body).content, raw);
+  await respond(reads()[1], treeReceipt()); await click(button("关闭")); await click(fileButton("docs"));
+  await respond(reads()[2], { ok: true, path: "docs", entries: [] }); await click(button("工作区根目录"));
+  await respond(reads()[3], treeReceipt());
+  await act(async () => { tree.unmount(); await tick(); }); tree = null;
+  await mount(); await respond(reads()[4], treeReceipt()); await click(fileButton("note.txt"));
+  await respond(fileReads()[1], fileReceipt("note.txt", raw));
+  assert.equal(editor().props.value, raw); assert.equal(writes().length, 1); assert.equal(deletes().length, 0);
+});
+
+for (const status of [200, 401]) test(`a late write ${status} cannot alter a switched companion or cache a new account's files`, async () => {
+  await ready(); await newDraft(); await click(button("保存")); const pending = writes()[0];
+  sdkSession = sessionFor(B); authListener("SIGNED_IN", sdkSession); manager.setActiveCompanionId(CB);
+  await respond(pending, status === 200 ? { ok: true, path: "new.txt", mode: "overwrite", chars: new Blob(["虚构待保存草稿"]).size } : { code: "invalid_session" }, status, CA);
+  assert.equal(manager.getSnapshot().user?.id, B); assert.equal(manager.getSnapshot().activeCompanionId, CB);
+  assert.equal(signOuts.length, 0); assert.equal(await cache.workspaceCacheRead(B, "new.txt"), undefined);
+  assert.doesNotMatch(body(), /已保存 new.txt/); assert.equal(writes().length, 1);
+});
+
+for (const [label, data, status] of [
+  ["explicit 403", { code: "forbidden", message: "FICTIONAL_PRIVATE_STORAGE_ERROR" }, 403],
+  ["explicit 413", { code: "payload_too_large" }, 413],
+  ["rejected storage envelope", { ok: false, code: "workspace_operation_failed", error: "FICTIONAL_PRIVATE_STORAGE_ERROR" }, 200],
+]) test(`a ${label} keeps the exact draft and permits an explicit retry`, async () => {
+  await ready(); await newDraft(); const raw = "  虚构明确失败草稿\r\n🌱  "; await draft(raw);
+  await click(button("保存")); await respond(writes()[0], data, status);
+  assert.equal(editor().props.value, raw); assert.equal(button("保存").props.disabled, false);
+  assert.equal(button("核对未确认文件"), undefined); assert.doesNotMatch(body(), /FICTIONAL_PRIVATE_STORAGE_ERROR/);
+  assert.doesNotMatch(body(), /写入可能已经到达云端/);
+  assert.equal(writes().length, 1); await click(button("保存")); assert.equal(writes().length, 2);
+});
+
+test("an uncertain clipboard import is checked only at its exact path and preserves a newer editor draft", async () => {
+  await ready(); await newDraft(); const candidate = "  虚构粘贴候选\r\n🌱  "; clipboard = candidate; promptAnswer = "docs/pasted.txt";
+  await click(button("粘贴为文件")); await respond(writes()[0], { ok: true });
+  await draft("  后来的编辑草稿  "); await click(button("重新读取文件"));
+  await respond(fileReads()[0], fileReceipt("new.txt", "与导入无关的虚构正文"));
+  assert.equal(button("保存").props.disabled, true); assert.equal(button("已核对现状，继续手动操作"), undefined);
+  await click(button("核对未确认文件")); assert.equal(fileReads()[1].query.get("path"), "docs/pasted.txt");
+  await respond(fileReads()[1], fileReceipt("docs/pasted.txt", candidate));
+  assert.equal(editor().props.value, "  后来的编辑草稿  "); assert.equal(button("保存").props.disabled, false);
+  assert.match(body(), /已核对当前内容/); assert.equal(writes().length, 1);
+});
+
+test("matching the submitted file does not clear a newer exact draft typed while checking", async () => {
+  await ready(); await newDraft(); const submitted = editor().props.value;
+  await click(button("保存")); await respond(writes()[0], { ok: true });
+  await click(button("核对未确认文件")); await draft("  较新的虚构草稿\r\n🌱  ");
+  await respond(fileReads()[0], fileReceipt("new.txt", submitted));
+  assert.equal(editor().props.value, "  较新的虚构草稿\r\n🌱  "); assert.match(body(), /● 未保存/);
+  assert.equal(button("保存").props.disabled, false); assert.equal(writes().length, 1);
+});
+
+for (const kind of ["wrong path", "truncated", "empty envelope"]) test(`a ${kind} verification keeps the import candidate guarded and downloadable`, async () => {
+  await ready(); const raw = "  虚构本地文件原文\r\n🌱  ";
+  await importFile({ name: "note.txt", size: new Blob([raw]).size, text: async () => raw }); await respond(writes()[0], { ok: true });
+  await click(button("核对未确认文件"));
+  await respond(fileReads()[0], kind === "empty envelope" ? { ok: true } : fileReceipt(kind === "wrong path" ? "second.txt" : "note.txt", raw, kind === "truncated"));
+  assert.equal(button("粘贴为文件").props.disabled, true); assert.ok(button("下载未确认内容"));
+  assert.equal(button("已核对现状，继续手动操作"), undefined); assert.equal(writes().length, 1);
+});
+
+test("a full 200-row target directory cannot establish that an unlisted deletion target is absent", async () => {
+  await ready(); await click(deleteButton()); await respond(deletes()[0], { ok: true });
+  await click(button("核对删除目标目录"));
+  await respond(reads()[1], { ok: true, path: "/", entries: Array.from({ length: 200 }, (_, index) => ({ name: `fictional-${index}.txt`, type: "file", size: 0 })) });
+  assert.match(body(), /未列出目标文件不能证明它已不存在/); assert.equal(button("已核对现状，继续手动操作"), undefined);
+  assert.equal(deleteButton().props.disabled, true); assert.equal(deletes().length, 1);
+});
+
+test("checking a nested delete target uses its original directory while ordinary navigation remains available", async () => {
+  await ready(); await click(fileButton("docs")); await respond(reads()[1], treeReceipt("docs"));
+  await click(deleteButton()); assert.equal(deletes()[0].query.get("path"), "docs/note.txt"); await respond(deletes()[0], { ok: true });
+  await click(button("工作区根目录")); await respond(reads()[2], treeReceipt());
+  await click(button("核对删除目标目录")); assert.equal(reads()[3].query.get("path"), "docs");
+  await respond(reads()[3], { ok: true, path: "docs", entries: [] });
+  assert.match(body(), /本次完整目录列表未列出目标文件/); assert.doesNotMatch(body(), /已删除 docs\/note.txt/);
+  assert.equal(deletes().length, 1); await click(button("已核对现状，继续手动操作")); assert.equal(deleteButton().props.disabled, false);
+});
+
+test("import success preserves exact source bytes through close and a later file read", async () => {
+  await ready(); const raw = "  虚构导入原文\r\n🌱  ";
+  await importFile({ name: "note.txt", size: new Blob([raw]).size, text: async () => raw });
+  assert.deepEqual(JSON.parse(writes()[0].options.body), { path: "note.txt", content: raw, mode: "overwrite", confirm: false });
+  await respond(writes()[0], { ok: true, path: "note.txt", mode: "overwrite", chars: new Blob([raw]).size });
+  await respond(reads()[1], treeReceipt()); await click(fileButton("note.txt")); await respond(fileReads()[0], fileReceipt("note.txt", raw));
+  await click(button("关闭")); await click(fileButton("note.txt")); await respond(fileReads()[1], fileReceipt("note.txt", raw));
+  assert.equal(editor().props.value, raw); assert.equal(button("保存").props.disabled, true); assert.equal(writes().length, 1);
+});
+
+test("a stale checked-result button cannot release a later uncertain write", async () => {
+  await ready(); await newDraft(); await click(button("保存")); await respond(writes()[0], { ok: true });
+  await click(button("核对未确认文件")); await respond(fileReads()[0], fileReceipt("new.txt", "虚构不同云端正文"));
+  const oldContinue = button("已核对现状，继续手动操作").props.onClick;
+  await click(button("已核对现状，继续手动操作")); await click(button("保存")); await respond(writes()[1], { ok: true });
+  await act(async () => { oldContinue(); await tick(); });
+  assert.equal(button("保存").props.disabled, true); assert.equal(writes().length, 2);
+});
+
+test("an explicitly rejected clipboard write retains its exact candidate without guarding future writes", async () => {
+  await ready(); clipboard = "  虚构拒绝提交副本\r\n🌱  "; promptAnswer = "docs/pasted.txt";
+  await click(button("粘贴为文件")); await respond(writes()[0], { code: "forbidden" }, 403);
+  assert.equal(button("粘贴为文件").props.disabled, false); assert.equal(button("核对未确认文件"), undefined);
+  const previous = URL.createObjectURL, blobs = [], candidate = clipboard; clipboard = "后来的虚构剪贴板";
+  URL.createObjectURL = blob => { blobs.push(blob); return "blob:fictional-rejected-candidate"; };
+  try { await click(button("下载提交副本")); assert.equal(await blobs[0].text(), candidate); }
+  finally { URL.createObjectURL = previous; }
+  assert.equal(writes().length, 1); assert.match(body(), /写入明确未完成/);
 });

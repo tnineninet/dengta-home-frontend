@@ -193,10 +193,9 @@ export function isSynchronizedVisibleMonologue(value) {
   return normalizeVisibleMonologue(value)?.synchronized === true;
 }
 
-export function canRequestVisibleMonologue(message = {}) {
-  if (message.chatError || message.isStreaming) return false;
-  const monologue = visibleMonologueForMessage(message);
-  return !monologue || (monologue.state === "missing" && !monologue.text.trim());
+export function canRequestVisibleMonologue(message = {}, monologue = visibleMonologueForMessage(message)) {
+  if (message.chatError || message.isStreaming || message.generationInProgress || (message.role && message.role !== "assistant") || message.tool_calls?.refusal_detected) return false;
+  return !monologue || (TERMINAL_VISIBLE_MONOLOGUE_STATES.has(monologue.state) && !String(monologue.text || "").trim());
 }
 
 function settleCurrentVisibleSegment(value = {}) {

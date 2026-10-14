@@ -9,7 +9,7 @@ import {
   thinkingPanelCompleted,
   thinkingPanelVisible,
 } from "./chat-thinking";
-import { isSynchronizedVisibleMonologue } from "./inner-monologue";
+import { canRequestVisibleMonologue, isSynchronizedVisibleMonologue } from "./inner-monologue";
 import { usePrivateMediaSource } from "./use-private-media";
 
 function attachmentIcon(kind) {
@@ -188,8 +188,7 @@ export function ThinkingPanel({
     : "legacy";
   const canRequestInnerMonologue =
     completed &&
-    !message.chatError &&
-    (!synchronizedMonologue || monologueState === "missing") &&
+    canRequestVisibleMonologue(message, synchronizedMonologue ? innerMonologue : null) &&
     typeof onRequestInnerMonologue === "function";
   const visible =
     !completed ||
@@ -313,7 +312,7 @@ export function ThinkingPanel({
             {monologueState === "failed" && monologueText && (
               <small className="visible-monologue-status">本轮未完成，片段仅临时显示，尚未确认保存。</small>
             )}
-            {canRequestInnerMonologue && monologueState === "missing" && (
+            {canRequestInnerMonologue && (
               <>
                 <button type="button" disabled={innerMonologuePending} onClick={requestMonologue}>
                   {innerMonologuePending ? "正在补充心声…" : "补充这次心声"}
@@ -409,15 +408,17 @@ export function ThinkingPanel({
                     <small>本轮回复未完成，以上片段仅临时显示，尚未确认保存到聊天记录。</small>
                   )}
                 </>
-              ) : synchronizedMonologue ? (
-                <p>{synchronizedSummary}</p>
               ) : innerMonologueError ? (
                 <div className="inner-monologue-dialog-error" role="alert">
                   <p>{innerMonologueError}</p>
-                  <button type="button" onClick={requestMonologue}>
-                    再试一次
-                  </button>
+                  {canRequestInnerMonologue && (
+                    <button type="button" onClick={requestMonologue}>
+                      再试一次
+                    </button>
+                  )}
                 </div>
+              ) : synchronizedMonologue ? (
+                <p>{synchronizedSummary}</p>
               ) : (
                 <p>这一次暂时没有收到可显示的心声。</p>
               )}

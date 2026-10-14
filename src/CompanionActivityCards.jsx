@@ -1,9 +1,9 @@
-import { Clapperboard, Music2, ShoppingBag, ExternalLink } from "lucide-react";
+import { Clapperboard, Music2, ShoppingBag, ExternalLink, Palette } from "lucide-react";
 import { normalizeCompanionActivities } from "./companion-activities.js";
 import "./companion-activities.css";
 
-const labels = { music: "一起听歌", watch: "一起看", takeout: "打开外卖" };
-const icons = { music: Music2, watch: Clapperboard, takeout: ShoppingBag };
+const labels = { music: "一起听歌", watch: "一起看", takeout: "打开外卖", art: "打开涂鸦画室" };
+const icons = { music: Music2, watch: Clapperboard, takeout: ShoppingBag, art: Palette };
 
 export default function CompanionActivityCards({ actions, onOpen }) {
   const normalized = normalizeCompanionActivities(actions);

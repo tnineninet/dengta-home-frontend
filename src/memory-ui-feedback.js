@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useRef } from "react";
-import { apiRequest } from "./api.js";
+import { apiFetch, apiRequest } from "./api.js";
 import { authSession } from "./auth-session.js";
 import { createScopedSettingsSession, settingsSaveScope } from "./settings-save-scope.js";
 import { describeOperationError } from "./operation-error-help.js";
@@ -82,7 +82,7 @@ export function useMemoryUiRequest(scopeKey) {
     const snapshot = authSession.getSnapshot();
     return Boolean(lifecycle.current?.scopeKey === scopeKey && !lifecycle.current.controller.signal.aborted && snapshot.user?.id && snapshot.activeCompanionId && settingsSaveScope(snapshot) === scopeKey);
   }, [scopeKey]);
-  const request = useCallback(async (path, { body, timeoutMs = 15_000, ...options } = {}) => {
+  const request = useCallback(async (path, { body, timeoutMs = 15_000, responseReader, ...options } = {}) => {
     if (!isCurrent()) {
       const error = new Error("账号或伴侣范围已变化。");
       error.code = "settings_scope_changed";
@@ -105,12 +105,16 @@ export function useMemoryUiRequest(scopeKey) {
     // The shared API deadline ends after headers; this also bounds a stalled JSON body.
     const timer = window.setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
     try {
-      return await Promise.race([apiRequest(path, { timeoutMs, ...options, body: body === undefined ? undefined : JSON.stringify(body), signal: controller.signal, authSession: createScopedSettingsSession(authSession, scopeKey, controller.signal), retry: false }), aborted]);
+      const requestOptions = { timeoutMs, ...options, body: body === undefined ? undefined : JSON.stringify(body), signal: controller.signal, authSession: createScopedSettingsSession(authSession, scopeKey, controller.signal), retry: false };
+      const result = responseReader
+        ? apiFetch(path, { ...requestOptions, headers: { "Content-Type": "application/json", ...(options.headers || {}) } }).then(responseReader)
+        : apiRequest(path, requestOptions);
+      return await Promise.race([result, aborted]);
     } finally {
       window.clearTimeout(timer);
       current.controller.signal.removeEventListener("abort", forwardAbort);
       controller.signal.removeEventListener("abort", onAbort);
     }
-  }, [isCurrent]);
+  }, [isCurrent, scopeKey]);
   return { request, isCurrent };
 }

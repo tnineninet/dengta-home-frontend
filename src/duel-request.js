@@ -5,7 +5,7 @@ function receiptError(code) {
 }
 
 export function assertDuelNarration(data, turn) {
-  if (data?.refused === true) throw receiptError("provider_boundary_residue");
+  if (data?.refused === true) throw receiptError(data.refusal_code === "provider_error_document" ? "provider_error_document" : "provider_boundary_residue");
   const valid = data !== null && typeof data === "object" && !Array.isArray(data) &&
     data.ok === true && typeof data.narration === "string" && typeof data.reaction === "string" &&
     (turn.winner ? data.companion_skill === null : turn.availableCompanionSkills.includes(data.companion_skill));

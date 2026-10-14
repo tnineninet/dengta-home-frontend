@@ -81,6 +81,7 @@ public final class DlnaReceiverService extends Service {
 
     private static volatile boolean running = false;
     private static volatile boolean wifiAware = false;
+    private static final DlnaDiscovery discovery = new DlnaDiscovery();
 
     // —— 播放状态机（供 SOAP 查询，也供前端感知） ——
     static volatile String transportState = "STOPPED";
@@ -97,6 +98,7 @@ public final class DlnaReceiverService extends Service {
     private Handler httpHandler;
     private volatile DatagramSocket ssdpSocket;
     private volatile ServerSocket httpServer;
+    private volatile String advertisedAddress = "";
     private WifiManager.MulticastLock multicastLock;
     private String deviceId = "";
 
@@ -104,11 +106,20 @@ public final class DlnaReceiverService extends Service {
         return running;
     }
 
+    public static boolean isReady() {
+        return discovery.snapshot().active;
+    }
+
     public static String stateJson() {
         JSONObject state = new JSONObject();
+        DlnaDiscovery.Snapshot status = discovery.snapshot();
         try {
             state.put("supported", true);
-            state.put("active", running);
+            state.put("active", status.active);
+            state.put("ssdpReady", status.ssdpReady);
+            state.put("httpReady", status.httpReady);
+            state.put("discoveryStatus", status.status);
+            state.put("errorCode", status.errorCode);
             state.put("enabled", running);
             state.put("port", HTTP_PORT);
             state.put("transportState", transportState);
@@ -121,9 +132,14 @@ public final class DlnaReceiverService extends Service {
 
     static JSObject buildState(Context context) {
         JSObject state = new JSObject();
+        DlnaDiscovery.Snapshot status = discovery.snapshot();
         try {
             state.put("supported", true);
-            state.put("active", running);
+            state.put("active", status.active);
+            state.put("ssdpReady", status.ssdpReady);
+            state.put("httpReady", status.httpReady);
+            state.put("discoveryStatus", status.status);
+            state.put("errorCode", status.errorCode);
             boolean enabled = prefs(context).getBoolean(ENABLED_KEY, false);
             state.put("enabled", enabled);
             state.put("port", HTTP_PORT);
@@ -220,8 +236,12 @@ public final class DlnaReceiverService extends Service {
             return START_NOT_STICKY;
         }
         if (running) {
-            installForegroundNotification();
-            return START_STICKY;
+            if (ACTION_START.equals(action) && !discovery.snapshot().errorCode.isEmpty()) {
+                stopReceiver();
+            } else {
+                installForegroundNotification();
+                return START_STICKY;
+            }
         }
         prefs(this).edit().putBoolean(ENABLED_KEY, true).apply();
         startReceiver();
@@ -248,6 +268,7 @@ public final class DlnaReceiverService extends Service {
 
     private void startReceiver() {
         running = true;
+        long generation = discovery.begin(this::sendSsdpAlive);
         deviceId = readOrCreateDeviceId();
         installForegroundNotification();
         try {
@@ -257,8 +278,8 @@ public final class DlnaReceiverService extends Service {
                 multicastLock = wm.createMulticastLock("dengta-dlna-multicast");
                 multicastLock.setReferenceCounted(false);
                 multicastLock.acquire();
+                wifiAware = multicastLock.isHeld();
             }
-            wifiAware = true;
         } catch (Exception ignored) {
         }
         ssdpThread = new HandlerThread("dengta-dlna-ssdp");
@@ -268,15 +289,14 @@ public final class DlnaReceiverService extends Service {
         httpThread.start();
         httpHandler = new Handler(httpThread.getLooper());
 
-        startSsdpLoop();
-        startHttpServer();
-        // 启动后立即发送 ssdp:alive 通知，让局域网内视频 App 发现灯塔
-        ssdpHandler.post(() -> { sendSsdpAlive(); scheduleSsdpAlive(); });
+        startSsdpLoop(generation, 0);
+        startHttpServer(generation);
         broadcastState();
     }
 
     private void stopReceiver() {
         running = false;
+        discovery.stop();
         // 停止前发送 ssdp:byebye 通知，告知局域网设备已下线
         if (ssdpSocket != null) {
             try { sendSsdpByebye(); } catch (Exception ignored) {}
@@ -289,10 +309,14 @@ public final class DlnaReceiverService extends Service {
             }
             multicastLock = null;
         }
+        wifiAware = false;
         closeQuietly(ssdpSocket);
         closeQuietly(httpServer);
         ssdpSocket = null;
         httpServer = null;
+        advertisedAddress = "";
+        if (ssdpHandler != null) ssdpHandler.removeCallbacksAndMessages(null);
+        if (httpHandler != null) httpHandler.removeCallbacksAndMessages(null);
         if (ssdpThread != null) {
             ssdpThread.quitSafely();
             ssdpThread = null;
@@ -309,49 +333,56 @@ public final class DlnaReceiverService extends Service {
 
     // ---------------------------------------------------------------- SSDP
 
-    private void startSsdpLoop() {
+    private void startSsdpLoop(long generation, int attempt) {
         ssdpHandler.post(() -> {
-            // 1900 端口可能暂时被占用或需要系统权限：多次重试，避免一次失败后设备彻底消失
-            for (int attempt = 0; attempt < 10 && running; attempt++) {
-                MulticastSocket socket = null;
-                try {
-                    socket = new MulticastSocket(null);
-                    socket.setReuseAddress(true);
-                    socket.setBroadcast(true); // 允许向组播地址发送 SSDP 响应
-                    socket.bind(new InetSocketAddress(InetAddress.getByName("0.0.0.0"), SSDP_PORT));
-                    socket.setSoTimeout(2000);
-                    // 加入组播组，确保收到来自 239.255.255.250:1900 的 M-SEARCH
-                    try {
-                        InetAddress group = InetAddress.getByName(SSDP_ADDR);
-                        socket.joinGroup(group);
-                    } catch (Exception joinError) {
-                        publishDebug("ssdp joinGroup failed: " + safeMsg(joinError));
-                    }
-                    ssdpSocket = socket;
-                    publishDebug("ssdp bound to port " + SSDP_PORT + " on attempt " + (attempt + 1));
-                    while (running && ssdpSocket != null) {
-                        try {
-                            byte[] buffer = new byte[8192];
-                            DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
-                            socket.receive(packet);
-                            handleSsdpPacket(socket, packet);
-                        } catch (SocketTimeoutException ignored) {
-                            // 每 2s 醒来一次：若 running 已停止则退出循环
-                        } catch (IOException loopError) {
-                            if (!running) break;
-                        }
-                    }
-                    return;
-                } catch (Exception socketError) {
-                    String msg = safeMsg(socketError);
-                    publishDebug("ssdp bind failed (attempt " + (attempt + 1) + "): " + msg);
-                    if (socket != null) {
-                        try { socket.close(); } catch (Exception ignored) {}
-                    }
-                    try { Thread.sleep(3000L * (attempt + 1)); } catch (InterruptedException ignored) {}
+            if (!running || !discovery.isCurrent(generation)) return;
+            MulticastSocket socket = null;
+            String errorCode = "dlna_network_unavailable";
+            try {
+                String address = findLocalIpAddress();
+                NetworkInterface network = address.isEmpty() ? null
+                    : NetworkInterface.getByInetAddress(InetAddress.getByName(address));
+                if (network == null || !network.isUp() || !network.supportsMulticast()) {
+                    throw new IOException("No multicast LAN interface");
                 }
+                errorCode = "dlna_ssdp_bind_failed";
+                socket = new MulticastSocket(null);
+                socket.setReuseAddress(true);
+                socket.setBroadcast(true);
+                socket.bind(new InetSocketAddress(InetAddress.getByName("0.0.0.0"), SSDP_PORT));
+                socket.setSoTimeout(2000);
+                errorCode = "dlna_multicast_join_failed";
+                socket.setNetworkInterface(network);
+                socket.joinGroup(new InetSocketAddress(SSDP_ADDR, SSDP_PORT), network);
+                synchronized (discovery) {
+                    if (!running || !discovery.isCurrent(generation)) return;
+                    ssdpSocket = socket;
+                    advertisedAddress = address;
+                    discovery.ready(generation, false);
+                }
+                broadcastState();
+                publishDebug("ssdp bound to port " + SSDP_PORT + " on attempt " + (attempt + 1));
+                errorCode = "dlna_ssdp_receive_failed";
+                while (running && discovery.isCurrent(generation) && ssdpSocket == socket) {
+                    try {
+                        byte[] buffer = new byte[8192];
+                        DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
+                        socket.receive(packet);
+                        if (discovery.snapshot().active) handleSsdpPacket(socket, packet);
+                    } catch (SocketTimeoutException ignored) {
+                    }
+                }
+            } catch (Exception socketError) {
+                if (discovery.failed(generation, false, errorCode)) {
+                    publishDebug(errorCode + " (attempt " + (attempt + 1) + "): " + safeMsg(socketError));
+                    broadcastState();
+                    if (attempt < 9) ssdpHandler.postDelayed(
+                        () -> startSsdpLoop(generation, attempt + 1), 3000L * (attempt + 1));
+                }
+            } finally {
+                closeQuietly(socket);
+                if (ssdpSocket == socket) ssdpSocket = null;
             }
-            publishDebug("ssdp: all attempts exhausted, DLNA discovery unavailable");
         });
     }
 
@@ -476,34 +507,36 @@ public final class DlnaReceiverService extends Service {
         }
     }
 
-    private void scheduleSsdpAlive() {
-        // 每 30 秒重新发送 ssdp:alive，维持设备在局域网的存在感
-        ssdpHandler.postDelayed(() -> {
-            if (!running) return;
-            sendSsdpAlive();
-            scheduleSsdpAlive();
-        }, 30_000);
-    }
-
     // ---------------------------------------------------------------- HTTP / SOAP
 
-    private void startHttpServer() {
+    private void startHttpServer(long generation) {
         httpHandler.post(() -> {
+            if (!running || !discovery.isCurrent(generation)) return;
+            ServerSocket server = null;
+            String errorCode = "dlna_http_bind_failed";
             try {
-                ServerSocket server = new ServerSocket();
+                server = new ServerSocket();
                 server.setReuseAddress(true);
                 server.bind(new InetSocketAddress(HTTP_PORT));
-                httpServer = server;
-                while (running && httpServer != null) {
-                    try {
-                        Socket client = server.accept();
-                        handleHttpClient(client);
-                    } catch (Exception ignored) {
-                        if (!running) break;
-                    }
+                synchronized (discovery) {
+                    if (!running || !discovery.isCurrent(generation)) return;
+                    httpServer = server;
+                    discovery.ready(generation, true);
+                }
+                broadcastState();
+                errorCode = "dlna_http_receive_failed";
+                while (running && discovery.isCurrent(generation) && httpServer == server) {
+                    Socket client = server.accept();
+                    handleHttpClient(client);
                 }
             } catch (Exception httpError) {
-                publishDebug("http server failed: " + safeMsg(httpError));
+                if (discovery.failed(generation, true, errorCode)) {
+                    publishDebug(errorCode + ": " + safeMsg(httpError));
+                    broadcastState();
+                }
+            } finally {
+                closeQuietly(server);
+                if (httpServer == server) httpServer = null;
             }
         });
     }
@@ -912,6 +945,10 @@ public final class DlnaReceiverService extends Service {
     }
 
     private String localIpAddress() {
+        return advertisedAddress;
+    }
+
+    private String findLocalIpAddress() {
         try {
             String wifiIp = "";
             Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
@@ -1179,19 +1216,25 @@ public final class DlnaReceiverService extends Service {
     private void broadcastState() {
         Intent intent = new Intent(ACTION_STATE);
         intent.setPackage(getPackageName());
-        intent.putExtra(EXTRA_STATE, running ? "running" : "stopped");
+        intent.putExtra(EXTRA_STATE, discovery.snapshot().active ? "running" : "stopped");
         sendBroadcast(intent);
+        mainHandler.post(() -> { if (running) installForegroundNotification(); });
     }
 
     private void installForegroundNotification() {
         try {
+            DlnaDiscovery.Snapshot status = discovery.snapshot();
             Intent stopIntent = stopIntent(this);
             PendingIntent stopPending = PendingIntent.getService(
                 this, 0, stopIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
             NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("灯塔投屏已开启")
-                .setContentText("视频 App 里点投屏，选择「灯塔 DENGTA」即可一起看")
+                .setContentTitle(status.active ? "灯塔投屏已开启"
+                    : status.errorCode.isEmpty() ? "灯塔投屏正在启动" : "灯塔投屏暂不可发现")
+                .setContentText(status.active
+                    ? "视频 App 里点投屏，选择「灯塔 DENGTA」即可一起看"
+                    : status.errorCode.isEmpty() ? "正在连接局域网并注册接收器"
+                    : "请检查局域网连接后重试（" + status.errorCode + "）")
                 .setSmallIcon(android.R.drawable.ic_menu_share)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .addAction(0, "停止投屏", stopPending)

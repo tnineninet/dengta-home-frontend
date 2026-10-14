@@ -21,7 +21,7 @@ function extract(start, end) {
 const states = extract("  const [moments,", "  const [isLoading,");
 const operations = extract("  const [isPostingMoment,", "  const [dialog,");
 const refs = extract("  const pendingMomentLikesRef =", "  const draftSettingsRef =");
-const load = extract("  const getMomentsRequestScope =", '  useEffect(() => {\n    if (activeView === "memories")');
+const load = extract("  const getMomentsRequestScope =", '  useEffect(() => {\n    if (activeView === "moments")');
 const mutations = extract("  async function postMoment(", "  function changeView(");
 const render = extract("  function renderMoments()", "  function renderDiscover()");
 const errorFeedback = extract("function momentFailureMessage(", "async function prepareMomentImage(");

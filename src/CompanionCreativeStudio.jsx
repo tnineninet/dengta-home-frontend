@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { apiRequest } from "./api";
+import { authSession } from "./auth-session.js";
 import { AuthenticatedImage } from "./PrivateMedia";
 
 const EMPTY_STATUS = {
@@ -118,13 +119,70 @@ function creativeRequest(path, options) {
   return apiRequest(`/api/v2/creative${path}`, options);
 }
 
-function loadCreativeLibraryResources() {
+function loadCreativeLibraryResources(request = creativeRequest) {
   // Provider health and the artwork library are independent. A stale provider
   // credential must never prevent a readable stored image from being shown.
   return Promise.allSettled([
-    creativeRequest("/status"),
-    creativeRequest("/artworks"),
+    request("/status"),
+    request("/artworks"),
   ]);
+}
+
+function useCreativeLibraryScope() {
+  const [scope] = useState(() => {
+    let owner, controller, active = false, generation = 0, operation = null;
+    const matches = () => {
+      const current = authSession.getSnapshot();
+      return Boolean(owner?.user?.id && owner.activeCompanionId) &&
+        current?.user?.id === owner.user.id && current?.activeCompanionId === owner.activeCompanionId;
+    };
+    const current = token => active && !controller.signal.aborted && matches() && (!token || token.generation === generation);
+    const assertCurrent = () => {
+      if (!current()) throw new DOMException("旧画室操作已取消。", "AbortError");
+    };
+    const cancel = () => { active = false; generation++; controller?.abort(); operation = null; };
+    return {
+      activate() { owner = authSession.getSnapshot(); controller = new AbortController(); active = true; generation++; },
+      cancel, current, capture: () => ({ generation }),
+      busy: () => operation !== null,
+      begin() {
+        if (!current() || operation) return null;
+        operation = { generation };
+        return operation;
+      },
+      finish(token) { if (operation === token) operation = null; },
+      async request(path, options = {}) {
+        assertCurrent();
+        const token = { generation }, requestOwner = owner, requestController = controller;
+        const assertRequest = () => {
+          if (!current(token)) throw new DOMException("旧画室请求已取消。", "AbortError");
+        };
+        const data = await creativeRequest(path, { ...options, signal: requestController.signal,
+          authSession: {
+            getSnapshot: () => requestOwner,
+            async getRequestContext() {
+              assertRequest();
+              const context = await authSession.getRequestContext();
+              assertRequest();
+              if (context?.companionId !== requestOwner.activeCompanionId) throw new DOMException("画室伴侣已切换。", "AbortError");
+              return context;
+            },
+            captureCompanionFromResponse: response => { if (current(token)) authSession.captureCompanionFromResponse?.(response); },
+            invalidateSession: message => { if (current(token)) return authSession.invalidateSession?.(message); },
+          },
+        });
+        // JSON decoding can finish after an account switch even when fetch was aborted.
+        assertRequest();
+        return data;
+      },
+    };
+  });
+  useLayoutEffect(() => {
+    scope.activate();
+    const unsubscribe = authSession.subscribe?.(() => { if (!scope.current()) scope.cancel(); });
+    return () => { unsubscribe?.(); scope.cancel(); };
+  }, [scope]);
+  return scope;
 }
 
 function modeLabel(value) {
@@ -233,6 +291,7 @@ export function CompanionArtworkLibrary({
   onNotice,
   onOpenImageProviderSettings,
 }) {
+  const scope = useCreativeLibraryScope();
   const [artworks, setArtworks] = useState([]);
   const [status, setStatus] = useState(EMPTY_STATUS);
   const [busy, setBusy] = useState("");
@@ -284,45 +343,68 @@ export function CompanionArtworkLibrary({
   }, []);
 
   const refresh = useCallback(async () => {
-    const results = await loadCreativeLibraryResources();
+    const token = scope.capture();
+    const results = await loadCreativeLibraryResources(scope.request);
+    if (!scope.current(token)) throw new DOMException("旧画室操作已取消。", "AbortError");
     applyLoadResults(results);
     return results;
-  }, [applyLoadResults]);
+  }, [applyLoadResults, scope]);
 
   useEffect(() => {
     let active = true;
-    loadCreativeLibraryResources()
+    loadCreativeLibraryResources(scope.request)
       .then((results) => {
-        if (!active) return;
+        if (!active || !scope.current()) return;
         applyLoadResults(results);
       });
     return () => {
       active = false;
     };
-  }, [applyLoadResults]);
+  }, [applyLoadResults, scope]);
 
   async function requestIdea(kind) {
+    const operation = scope.begin();
+    if (!operation) return;
     setBusy(`idea:${kind}`);
     setFeedback("");
     try {
-      const data = await creativeRequest("/ideas", {
+      const data = await scope.request("/ideas", {
         method: "POST",
         body: JSON.stringify({ kind, acknowledge_cost: false }),
       });
       await refresh();
+      if (!scope.current(operation)) return;
       const message = data.created
         ? `${aiName}已经留下构思，图片还没有生成。`
         : data.reason || `${aiName}这次没有勉强自己画。`;
       setFeedback(message);
       onNotice?.(message);
     } catch (error) {
+      if (!scope.current(operation)) return;
       setFeedback(creativeErrorFeedback(error));
     } finally {
-      setBusy("");
+      scope.finish(operation);
+      if (scope.current(operation)) setBusy("");
+    }
+  }
+
+  async function refreshArtworks() {
+    const operation = scope.begin();
+    if (!operation) return;
+    setBusy("refresh");
+    setFeedback("");
+    try {
+      await refresh();
+    } catch (error) {
+      if (scope.current(operation)) setFeedback(creativeErrorFeedback(error));
+    } finally {
+      scope.finish(operation);
+      if (scope.current(operation)) setBusy("");
     }
   }
 
   async function generateArtwork(artwork) {
+    if (!scope.current() || scope.busy()) return;
     if (artworkNeedsMetadataRecovery(artwork)) {
       setFeedback(ARTWORK_METADATA_RECOVERY_MESSAGE);
       return;
@@ -346,19 +428,24 @@ export function CompanionArtworkLibrary({
     ) {
       return;
     }
+    const operation = scope.begin();
+    if (!operation) return;
     setBusy(`generate:${artwork.id}`);
     setFeedback("");
     try {
-      await creativeRequest(`/artworks/${artwork.id}/generate`, {
+      await scope.request(`/artworks/${artwork.id}/generate`, {
         method: "POST",
         body: JSON.stringify({ acknowledge_cost: true }),
       });
       await refresh();
+      if (!scope.current(operation)) return;
       const message = "图片已经生成并只保存在当前账号的私人作品库里。";
       setFeedback(message);
       onNotice?.(message);
     } catch (error) {
+      if (!scope.current(operation)) return;
       await refresh().catch(() => {});
+      if (!scope.current(operation)) return;
       if (isArtworkMetadataRecoveryError(error)) {
         setArtworkMetadataUnavailable(true);
       } else if (isCreativeCredentialRecoveryError(error)) {
@@ -373,25 +460,32 @@ export function CompanionArtworkLibrary({
         ),
       );
     } finally {
-      setBusy("");
+      scope.finish(operation);
+      if (scope.current(operation)) setBusy("");
     }
   }
 
   async function removeArtwork(artwork) {
+    if (!scope.current() || scope.busy()) return;
     if (!window.confirm(`永久删除《${artwork.title}》吗？删除后无法恢复。`)) {
       return;
     }
+    const operation = scope.begin();
+    if (!operation) return;
     setBusy(`delete:${artwork.id}`);
     try {
-      await creativeRequest(`/artworks/${artwork.id}`, {
+      await scope.request(`/artworks/${artwork.id}`, {
         method: "DELETE",
       });
       await refresh();
+      if (!scope.current(operation)) return;
       setFeedback("作品已经从私人存储中删除。");
     } catch (error) {
+      if (!scope.current(operation)) return;
       setFeedback(creativeErrorFeedback(error));
     } finally {
-      setBusy("");
+      scope.finish(operation);
+      if (scope.current(operation)) setBusy("");
     }
   }
 
@@ -399,11 +493,14 @@ export function CompanionArtworkLibrary({
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
+    const operation = scope.begin();
+    if (!operation) return;
     setBusy("upload");
     setFeedback("");
     try {
       const prepared = await prepareArtworkUpload(file);
-      await creativeRequest("/artworks/upload", {
+      if (!scope.current(operation)) return;
+      await scope.request("/artworks/upload", {
         method: "POST",
         body: JSON.stringify({
           ...prepared,
@@ -414,11 +511,14 @@ export function CompanionArtworkLibrary({
         }),
       });
       await refresh();
+      if (!scope.current(operation)) return;
       setFeedback("图片已去除可识别元数据并保存到私人作品库，没有调用图片模型。");
     } catch (error) {
+      if (!scope.current(operation)) return;
       setFeedback(creativeErrorFeedback(error));
     } finally {
-      setBusy("");
+      scope.finish(operation);
+      if (scope.current(operation)) setBusy("");
     }
   }
 
@@ -548,8 +648,24 @@ export function CompanionArtworkLibrary({
                     错误码：{artwork.failure_code}
                   </small>
                 )}
+                {artwork.state === "generating" && (
+                  <small>
+                    先刷新查看是否已画好。若长时间没有结果，可以删除本次作品，再从上方重新构思。
+                    删除不会撤回已提交的接口调用；重新生成可能产生新的接口费用。
+                  </small>
+                )}
               </div>
               <div className="artwork-card-actions">
+                {artwork.state === "generating" && (
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={Boolean(busy)}
+                    onClick={refreshArtworks}
+                  >
+                    {busy === "refresh" ? "正在刷新…" : "刷新作品状态"}
+                  </button>
+                )}
                 {["awaiting_confirmation", "failed"].includes(
                   artwork.state,
                 ) && (

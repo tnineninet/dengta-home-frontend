@@ -208,6 +208,92 @@
 }
 .music-cookie-operations-tabs button:not(.is-active):active { transform: scale(0.96); }
 
+/* Index 和卡片覆盖层均提供留白，内层标题与操作栏只保留一层。 */
+.together-page .together-music-setup .music-random-play-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.together-page .together-music-setup .music-random-play-toggle input[type="checkbox"] {
+  width: 51px;
+  height: 31px;
+  padding: 0;
+  border: 0;
+  background: var(--theme-control-fill, #e9e9ea);
+}
+.together-page .together-music-setup .music-random-play-toggle input[type="checkbox"]:checked {
+  background: #34c759;
+}
+.together-page .together-music-setup :is(.music-import-entry, .music-provider-cookie, .music-cookie-operations) {
+  margin-bottom: 0;
+  padding: 14px;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.together-page .together-music-setup .music-provider-connect-heading,
+.together-page .together-music-setup .music-cookie-operations-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  padding: 0;
+}
+.together-page .together-music-setup .music-cookie-connect-actions {
+  justify-content: flex-start;
+}
+.together-page .together-music-setup .music-cookie-connect-actions button {
+  min-height: 44px;
+}
+.together-page .together-music-setup .music-cookie-operations-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+}
+.together-page .together-music-setup .music-cookie-operations-tabs button {
+  min-width: 0;
+  padding-inline: 8px;
+}
+.together-page .together-music-setup :is(.music-provider-connect-heading strong, .music-cookie-operations-bar > strong, .music-random-play-toggle strong, .music-import-entry strong, .music-provider-connect summary) {
+  color: var(--together-ink);
+}
+.together-page .together-music-setup :is(.music-provider-connect-heading span, .music-random-play-toggle small, .music-import-entry p) {
+  color: var(--together-muted);
+  overflow-wrap: anywhere;
+}
+.together-page .together-music-setup .music-player-title {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) 44px;
+  gap: 10px;
+  padding: 14px;
+}
+.together-page .together-music-setup .music-player-title > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.together-page .together-music-setup .music-player-title button {
+  width: 44px;
+  height: 44px;
+}
+.together-page .together-music-setup .music-player-title > button:last-child {
+  display: inline-flex;
+  grid-column: 2 / -1;
+  width: 100%;
+  padding-inline: 10px;
+}
+:root[data-dengta-appearance="night"] .together-page .music-cookie-operations {
+  border-color: rgb(255 255 255 / 0.14);
+  background: rgb(44 44 46 / 0.55);
+}
+:root[data-dengta-appearance="night"] .together-page .together-music-setup :is(.music-import-entry, .music-provider-cookie, .music-cookie-operations) {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .together-page .music-random-play-toggle input,
+  .together-page .music-random-play-toggle input::after { transition: none; }
+}
+
 /* 搜索框 */
 .music-cookie-search {
   display: flex;
@@ -449,7 +535,7 @@
 .music-queue li > div:first-child > span {
   display: block; font-size: 10px; color: #0066cc; font-weight: 600; text-transform: uppercase; letter-spacing: 0.3px;
 }
-.music-queue li > div:first-child > strong { display: block; font-size: 14px; font-weight: 500; color: #1d1d1f; margin-top: 1px; }
+.music-queue li > div:first-child > strong { display: block; font-size: 14px; font-weight: 500; color: var(--together-ink); margin-top: 1px; }
 .music-queue li > div:first-child > small { display: block; font-size: 12px; color: #6e6e73; margin-top: 1px; }
 .music-queue-actions { display: flex; gap: 4px; flex-shrink: 0; }
 .music-queue-actions button { width: 32px; height: 32px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; color: #6e6e73; background: transparent; cursor: pointer; }
@@ -568,7 +654,7 @@
   -webkit-backdrop-filter: blur(20px) saturate(180%);
 }
 .together-page .together-mode-switch button {
-  min-height: 38px; border: 0; border-radius: 8px; background: transparent;
+  min-height: 44px; border: 0; border-radius: 8px; background: transparent;
   color: #6e6e73; font-size: 13px; font-weight: 500;
 }
 .together-page .together-mode-switch button.is-selected {
@@ -579,8 +665,7 @@
 .together-page .together-controls,
 .together-page .together-dialog,
 .together-page .together-progress,
-.together-page .together-receipt,
-.together-page .together-setup {
+.together-page .together-receipt {
   border: 1px solid rgb(255 255 255 / 0.65); border-radius: 18px;
   background: rgb(255 255 255 / 0.58); backdrop-filter: blur(22px) saturate(180%);
   -webkit-backdrop-filter: blur(22px) saturate(180%);
@@ -588,7 +673,7 @@
 }
 .together-page .together-stage { background: #16201c; backdrop-filter: none; }
 .together-page .together-controls { padding: 20px; }
-.together-page .together-setup { display: grid; gap: 14px; padding: 18px; }
+.together-page .together-setup { display: grid; gap: 14px; padding: 0; }
 .together-page .together-setup label {
   display: grid; gap: 6px; color: #6e6e73; font-size: 12px; font-weight: 500;
 }
@@ -607,7 +692,7 @@
 .together-page .together-setup input::placeholder { color: #a1a1a6; }
 .together-page button,
 .together-page .together-reply button {
-  min-height: 42px; border: 1px solid rgb(0 0 0 / 0.08); border-radius: 9999px;
+  min-height: 44px; border: 1px solid rgb(0 0 0 / 0.08); border-radius: 9999px;
   background: rgb(255 255 255 / 0.72); color: #1d1d1f;
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   font: inherit; font-size: 14px; font-weight: 500; cursor: pointer;
@@ -728,7 +813,6 @@
 :root[data-dengta-appearance="night"] .together-page .together-dialog,
 :root[data-dengta-appearance="night"] .together-page .together-progress,
 :root[data-dengta-appearance="night"] .together-page .together-receipt,
-:root[data-dengta-appearance="night"] .together-page .together-setup,
 :root[data-dengta-appearance="night"] .together-page .together-cast,
 :root[data-dengta-appearance="night"] .together-page .music-import-entry,
 :root[data-dengta-appearance="night"] .together-page .music-import-grid,
@@ -1446,3 +1530,26 @@
 :root[data-dengta-appearance="night"] .nursery-page .nursery-album > header > span {
   color: #0a84ff;
 }
+
+.together-page .together-music-setup :is(.music-queue, .music-queue-picker),
+:root[data-dengta-appearance="night"] .together-page .together-music-setup :is(.music-queue, .music-queue-picker) {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.together-page .together-music-setup :is(.music-queue header strong, .music-queue li strong, .music-queue-picker > strong, .music-queue-picker .music-paged-items > div > span) { color: var(--together-ink); }
+.together-page .together-music-setup :is(.music-queue header span, .music-queue li small, .music-queue li > div:first-child > span) { color: var(--together-muted); }
+.together-page .together-music-setup .music-queue li strong {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.together-page .together-music-setup .music-queue li.is-current {
+  margin-inline: 0;
+  padding: 10px 8px;
+  border: 1px solid var(--theme-control-border);
+  border-radius: 12px;
+  background: rgb(var(--theme-card-rgb) / .65);
+}
+.together-page .together-music-setup .music-queue-actions button { width: 44px; min-width: 44px; height: 44px; min-height: 44px; border-radius: 12px; }

@@ -9,6 +9,10 @@ import {
   useState,
 } from "react";
 import { resizeComposerInput } from "./composer-size.js";
+import { useMemoryUiRequest as useScopedUiRequest } from "./memory-ui-feedback.js";
+import { MAX_SESSION_TITLE, readSessionDelete, readSessionRename, sessionDialogFailure } from "./session-dialog-feedback.js";
+import SessionDialog from "./SessionDialog.jsx";
+import ImageViewer from "./ImageViewer.jsx";
 import { createCoWatchLifecycle } from "./co-watch-lifecycle.js";
 import { createScreenGlanceLifecycle } from "./screen-glance-lifecycle.js";
 import { createMusicPlaybackSync } from "./music-playback-sync.js";
@@ -16,6 +20,8 @@ import { runNowPlayingControl, sameNowPlaying } from "./now-playing-controls.js"
 import { createNowPlayingSync } from "./music-now-playing-sync.js";
 import { getMusicPlaylist, listAiMusicPlayRequests, claimAiMusicPlayRequest, commitAiMusicPlayRequest, reportAiMusicPlayResult } from "./music-listening.js";
 import { useMusicScope } from "./use-music-scope.js";
+import { useBuiltInNowPlaying } from "./useBuiltInNowPlaying.js";
+import { chooseNowPlayingCard } from "./built-in-now-playing.js";
 import { createAiMusicConsumer } from "./ai-music-consumer.js";
 import MemoryGatewayStatus from "./MemoryGatewayStatus.jsx";
 import { Capacitor } from "@capacitor/core";
@@ -38,7 +44,6 @@ import {
   API_BASE_URL,
   apiFetch,
   apiRequest,
-  fetchErrorLogs,
   streamChat,
 } from "./api";
 import WebInstallButton from "./WebInstallButton.jsx";
@@ -60,6 +65,7 @@ import CompanionStatus from "./CompanionStatus";
 import CompanionGenderFields from "./CompanionGenderFields";
 import ChatContextSettings from "./ChatContextSettings.jsx";
 import ChatErrorLog from "./ChatErrorLog.jsx";
+import { requestErrorLogs } from "./error-log-request.js";
 import { requestDistill, distillDiagnostic, DISTILL_ERROR_FEEDBACK } from "./style-distill.js";
 import { companionPronoun } from "./companion-gender";
 import { isTextFile } from "./large-text-file.js";
@@ -68,11 +74,16 @@ import AmbientContextBadge from "./AmbientContextBadge";
 import ChatTranscript from "./ChatTranscript.jsx";
 import { awaitChatPreparation, CHAT_SEND_PREPARATION_LABELS } from "./chat-send-preparation.js";
 import ChatActivities from "./ChatActivities.jsx";
+import ActivityReturnBar from "./ActivityReturnBar.jsx";
+import { createActivityReturn, resolveActivityReturn } from "./activity-return.js";
 import AchievementGuide from "./AchievementGuide.jsx";
 import CompanionInspiration from "./CompanionInspiration.jsx";
 import OperationErrorHelp from "./OperationErrorHelp.jsx";
 import { describeOperationError } from "./operation-error-help.js";
 import SettingsHome from "./SettingsHome.jsx";
+import { useSettingsCategoryNavigation } from "./useSettingsCategoryNavigation.js";
+import { useSettingsSheetNavigation } from "./useSettingsSheetNavigation.js";
+import { copyDiscoveryLink, emptyDiscoveryState, refreshDiscovery, DISCOVERY_ERROR_FEEDBACK } from "./discovery-feed.js";
 import PersonalizationEditor from "./PersonalizationEditor.jsx";
 import { authSession } from "./auth-session.js";
 import { createScopedSettingsSession, registerSettingsSaveGuard, settingsSaveScope } from "./settings-save-scope.js";
@@ -197,9 +208,9 @@ import {
   reasoningEffortForProvider,
 } from "./provider-reasoning-effort";
 import { readReplySuggestions } from "./chat-reply-suggestions";
+import DlnaDiscoveryFeedback from "./DlnaDiscoveryFeedback.jsx";
 import {
-  readCachedCoordinates,
-  readCachedWeather,
+  readEnabledAmbientCache,
   SHANGHAI_TIME_ZONE,
 } from "./ambient-context";
 import {
@@ -337,7 +348,9 @@ const AiProviderCenter = lazy(() => import("./AiProviderCenter"));
 const CompanionCreativeSettings = lazy(
   () => import("./CompanionCreativeStudio"),
 );
+const CompanionArtStudio = lazy(() => import("./CompanionArtStudio.jsx"));
 const CompanionDiary = lazy(() => import("./CompanionDiary"));
+const StoryChapters = lazy(() => import("./StoryChapters.jsx"));
 const CompanionProfile = lazy(() => import("./CompanionProfile"));
 const ContentImport = lazy(() => import("./ContentImport"));
 const AccountExport = lazy(() => import("./AccountExport"));
@@ -349,6 +362,7 @@ const McpDeviceCenter = lazy(() => import("./McpDeviceCenter"));
 const Nursery = lazy(() => import("./Nursery"));
 const IntimateDuel = lazy(() => import("./IntimateDuel"));
 const OmbreMemories = lazy(() => import("./OmbreMemories"));
+const LocalMemorySummaries = lazy(() => import("./LocalMemorySummaries.jsx"));
 const Together = lazy(() => import("./Together.jsx"));
 const ThemeStudio = lazy(() => import("./ThemeStudio"));
 const MediaSettings = lazy(() => import("./MediaSettings"));
@@ -450,26 +464,38 @@ function ErrorLogsPanel({ accountScope, companionScope, onOpenSettings }) {
   const [loadError, setLoadError] = useState("");
   const [expandedId, setExpandedId] = useState(null);
   const requestRevision = useRef(0);
+  const pendingLogRequest = useRef(null);
 
   const refresh = useCallback(async () => {
+    if (pendingLogRequest.current) return;
     const request = ++requestRevision.current;
+    const controller = new AbortController();
+    pendingLogRequest.current = controller;
+    const owner = diagnosticScopeKey(accountScope, companionScope);
+    const isCurrent = () => request === requestRevision.current && !controller.signal.aborted && settingsSaveScope(authSession.getSnapshot()) === owner;
     setLoading(true);
     setLoadError("");
     try {
-      const items = await fetchErrorLogs(50);
-      if (request !== requestRevision.current) return;
+      const scopedSession = createScopedSettingsSession(authSession, owner, controller.signal);
+      const items = await requestErrorLogs(apiRequest, 50, 15000, { authSession: scopedSession, signal: controller.signal });
+      if (!isCurrent()) return;
       setLogs(items);
     } catch (error) {
-      if (request === requestRevision.current) setLoadError({ code: error?.code, status: error?.status });
+      if (isCurrent()) {
+        if (["request_timeout", "error_logs_receipt_invalid"].includes(error?.code)) recordOperationFailure(owner, "/api/errors", error);
+        setLoadError({ code: error?.code, status: error?.status });
+      }
     } finally {
-      if (request === requestRevision.current) setLoading(false);
+      if (pendingLogRequest.current === controller) pendingLogRequest.current = null;
+      if (isCurrent()) setLoading(false);
     }
-  }, []);
+  }, [accountScope, companionScope]);
 
   useEffect(() => {
     const revision = requestRevision;
+    const pending = pendingLogRequest;
     const timer = window.setTimeout(() => void refresh(), 0);
-    return () => { window.clearTimeout(timer); revision.current++; };
+    return () => { window.clearTimeout(timer); revision.current++; pending.current?.abort(); pending.current = null; };
   }, [refresh]);
 
   function formatTime(value) {
@@ -492,7 +518,7 @@ function ErrorLogsPanel({ accountScope, companionScope, onOpenSettings }) {
           {loading ? "刷新中…" : "刷新"}
         </button>
       </div>
-      {loadError && <div className="error-logs-load-error" role="alert"><OperationErrorHelp diagnostic={loadError} onOpenSettings={onOpenSettings} /></div>}
+      {loadError && <div className="error-logs-load-error" role="alert"><OperationErrorHelp diagnostic={loadError} onOpenSettings={onOpenSettings} /><small>读取错误代码：{describeOperationError(loadError).code}</small></div>}
       {!loadError && logs.length === 0 && !loading && (
         <div className="error-logs-empty">暂无错误记录 🎉</div>
       )}
@@ -765,6 +791,7 @@ const navItems = [
   { id: "chat", icon: "⌁", label: "Chat" },
   { id: "moments", icon: "◌", label: "Moments" },
   { id: "diary", icon: "▱", label: "Diary" },
+  { id: "art", icon: "✎", label: "涂鸦画室" },
   { id: "nursery", icon: "♡", label: "Family" },
   { id: "cotton", icon: "✿", label: "小棉花" },
   { id: "together", icon: "▻", label: "Together" },
@@ -1054,6 +1081,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [musicActivityRequest, setMusicActivityRequest] = useState(null);
   const [watchActivityRequest, setWatchActivityRequest] = useState(null);
   const [takeoutActivityRequest, setTakeoutActivityRequest] = useState(null);
+  const [activityReturn, setActivityReturn] = useState(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsCategory, setSettingsCategory] = useState(null);
   const [settingsFocusTarget, setSettingsFocusTarget] = useState("");
@@ -1066,10 +1094,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   );
   const [composerHint, setComposerHint] = useState("");
   const [celestialCoordinates, setCelestialCoordinates] = useState(
-    () => readCachedCoordinates().coordinates,
+    () => readEnabledAmbientCache(undefined, accountStorageScope).coordinates.coordinates,
   );
   const [ambientWeather, setAmbientWeather] = useState(
-    () => readCachedWeather().weather,
+    () => readEnabledAmbientCache(undefined, accountStorageScope).weather.weather,
   );
   const [weatherPreviewMode, setWeatherPreviewMode] = useState(null);
   const {
@@ -1081,7 +1109,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   } = useDengTaTheme(celestialCoordinates, accountStorageScope);
   const [memories, setMemories] = useState([]);
   const [memoryDrafts, setMemoryDrafts] = useState({});
-  const [memoryBusyId, setMemoryBusyId] = useState("");
   const [moments, setMoments] = useState([]);
   const [momentsAvailable, setMomentsAvailable] = useState(null);
   const [momentsLoading, setMomentsLoading] = useState(false);
@@ -1117,11 +1144,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [nowPlayingBusy, setNowPlayingBusy] = useState(false);
   const nowPlayingDismissedRef = useRef(false);
   const lastNowPlayingRef = useRef(null);
-  const randomPlayAudioRef = useRef(null);
 
   const { state: notificationAccess, request: requestNotificationAccess, refresh: refreshNotificationAccess } = useNotificationAccess();
 
   const aiMusicScope = useMusicScope(accountStorageScope, companionScope);
+  const { control: controlBuiltInNowPlaying, yieldToExternal: yieldBuiltInNowPlaying, onLocalPlaybackChange } = useBuiltInNowPlaying({
+    scope: aiMusicScope, accountScope: accountStorageScope, companionScope, enabled: hasLoadedSettings,
+    externalAvailable: deviceActivityPluginAvailable, readExternal: readNowPlaying,
+    onSong: song => setNowPlaying(current => nowPlayingDismissedRef.current ? current : song || (current?.source === "dengta" ? null : current)),
+    onBusy: setNowPlayingBusy, onFeedback: message => setNotice(message),
+    onStartupFeedback: value => setScreenGlanceFeedback(value),
+  });
   useEffect(() => {
     if (!Capacitor.isNativePlatform() || visualPreview || !accountStorageScope || !companionScope) return;
     const consumer = createAiMusicConsumer({ scope: aiMusicScope, list: listAiMusicPlayRequests, claim: claimAiMusicPlayRequest, commit: commitAiMusicPlayRequest, report: reportAiMusicPlayResult, open: playNeteaseSilent, storage: globalThis.sessionStorage, onFeedback: message => setNotice(message) });
@@ -1148,7 +1181,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           const previous = lastNowPlayingRef.current;
           const changed = !sameNowPlaying(previous, song);
           if (changed) nowPlayingDismissedRef.current = false;
-          if (!nowPlayingDismissedRef.current) setNowPlaying(song);
+          if (song.isPlaying === true && song.playbackStateKnown !== false) yieldBuiltInNowPlaying();
+          if (!nowPlayingDismissedRef.current) setNowPlaying(current => chooseNowPlayingCard(current, song));
           lastNowPlayingRef.current = song;
           if (changed) void syncNowPlayingToSession(song);
         } else if (!nowPlayingDismissedRef.current) {
@@ -1161,7 +1195,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     return () => { alive = false; window.clearInterval(timer); lastNowPlayingRef.current = null; };
     // syncNowPlayingToSession is a stable callback declared after this effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aiMusicScope, accountStorageScope, companionScope, notificationAccess.granted]);
+  }, [aiMusicScope, accountStorageScope, companionScope, notificationAccess.granted, yieldBuiltInNowPlaying]);
 
   useEffect(() => {
     setNowPlayingBusy(false);
@@ -1170,12 +1204,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }, [accountStorageScope, companionScope]);
 
   const handleNowPlayingControl = useCallback(action => {
+    if (nowPlaying?.source === "dengta") {
+      void controlBuiltInNowPlaying(action, nowPlaying);
+      return;
+    }
     void runNowPlayingControl({ scope: aiMusicScope, song: nowPlaying, action, control: controlNowPlaying, read: readNowPlaying,
       onBusy: setNowPlayingBusy,
       onSong: song => { if (!nowPlayingDismissedRef.current) setNowPlaying(song); },
       onFeedback: message => setNotice(message),
     });
-  }, [aiMusicScope, nowPlaying]);
+  }, [aiMusicScope, nowPlaying, controlBuiltInNowPlaying]);
   const handleNowPlayingPlayPause = useCallback(() => handleNowPlayingControl(nowPlaying?.isPlaying ? "pause" : "play"), [handleNowPlayingControl, nowPlaying?.isPlaying]);
   const handleNowPlayingNext = useCallback(() => handleNowPlayingControl("next"), [handleNowPlayingControl]);
 
@@ -1219,6 +1257,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     getViewKind: () => coWatchViewKindRef.current,
   });
   const coWatchBusyRef = useRef(false);
+  const coWatchReplyJobRef = useRef(null);
   coWatchBusyRef.current = isScreenGlanceBusy;
   const coWatchLifecycleRef = useRef(null);
   if (!coWatchLifecycleRef.current) coWatchLifecycleRef.current = createCoWatchLifecycle({
@@ -1231,12 +1270,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     onStarted: (next) => {
       musicPlaybackSyncRef.current?.invalidate(); nowPlayingSyncRef.current?.invalidate();
       coWatchSessionRef.current = next;
-      setCoWatchSession(next); setCoWatchReceipt(null); setCoWatchDialog([]);
+      setCoWatchSession(next); setCoWatchReceipt(null); setCoWatchDialog([]); setCoWatchDanmaku([]);
     },
     onEnded: (ended) => {
       musicPlaybackSyncRef.current?.invalidate(); nowPlayingSyncRef.current?.invalidate();
       coWatchSessionRef.current = null;
-      setCoWatchSession(null); setCoWatchReceipt(ended); setCoWatchDialog([]);
+      setCoWatchSession(null); setCoWatchReceipt(ended); setCoWatchDialog([]); setCoWatchDanmaku([]);
       const identity = coWatchIdentityRef.current;
       clearDirectMediaSession(globalThis.sessionStorage, identity.accountScope, identity.companionScope);
     },
@@ -1262,11 +1301,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     onState: (value) => applyScreenGlanceState(value),
     onStarted: (next) => {
       musicPlaybackSyncRef.current?.invalidate(); nowPlayingSyncRef.current?.invalidate();
-      coWatchSessionRef.current = next; setCoWatchSession(next); setCoWatchReceipt(null);
+      coWatchSessionRef.current = next; setCoWatchSession(next); setCoWatchReceipt(null); setCoWatchDanmaku([]);
     },
     onEnded: (ended) => {
       musicPlaybackSyncRef.current?.invalidate(); nowPlayingSyncRef.current?.invalidate();
-      coWatchSessionRef.current = null; setCoWatchSession(null); setCoWatchReceipt(ended); setCoWatchDialog([]);
+      coWatchSessionRef.current = null; setCoWatchSession(null); setCoWatchReceipt(ended); setCoWatchDialog([]); setCoWatchDanmaku([]);
     },
     onStopped: () => {
       setCoWatchPreview(null); releasePendingScreenGlanceTurn(pendingScreenGlanceTurnRef);
@@ -1278,6 +1317,19 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [pendingMomentComments, setPendingMomentComments] = useState({});
   const [notice, setNotice] = useState("");
   const [dialog, setDialog] = useState(null);
+  const dialogRef = useRef(dialog);
+  const sessionsRef = useRef(sessions);
+  const sessionDialogPendingRef = useRef(null);
+  const [sessionDialogBusy, setSessionDialogBusy] = useState(false);
+  const [sessionDialogFeedback, setSessionDialogFeedback] = useState("");
+  const sessionDialogRequest = useScopedUiRequest(privateMediaScope);
+  useLayoutEffect(() => { dialogRef.current = dialog; sessionsRef.current = sessions; }, [dialog, sessions]);
+  useLayoutEffect(() => {
+    sessionDialogPendingRef.current = null;
+    setSessionDialogBusy(false);
+    setSessionDialogFeedback("");
+    setDialog(null);
+  }, [privateMediaScope]);
   const [imageViewer, setImageViewer] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
@@ -1292,8 +1344,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       window.removeEventListener("dengta:memories-imported", refreshAfterImport);
   }, [refreshPrivateMediaCatalog]);
 
-  useEffect(
+  useLayoutEffect(
     () => () => {
+      if (coWatchReplyJobRef.current) {
+        coWatchReplyJobRef.current = null;
+        coWatchBusyRef.current = false;
+        setIsScreenGlanceBusy(false);
+      }
       coWatchLifecycleRef.current.invalidate();
       coWatchViewScopeRef.current.invalidate();
       musicPlaybackSyncRef.current?.invalidate(); nowPlayingSyncRef.current?.invalidate();
@@ -1302,7 +1359,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       coWatchSessionRef.current = null;
       clearDirectMediaSession(globalThis.sessionStorage, accountStorageScope, companionScope);
       setCoWatchSession(null);
+      setActivityReturn(null);
       setCoWatchDialog([]);
+      setCoWatchDanmaku([]);
     },
     [accountStorageScope, companionScope],
   );
@@ -1360,6 +1419,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const messageListRef = useRef(null);
   const chatScrollControllerRef = useRef(null);
   const settingsScrollRef = useRef(null);
+  const settingsPanelRef = useRef(null);
+  useSettingsSheetNavigation({
+    isOpen: isSettingsOpen, scopeKey: privateMediaScope,
+    panelRef: settingsPanelRef, onClose: closeSettingsPanel,
+  });
+  const settingsCategoryNavigation = useSettingsCategoryNavigation({
+    isOpen: isSettingsOpen, category: settingsCategory, scopeKey: privateMediaScope,
+    scrollRef: settingsScrollRef, focusTarget: settingsFocusTarget, onSelect: setSettingsCategory,
+  });
   const settingsScrollIdleTimerRef = useRef(null);
   const messageInputRef = useRef(null);
   useLayoutEffect(() => {
@@ -1368,11 +1436,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   useLayoutEffect(() => {
     const input = messageInputRef.current;
     if (!input) return undefined;
-    // Observe available width so rotation and the desktop sidebar reflow wrapped text.
+    // Width and viewport-based height limits can change independently.
     let previousWidth = input.parentElement.clientWidth;
+    let previousMaximum = window.getComputedStyle(input).maxHeight;
     const widthObserver = new ResizeObserver(([entry]) => {
-      if (entry.contentRect.width === previousWidth) return;
+      const maximum = window.getComputedStyle(input).maxHeight;
+      if (entry.contentRect.width === previousWidth && maximum === previousMaximum) return;
       previousWidth = entry.contentRect.width;
+      previousMaximum = maximum;
       resizeComposerInput(input);
     });
     widthObserver.observe(input.parentElement);
@@ -1390,6 +1461,25 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     lastReasoningSource: "",
   });
   const activeSessionIdRef = useRef(null);
+  const innerMonologueRequestsRef = useRef(new Map());
+  const innerMonologueRequestScopeRef = useRef({ active: false, generation: 0 });
+  useLayoutEffect(() => {
+    const lifecycle = {
+      active: true,
+      generation: innerMonologueRequestScopeRef.current.generation + 1,
+    };
+    innerMonologueRequestScopeRef.current = lifecycle;
+    setInnerMonologuePending({});
+    setInnerMonologueErrors({});
+    const requests = innerMonologueRequestsRef.current;
+    return () => {
+      lifecycle.active = false;
+      for (const operation of requests.values()) {
+        operation.controller.abort();
+      }
+      requests.clear();
+    };
+  }, [privateMediaScope, activeSessionId]);
   const messagesSessionIdRef = useRef(null);
   const messageLoadTokenRef = useRef(0);
   const streamingSessionIdRef = useRef(null);
@@ -1679,6 +1769,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       setDlnaState(next);
       return next;
     } catch {
+      setDlnaState(normalizeDlnaState({ supported: true, discoveryStatus: "error", errorCode: "dlna_state_unavailable" }));
       return null;
     }
   }, []);
@@ -1687,18 +1778,18 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     if (dlnaBusy) return;
     setDlnaBusy(true);
     try {
-      if (dlnaState.active) {
+      if (dlnaState.active || dlnaState.discoveryStatus === "starting") {
         await stopDlnaReceiver();
       } else {
         await startDlnaReceiver();
       }
       await refreshDlnaState();
     } catch {
-      setDlnaState(normalizeDlnaState({}));
+      setDlnaState(normalizeDlnaState({ supported: true, discoveryStatus: "error", errorCode: "dlna_state_unavailable" }));
     } finally {
       setDlnaBusy(false);
     }
-  }, [dlnaBusy, dlnaState.active, refreshDlnaState]);
+  }, [dlnaBusy, dlnaState.active, dlnaState.discoveryStatus, refreshDlnaState]);
 
   // 一起看模式 -> 会话模式：听歌只认 listening，一起看只认各自视频模式，
   // 避免把残留的听歌会话标题（如 Fever Pitch）显示在视频播放器下方。
@@ -1748,6 +1839,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             }
             return remote;
           })();
+          if (coWatchSessionRef.current?.id !== next?.id) setCoWatchDanmaku([]);
           coWatchSessionRef.current = next;
           setCoWatchSession(next);
           if (sessionResult.value) {
@@ -1896,8 +1988,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }, [applyScreenGlanceState, flushPendingScreenGlanceTurn, refreshScreenGlanceState]);
 
   const handleImagePreview = useCallback((url, alt) => {
-    setImageViewer({ url, alt });
-  }, []);
+    setImageViewer({ url, alt, scopeKey: privateMediaScope });
+  }, [privateMediaScope]);
 
   const handleCompanionInteraction = useCallback(
     (zoneId) => companionInteractionHandlerRef.current?.(zoneId),
@@ -2415,111 +2507,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     setSessionDraft,
     visualPreview,
   ]);
-
-  // 启动随机播放：勾选"打开软件后随机播放一首歌"后，
-  // 每次进入 App（登录态就绪）随机播一首 DengTa 里已有、不跳转网易云的内置歌曲；
-  // 没有可播的歌时尝试抓取一首下载导入，遇到网易云加密格式如实提示。
-  useEffect(() => {
-    let cancelled = false;
-    if (!hasLoadedSettings) return undefined;
-    let randomPlayEnabled;
-    try {
-      randomPlayEnabled = window.localStorage.getItem("dengta_random_play_enabled") === "1";
-    } catch {
-      randomPlayEnabled = false;
-    }
-    if (!randomPlayEnabled) return undefined;
-    const timer = window.setTimeout(async () => {
-      if (cancelled) return;
-      try {
-        // 避免叠歌：手机上有其他音乐正在播放（网易云等）时，不自动随机播放。
-        if (deviceActivityPluginAvailable()) {
-          const nowPlaying = await readNowPlaying().catch(() => null);
-          if (cancelled) return;
-          if (nowPlaying?.title && nowPlaying?.isPlaying !== false) {
-            try {
-              console.log("random-play:skip (already playing)", nowPlaying.title);
-            } catch { /* ignore */ }
-            return;
-          }
-        }
-        const data = await apiRequest("/api/v2/music/providers/netease/random-playable", {
-          timeoutMs: 15000,
-        }).catch(() => null);
-        if (cancelled) return;
-        let song = data?.playable === true ? data.song : null;
-        if (!song?.url) {
-          const fetched = await apiRequest("/api/v2/music/providers/netease/random-fetch", {
-            method: "POST",
-            timeoutMs: 90000,
-            body: JSON.stringify({}),
-          }).catch(() => null);
-          if (cancelled) return;
-          if (fetched?.ok && fetched?.song?.url) {
-            song = fetched.song;
-          } else {
-            setScreenGlanceFeedback({
-              status: "error",
-              message: fetched?.message || "随机播放暂时不可用。",
-            });
-            return;
-          }
-        }
-        if (!song?.url || cancelled) return;
-        try {
-          console.log("random-play:start", song.title, song.url.slice(0, 60));
-        } catch { /* ignore */ }
-        const audio = new Audio(song.url);
-        randomPlayAudioRef.current = audio;
-        audio.addEventListener("ended", () => {
-          setNowPlaying((current) => (current?.source === "dengta" ? null : current));
-        }, { once: true });
-        audio.addEventListener("pause", () => {
-          setNowPlaying((current) => (current?.source === "dengta" ? { ...current, isPlaying: false } : current));
-        });
-        audio.addEventListener("play", () => {
-          setNowPlaying((current) => (current?.source === "dengta" ? { ...current, isPlaying: true } : current));
-        });
-        await audio.play().catch((error) => {
-          try {
-            console.log("random-play:rejected", String(error?.name || error?.message || error));
-          } catch { /* ignore */ }
-          setScreenGlanceFeedback({
-            status: "error",
-            message: `自动播放被浏览器拦截（${error?.name || "NotAllowedError"}）。点一下屏幕后我会继续播放。`,
-          });
-          return null;
-        });
-        if (!cancelled && song?.title) {
-          setNowPlaying({
-            title: song.title,
-            artist: song.artist || "",
-            cover: song.cover || "",
-            isPlaying: true,
-            source: "dengta",
-          });
-          setScreenGlanceFeedback({
-            status: "success",
-            message: `正在播放：${song.title}${song.artist ? " - " + song.artist : ""}（DengTa 内置播放，不跳转网易云）`,
-          });
-          window.setTimeout(() => {
-            if (!cancelled) setScreenGlanceFeedback(null);
-          }, 6000);
-        }
-      } catch {
-        // 启动随机播放失败不打扰用户
-      }
-    }, 2500);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-      if (randomPlayAudioRef.current) {
-        randomPlayAudioRef.current.pause();
-        randomPlayAudioRef.current = null;
-      }
-      setNowPlaying((current) => (current?.source === "dengta" ? null : current));
-    };
-  }, [hasLoadedSettings]);
 
   useEffect(() => {
     activeSessionIdRef.current = activeSessionId;
@@ -3210,12 +3197,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }, [getMomentsRequestScope]);
 
   useEffect(() => {
-    if (activeView === "memories") {
-      apiRequest("/api/v2/memories")
-        .then((data) => setMemories(data.memories || []))
-        .catch((error) => setNotice(error.message));
-    }
-
     if (activeView === "moments") {
       void loadMoments();
       const refreshTimer = window.setInterval(() => {
@@ -3238,24 +3219,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
     return undefined;
   }, [activeView, loadMoments]);
-
-  useEffect(() => {
-    const refreshImportedMemories = () => {
-      apiRequest("/api/v2/memories")
-        .then((data) => setMemories(data.memories || []))
-        .catch((error) => setNotice(error.message));
-    };
-    window.addEventListener(
-      "dengta:memories-imported",
-      refreshImportedMemories,
-    );
-    return () => {
-      window.removeEventListener(
-        "dengta:memories-imported",
-        refreshImportedMemories,
-      );
-    };
-  }, []);
 
   useLayoutEffect(() => {
     if (activeView !== "chat" || !messageListRef.current) return undefined;
@@ -4056,42 +4019,77 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     setIsSidebarOpen(false);
   }
 
+  function openSessionDialog(next) {
+    if (sessionDialogPendingRef.current) return;
+    closeComposerMenu();
+    requestStatusPanelClose();
+    setSessionDialogFeedback("");
+    setDialog(next);
+  }
+
+  function closeSessionDialog() {
+    if (sessionDialogPendingRef.current) return;
+    setDialog(null);
+    setSessionDialogFeedback("");
+  }
+
   async function confirmSessionDialog(event) {
     event.preventDefault();
-    if (!dialog?.session) return;
+    if (!dialog?.session || sessionDialogPendingRef.current || !sessionDialogRequest.isCurrent()) return;
+    const submitted = dialog;
+    const title = String(submitted.value || "").trim();
+    if (submitted.type === "rename" && (!title || title.length > MAX_SESSION_TITLE)) return;
+    const pending = {};
+    const path = `/api/v2/sessions/${encodeURIComponent(submitted.session.id)}`;
+    sessionDialogPendingRef.current = pending;
+    setSessionDialogBusy(true);
+    setSessionDialogFeedback("");
 
     try {
-      if (dialog.type === "rename") {
-        const title = dialog.value.trim();
-        if (!title) return;
-        const data = await apiRequest(`/api/v2/sessions/${dialog.session.id}`, {
+      if (submitted.type === "rename") {
+        const saved = await sessionDialogRequest.request(path, {
           method: "PATCH",
-          body: JSON.stringify({ title }),
+          body: { title },
+          responseReader: (response) => readSessionRename(response, submitted.session.id, title),
         });
+        if (!sessionDialogRequest.isCurrent()) return;
         setSessions((current) =>
           current.map((item) =>
-            item.id === dialog.session.id ? data.session : item,
+            item.id === submitted.session.id ? { ...item, ...saved } : item,
           ),
         );
       } else {
-        await apiRequest(`/api/v2/sessions/${dialog.session.id}`, {
+        await sessionDialogRequest.request(path, {
           method: "DELETE",
+          responseReader: readSessionDelete,
         });
-        storeSessionChatModel(dialog.session.id, "");
-        clearStoredMessageReferencesForSession(dialog.session.id);
-        const remaining = sessions.filter(
-          (item) => item.id !== dialog.session.id,
+        if (!sessionDialogRequest.isCurrent()) return;
+        storeSessionChatModel(submitted.session.id, "");
+        clearStoredMessageReferencesForSession(submitted.session.id);
+        const remaining = sessionsRef.current.filter(
+          (item) => item.id !== submitted.session.id,
         );
-        setSessions(remaining);
-        if (activeSessionId === dialog.session.id) {
+        setSessions((current) => current.filter((item) => item.id !== submitted.session.id));
+        if (activeSessionIdRef.current === submitted.session.id) {
+          abortChatRequest(chatRequestRef, "session-deleted");
           activeSessionIdRef.current = remaining[0]?.id || null;
           setActiveSessionId(activeSessionIdRef.current);
           setMessages([]);
         }
       }
-      setDialog(null);
+      if (dialogRef.current === submitted) setDialog(null);
     } catch (error) {
-      setNotice(error.message);
+      if (sessionDialogRequest.isCurrent()) {
+        recordOperationFailure(privateMediaScope, path, error);
+        const feedback = sessionDialogFailure(error);
+        if (dialogRef.current === submitted) setSessionDialogFeedback(feedback);
+        else setNotice(feedback);
+      }
+    } finally {
+      if (sessionDialogPendingRef.current === pending) {
+        sessionDialogPendingRef.current = null;
+        if (sessionDialogRequest.isCurrent()) setSessionDialogBusy(false);
+      }
     }
   }
 
@@ -4164,50 +4162,70 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   async function requestVisibleInnerMonologue(item) {
     if (!item || !canRequestVisibleMonologue(item)) return;
-
     const sessionId =
       item?.conversation_id || item?.session_id || activeSessionIdRef.current;
-    const { recoverSynchronizedAssistantMessage } = await import(
-      "./inner-monologue-sync.js"
-    );
-    const synchronized = await recoverSynchronizedAssistantMessage({
-      message: item,
-      sessionId,
-    });
-    const targetMessage = synchronized.message;
-    if (targetMessage && synchronized.messages) {
-      setMessages(synchronized.messages);
-    }
-    const messageId = targetMessage?.id || "";
-    if (!targetMessage) {
-      setInnerMonologueErrors((current) => ({
-        ...current,
-        [item.id]: synchronized.error,
-      }));
-      return;
-    }
-    if (!canRequestVisibleMonologue(targetMessage)) return;
+    const sourceId = String(item.id || "");
+    const lifecycle = innerMonologueRequestScopeRef.current;
     if (
-      innerMonologuePending[messageId] ||
-      innerMonologueForMessage(innerMonologues, messageId)
-    ) {
-      return;
-    }
-
+      !sourceId || !sessionId || sessionId !== activeSessionIdRef.current ||
+      !lifecycle.active || settingsSaveScope(authSession.getSnapshot()) !== privateMediaScope ||
+      innerMonologueRequestsRef.current.has(sourceId) ||
+      innerMonologueForMessage(innerMonologues, sourceId)
+    ) return;
+    const operation = { controller: new AbortController() };
+    const requestIds = new Set([sourceId]);
+    let messageId = sourceId;
+    innerMonologueRequestsRef.current.set(sourceId, operation);
+    const isCurrent = () =>
+      lifecycle.active && innerMonologueRequestScopeRef.current === lifecycle &&
+      !operation.controller.signal.aborted && sessionId === activeSessionIdRef.current &&
+      settingsSaveScope(authSession.getSnapshot()) === privateMediaScope;
+    const scopedSession = createScopedSettingsSession(authSession, privateMediaScope, operation.controller.signal);
     setInnerMonologuePending((current) => ({
       ...current,
-      [messageId]: true,
+      [sourceId]: true,
     }));
     setInnerMonologueErrors((current) => ({
       ...current,
-      [messageId]: "",
+      [sourceId]: "",
     }));
-
     try {
+      const { recoverSynchronizedAssistantMessage } = await import(
+        "./inner-monologue-sync.js"
+      );
+      if (!isCurrent()) return;
+      const synchronized = await recoverSynchronizedAssistantMessage({
+        message: item,
+        sessionId,
+        loadMessages: async () => {
+          const history = await apiRequest(`/api/v2/sessions/${sessionId}/messages`, {
+            authSession: scopedSession, signal: operation.controller.signal,
+          });
+          return hydrateSessionChatHistory(history.messages, sessionId);
+        },
+      });
+      if (!isCurrent()) return;
+      const targetMessage = synchronized.message;
+      if (!targetMessage) throw synchronized.cause || new Error(synchronized.error);
+      if (!canRequestVisibleMonologue(targetMessage)) return;
+      messageId = targetMessage.id;
+      if (innerMonologueForMessage(innerMonologues, messageId)) return;
+      const existing = innerMonologueRequestsRef.current.get(messageId);
+      if (existing && existing !== operation) return;
+      requestIds.add(messageId);
+      innerMonologueRequestsRef.current.set(messageId, operation);
+      if (messageId !== sourceId) {
+        setMessages((current) => current.map(row => row.id === sourceId ? targetMessage : row));
+        setInnerMonologuePending((current) => ({ ...current, [sourceId]: false, [messageId]: true }));
+        setInnerMonologueErrors((current) => ({ ...current, [messageId]: "" }));
+      }
       if (!(await flushLatestSettingsDraft())) {
         throw new Error("最新个性化指令尚未保存成功，请恢复网络后重试。");
       }
+      if (!isCurrent()) return;
       const data = await apiRequest("/companion/inner-monologue", {
+        authSession: scopedSession,
+        signal: operation.controller.signal,
         method: "POST",
         body: JSON.stringify({
           session_id: sessionId,
@@ -4223,6 +4241,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         }),
         timeoutMs: 300 * 1000,
       });
+      if (!isCurrent()) return;
+      if (
+        typeof data?.inner_monologue !== "string" || !data.inner_monologue.trim() ||
+        data.message_id !== messageId || data.session_id !== sessionId ||
+        (data.conversation_id && data.conversation_id !== sessionId)
+      ) {
+        const error = new Error("心声回复为空或与这条聊天不匹配，请重试；如重复出现，可查看日志核对接口。");
+        error.code = "inner_monologue_receipt_invalid";
+        throw error;
+      }
       const next = storeInnerMonologue(
         {
           messageId,
@@ -4234,6 +4262,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       );
       setInnerMonologues(next);
     } catch (error) {
+      if (!isCurrent()) return;
+      if (error?.code === "inner_monologue_receipt_invalid") {
+        recordOperationFailure(privateMediaScope, "/companion/inner-monologue", error);
+      }
       const codeText = error?.code ? '[' + error.code + '] ' : '';
       const locationText = error?.error_location
         ? '\n位置: ' + error.error_location
@@ -4246,10 +4278,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           locationText,
       }));
     } finally {
-      setInnerMonologuePending((current) => ({
-        ...current,
-        [messageId]: false,
-      }));
+      for (const id of requestIds) {
+        if (innerMonologueRequestsRef.current.get(id) === operation) innerMonologueRequestsRef.current.delete(id);
+      }
+      if (isCurrent()) setInnerMonologuePending((current) => {
+        const next = { ...current };
+        for (const id of requestIds) next[id] = false;
+        return next;
+      });
     }
   }
 
@@ -5877,53 +5913,51 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     description: "",
   });
   const customAchievementSubmitRef = useRef(null);
-  const [customAchievementBusy, setCustomAchievementBusy] = useState(false);
+  const [customAchievementBusyScope, setCustomAchievementBusyScope] = useState(null);
+  const customAchievementBusy = customAchievementBusyScope === funToken;
+  const customAchievementRecoveryRef = useRef(null);
+  const [customAchievementRecoveryState, setCustomAchievementRecovery] = useState(null);
+  const customAchievementRecovery = customAchievementRecoveryState?.scope === funToken ? customAchievementRecoveryState : null;
 
   const [coWatchDanmaku, setCoWatchDanmaku] = useState([]);
-  const [discoverState, setDiscoverState] = useState({
-    busy: false,
-    interests: [],
-    recommend: null,
-    error: "",
-  });
+  const [discoverSnapshot, setDiscoverState] = useState(emptyDiscoveryState);
+  const discoverState = discoverSnapshot.scope === funToken ? discoverSnapshot : emptyDiscoveryState();
+  const discoverLockRef = useRef(null);
+  const discoverControllerRef = useRef(null);
+  const discoverFeedRef = useRef(null);
+  useLayoutEffect(() => { discoverFeedRef.current = { scope: funToken, videos: discoverState.recommend?.videos || [] }; }, [funToken, discoverState.recommend]);
 
-  async function loadDiscover() {
-    setDiscoverState((previous) => ({ ...previous, busy: true, error: "" }));
+  const loadDiscover = useCallback(async () => {
+    const request = getMomentsRequestScope();
+    if (!request || discoverLockRef.current?.scope === funToken) return;
+    const controller = new AbortController();
+    discoverControllerRef.current = controller;
+    const parent = request.options.signal;
+    const cancel = () => controller.abort(parent.reason);
+    if (parent.aborted) cancel();
+    else parent.addEventListener("abort", cancel, { once: true });
     try {
-      // 换一批：把当前已展示的 bvid 传过去，后端排除并随机轮换，保证真的会换。
-      const currentBvids = Array.isArray(discoverState.recommend?.videos)
-        ? discoverState.recommend.videos.map((video) => video.bvid || "").filter(Boolean)
-        : [];
-      const excludeQuery = currentBvids.length
-        ? `&exclude=${encodeURIComponent(currentBvids.join(","))}`
-        : "";
-      const [interestsData, recommendData] = await Promise.all([
-        apiRequest("/api/v2/fun-labs/interests", { timeoutMs: 15_000 }),
-        apiRequest(`/api/v2/fun-labs/recommend?limit=4${excludeQuery}`, { timeoutMs: 30_000 }),
-      ]);
-      setDiscoverState({
-        busy: false,
-        interests: Array.isArray(interestsData?.profile?.interests)
-          ? interestsData.profile.interests
-          : [],
-        recommend: recommendData?.recommend || null,
-        error: "",
+      return await refreshDiscovery({
+        token: funToken, currentToken: () => funTokenRef.current, isMounted: request.current,
+        lock: discoverLockRef, update: setDiscoverState,
+        previousVideos: discoverFeedRef.current?.scope === funToken ? discoverFeedRef.current.videos : [],
+        request: (path, options) => withAchievementDeadline({ ...request.options, signal: controller.signal }, deadline =>
+          apiRequest(path, { ...deadline, timeoutMs: options.timeoutMs, retry: false }), options.timeoutMs),
       });
-    } catch (error) {
-      setDiscoverState((previous) => ({
-        ...previous,
-        busy: false,
-        error:
-          error?.message ||
-          "暂时加载失败。先一起看几个视频,AI 才有依据为你推荐。",
-      }));
+    } finally {
+      controller.abort();
+      parent.removeEventListener("abort", cancel);
+      if (discoverControllerRef.current === controller) discoverControllerRef.current = null;
     }
-  }
+  }, [funToken, getMomentsRequestScope]);
 
   useEffect(() => {
     void loadDiscover();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    return () => {
+      discoverControllerRef.current?.abort();
+      if (discoverLockRef.current?.scope === funToken) discoverLockRef.current = null;
+    };
+  }, [funToken, loadDiscover]);
 
   const [distillState, setDistillState] = useState({
     busy: false,
@@ -6059,7 +6093,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     });
   }, [funToken, getMomentsRequestScope]);
 
-  async function runAchievementMutation(kind, path, options, identity, onConfirmed) {
+  const handleMusicUnderstandingSaved = useCallback((record) => {
+    if (!componentMountedRef.current || record?.scope !== funScope || funTokenRef.current !== funToken || settingsSaveScope(authSession.getSnapshot()) !== funScope) return Promise.resolve(null);
+    return refreshFunLabs(["achievements"]);
+  }, [funScope, funToken, refreshFunLabs]);
+
+  async function runAchievementMutation(kind, path, options, identity, onConfirmed, onUnconfirmed) {
     const request = getMomentsRequestScope();
     if (!request || achievementMutationRef.current?.scope === funToken) return null;
     const operation = { scope: funToken, kind, status: "busy" };
@@ -6071,7 +6110,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     try {
       const result = await withAchievementDeadline(request.options, deadline => apiRequest(path, { ...options, ...deadline, timeoutMs: 12_000, retry: false }));
       if (!current()) return null;
+      if (kind === "create" && result?.ok === false) throw Object.assign(new Error("Achievement creation was rejected"), { achievementRejected: true });
       validateAchievementReceipt(kind, result, identity);
+      if (kind === "create" && (!identity || ["title", "description", "emoji"].some(key => result.achievement[key] !== identity[key]))) {
+        throw Object.assign(new Error("Achievement creation receipt does not match the submitted fields"), { code: "achievements_receipt_invalid" });
+      }
       confirmedReceipt = result;
       saved = true;
       onConfirmed?.(result);
@@ -6086,6 +6129,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       if (current()) {
         if (error?.code === "achievements_receipt_invalid") recordOperationFailure(privateMediaScope, path, error);
         const feedback = achievementFailure(error, saved);
+        if (kind === "create" && !saved) {
+          const rejected = error?.achievementRejected === true || (Number.isInteger(error?.status) && error.status >= 400 && error.status < 500 && error.status !== 408);
+          if (rejected) feedback.message = `这次添加未被接受，原草稿仍保留。请确认输入或账号状态后再试。错误代码：${feedback.diagnostic.error_code}${feedback.diagnostic.http_status ? ` · HTTP ${feedback.diagnostic.http_status}` : ""}`;
+          onUnconfirmed?.(rejected, feedback);
+        }
         setAchievementAction({ scope: funToken, kind, status: "error", ...feedback });
         setNotice(feedback.message);
       }
@@ -6097,7 +6145,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   async function addCustomAchievement() {
-    if (!componentMountedRef.current || !customAchievement.title.trim() || customAchievementSubmitRef.current?.scope === funToken || achievementMutationRef.current?.scope === funToken) return;
+    if (!componentMountedRef.current || !customAchievement.title.trim() || customAchievementSubmitRef.current?.scope === funToken || achievementMutationRef.current?.scope === funToken || customAchievementRecoveryRef.current?.scope === funToken) return;
     const submitted = { ...customAchievement };
     const request = getMomentsRequestScope();
     if (!request) return;
@@ -6109,7 +6157,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
     const operation = { scope: funToken };
     customAchievementSubmitRef.current = operation;
-    setCustomAchievementBusy(true);
+    setCustomAchievementBusyScope(funToken);
     const current = () => request.current() && funTokenRef.current === funToken;
     try {
       await runAchievementMutation("create", "/api/v2/fun-labs/achievements/custom", {
@@ -6120,13 +6168,54 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           emoji: submitted.emoji.trim(),
           description: submitted.description.trim(),
         }),
-      }, null, () => setCustomAchievement(previous =>
-        Object.keys(submitted).every(key => previous[key] === submitted[key])
-          ? { title: "", emoji: "", description: "" } : previous));
+      }, {
+        title: submitted.title.replace(/\s+/g, " ").trim(),
+        description: submitted.description.replace(/\s+/g, " ").trim(),
+        emoji: submitted.emoji.trim() || "🏆",
+      }, () => setCustomAchievement(previous =>
+        current() && Object.keys(submitted).every(key => previous[key] === submitted[key])
+          ? { title: "", emoji: "", description: "" } : previous), (rejected, feedback) => {
+        if (rejected || !current()) return;
+        const recovery = { scope: funToken, submitted, status: "pending", diagnostic: feedback.diagnostic };
+        customAchievementRecoveryRef.current = recovery;
+        setCustomAchievementRecovery(recovery);
+      });
     } finally {
       if (customAchievementSubmitRef.current === operation) customAchievementSubmitRef.current = null;
-      if (current()) setCustomAchievementBusy(false);
+      if (current()) setCustomAchievementBusyScope(previous => previous === funToken ? null : previous);
     }
+  }
+
+  async function reviewCustomAchievementCreation() {
+    const recovery = customAchievementRecoveryRef.current;
+    const request = getMomentsRequestScope();
+    if (!request || recovery?.scope !== funToken || recovery.status === "busy") return;
+    const review = { ...recovery, status: "busy" };
+    customAchievementRecoveryRef.current = review;
+    setCustomAchievementRecovery(review);
+    const current = () => request.current() && funTokenRef.current === funToken && customAchievementRecoveryRef.current === review;
+    try {
+      const result = await refreshFunLabs(["achievements"]);
+      if (!current()) return;
+      const next = { ...review, status: result?.achievements === "success" ? "reviewed" : "error" };
+      customAchievementRecoveryRef.current = next;
+      setCustomAchievementRecovery(next);
+    } catch {
+      if (!current()) return;
+      const next = { ...review, status: "error" };
+      customAchievementRecoveryRef.current = next;
+      setCustomAchievementRecovery(next);
+    }
+  }
+
+  function resumeCustomAchievementCreation() {
+    const recovery = customAchievementRecoveryRef.current;
+    const request = getMomentsRequestScope();
+    if (!request || recovery?.scope !== funToken || recovery.status !== "reviewed" || funTokenRef.current !== funToken) return;
+    customAchievementRecoveryRef.current = null;
+    setCustomAchievementRecovery(null);
+    setAchievementAction(previous => previous?.scope === funToken && previous.kind === "create" ? null : previous);
+    setNotice("已完成列表核对，添加已恢复；原草稿仍保留，请按核对结果调整后提交。");
   }
 
   async function unlockCustomAchievement(code) {
@@ -6602,6 +6691,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   function changeView(view) {
     if (!canLeaveWorkspace(view)) return;
+    if (view !== activeViewRef.current && ["music", "together"].includes(activeViewRef.current)) {
+      setActivityReturn(createActivityReturn(coWatchSessionRef.current, coWatchIdentityRef.current, activeViewRef.current));
+    }
     if (
       shouldScheduleSettingsOnViewChange({
         activeView,
@@ -6618,6 +6710,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     setActiveView(view);
     setIsSidebarOpen(false);
     setIsMobileNavOpen(false);
+  }
+
+  function returnToActivity() {
+    const destination = resolveActivityReturn(activityReturn, coWatchIdentityRef.current, coWatchSessionRef.current);
+    if (!destination) { setActivityReturn(null); return; }
+    setTogetherEntryMode(destination.entryMode);
+    changeView(destination.view);
   }
 
   function openSettingsPanel() {
@@ -6788,6 +6887,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         </section>
 
         <div className="composer-wrap">
+          <ActivityReturnBar
+            activity={resolveActivityReturn(activityReturn, coWatchIdentityRef.current, coWatchSession)}
+            onOpen={returnToActivity}
+            onDismiss={() => setActivityReturn(null)}
+          />
           {sendPreparationStage && (
             <small role="status" aria-live="polite" className="composer-send-preparation">
               {CHAT_SEND_PREPARATION_LABELS[sendPreparationStage]}
@@ -7266,7 +7370,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   {item.author === "assistant" ? (
                     <img
                       className="moment-avatar"
-                      src="/app-icon.svg"
+                      src="/app-icon-192.png"
                       alt="DengTa"
                     />
                   ) : (
@@ -7299,9 +7403,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                         src={url}
                         alt={`动态图片 ${index + 1}`}
                         buttonClassName="moment-image-button"
-                        onPreview={(previewUrl, alt) =>
-                          setImageViewer({ url: previewUrl, alt })
-                        }
+                        onPreview={handleImagePreview}
                         key={`${url}-${index}`}
                       />
                     ))}
@@ -7418,11 +7520,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               </button>
             </div>
           </div>
-          {discoverState.error ? (
-            <p className="notification-feature-feedback error" role="alert">
-              {discoverState.error}
-            </p>
-          ) : null}
+          {["interests", "recommend"].map(section => {
+            const feedback = discoverState.sections[section];
+            return feedback.status === "error" ? <div key={section} className="fun-labs-feedback is-error">
+              <p role="status">{section === "interests" ? "兴趣档案" : "视频推荐"}暂时无法读取。{feedback.reason} {feedback.action}</p>
+              <small>错误代码：{feedback.diagnostic.error_code}{feedback.diagnostic.http_status ? ` · HTTP ${feedback.diagnostic.http_status}` : ""}</small>
+              <ChatErrorLog key={feedback.diagnostic.error_log_id || feedback.diagnostic.error_code} logId={feedback.diagnostic.error_log_id} diagnostic={feedback.diagnostic} feedbackByCode={DISCOVERY_ERROR_FEEDBACK} />
+            </div> : null;
+          })}
         </div>
         {discoverState.recommend?.reason ? (
           <p className="fun-labs-line">💡 {discoverState.recommend.reason}</p>
@@ -7464,10 +7569,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                     <button
                       type="button"
                       onClick={() => {
-                        void navigator.clipboard
-                          ?.writeText("https://www.bilibili.com/video/" + video.bvid)
-                          .catch(() => {});
-                        setNotice("已复制视频链接。");
+                        const request = getMomentsRequestScope();
+                        if (request) void copyDiscoveryLink(video.bvid, { current: () => request.current() && funTokenRef.current === funToken, feedback: setNotice });
                       }}
                     >
                       复制链接
@@ -7479,11 +7582,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           </div>
         ) : discoverState.busy ? (
           <p className="fun-labs-line">正在根据你的口味找视频…</p>
-        ) : (
+        ) : discoverState.sections.recommend.status === "success" ? (
           <p className="fun-labs-line">
-            还没有推荐。点上方「换一批」试试;或者先去一起看看几个视频,让 AI 了解你的口味。
+            这次没有找到匹配的视频。可以换一批，或继续一起看，让推荐逐渐了解你的口味。
           </p>
-        )}
+        ) : null}
       </div>
     );
   }
@@ -7691,12 +7794,25 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 />
                 <button
                   type="button"
-                  disabled={customAchievementBusy || (achievementAction?.scope === funToken && achievementAction.status === "busy") || !customAchievement.title.trim()}
+                  aria-label="添加自定义成就"
+                  disabled={customAchievementBusy || !!customAchievementRecovery || (achievementAction?.scope === funToken && achievementAction.status === "busy") || !customAchievement.title.trim()}
                   aria-busy={customAchievementBusy}
                   onClick={() => void addCustomAchievement()}
                 >
                   {customAchievementBusy ? "正在保存…" : "＋ 添加自定义成就"}
                 </button>
+                {customAchievementRecovery && <>
+                  <p role="status">保存结果尚未确认，本页已暂停添加。请先读取当前账号和伴侣的成就列表，人工核对是否已保存。</p>
+                  <small>本次提交：{customAchievementRecovery.submitted.title} · {customAchievementRecovery.submitted.description || "未填写完成条件"}</small>
+                  <button type="button" disabled={customAchievementRecovery.status === "busy"} onClick={() => void reviewCustomAchievementCreation()}>
+                    {customAchievementRecovery.status === "busy" ? "正在读取当前成就列表…" : "读取当前成就列表核对"}
+                  </button>
+                  {customAchievementRecovery.status === "error" && <p role="status">列表读取未确认，添加继续暂停。请重试读取后再核对。</p>}
+                  {customAchievementRecovery.status === "reviewed" && <>
+                    <p role="status">当前列表已读取。请核对本次目标；同名目标不代表本次创建成功，核对后再决定是否调整草稿继续添加。</p>
+                    <button type="button" onClick={resumeCustomAchievementCreation}>我已核对列表，恢复添加</button>
+                  </>}
+                </>}
               </div>
               <small>名称最多 40 字，完成条件最多 120 字，图标最多 4 个字符。手动完成的小目标由你决定。</small>
               <div className="achievement-starter-actions" aria-label="小目标灵感">
@@ -7769,63 +7885,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   function renderMemories() {
-    async function saveMemory(item) {
-      const summary = String(memoryDrafts[item.id] || "").trim();
-      if (!summary) {
-        setNotice("记忆内容不能为空。");
-        return;
-      }
-      setMemoryBusyId(item.id);
-      try {
-        const result = await apiRequest(`/api/v2/memories/${item.id}`, {
-          method: "PATCH",
-          body: JSON.stringify({ summary }),
-        });
-        if (result?.deleted === true) {
-          setMemories((current) =>
-            current.filter((memory) => memory.id !== item.id),
-          );
-          setNotice("这条残留内容已经删除。");
-        } else {
-          setMemories((current) =>
-            current.map((memory) =>
-              memory.id === item.id ? result.memory : memory,
-            ),
-          );
-          setNotice("记忆已经保存。");
-        }
-        setMemoryDrafts((current) => {
-          const next = { ...current };
-          delete next[item.id];
-          return next;
-        });
-      } catch (error) {
-        setNotice(error.message);
-      } finally {
-        setMemoryBusyId("");
-      }
-    }
-
-    async function deleteMemory(item) {
-      if (!window.confirm("确定删除这条长期记忆吗？删除后不会再注入对话。")) {
-        return;
-      }
-      setMemoryBusyId(item.id);
-      try {
-        await apiRequest(`/api/v2/memories/${item.id}`, {
-          method: "DELETE",
-        });
-        setMemories((current) =>
-          current.filter((memory) => memory.id !== item.id),
-        );
-        setNotice("记忆已经删除。");
-      } catch (error) {
-        setNotice(error.message);
-      } finally {
-        setMemoryBusyId("");
-      }
-    }
-
     return (
       <section className="feature-page memory-page">
         <FeatureAtmosphere kind="memory" />
@@ -7833,7 +7892,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           <CompanionProfile
             aiName={effectiveAiName}
             onNotice={setNotice}
-            onOpenImageProviderSettings={openCreativeProviderSettings}
+            onOpenCreativeStudio={() => changeView("art")}
           />
         </Suspense>
         <div className="section-intro">
@@ -7845,104 +7904,24 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         <Suspense fallback={<DeferredFeature label="正在打开记忆档案…" />}>
           <OmbreMemories onManageConnections={openExternalMemorySettings} />
         </Suspense>
-        <div className="memory-source-heading local-memory-heading">
-          <div>
-            <span className="eyebrow">SUPABASE</span>
-            <h3>对话摘要</h3>
-          </div>
-          <span className="local-memory-count">{memories.length} 条</span>
-        </div>
-        <div className="memory-grid">
-          {memories.length === 0 ? (
-            <div className="empty-card">
-              暂时没有长期记忆。达到设置中的 token 阈值后会自动整理。
-            </div>
-          ) : (
-            memories.map((item, memoryIndex) => (
-              <article className="memory-card" key={item.id}>
-                <span>{formatDateTime(item.updated_at || item.created_at)}</span>
-                {Object.hasOwn(memoryDrafts, item.id) ? (
-                  <textarea
-                    className="memory-editor"
-                    value={memoryDrafts[item.id]}
-                    onChange={(event) =>
-                      setMemoryDrafts((current) => ({
-                        ...current,
-                        [item.id]: event.target.value,
-                      }))
-                    }
-                    maxLength={4000}
-                    rows={5}
-                    disabled={memoryBusyId === item.id}
-                    aria-label="修改长期记忆"
-                  />
-                ) : (
-                  <p>
-                    {memoryIndex === 0 ? (
-                      <TypewriterText text={item.summary} stepMs={16} />
-                    ) : (
-                      item.summary
-                    )}
-                  </p>
-                )}
-                <div className="memory-card-actions">
-                  {Object.hasOwn(memoryDrafts, item.id) ? (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => saveMemory(item)}
-                        disabled={memoryBusyId === item.id}
-                      >
-                        保存
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setMemoryDrafts((current) => {
-                            const next = { ...current };
-                            delete next[item.id];
-                            return next;
-                          })
-                        }
-                        disabled={memoryBusyId === item.id}
-                      >
-                        取消
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setMemoryDrafts((current) => ({
-                            ...current,
-                            [item.id]: item.summary,
-                          }))
-                        }
-                      >
-                        修改
-                      </button>
-                      <button
-                        type="button"
-                        className="danger"
-                        onClick={() => deleteMemory(item)}
-                        disabled={memoryBusyId === item.id}
-                      >
-                        删除
-                      </button>
-                    </>
-                  )}
-                </div>
-              </article>
-            ))
-          )}
-        </div>
+        <Suspense fallback={<DeferredFeature label="正在打开对话摘要…" />}>
+          <LocalMemorySummaries
+            key={privateMediaScope}
+            scopeKey={privateMediaScope}
+            items={memories}
+            drafts={memoryDrafts}
+            onItemsChange={setMemories}
+            onDraftsChange={setMemoryDrafts}
+            onNotice={setNotice}
+          />
+        </Suspense>
       </section>
     );
   }
 
   function renderDiary() {
     return (
+      <div className="diary-library">
       <Suspense fallback={<DeferredFeature label="正在打开记忆手记…" />}>
         <CompanionDiary
           key={privateMediaScope}
@@ -7951,7 +7930,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           onNotice={setNotice}
         />
       </Suspense>
+      <Suspense fallback={<DeferredFeature label="正在打开故事章节…" />}>
+        <StoryChapters key={privateMediaScope} accountScope={accountStorageScope} companionScope={companionScope} />
+      </Suspense>
+      </div>
     );
+  }
+
+  function renderArtStudio() {
+    return <Suspense fallback={<DeferredFeature label="正在打开涂鸦画室…" />}><CompanionArtStudio key={privateMediaScope} scopeKey={privateMediaScope} aiName={effectiveAiName} onNotice={setNotice} onOpenImageProviderSettings={openCreativeProviderSettings} /></Suspense>;
   }
 
   function renderNursery() {
@@ -7998,6 +7985,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       setTogetherEntryMode("external"); changeView("together");
     } else if (request.kind === "takeout") {
       setTakeoutActivityRequest(request); changeView("takeout");
+    } else if (request.kind === "art") {
+      changeView("art");
     }
   }
 
@@ -8026,6 +8015,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           accountScope={accountStorageScope}
           companionScope={companionScope}
           watchRequest={activityRequestInScope(watchActivityRequest, accountStorageScope, companionScope)}
+          onOpenMcpDeviceCenter={() => { openProviderRecovery(); setSettingsFocusTarget("mcp-device-center"); }}
           session={coWatchSession}
           receipt={coWatchReceipt}
           screenState={screenGlanceState}
@@ -8043,6 +8033,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           onStartMusic={startMusicCoWatchSession}
           onStopMusic={stopMusicCoWatchSession}
           onMusicPlaybackChange={(snapshot) => void updateMusicCoWatchPlayback(snapshot)}
+          onLocalPlaybackChange={onLocalPlaybackChange}
+          onMusicUnderstandingSaved={handleMusicUnderstandingSaved}
           onPlaybackChange={updateDirectMediaCoWatchPlayback}
           castPairing={castPairing}
           castReceiver={coWatchSession?.castReceiver}
@@ -8051,7 +8043,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             void refreshCoWatchExperience({ mode: resolveCoWatchSessionMode(mode) })
           }
           onReply={async (text, playbackPositionSeconds) => {
-            if (!coWatchSession?.id || isScreenGlanceBusy) return false;
+            const target = coWatchSessionRef.current;
+            if (!target?.id || target.id !== coWatchSession?.id || coWatchBusyRef.current || coWatchReplyJobRef.current || settingsSaveScope(authSession.getSnapshot()) !== privateMediaScope) return false;
+            const lifecycle = coWatchLifecycleRef.current;
+            const stamp = lifecycle.capture();
+            const viewScope = coWatchViewScopeRef.current;
+            const viewStamp = viewScope.capture({ mode: target.sessionMode, channel: "reply" });
+            const job = {};
+            coWatchReplyJobRef.current = job;
+            const ownsOperation = () => coWatchReplyJobRef.current === job && lifecycle.current(stamp) && settingsSaveScope(authSession.getSnapshot()) === privateMediaScope;
+            const current = () => ownsOperation() && coWatchSessionRef.current?.id === target.id && viewScope.current(viewStamp);
             const pendingId = `pending-${Date.now()}`;
             setCoWatchDialog((current) => [
               ...current,
@@ -8063,22 +8064,36 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 at: new Date().toISOString(),
               },
             ]);
+            coWatchBusyRef.current = true;
             setIsScreenGlanceBusy(true);
+            setScreenGlanceFeedback(previous => previous?.operation === "co-watch-reply"
+              ? { status: "checking", operation: "co-watch-reply", message: "正在发送这句共看消息…" }
+              : previous);
             try {
               const result = await sendCoWatchReply(
-                coWatchSession.id,
+                target.id,
                 text,
-                playbackPositionSeconds ?? coWatchSession.mediaPositionSeconds,
+                playbackPositionSeconds ?? target.mediaPositionSeconds,
               );
-              if (result.session) setCoWatchSession(result.session);
+              if (!current()) return false;
+              if (result?.session && result.session.id !== target.id) {
+                throw new Error("共看回复的会话确认不匹配，请重新读取当前会话。（错误代码：co_watch_reply_receipt_invalid）");
+              }
+              const reactionText = String(result?.reaction || (typeof result?.assistantMessage?.content === "string" ? result.assistantMessage.content : "")).trim();
+              if (!reactionText) {
+                throw new Error("服务没有返回可显示的共看回复，本次未确认成功，输入仍保留。请先刷新当前对话核对是否已发送，再决定重试。（错误代码：co_watch_reply_receipt_invalid）");
+              }
+              if (result?.session) {
+                coWatchSessionRef.current = result.session;
+                setCoWatchSession(result.session);
+              }
               // 把 AI 的本场回应加入对话气泡（之前只刷新会话，回复没显示出来）
-              const reactionText = String(result?.reaction || result?.assistant_message?.content || "").trim();
               if (reactionText) {
                 setCoWatchDialog((current) => [
                   ...current.filter((item) => item.key !== pendingId),
                   {
-                    key: "reply-" + (result?.request_id || Date.now()),
-                    id: "reply-" + (result?.request_id || Date.now()),
+                    key: "reply-" + (result?.requestId || Date.now()),
+                    id: "reply-" + (result?.requestId || Date.now()),
                     role: "assistant",
                     text: reactionText,
                     at: new Date().toISOString(),
@@ -8094,19 +8109,29 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   })),
                 ]);
               }
+              setScreenGlanceFeedback(previous => previous?.operation === "co-watch-reply"
+                ? { status: "idle", message: "这句共看消息已收到回复。" }
+                : previous);
               await refreshCoWatchExperience({ silent: true });
               return true;
             } catch (error) {
+              if (!current()) return false;
               setCoWatchDialog((current) =>
                 current.filter((item) => item.key !== pendingId),
               );
               setScreenGlanceFeedback({
                 status: "error",
+                operation: "co-watch-reply",
                 message: error?.message || "这句共看消息没有发送成功。",
               });
               return false;
             } finally {
-              setIsScreenGlanceBusy(false);
+              const releaseBusy = ownsOperation();
+              if (coWatchReplyJobRef.current === job) coWatchReplyJobRef.current = null;
+              if (releaseBusy) {
+                coWatchBusyRef.current = false;
+                setIsScreenGlanceBusy(false);
+              }
             }
           }}
           viewKind={viewKind}
@@ -8150,16 +8175,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           />
         </div>
 
-        {!settingsCategory ? (
-          <SettingsHome categories={SETTINGS_CATEGORIES} onSelectCategory={setSettingsCategory} preferenceScope={privateMediaScope} />
-        ) : (
+        <div hidden={Boolean(settingsCategory)}>
+          <SettingsHome key={privateMediaScope} categories={SETTINGS_CATEGORIES} onSelectCategory={settingsCategoryNavigation.selectCategory} preferenceScope={privateMediaScope} />
+        </div>
+        {settingsCategory ? (
           <>
             <div className="settings-category-heading">
               <button
                 type="button"
                 className="settings-category-back"
                 aria-label="返回设置分类"
-                onClick={() => setSettingsCategory(null)}
+                onClick={settingsCategoryNavigation.returnHome}
               >
                 <ArrowLeft aria-hidden="true" />
               </button>
@@ -9130,12 +9156,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 <button
                   type="button"
                   className={`privacy-switch${
-                    dlnaState.active ? " is-on" : ""
+                    dlnaState.active || dlnaState.discoveryStatus === "starting" ? " is-on" : ""
                   }`}
                   role="switch"
-                  aria-checked={dlnaState.active}
+                  aria-checked={dlnaState.active || dlnaState.discoveryStatus === "starting"}
                   aria-label={
-                    dlnaState.active ? "关闭投屏接收" : "开启投屏接收"
+                    dlnaState.active || dlnaState.discoveryStatus === "starting" ? "关闭投屏接收" : "开启投屏接收"
                   }
                   disabled={dlnaBusy}
                   onClick={toggleDlnaReceiver}
@@ -9144,8 +9170,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 </button>
               </div>
               <p>
-                开启后，灯塔会在局域网注册为 DLNA 媒体接收器。在同一 Wi-Fi 下打开 B站、腾讯视频、爱奇艺等 App，点「投屏」按钮即可看到「灯塔 DENGTA」，选择后自动在灯塔内置播放器播放并开始一起看。
+                开启并就绪后，灯塔会在局域网注册为 DLNA 媒体接收器。在同一 Wi-Fi 下，用支持 DLNA 的视频 App 搜索「灯塔 DENGTA」。选中后，可在灯塔内置播放器播放并开始一起看；部分 App 使用其他投屏协议，可能不会列出 DLNA 接收器。
               </p>
+              <DlnaDiscoveryFeedback state={dlnaState} />
               {dlnaState.active && (
                 <small>
                   端口：{dlnaState.port || "—"}
@@ -9379,7 +9406,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               </Suspense>
             )}
           </>
-        )}
+        ) : null}
         </fieldset>
       </section>
     );
@@ -9473,7 +9500,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               <div className="session-actions">
                 <button
                   onClick={() =>
-                    setDialog({
+                    openSessionDialog({
                       type: "rename",
                       session,
                       value: session.title,
@@ -9485,7 +9512,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 </button>
                 <button
                   onClick={() =>
-                    setDialog({ type: "delete", session, value: "" })
+                    openSessionDialog({ type: "delete", session, value: "" })
                   }
                   title="删除"
                 >
@@ -9726,6 +9753,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           {activeView === "chat" && renderChat()}
           {activeView === "moments" && renderMoments()}
           {activeView === "diary" && renderDiary()}
+          {activeView === "art" && renderArtStudio()}
           {activeView === "nursery" && renderNursery()}
           {activeView === "cotton" && (
             <Suspense fallback={<DeferredFeature label="正在打开小棉花的小屋…" />}>
@@ -9784,6 +9812,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           onPointerDown={closeSettingsPanel}
         >
           <section
+            ref={settingsPanelRef}
+            tabIndex={-1}
             className="settings-sheet"
             role="dialog"
             aria-modal="true"
@@ -9812,66 +9842,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       )}
 
       {dialog && (
-        <div className="dialog-backdrop" onMouseDown={() => setDialog(null)}>
-          <form
-            className="dialog-card"
-            onSubmit={confirmSessionDialog}
-            onMouseDown={(event) => event.stopPropagation()}
-          >
-            {dialog.type === "rename" ? (
-              <>
-                <h2>重命名对话</h2>
-                <input
-                  autoFocus
-                  value={dialog.value}
-                  onChange={(event) =>
-                    setDialog((current) => ({
-                      ...current,
-                      value: event.target.value,
-                    }))
-                  }
-                />
-              </>
-            ) : (
-              <>
-                <h2>删除这个对话？</h2>
-                <p>“{dialog.session.title}”及里面的消息会一起删除。</p>
-              </>
-            )}
-            <div>
-              <button type="button" onClick={() => setDialog(null)}>
-                取消
-              </button>
-              <button className="danger-button" type="submit">
-                {dialog.type === "rename" ? "保存" : "删除"}
-              </button>
-            </div>
-          </form>
-        </div>
+        <SessionDialog dialog={dialog} busy={sessionDialogBusy} feedback={sessionDialogFeedback}
+          onChange={value => { if (!sessionDialogPendingRef.current) setDialog(current => current ? { ...current, value } : current); }}
+          onClose={closeSessionDialog} onConfirm={confirmSessionDialog}
+          onInspect={() => { closeSessionDialog(); setSettingsCategory("logs"); setIsSettingsOpen(true); }} />
       )}
 
       {imageViewer && (
-        <div
-          className="image-viewer"
-          role="dialog"
-          aria-modal="true"
-          aria-label="动态图片预览"
-          onMouseDown={() => setImageViewer(null)}
-        >
-          <button
-            type="button"
-            className="image-viewer-close"
-            aria-label="关闭图片预览"
-            onClick={() => setImageViewer(null)}
-          >
-            ×
-          </button>
-          <img
-            src={imageViewer.url}
-            alt={imageViewer.alt}
-            onMouseDown={(event) => event.stopPropagation()}
-          />
-        </div>
+        <ImageViewer image={imageViewer} scopeKey={privateMediaScope}
+          onClose={() => setImageViewer(null)} />
       )}
     </div>
   );

@@ -48,7 +48,7 @@ const LOCAL_FAILURES = {
   workspace_path_invalid: "文件路径无效。请使用相对路径，例如 docs/note.md；每段最多 120 字符，不能含 . 或 .. 段。",
   workspace_tree_receipt_invalid: "目录读取回执缺少有效路径或列表。云端目录尚未确认，请刷新重新读取。",
   workspace_file_receipt_invalid: "文件读取回执与当前路径不一致或正文不完整。请重新读取文件；不要保存当前预览。",
-  workspace_write_receipt_invalid: "服务未返回与本次文件和字节数匹配的保存回执。草稿仍保留；先重新读取文件核对云端，再决定是否保存。",
+  workspace_write_receipt_invalid: "服务未返回与本次文件和字节数匹配的保存回执。",
   workspace_delete_receipt_invalid: "服务未返回与目标文件匹配的删除回执。先刷新目录核对，不要直接重复删除。",
   workspace_agents_receipt_invalid: "agents.md 预览回执无效。请重试读取；没有修改个性化指令或记忆。",
   workspace_stats_receipt_invalid: "统计回执无效。文件仍可操作，请刷新重新核对统计。",
@@ -65,13 +65,19 @@ const LOCAL_FAILURES = {
 function failureMessage(error, { write = false } = {}) {
   const { code, reason, action } = describeOperationError(error);
   const status = Number(error?.status);
-  return `${LOCAL_FAILURES[code] || `${reason}${action}`}${write ? "草稿仍保留；写入可能已经到达云端，先重新读取文件核对，避免重复提交。" : ""}（错误代码：${code}${Number.isInteger(status) && status >= 400 && status <= 599 ? `；HTTP：${status}` : ""}）`;
+  const writeHelp = write ? resultUnconfirmed(error) ? "草稿仍保留；写入可能已经到达云端，先重新读取文件核对，避免重复提交。" : "草稿仍保留；服务已明确返回未完成，可核对错误原因后手动重试。" : "";
+  return `${LOCAL_FAILURES[code] || `${reason}${action}`}${writeHelp}（错误代码：${code}${Number.isInteger(status) && status >= 400 && status <= 599 ? `；HTTP：${status}` : ""}）`;
 }
 
 function requireReceipt(data, code, valid) {
-  if (data?.ok === false) throw workspaceError(data.code || "workspace_operation_failed");
+  if (data?.ok === false) throw Object.assign(workspaceError(data.code || "workspace_operation_failed"), { definiteFailure: true });
   if (data?.ok !== true || !valid(data)) throw workspaceError(code);
   return data;
+}
+
+function resultUnconfirmed(error) {
+  const status = Number(error?.status);
+  return !error?.definiteFailure && !(status >= 400 && status < 500 && status !== 408);
 }
 
 function cacheDate(value) {
@@ -134,6 +140,8 @@ function WorkspaceView({ accountScope, registerLeaveGuard }) {
   const [previewTruncated, setPreviewTruncated] = useState(false);
   const [cacheWarning, setCacheWarning] = useState("");
   const [cloudSnapshot, setCloudSnapshot] = useState(null);
+  const [unconfirmedOperation, setUnconfirmedOperation] = useState(null);
+  const unconfirmedRef = useRef(null);
   const fileRequestRef = useRef(0);
   const treeRequestRef = useRef(0);
   const fileInputRef = useRef(null);
@@ -145,6 +153,7 @@ function WorkspaceView({ accountScope, registerLeaveGuard }) {
   const statsRequestRef = useRef(0);
   const cacheRequestRef = useRef(0);
   const [lifecycle] = useState(createWorkspaceLifecycle);
+  const operationUnconfirmed = Boolean(unconfirmedOperation && !unconfirmedOperation.released);
 
   const later = useCallback((callback, delay) => {
     const timer = window.setTimeout(() => { timersRef.current.delete(timer); if (lifecycle.isCurrent()) callback(); }, delay);
@@ -280,6 +289,26 @@ function WorkspaceView({ accountScope, registerLeaveGuard }) {
     });
   }
 
+  function rememberUnconfirmed(operation) {
+    unconfirmedRef.current = operation;
+    setUnconfirmedOperation(operation);
+  }
+
+  function acceptCheckedFile(data) {
+    const pending = unconfirmedRef.current;
+    if (pending?.kind !== "write" || pending.path !== data.path || data.truncated) return;
+    if (data.content === pending.content) {
+      unconfirmedRef.current = null; setUnconfirmedOperation(null);
+      if (draftRef.current.path === data.path && draftRef.current.content === data.content) {
+        draftRef.current.dirty = false; setDirty(false);
+      }
+      toast("目标文件的云端完整正文与提交副本一致，已核对当前内容。没有重复提交。", 6000);
+    } else {
+      rememberUnconfirmed({ ...pending, checked: true, cloudContent: data.content });
+      toast("已读取目标文件的完整现状。请比较云端快照与提交副本；这不能证明前次写入未生效。", 6000);
+    }
+  }
+
   async function openFile(entry) {
     if (!discardAllowed()) return;
     const name = fileLabel(entry);
@@ -325,6 +354,7 @@ function WorkspaceView({ accountScope, registerLeaveGuard }) {
         } else {
           setReadOnly(false);
           cacheFile(full, data.content);
+          acceptCheckedFile(data);
         }
         return { path: full, content: String(data.content || ""), truncated: data.truncated === true };
       }
@@ -354,6 +384,7 @@ function WorkspaceView({ accountScope, registerLeaveGuard }) {
 
   function beginMutation(label) {
     if (!lifecycle.isCurrent() || mutationRef.current || openingRef.current) return false;
+    if (unconfirmedRef.current && (["save", "import", "paste"].includes(label) || label.startsWith("delete:"))) return false;
     mutationRef.current = true; setBusy(label); setError(""); setMessage("");
     return true;
   }
@@ -378,18 +409,28 @@ function WorkspaceView({ accountScope, registerLeaveGuard }) {
 
   async function confirmedWrite(target, text) {
     if (new Blob([text]).size > 5 * 1024 * 1024) throw workspaceError("workspace_import_too_large");
-    let data = await workspaceWriteFile({ path: target, content: text }, lifecycle.options);
-    if (!lifecycle.isCurrent()) return false;
-    if (data?.ok === false && data.code === "confirmation_required") {
-      if (!window.confirm(`云端已经存在「${target}」。确认用本次内容覆盖？取消会保留原云端文件和当前草稿。`)) {
-        toast("已取消覆盖，云端文件和当前草稿仍保留。"); return false;
-      }
-      data = await workspaceWriteFile({ path: target, content: text, confirm: true }, lifecycle.options);
+    try {
+      let data = await workspaceWriteFile({ path: target, content: text }, lifecycle.options);
       if (!lifecycle.isCurrent()) return false;
+      if (data?.ok === false && data.code === "confirmation_required") {
+        if (!window.confirm(`云端已经存在「${target}」。确认用本次内容覆盖？取消会保留原云端文件和当前草稿。`)) {
+          toast("已取消覆盖，云端文件和当前草稿仍保留。"); return false;
+        }
+        data = await workspaceWriteFile({ path: target, content: text, confirm: true }, lifecycle.options);
+        if (!lifecycle.isCurrent()) return false;
+      }
+      requireReceipt(data, "workspace_write_receipt_invalid", value => value.path === target && value.mode === "overwrite" && value.chars === new Blob([text]).size);
+      setUnconfirmedOperation(null);
+      cacheFile(target, text); refreshStats(); void loadTree(path, { clearError: false });
+      return true;
+    } catch (caught) {
+      if (lifecycle.isCurrent()) {
+        const operation = { kind: "write", path: target, content: text, checked: false };
+        if (resultUnconfirmed(caught)) rememberUnconfirmed(operation);
+        else setUnconfirmedOperation({ ...operation, rejected: true, released: true });
+      }
+      throw caught;
     }
-    requireReceipt(data, "workspace_write_receipt_invalid", value => value.path === target && value.mode === "overwrite" && value.chars === new Blob([text]).size);
-    cacheFile(target, text); refreshStats(); void loadTree(path, { clearError: false });
-    return true;
   }
 
   async function saveFile() {
@@ -414,11 +455,13 @@ function WorkspaceView({ accountScope, registerLeaveGuard }) {
       if (!lifecycle.isCurrent() || request !== fileRequestRef.current) return;
       requireReceipt(data, "workspace_file_receipt_invalid", value => value.path === submitted.path && typeof value.content === "string" && value.chars === value.content.length && typeof value.truncated === "boolean");
       setCloudSnapshot({ path: data.path, content: data.content, truncated: data.truncated });
+      const checkingOperation = unconfirmedRef.current?.kind === "write" && unconfirmedRef.current.path === data.path;
+      acceptCheckedFile(data);
       if (!data.truncated && draftRef.current.revision === submitted.revision && draftRef.current.content === data.content) {
         draftRef.current.dirty = false; setDirty(false);
         cacheFile(data.path, data.content);
-        toast("云端完整正文与当前草稿一致，保存结果已核对。没有重复提交。");
-      } else toast("已读取云端快照，当前草稿保持原样。可以展开快照核对；暂勿重复保存。", 6000);
+        if (!checkingOperation) toast("云端完整正文与当前草稿一致，保存结果已核对。没有重复提交。");
+      } else if (!checkingOperation || data.truncated) toast("已读取云端快照，当前草稿保持原样。可以展开快照核对；暂勿重复保存。", 6000);
     } catch (caught) {
       if (lifecycle.isCurrent() && request === fileRequestRef.current) setError(failureMessage(caught));
     } finally { endMutation(); }
@@ -427,11 +470,14 @@ function WorkspaceView({ accountScope, registerLeaveGuard }) {
   async function removeFile(name) {
     if (!beginMutation(`delete:${name}`)) return;
     const target = path ? `${path}/${name}` : name;
+    let submitted = false;
     try {
       if (!window.confirm(`确认删除工作区文件「${target}」？删除后不可恢复。${draftRef.current.path === target && draftRef.current.dirty ? "当前文件还有未保存草稿，也会关闭；可取消后先下载。" : ""}`)) return;
+      submitted = true;
       const data = await workspaceDeleteFile({ path: target, confirm: true }, lifecycle.options);
       if (!lifecycle.isCurrent()) return;
       requireReceipt(data, "workspace_delete_receipt_invalid", value => value.path === target);
+      setUnconfirmedOperation(null);
       toast(`已删除 ${target}`);
       if (draftRef.current.path === target) { fileRequestRef.current += 1; updateDraft("", ""); }
       try { await workspaceCacheDelete(accountScope, target); }
@@ -439,8 +485,45 @@ function WorkspaceView({ accountScope, registerLeaveGuard }) {
       if (!lifecycle.isCurrent()) return;
       refreshCacheInfo(); await loadTree(path, { clearError: false });
     } catch (caught) {
+      if (lifecycle.isCurrent()) {
+        if (submitted && resultUnconfirmed(caught)) rememberUnconfirmed({ kind: "delete", path: target, directory: path, checked: false });
+        setError(failureMessage(caught));
+      }
+    } finally { endMutation(); }
+  }
+
+  async function verifyUnconfirmedOperation() {
+    const pending = unconfirmedRef.current;
+    if (!pending || !beginMutation("verify")) return;
+    try {
+      if (pending.kind === "write") {
+        const data = await workspaceReadFile(pending.path, lifecycle.options);
+        if (!lifecycle.isCurrent() || unconfirmedRef.current !== pending) return;
+        requireReceipt(data, "workspace_file_receipt_invalid", value => value.path === pending.path && typeof value.content === "string" && value.chars === value.content.length && typeof value.truncated === "boolean");
+        if (data.truncated) { toast("目标文件仅返回部分预览，不能用来核对提交副本。当前草稿和操作保护仍保留。", 6000); return; }
+        acceptCheckedFile(data);
+        cacheFile(data.path, data.content);
+      } else {
+        const data = await workspaceTree(pending.directory, lifecycle.options);
+        if (!lifecycle.isCurrent() || unconfirmedRef.current !== pending) return;
+        const name = pending.path.split("/").pop();
+        requireReceipt(data, "workspace_tree_receipt_invalid", value => value.path === (pending.directory || "/") && Array.isArray(value.entries) && value.entries.every(entry => typeof entry?.name === "string" && fileLabel(entry) && !fileLabel(entry).includes("/") && !entry.name.includes("\\") && fileLabel(entry) !== "." && fileLabel(entry) !== ".." && ["file", "dir"].includes(entry.type) && Number.isFinite(entry.size) && entry.size >= 0));
+        const exists = data.entries.some(entry => entry.type === "file" && fileLabel(entry) === name);
+        if (!exists && data.entries.length >= 200) { toast("目录列表达到 200 项，未列出目标文件不能证明它已不存在。操作保护仍保留，请先核对完整目录。", 6000); return; }
+        rememberUnconfirmed({ ...pending, checked: true, exists });
+      }
+    } catch (caught) {
       if (lifecycle.isCurrent()) setError(failureMessage(caught));
     } finally { endMutation(); }
+  }
+
+  function continueAfterCheck() {
+    const pending = unconfirmedRef.current;
+    if (!lifecycle.isCurrent() || mutationRef.current || !pending?.checked || pending !== unconfirmedOperation) return;
+    unconfirmedRef.current = null;
+    setUnconfirmedOperation({ ...pending, released: true });
+    setError("");
+    toast("已恢复手动操作。读取只反映目标当前现状，不保证前次请求未执行；提交副本和当前草稿仍保留。", 6000);
   }
 
   async function clearLocalCache() {
@@ -494,7 +577,7 @@ function WorkspaceView({ accountScope, registerLeaveGuard }) {
   // —— 导出：把已打开文件下载到本地 ——
   function exportOpenFile(file = null) {
     if (!lifecycle.isCurrent()) return;
-    const current = file?.path ? file : { path: openPath, content, truncated: previewTruncated };
+    const current = file?.path ? file : { ...draftRef.current, truncated: previewTruncated };
     if (!current.path) return;
     const name = current.path.split("/").pop() || "workspace-file.txt";
     try { downloadTextFile(name, current.content); toast(`已发起下载 ${name}${current.truncated ? "（仅当前预览）" : ""}`); }
@@ -503,15 +586,16 @@ function WorkspaceView({ accountScope, registerLeaveGuard }) {
 
   // —— 复制：把编辑器内容复制到剪贴板 ——
   async function copyContent() {
-    if (!openPath || !lifecycle.isCurrent()) return;
+    const current = { ...draftRef.current };
+    if (!current.path || !lifecycle.isCurrent()) return;
     const request = fileRequestRef.current;
     try {
-      await navigator.clipboard.writeText(content);
-      if (!lifecycle.isCurrent() || request !== fileRequestRef.current) return;
+      await navigator.clipboard.writeText(current.content);
+      if (!lifecycle.isCurrent() || request !== fileRequestRef.current || current.revision !== draftRef.current.revision) return;
       setCopied(true);
       later(() => setCopied(false), 1800);
     } catch {
-      if (!lifecycle.isCurrent() || request !== fileRequestRef.current) return;
+      if (!lifecycle.isCurrent() || request !== fileRequestRef.current || current.revision !== draftRef.current.revision) return;
       try {
         editorRef.current?.select?.();
         if (!document.execCommand("copy")) throw workspaceError("workspace_clipboard_failed");
@@ -569,10 +653,10 @@ function WorkspaceView({ accountScope, registerLeaveGuard }) {
 
       <div className="workspace-toolbar">
         <button type="button" onClick={beginNewFile} disabled={Boolean(busy)}>＋ 新建文件</button>
-        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={Boolean(busy)}>
+        <button type="button" onClick={() => fileInputRef.current?.click()} disabled={Boolean(busy) || operationUnconfirmed}>
           ⬆ 导入文件
         </button>
-        <button type="button" onClick={() => void pasteFromClipboard()} disabled={Boolean(busy)}>
+        <button type="button" onClick={() => void pasteFromClipboard()} disabled={Boolean(busy) || operationUnconfirmed}>
           📋 粘贴为文件
         </button>
         <input
@@ -605,6 +689,16 @@ function WorkspaceView({ accountScope, registerLeaveGuard }) {
       )}
 
       {error && <div className="media-settings-error" role="alert">{error}</div>}
+      {unconfirmedOperation && <div className="workspace-storage-warning" role="status">
+        <p>{unconfirmedOperation.rejected ? `「${unconfirmedOperation.path}」的写入明确未完成，提交副本仍保留，可核对原因后手动重试。` : <>{unconfirmedOperation.released ? "已核对目标现状，可继续手动操作。" : `「${unconfirmedOperation.path}」的${unconfirmedOperation.kind === "write" ? "写入" : "删除"}结果尚未确认；新的云端写入和删除暂缓。`}读取现状不能证明前次请求未执行。</>}当前草稿保持原样。本页核对记录{unconfirmedOperation.kind === "write" ? "和提交副本" : ""}只留在当前页面，离开或刷新后需重新核对云端再操作。</p>
+        {unconfirmedOperation.checked && unconfirmedOperation.kind === "delete" && <p>{unconfirmedOperation.exists ? "目标文件目前仍列在它的目录中。" : "本次完整目录列表未列出目标文件。"}这不是前次删除回执。</p>}
+        {unconfirmedOperation.kind === "write" && <>
+          <button type="button" disabled={Boolean(busy)} onClick={() => exportOpenFile(unconfirmedOperation)}>{unconfirmedOperation.rejected ? "下载提交副本" : "下载未确认内容"}</button>
+          {unconfirmedOperation.checked && <details><summary>核对目标文件的云端快照</summary><textarea value={unconfirmedOperation.cloudContent} readOnly aria-label={`未确认文件云端快照 ${unconfirmedOperation.path}`} /></details>}
+        </>}
+        {!unconfirmedOperation.released && <button type="button" disabled={Boolean(busy)} onClick={() => void verifyUnconfirmedOperation()}>{unconfirmedOperation.kind === "write" ? "核对未确认文件" : "核对删除目标目录"}</button>}
+        {unconfirmedOperation.checked && !unconfirmedOperation.released && <button type="button" disabled={Boolean(busy)} onClick={continueAfterCheck}>已核对现状，继续手动操作</button>}
+      </div>}
       {cacheWarning && <div className="workspace-storage-warning" role="status">{cacheWarning}</div>}
       {message && <div className="workspace-saved-note" role="status">{message}</div>}
       {busy && <p className="workspace-capacity-note" role="status">{busy.startsWith("open:") ? "正在读取文件…" : busy === "save" ? "正在核对保存回执；可以继续编辑新内容。" : busy === "import" ? "正在读取并导入本地文本文件…" : busy === "paste" ? "正在读取剪贴板并核对保存回执…" : busy === "clear-cache" ? "正在清理本账号离线副本…" : busy === "agents-md" ? "正在读取 agents.md 预览…" : "正在核对文件操作回执…"}</p>}
@@ -653,7 +747,7 @@ function WorkspaceView({ accountScope, registerLeaveGuard }) {
                       <button
                         type="button"
                         className="danger"
-                        disabled={Boolean(busy)}
+                        disabled={Boolean(busy) || operationUnconfirmed}
                         onClick={() => void removeFile(name)}
                       >
                         删除
@@ -681,7 +775,7 @@ function WorkspaceView({ accountScope, registerLeaveGuard }) {
               </button>
               <button type="button" onClick={exportOpenFile} disabled={Boolean(busy) || !openPath}>下载当前内容</button>
               <button type="button" onClick={() => void rereadCurrentFile()} disabled={Boolean(busy)}>重新读取文件</button>
-              <button type="button" disabled={Boolean(busy) || readOnly || !dirty} onClick={() => void saveFile()}>
+              <button type="button" disabled={Boolean(busy) || operationUnconfirmed || readOnly || !dirty} onClick={() => void saveFile()}>
                 {busy === "save" ? "保存中…" : "保存"}
               </button>
               <button type="button" disabled={Boolean(busy)} onClick={() => { if (!discardAllowed()) return; fileRequestRef.current += 1; updateDraft("", ""); setCopied(false); }}>关闭</button>

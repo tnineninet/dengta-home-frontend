@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   CircleStop,
   Clock3,
@@ -25,6 +25,7 @@ import {
 } from "./direct-media.js";
 import "./together.css";
 import TogetherMusic from "./TogetherMusic.jsx";
+import { useLocalPlaybackHandoff } from "./useBuiltInNowPlaying.js";
 import BilibiliQrLogin from "./BilibiliQrLogin.jsx";
 import { WatchQueryPanel } from "./ActivityQueryPanels.jsx";
 
@@ -75,6 +76,12 @@ function finiteMediaSeconds(value) {
   return Number.isFinite(number) && number > 0 ? number : 0;
 }
 
+function releaseVideo(video) {
+  if (!video) return;
+  try { video.pause(); } catch { /* 已卸载的播放器可能不再接受操作。 */ }
+  try { video.removeAttribute?.("src"); video.load?.(); } catch { /* 释放失败不影响页面切换。 */ }
+}
+
 export default function Together({
   aiName = "伴侣",
   accountScope = "",
@@ -94,6 +101,9 @@ export default function Together({
   onStartMusic,
   onStopMusic,
   onMusicPlaybackChange,
+  onLocalPlaybackChange,
+  onMusicUnderstandingSaved,
+  onOpenMcpDeviceCenter,
   onPlaybackChange,
   onRefresh,
   castPairing,
@@ -128,53 +138,19 @@ export default function Together({
   const danmakuSpawnedRef = useRef(new Set());
   const pageRequestRef = useRef(null);
   const replyPendingRef = useRef(false);
+  const replyFeedbackId = useId();
   const mediaPendingRef = useRef(null);
   const [mediaPending, setMediaPending] = useState(false);
   const busy = externalBusy || mediaPending;
+  const [pendingWatchLink, setPendingWatchLink] = useState(null);
+  const pendingWatchLinkRef = useRef(null);
+  const watchLinkContextRef = useRef(null);
+  const watchLinkScope = JSON.stringify([accountScope, companionScope]);
   useEffect(() => () => {
     pageRequestRef.current?.abort();
     pageRequestRef.current = null;
     mediaPendingRef.current = null;
   }, []);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (document.hidden) return;
-      const video = webVideoRef.current || videoRef.current;
-      const current =
-        video && Number.isFinite(video.currentTime) ? video.currentTime : -1;
-      const now = Date.now();
-      if (current < 0) return;
-      setActiveDanmaku((prev) => {
-        const next = prev.filter((item) => now - item.spawnedAt < 9000);
-        return next.length === prev.length ? prev : next;
-      });
-      const items = Array.isArray(danmaku) ? danmaku : [];
-      for (
-        let index = danmakuCursorRef.current;
-        index < items.length;
-        index += 1
-      ) {
-        const item = items[index];
-        const at = Number(item.media_time_seconds || 0);
-        if (at > current + 8) break;
-        const key = index + ":" + (item.text || "");
-        if (danmakuSpawnedRef.current.has(key)) continue;
-        danmakuSpawnedRef.current.add(key);
-        danmakuCursorRef.current = index + 1;
-        setActiveDanmaku((prev) => [
-          ...prev.slice(-24),
-          {
-            ...item,
-            id: key + "-" + now,
-            spawnedAt: now,
-            lane: Math.floor(Math.random() * 3),
-          },
-        ]);
-      }
-    }, 400);
-    return () => window.clearInterval(timer);
-  }, [danmaku]);
 
   const [title, setTitle] = useState(
     session?.title || restoredDirectMedia?.title || "",
@@ -262,6 +238,103 @@ export default function Together({
             : mode;
   const selectedActive = selectedMode === "music" ? musicActive : selectedMode === "web" ? pageActive : selectedMode === "direct" ? directActive : active;
   const modeLocked = viewKind === "music" ? musicActive : active || directActive || pageActive;
+  const selectedModeRef = useRef(selectedMode);
+  const localVideoGeneration = JSON.stringify([accountScope, companionScope, selectedMode, directMediaUrl]);
+  const localVideoPlayback = useLocalPlaybackHandoff({ accountScope, companionScope, generation: localVideoGeneration, onLocalPlaybackChange });
+  const modeLockRef = useRef(modeLocked);
+  useLayoutEffect(() => {
+    selectedModeRef.current = selectedMode;
+    modeLockRef.current = modeLocked;
+  }, [selectedMode, modeLocked]);
+  const watchLinkBlocked = Boolean(busy || session?.status === "active" || active);
+  useLayoutEffect(() => {
+    watchLinkContextRef.current = { scope: watchLinkScope, blocked: watchLinkBlocked };
+  }, [watchLinkScope, watchLinkBlocked]);
+  useLayoutEffect(() => () => {
+    watchLinkContextRef.current = null;
+    pendingWatchLinkRef.current = null;
+  }, []);
+  const webVideoUrl = webPage?.provider === "bilibili" && webPage.bvid
+    ? `${API_BASE_URL}/api/v2/co-watch/bilibili-stream?bvid=${encodeURIComponent(webPage.bvid)}` : "";
+  const attachDirectVideo = useCallback((node) => {
+    const previous = videoRef.current;
+    videoRef.current = node;
+    if (previous && previous !== node) releaseVideo(previous);
+    if (node) {
+      if (node.getAttribute && !node.getAttribute("src")) node.setAttribute("src", directMediaUrl);
+      setDirectPlaying(!node.paused && !node.ended);
+    }
+  }, [directMediaUrl]);
+  const attachWebVideo = useCallback((node) => {
+    const previous = webVideoRef.current;
+    webVideoRef.current = node;
+    if (previous && previous !== node) releaseVideo(previous);
+    if (node?.getAttribute && !node.getAttribute("src")) node.setAttribute("src", webVideoUrl);
+  }, [webVideoUrl]);
+  const danmakuScope = JSON.stringify([accountScope, companionScope, session?.id || "", selectedMode, webPage?.page_url || "", directMediaUrl]);
+  const danmakuScopeRef = useRef(danmakuScope);
+  const danmakuInputRef = useRef(danmaku);
+  const blockedDanmakuRef = useRef(null);
+  useLayoutEffect(() => {
+    if (danmakuScopeRef.current !== danmakuScope) {
+      blockedDanmakuRef.current = danmakuInputRef.current === danmaku ? danmaku : null;
+      danmakuScopeRef.current = danmakuScope;
+      danmakuCursorRef.current = 0;
+      danmakuSpawnedRef.current.clear();
+      setActiveDanmaku([]);
+    } else if (danmakuInputRef.current !== danmaku) {
+      blockedDanmakuRef.current = null;
+    }
+    danmakuInputRef.current = danmaku;
+  }, [danmakuScope, danmaku]);
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.hidden || danmakuScopeRef.current !== danmakuScope || selectedMode !== "web" || !pageActive) return;
+      const video = webVideoRef.current;
+      const current = video && Number.isFinite(video.currentTime) ? video.currentTime : -1;
+      const now = Date.now();
+      if (current < 0) return;
+      setActiveDanmaku((prev) => {
+        const next = prev.filter((item) => now - item.spawnedAt < 9000);
+        return next.length === prev.length ? prev : next;
+      });
+      const items = blockedDanmakuRef.current !== danmaku && Array.isArray(danmaku) ? danmaku : [];
+      for (let index = danmakuCursorRef.current; index < items.length; index += 1) {
+        const item = items[index];
+        const at = Number(item.media_time_seconds || 0);
+        if (at > current + 8) break;
+        const key = index + ":" + (item.text || "");
+        if (danmakuSpawnedRef.current.has(key)) continue;
+        danmakuSpawnedRef.current.add(key);
+        danmakuCursorRef.current = index + 1;
+        setActiveDanmaku((prev) => [...prev.slice(-24), { ...item, id: key + "-" + now, spawnedAt: now, lane: Math.floor(Math.random() * 3) }]);
+      }
+    }, 400);
+    return () => window.clearInterval(timer);
+  }, [danmaku, danmakuScope, selectedMode, pageActive]);
+
+  const chooseMode = (nextMode, refresh = false) => {
+    if (busy || mediaPendingRef.current || (modeLockRef.current && selectedModeRef.current !== nextMode)) return false;
+    if (selectedModeRef.current !== nextMode) {
+      if (pageRequestRef.current) setWebFeedback({ status: "idle", message: "已取消上一条网页解析。返回后可以重新解析。" });
+      pageRequestRef.current?.abort();
+      pageRequestRef.current = null;
+      if (selectedModeRef.current === "direct") setDirectPlaying(false);
+    }
+    selectedModeRef.current = nextMode;
+    setMode(nextMode);
+    if (refresh) onRefresh?.(nextMode);
+    return true;
+  };
+
+  const currentDirectVideo = (video) => video && video === videoRef.current && selectedModeRef.current === "direct" && (!video.currentSrc || video.currentSrc === directMediaUrl);
+  const currentWebVideo = (video) => video && video === webVideoRef.current && selectedModeRef.current === "web" && (!video.currentSrc || video.currentSrc === webVideoUrl);
+  const reportWebReady = (video, playing = false) => {
+    if (!currentWebVideo(video)) return;
+    setWebFeedback(current => current.code?.startsWith("media_")
+      ? { status: "success", code: "media_ready", message: playing ? "视频已经开始播放。" : "播放器准备好了，请手动播放。" }
+      : current);
+  };
 
   const fallbackDialog = useMemo(() => {
     const text = String(screenState.lastReaction || "").trim();
@@ -291,7 +364,7 @@ export default function Together({
   };
 
   const reportDirectPlayback = (video, immediate = false) => {
-    if (!video || !directMediaUrl) return;
+    if (!currentDirectVideo(video) || !directMediaUrl) return;
     const positionSeconds = finiteMediaSeconds(video.currentTime);
     const durationSeconds = finiteMediaSeconds(video.duration);
     setDirectPositionSeconds(positionSeconds);
@@ -321,6 +394,7 @@ export default function Together({
     }
     const changed = validation.url !== directMediaUrl;
     if (changed) {
+      setDirectPlaying(false);
       setDirectPositionSeconds(0);
       setDirectDurationSeconds(0);
       resumedUrlRef.current = "";
@@ -376,6 +450,7 @@ export default function Together({
   };
 
   const startDirect = async () => {
+    if (busy || mediaPendingRef.current) return;
     const validation = validateDirectMediaUrl(directUrlInput);
     if (!validation.ok) {
       setDirectFeedback({ status: "error", message: validation.message });
@@ -407,6 +482,7 @@ export default function Together({
     });
 
   const stopDirect = async () => {
+    if (busy || mediaPendingRef.current) return;
     const video = videoRef.current;
     const positionSeconds = finiteMediaSeconds(video?.currentTime);
     video?.pause();
@@ -435,7 +511,7 @@ export default function Together({
     setWebFeedback({ status: "checking", message: "正在解析网页链接…" });
     try {
       const page = await resolveCoWatchPage(input, { signal: controller.signal });
-      if (pageRequestRef.current !== controller) return;
+      if (pageRequestRef.current !== controller || controller.signal.aborted || selectedModeRef.current !== "web") return;
       if (!page?.embed_url) throw new Error("没有拿到可用的内嵌地址。");
       loadedWebInputRef.current = input.trim();
       setWebPage(page);
@@ -450,25 +526,51 @@ export default function Together({
     }
   };
 
-  // 从发现页传入链接时,自动切到网页模式并解析,用户点"开始网页一起看"即可。
+  const acceptWatchLink = (candidate) => {
+    const current = watchLinkContextRef.current;
+    if (!candidate || pendingWatchLinkRef.current !== candidate || current?.scope !== candidate.scope || current.blocked || mediaPendingRef.current) return false;
+    if (!chooseMode("web")) return false;
+    pendingWatchLinkRef.current = null;
+    setPendingWatchLink(null);
+    void loadWebPage(candidate.url);
+    return true;
+  };
+
+  const ignoreWatchLink = (candidate) => {
+    if (pendingWatchLinkRef.current !== candidate || watchLinkContextRef.current?.scope !== candidate.scope) return;
+    pendingWatchLinkRef.current = null;
+    setPendingWatchLink(null);
+  };
+
+  // Keep an incoming selection separate from the active session and later user edits.
   useEffect(() => {
-    if (!externalPageUrl) return;
+    if (!externalPageUrl || viewKind === "music") {
+      pendingWatchLinkRef.current = null;
+      const timer = window.setTimeout(() => setPendingWatchLink(null), 0);
+      return () => window.clearTimeout(timer);
+    }
+    const candidate = { url: externalPageUrl, scope: watchLinkScope, title: watchRequest?.query || "推荐视频" };
+    pendingWatchLinkRef.current = candidate;
     const timer = window.setTimeout(() => {
-      setMode("web");
-      setWebUrlInput(externalPageUrl);
-      void loadWebPage(externalPageUrl);
+      if (pendingWatchLinkRef.current !== candidate) return;
+      setPendingWatchLink(candidate);
+      acceptWatchLink(candidate);
     }, 0);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      if (pendingWatchLinkRef.current === candidate) pendingWatchLinkRef.current = null;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [externalPageUrl]);
+  }, [externalPageUrl, watchRequest, watchLinkScope, viewKind]);
 
   const pickBilibiliVideo = (pageUrl, videoTitle) => {
-    setMode("web");
+    if (!chooseMode("web")) return;
     if (videoTitle) setTitle(videoTitle);
     void loadWebPage(pageUrl);
   };
 
   const startWebPage = async () => {
+    if (busy || mediaPendingRef.current) return;
     if (!webPage?.page_url) {
       setWebFeedback({ status: "error", message: "请先解析网页链接。" });
       return;
@@ -485,6 +587,7 @@ export default function Together({
   };
 
   const stopWebPage = async () => {
+    if (busy || mediaPendingRef.current) return;
     setWebFeedback({ status: "checking", message: "正在结束这场共看…" });
     await runMediaOperation(() => onStopDirect?.({
       title, sessionId: session?.id, accountScope, companionScope, mediaPositionSeconds: 0,
@@ -515,6 +618,9 @@ export default function Together({
 
   const currentFeedback =
     selectedMode === "web" ? webFeedback : selectedMode === "direct" ? directFeedback : feedback;
+  const replyError = (selectedMode === "web" || selectedMode === "direct") &&
+    feedback?.status === "error" && feedback.message !== currentFeedback?.message
+    ? feedback.message : "";
 
   return (
     <section className="feature-page together-page" aria-label={viewKind === "music" ? "一起听歌" : "一起看"}>
@@ -548,6 +654,14 @@ export default function Together({
         </span>
       </header>
 
+      {externalPageUrl && viewKind !== "music" && pendingWatchLink?.scope === watchLinkScope && <section className="together-watch-handoff" aria-label="待选视频">
+        <div><strong>已收到待选视频</strong><p>{pendingWatchLink.title}</p></div>
+        <p role="status">{watchLinkBlocked ? busy ? "当前操作完成后可载入，推荐已保留。" : "结束当前活动后可载入，正在看的内容保持不变。" : "现在可以载入这条推荐，再由你决定是否开始一起看。"}</p>
+        <div className="together-direct-actions">
+          <button type="button" disabled={watchLinkBlocked} onClick={() => acceptWatchLink(pendingWatchLink)}>载入待选视频</button>
+          <button type="button" onClick={() => ignoreWatchLink(pendingWatchLink)}>忽略这条推荐</button>
+        </div>
+      </section>}
       {selectedMode !== "music" && <WatchQueryPanel key={watchRequest?.id || "watch-search"} initialQuery={watchRequest?.query || ""} active={selectedActive} />}
 
       {selectedMode !== "music" && <div className="together-mode-switch" role="tablist" aria-label="一起看方式">
@@ -556,8 +670,8 @@ export default function Together({
           role="tab"
           aria-selected={selectedMode === "external"}
           className={selectedMode === "external" ? "is-selected" : ""}
-          disabled={modeLocked && selectedMode !== "external"}
-          onClick={() => { setMode("external"); onRefresh?.("external"); }}
+          disabled={busy || (modeLocked && selectedMode !== "external")}
+          onClick={() => chooseMode("external", true)}
         >
           <MonitorPlay aria-hidden="true" />
           外部 App 屏幕共看
@@ -567,8 +681,8 @@ export default function Together({
           role="tab"
           aria-selected={selectedMode === "direct"}
           className={selectedMode === "direct" ? "is-selected" : ""}
-          disabled={modeLocked && selectedMode !== "direct"}
-          onClick={() => { setMode("direct"); onRefresh?.("direct"); }}
+          disabled={busy || (modeLocked && selectedMode !== "direct")}
+          onClick={() => chooseMode("direct", true)}
         >
           <Link2 aria-hidden="true" />
           DengTa 视频直链
@@ -578,8 +692,8 @@ export default function Together({
           role="tab"
           aria-selected={selectedMode === "web"}
           className={selectedMode === "web" ? "is-selected" : ""}
-          disabled={modeLocked && selectedMode !== "web"}
-          onClick={() => { setMode("web"); onRefresh?.("web"); }}
+          disabled={busy || (modeLocked && selectedMode !== "web")}
+          onClick={() => chooseMode("web", true)}
         >
           <Globe aria-hidden="true" />
           网页一起看
@@ -596,16 +710,20 @@ export default function Together({
                 {webPage.provider === "bilibili" && webPage.bvid ? (
                   <div className="together-video-wrap">
                     <video
-                      ref={webVideoRef}
+                      key={webVideoUrl}
+                      ref={attachWebVideo}
                       controls
                       playsInline
                       poster={webPage.poster || ""}
-                      src={`${API_BASE_URL}/api/v2/co-watch/bilibili-stream?bvid=${encodeURIComponent(webPage.bvid)}`}
+                      src={webVideoUrl}
                       preload="metadata"
-                      onError={(event) => setWebFeedback(mediaPlaybackFeedback(event.currentTarget.error))}
+                      onLoadedMetadata={(event) => reportWebReady(event.currentTarget)}
+                      onCanPlay={(event) => reportWebReady(event.currentTarget)}
+                      onPlaying={(event) => reportWebReady(event.currentTarget, true)}
+                      onError={(event) => { if (currentWebVideo(event.currentTarget)) setWebFeedback(mediaPlaybackFeedback(event.currentTarget.error)); }}
                     />
                     {webFeedback.status === "error" && <button type="button" onClick={() => {
-                      setWebFeedback({ status: "checking", message: "正在重新载入视频，请准备好后手动播放。" });
+                      setWebFeedback({ status: "checking", code: "media_loading", message: "正在重新载入视频，请准备好后手动播放。" });
                       webVideoRef.current?.load();
                     }}><RefreshCw aria-hidden="true" />重新载入视频</button>}
                     <div className="together-danmaku-layer">
@@ -652,7 +770,8 @@ export default function Together({
           ) : selectedMode === "direct" ? (
             directMediaUrl ? (
               <video
-                ref={videoRef}
+                key={directMediaUrl}
+                ref={attachDirectVideo}
                 src={directMediaUrl}
                 controls
                 playsInline
@@ -660,6 +779,7 @@ export default function Together({
                 referrerPolicy="no-referrer"
                 onLoadedMetadata={(event) => {
                   const video = event.currentTarget;
+                  if (!currentDirectVideo(video)) return;
                   if (resumedUrlRef.current !== directMediaUrl) {
                     const restoredResume = restoredResumeRef.current;
                     const resumeAt = Math.min(
@@ -673,6 +793,7 @@ export default function Together({
                     resumedUrlRef.current = directMediaUrl;
                   }
                   reportDirectPlayback(video);
+                  setDirectPlaying(!video.paused && !video.ended);
                   setDirectFeedback({
                     status: "success",
                     message: "播放器准备好了。点击播放后，可开始这场直链共看。",
@@ -680,11 +801,14 @@ export default function Together({
                 }}
                 onDurationChange={(event) => reportDirectPlayback(event.currentTarget)}
                 onTimeUpdate={(event) => reportDirectPlayback(event.currentTarget)}
-                onPlay={(event) => { setDirectPlaying(true); reportDirectPlayback(event.currentTarget, true); }}
-                onPause={(event) => { setDirectPlaying(false); reportDirectPlayback(event.currentTarget, true); }}
+                onPlay={(event) => { if (currentDirectVideo(event.currentTarget)) { localVideoPlayback("pending"); setDirectPlaying(true); reportDirectPlayback(event.currentTarget, true); } }}
+                onPlaying={(event) => { if (currentDirectVideo(event.currentTarget) && !event.currentTarget.paused) localVideoPlayback("playing"); }}
+                onPause={(event) => { if (currentDirectVideo(event.currentTarget) && event.currentTarget.paused) { localVideoPlayback("paused"); setDirectPlaying(false); reportDirectPlayback(event.currentTarget, true); } }}
                 onSeeked={(event) => reportDirectPlayback(event.currentTarget, true)}
-                onEnded={() => setDirectPlaying(false)}
+                onEnded={(event) => { if (currentDirectVideo(event.currentTarget) && event.currentTarget.ended) { localVideoPlayback("ended"); setDirectPlaying(false); reportDirectPlayback(event.currentTarget, true); } }}
                 onError={(event) => {
+                  if (!currentDirectVideo(event.currentTarget)) return;
+                  localVideoPlayback("error");
                   setDirectPlaying(false);
                   setDirectFeedback(mediaPlaybackFeedback(event.currentTarget.error));
                 }}
@@ -729,6 +853,9 @@ export default function Together({
               onStart={onStartMusic}
               onEnd={onStopMusic}
               onPlaybackChange={onMusicPlaybackChange}
+              onLocalPlaybackChange={onLocalPlaybackChange}
+              onUnderstandingSaved={onMusicUnderstandingSaved}
+              onOpenMcpDeviceCenter={onOpenMcpDeviceCenter}
               onPositionChange={setMusicPositionSeconds}
             />
           ) : selectedMode === "web" ? (
@@ -1005,6 +1132,7 @@ export default function Together({
           </button>
         </header>
 
+        {replyError && <p id={replyFeedbackId} className="together-feedback is-error" role="alert">{replyError}</p>}
         {visibleDialog.length ? visibleDialog.map((item) => (
           <article key={item.key}>
             <span>{item.role === "user" ? "我" : aiName}</span>
@@ -1030,6 +1158,7 @@ export default function Together({
               maxLength={500}
               placeholder={selectedMode === "music" ? `和${aiName}聊聊当前歌曲` : `和${aiName}聊聊正在看的内容`}
               aria-label="共看消息"
+              aria-describedby={replyError ? replyFeedbackId : undefined}
             />
             <button type="submit" disabled={busy || !reply.trim()}>
               发送

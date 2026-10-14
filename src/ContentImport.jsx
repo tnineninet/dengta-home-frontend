@@ -43,6 +43,7 @@ function normalizeImportPreview(data = {}) {
   const candidates = collectionOf(data, ["candidates", "items"]).map((item, index) => {
     const candidateType = item.type ?? item.candidate_type;
     const type = TYPE_META[candidateType] ? candidateType : "memory";
+    const truncation = item.metadata?.content_truncation;
     return {
       ...item,
       clientKey: String(item.id ?? item.candidate_id ?? `${type}-${index}`),
@@ -61,6 +62,7 @@ function normalizeImportPreview(data = {}) {
       position: String(item.position ?? item.metadata?.position ?? "dynamic_context"),
       sort_order: Number(item.sort_order ?? item.metadata?.sort_order ?? index),
       decision: "pending",
+      contentTruncation: truncation?.truncated === true && [truncation.source_characters, truncation.retained_characters, truncation.omitted_characters].every(Number.isSafeInteger) ? truncation : null,
     };
   });
   return {
@@ -107,6 +109,7 @@ export default function ContentImport({ api, accountScope = "", companionScope =
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
   const [page, setPage] = useState(null);
+  const [emptyPage, setEmptyPage] = useState(null);
   const [resume, setResume] = useState(null);
   const [progress, setProgress] = useState(null);
   const [diagnostic, setDiagnostic] = useState(null);
@@ -207,6 +210,7 @@ export default function ContentImport({ api, accountScope = "", companionScope =
     if (commitBlocked) return;
     const task=begin("preview");if(!task)return;
     setResult(null);
+    let pagedContext = null;
     try {
       let data;
       if (inputMode === "file" && file?.size > 1024 * 1024 && CONTENT_IMPORT_PAGED_EXTENSIONS.test(file.name)) {
@@ -235,9 +239,11 @@ export default function ContentImport({ api, accountScope = "", companionScope =
         }
         startByte=startByte || record.nextByte;
         if(startByte>=file.size){remember(key,record);setPreview(null);setPage({startByte:file.size,endByte:file.size,totalBytes:file.size});setRecoveryNote("这份文件已处理到末尾，包含你主动放弃的分段。");return;}
+        pagedContext = { key, record, startByte };
         const paged = await previewContentImportPage({ file, kind, startByte,signal:task.controller.signal }, client);
         if(!current(task))return;
         data = paged.data;
+        setEmptyPage(null);
         setPage(paged.page);
         const parsed=normalizeImportPreview(data);
         if(!parsed.id)throw Object.assign(new Error(),{code:"import_preview_receipt_invalid"});
@@ -253,11 +259,21 @@ export default function ContentImport({ api, accountScope = "", companionScope =
       }, client);
         if(!current(task))return;
         setPage(null);
+        setEmptyPage(null);
         setResume(null);
       }
       setPreview(normalizeImportPreview(data));
     } catch (previewError) {
-      if(current(task))fail(previewError);
+      if(current(task)) {
+        const range=previewError?.page;
+        if (!preview && pagedContext && previewError.code === "import_no_candidates" && previewError.status === 422
+            && range?.startByte === pagedContext.startByte && range.totalBytes === file.size
+            && Number.isSafeInteger(range.endByte) && range.endByte > range.startByte && range.endByte <= file.size) {
+          setPage(range);setEmptyPage(range);
+          remember(pagedContext.key,{...pagedContext.record,nextByte:range.startByte,pending:null});
+        }
+        fail(previewError);
+      }
     } finally {
       finish(task);
     }
@@ -331,7 +347,7 @@ export default function ContentImport({ api, accountScope = "", companionScope =
       const stored=data?.result || data;
       if(stored?.import?.id!==importId)throw Object.assign(new Error(),{code:"import_commit_receipt_invalid"});
       if(stored.import.status==="preview") {
-        if(!preview || preview.id===importId)setPreview(normalizeImportPreview(data));
+        if(!preview)setPreview(normalizeImportPreview(data));
         fail({code:stored.import.commit_protocol===null ? "import_legacy_preview" : "import_commit_pending"});return;
       }
       const value=importCommitReceipt(data,importId);
@@ -345,6 +361,18 @@ export default function ContentImport({ api, accountScope = "", companionScope =
   function discardPage() {
     if(commitBlocked)return;
     settlePage(resume?.key,resume?.record);setPreview(null);setResult(null);
+  }
+  function continueEmptyPage() {
+    if(busy || commitBlocked || !emptyPage || !resume?.key || preview)return;
+    const nextByte=emptyPage.endByte;
+    remember(resume.key,{...resume.record,nextByte,pending:null});
+    setEmptyPage(null);setError("");setDiagnostic(null);
+    setPage({startByte:nextByte,endByte:nextByte,totalBytes:emptyPage.totalBytes});
+    if(nextByte===emptyPage.totalBytes) {
+      setRecoveryNote("已确认末段没有候选，文件读取到末尾；本段没有写入任何内容。");
+      return;
+    }
+    void handlePreview(nextByte);
   }
 
   async function resolvePendingCommit() {
@@ -376,7 +404,7 @@ export default function ContentImport({ api, accountScope = "", companionScope =
   }
 
   function resetSource() {
-    setPage(null);setPreview(null);setResult(null);setResume(null);setUncertainImportId(null);setRecoveryNote("");setError("");setDiagnostic(null);
+    setPage(null);setEmptyPage(null);setPreview(null);setResult(null);setResume(null);setUncertainImportId(null);setRecoveryNote("");setError("");setDiagnostic(null);
   }
 
   const decisionsLocked = Boolean(busy || commitBlocked);
@@ -432,7 +460,7 @@ export default function ContentImport({ api, accountScope = "", companionScope =
         {importCommitRecovery(diagnostic?.error_code)==="legacy" && <button className="content-import-secondary" type="button" disabled={Boolean(busy)} onClick={reviewLegacyPage}>已核对旧结果，重新预览本段</button>}
         {page && <div role="status"><p>本段：{page.startByte.toLocaleString()}–{page.endByte.toLocaleString()} 字节 / 共 {page.totalBytes.toLocaleString()} 字节。预览不会自动写入记忆。</p>
           <div className="content-import-page-actions">
-          {page.endByte < page.totalBytes && <button className="content-import-secondary" type="button" disabled={Boolean(busy) || Boolean(preview)} onClick={() => void handlePreview(page.endByte)}>读取下一段</button>}
+          {emptyPage ? <><p>本段没有可导入候选，尚未写入；确认后才会推进文件进度。</p><button className="content-import-secondary" type="button" disabled={Boolean(busy) || commitBlocked} onClick={continueEmptyPage}>{emptyPage.endByte < emptyPage.totalBytes ? "确认本段无候选，继续下一段" : "确认末段无候选，结束读取"}</button></> : page.endByte < page.totalBytes && <button className="content-import-secondary" type="button" disabled={Boolean(busy) || Boolean(preview)} onClick={() => void handlePreview(page.endByte)}>读取下一段</button>}
           {preview && <button className="content-import-secondary" type="button" disabled={Boolean(busy) || commitBlocked} onClick={discardPage}>放弃本段候选</button>}
           {!busy && !preview && resume?.key && !resume.record.pending && <button className="content-import-secondary" type="button" onClick={()=>{clearImportCheckpoint(resume.key);setResume(null);setPage(null);setRecoveryNote("进度已重置；再次提交之前，请核对是否会重复导入。");}}>重新从头预览</button>}
           </div>
@@ -452,6 +480,7 @@ export default function ContentImport({ api, accountScope = "", companionScope =
               <div className="content-import-grid">{items.map((item) => (
                 <article className={`content-import-candidate is-${item.decision}`} key={item.clientKey}>
                   <div className="content-import-candidate-meta"><span>{item.source}</span><em>{TYPE_META[item.type].label}</em></div>
+                  {item.contentTruncation && <p role="alert">此候选仅含部分正文：源条目 {item.contentTruncation.source_characters.toLocaleString()} 字符，预览保留 {item.contentTruncation.retained_characters.toLocaleString()}，另有 {item.contentTruncation.omitted_characters.toLocaleString()} 未纳入。确认提交只保存当前候选；完整内容请拆条重新导入。</p>}
                   <label><span>标题</span><input disabled={decisionsLocked} aria-label={`${item.title}的标题`} value={item.title} onChange={(event) => updateCandidate(item.clientKey, { title: event.target.value })} /></label>
                   <label><span>内容</span><textarea disabled={decisionsLocked} aria-label={`${item.title}的内容`} value={item.content} onChange={(event) => updateCandidate(item.clientKey, { content: event.target.value })} rows={5} /></label>
                    <label><span>写入位置</span><select disabled={decisionsLocked} aria-label={`${item.title}的写入位置`} value={item.target} onChange={(event) => updateCandidate(item.clientKey, { target: event.target.value })}>{TYPE_META[item.type].targets.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>

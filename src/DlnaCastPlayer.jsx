@@ -42,6 +42,8 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
   const [roomBusy, setRoomBusy] = useState(false);
   const [roomError, setRoomError] = useState("");
   const [roomNotice, setRoomNotice] = useState("");
+  const [roomCreateUnconfirmed, setRoomCreateUnconfirmed] = useState(false);
+  const roomCreateUnconfirmedRef = useRef(false);
   const roomBusyRef = useRef(false);
   const roomSyncRef = useRef(0);
   const roomMessageIdsRef = useRef(new Set());
@@ -156,6 +158,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
       const joined = await joinWatchRoom(inviteCode, { displayName: userName, aiName });
       if (!lifetime?.active) return;
       if (!joined?.id) throw new Error("join_failed");
+      roomCreateUnconfirmedRef.current = false; setRoomCreateUnconfirmed(false);
       setRoom(joined);
       roomMessageIdsRef.current.clear(); setMessages([]);
       roomEpochRef.current += 1;
@@ -344,7 +347,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
   };
 
   const handleCreateRoom = async () => {
-    if (roomBusyRef.current || roomRef.current || closingRef.current) return;
+    if (roomBusyRef.current || roomRef.current || closingRef.current || roomCreateUnconfirmedRef.current) return;
     roomBusyRef.current = true;
     const lifetime = lifetimeRef.current;
     setRoomBusy(true);
@@ -352,12 +355,20 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
     try {
       const created = await createWatchRoom({ title, sourceApp, mediaUrl, mediaDurationSeconds: durationSeconds, displayName: userName, aiName, session_id: sessionRef.current || undefined });
       if (!lifetime?.active) return;
-      if (!created?.id) throw new Error("no_room");
+      if (typeof created?.id !== "string" || !created.id.trim()) throw new Error("no_room");
       roomEpochRef.current += 1;
       roomMessageIdsRef.current.clear(); setMessages([]);
       setRoom(created); roomRef.current = created;
       await syncRoomData(created.id);
-    } catch (error) { if (lifetime?.active) setRoomError(error?.message || "创建放映厅失败，请稍后再试。"); }
+    } catch (error) {
+      if (!lifetime?.active) return;
+      const rejected = Number.isInteger(error?.status) && error.status >= 400 && error.status < 500 && error.status !== 408;
+      if (rejected) setRoomError(error?.message || "服务拒绝创建放映厅，请检查连接或权限后重试。");
+      else {
+        roomCreateUnconfirmedRef.current = true; setRoomCreateUnconfirmed(true);
+        setRoomError("没有收到创建确认，服务器可能已经建好房间。为避免重复建房，本次暂停再次创建；请向同场成员核对邀请码，再通过下方输入框加入。（错误代码：watch_room_create_unconfirmed）");
+      }
+    }
     finally { roomBusyRef.current = false; if (lifetime?.active) setRoomBusy(false); }
   };
 
@@ -371,6 +382,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
       const joined = await joinWatchRoom(code, { displayName: userName, aiName });
       if (!lifetime?.active) return;
       if (!joined?.id) throw new Error("join_failed");
+      roomCreateUnconfirmedRef.current = false; setRoomCreateUnconfirmed(false);
       roomEpochRef.current += 1;
       roomMessageIdsRef.current.clear(); setMessages([]);
       setRoom(joined); roomRef.current = joined;
@@ -382,16 +394,19 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
   const handleLeaveRoom = async () => {
     const current = roomRef.current;
     if (!current || roomBusyRef.current) return;
+    const lifetime = lifetimeRef.current;
+    const epoch = roomEpochRef.current;
     roomBusyRef.current = true; setRoomBusy(true);
     try {
-      await leaveWatchRoom(current.id);
-      if (!lifetimeRef.current?.active || roomRef.current?.id !== current.id) return;
+      const receipt = await leaveWatchRoom(current.id);
+      if (!lifetime?.active || roomRef.current?.id !== current.id || roomEpochRef.current !== epoch) return;
+      if (receipt?.status !== "left") throw new Error("服务未确认退出，当前房间与消息继续保留。请重连核对房间状态，再重试退出。（错误代码：watch_room_leave_unconfirmed）");
       roomEpochRef.current += 1;
       roomRef.current = null; participantsRef.current = [];
       roomMessageIdsRef.current.clear(); setMessages([]);
       setRoom(null); setParticipants([]); setRoomError(""); setRoomNotice("");
-    } catch (error) { if (lifetimeRef.current?.active) setRoomError(error?.message || "退出同步失败，仍保留当前房间，请稍后重试。"); }
-    finally { roomBusyRef.current = false; if (lifetimeRef.current?.active) setRoomBusy(false); }
+    } catch (error) { if (lifetime?.active && roomRef.current?.id === current.id && roomEpochRef.current === epoch) setRoomError(error?.message || "退出同步失败，仍保留当前房间，请稍后重试。"); }
+    finally { roomBusyRef.current = false; if (lifetime?.active) setRoomBusy(false); }
   };
 
   const onRoomMessage = useEffectEvent((msg) => {
@@ -690,8 +705,8 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
   const roomActions = (<div className="cast-room-actions">
             {!room ? (
               <>
-                <button type="button" className="cast-room-create-btn" onClick={handleCreateRoom} disabled={roomBusy || inviteBusy || !mediaUrl}>
-                  {roomBusy ? "创建中…" : "🎬 创建放映厅"}
+                <button type="button" className="cast-room-create-btn" onClick={handleCreateRoom} disabled={roomBusy || inviteBusy || !mediaUrl || roomCreateUnconfirmed}>
+                  {roomBusy ? "创建中…" : roomCreateUnconfirmed ? "请先核对创建结果" : "🎬 创建放映厅"}
                 </button>
                 {!mediaUrl && <p className="cast-room-error" style={{ color: "#666" }}>先投屏或粘贴视频链接，才能创建放映厅</p>}
                 <div className="cast-room-join-row">

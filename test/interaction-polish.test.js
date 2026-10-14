@@ -42,14 +42,16 @@ assert.equal(readOperationFailures(scope).length, 50);
 clearOperationFailures(scope); assert.equal(readOperationFailures(scope).length, 0);
 recordOperationFailure(scope, "/unknown", { name: "AbortError" }); assert.equal(readOperationFailures(scope).length, 0);
 assert.notEqual(pickActivity("rain-bookshop", () => 0).id, "rain-bookshop");
-assert.equal(new Set(FEATURE_GROUPS.flatMap(group => group.ids)).size, 13);
+const expectedFeatures = ["chat", "moments", "diary", "art", "nursery", "cotton", "together", "music", "duel", "memories", "achievements", "discover", "takeout", "workspace"];
+assert.deepEqual(FEATURE_GROUPS.flatMap(group => group.ids).sort(), [...expectedFeatures].sort());
 assert.ok(QUICK_FEATURES.every(id => FEATURE_LABELS[id]));
 const searchItems = Object.keys(FEATURE_LABELS).map(id => ({ id, label: FEATURE_LABELS[id] }));
 assert.deepEqual(filterFeatures(searchItems, "电影").map(item => item.id), ["together"]);
 assert.deepEqual(filterFeatures(searchItems, "ＭＣＰ").map(item => item.id), ["memories"]);
 assert.deepEqual(filterFeatures(searchItems, " 离线 文件 ").map(item => item.id), ["workspace"]);
 assert.deepEqual(filterFeatures(searchItems, "新手").map(item => item.id), ["achievements"]);
-assert.equal(filterFeatures(searchItems, "").length, 13);
+assert.equal(filterFeatures(searchItems, "").length, expectedFeatures.length);
+assert.deepEqual(filterFeatures(searchItems, "涂鸦").map(item => item.id), ["art"]);
 assert.ok(Object.keys(FEATURE_LABELS).every(id => FEATURE_DETAILS[id]?.hint));
 
 const old = globalThis.IS_REACT_ACT_ENVIRONMENT;
@@ -61,13 +63,14 @@ try {
   const items = Object.entries(FEATURE_LABELS).map(([id, label]) => ({ id, label, icon: "✧" }));
   const selected = [];
   await act(async () => { tree = TestRenderer.create(React.createElement(Navigation, { items, activeView: "chat", onNavigate: id => selected.push(id) })); });
-  assert.equal(tree.root.findAllByType("button").length, 13);
+  assert.equal(tree.root.findByType("nav").findAllByType("button").length, expectedFeatures.length);
   await act(async () => tree.root.findByType("input").props.onChange({ target: { value: "听歌" } }));
-  assert.equal(tree.root.findAllByType("button").length, 1);
-  await act(async () => tree.root.findByType("button").props.onClick());
+  assert.equal(tree.root.findByType("nav").findAllByType("button").length, 1);
+  assert.ok(tree.root.findByProps({ "aria-label": "清空玩法搜索" }));
+  await act(async () => tree.root.findByType("nav").findByType("button").props.onClick());
   assert.deepEqual(selected, ["music"]);
   await act(async () => tree.root.findByType("input").props.onChange({ target: { value: "没有这个功能" } }));
-  assert.equal(tree.root.findAllByType("button").length, 0);
+  assert.equal(tree.root.findByType("nav").findAllByType("button").length, 0);
   console.log("Interaction polish: canvas lifecycle, reduced motion, diagnostic privacy/scope/bounds, navigation and activity discovery passed");
 } finally {
   if (tree) await act(async () => tree.unmount());

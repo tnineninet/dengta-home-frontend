@@ -276,11 +276,23 @@ export async function sendCoWatchReply(sessionId, text, positionSeconds = 0) {
       }),
     },
   );
+  const reaction = data?.reaction;
+  const assistantMessage = data?.assistant_message;
+  const content = assistantMessage?.content;
+  if (!data || typeof data !== "object" || Array.isArray(data) ||
+      (reaction != null && typeof reaction !== "string") ||
+      (assistantMessage != null && (typeof assistantMessage !== "object" || Array.isArray(assistantMessage))) ||
+      (content != null && typeof content !== "string") ||
+      !(reaction?.trim() || content?.trim())) {
+    const error = new Error("共看服务返回的回复格式不完整，本次未确认成功，输入仍保留。请先刷新当前对话核对，再决定重试。（错误代码：co_watch_reply_receipt_invalid）");
+    error.code = "co_watch_reply_receipt_invalid";
+    throw error;
+  }
   return Object.freeze({
     requestId,
-    reaction: cleanText(data?.reaction, 600),
+    reaction: cleanText(reaction, 600),
     danmaku: Array.isArray(data?.danmaku) ? data.danmaku : [],
-    assistantMessage: data?.assistant_message || null,
+    assistantMessage: assistantMessage || null,
     session: normalizeCoWatchSession(data?.session),
   });
 }
