@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { createServer } from "vite";
 import { backendTestRoot } from "./helpers/backend-test-root.js";
 const frontendRoot = fileURLToPath(new URL("..", import.meta.url));
-const requireBackend = createRequire(path.join(backendTestRoot({ frontendRoot }), "package.json"));
+const requireBackend = createRequire(path.join(backendTestRoot({ frontendRoot, requiredFiles: ["package.json", "test/helpers/xhs-sticker-fixture.js", "services/xhs-sticker-import.js", "routes/v2/private-media.js"] }), "package.json"));
 const express = requireBackend("express");
 const { fixture } = requireBackend("./test/helpers/xhs-sticker-fixture.js");
 const { createXhsStickerImportService } = requireBackend("./services/xhs-sticker-import.js");

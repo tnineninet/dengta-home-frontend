@@ -12,7 +12,7 @@
     "test:cast-activity-lifecycle": "node --test test/cast-activity-lifecycle.test.js",
     "test:interaction-polish": "node test/interaction-polish.test.js",
     "test:design-polish": "npm run test:coast-video && npm run test:app-icons && node --test test/navigation-polish.component.test.js test/companion-inspiration-polish.test.js test/atmosphere-lifecycle.test.js test/sun-glass-sky-continuity.test.js test/settings-webgl-resources.test.js test/status-fluid-resources.test.js test/memory-summary-lifecycle.test.js test/session-dialog-lifecycle.test.js test/session-dialog-feedback.test.js test/session-dialog.component.test.js test/co-watch-reply-scope.test.js test/settings-category-navigation.test.js test/discovery-lifecycle.test.js test/watch-link-handoff.test.js test/story-chapters.test.js test/image-preview-navigation.test.js && npm run test:feedback-recovery",
-    "test:feedback-recovery": "node --test test/chat-display-content.test.js test/art-studio.component.test.js test/art-activity-flow.component.test.js test/creative-library-lifecycle.component.test.js test/dlna-discovery-feedback.test.js test/settings-sheet-navigation.test.js test/music-understanding-ui.test.js test/built-in-now-playing.test.js test/built-in-now-playing.component.test.js test/local-playback-handoff.component.test.js",
+    "test:feedback-recovery": "node --test test/chat-display-content.test.js test/art-studio.component.test.js test/creative-library-lifecycle.component.test.js test/dlna-discovery-feedback.test.js test/settings-sheet-navigation.test.js test/music-understanding-ui.test.js test/built-in-now-playing.test.js test/built-in-now-playing.component.test.js test/local-playback-handoff.component.test.js",
     "test:achievement-guide": "node test/achievement-guide.test.js && node --test test/fun-labs-refresh.test.js && node test/fun-labs-feedback.test.js && node test/companion-inspiration.test.js && node --test test/companion-inspiration.component.test.js && node --test test/custom-achievement-submit.test.js && node --test test/achievement-lifecycle.test.js test/feature-navigation-diagnostics.test.js",
     "pretest": "npm run test:app-recovery && node --test test/mobile-chat-shell.test.js && node test/settings-folders.test.js && npm run test:music-listening && npm run test:workspace && npm run test:cast-activity-lifecycle && npm run test:interaction-runtime",
     "test:app-recovery": "node --test test/app-back-navigation.test.js test/app-back-navigation.component.test.js test/app-updates.test.js test/app-updates.component.test.js test/browser-account-binding.test.js",
@@ -85,7 +85,11 @@
     "test:style-distill": "node --test test/style-distill.test.js test/large-text-file.test.js",
     "test:interaction-runtime": "node --test test/watch-room.test.js && node test/duel-request.test.js && node test/api-stream-lifecycle.test.js && node test/together-requests.test.js",
     "test:companion-activities": "node test/companion-activities.test.js && node test/music-import-flow.test.js && node test/activity-query-flow.test.js && node --test test/activity-return.test.js",
-    "test:takeout": "node test/takeout-executor.test.js && node --test test/takeout-browser-scripts.test.js test/takeout-login-state.test.js test/takeout-login-panel.test.js"
+    "test:takeout": "node test/takeout-executor.test.js && node --test test/takeout-browser-scripts.test.js test/takeout-login-state.test.js test/takeout-login-panel.test.js",
+    "test:art-integration": "node --test test/art-activity-flow.component.test.js",
+    "test:personalization-integration": "node --test test/personalization-save-integration.test.js",
+    "test:import-capacity-integration": "node --test test/import-capacity-round13.test.js",
+    "test:backend-integration": "npm run test:xhs-integration && npm run test:art-integration && npm run test:personalization-integration"
   },
   "engines": {
     "node": "24.x"

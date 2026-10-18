@@ -19,7 +19,7 @@
 3. 准备 JSON 数组格式的更新说明，例如 `["修复返回手势", "改进后端重连"]`，运行以下脚本生成待审查的本地清单。脚本仅读取已有 APK，不构建、不上传，不覆盖现有清单；会用 aapt 和 apksigner 检查真实包名、版本、签名并计算摘要。
 
 ```powershell
-node E:\chatgpt\dengta-home-frontend\scripts\prepare-app-update.mjs --apk E:\path\DengTa.apk --notes E:\path\release-notes.json --url https://github.com/DengTaHome/dengta-home-frontend/releases/download/vX.Y.Z/DengTa-X.Y.Z-N.apk --output E:\path\android-update-reviewed.json --sdk E:\chatgpt\DengTa-production-tools\android-sdk
+node E:\chatgpt\dengta-home-frontend\scripts\prepare-app-update.mjs --apk E:\path\DengTa.apk --notes E:\path\release-notes.json --url https://github.com/DengTaHome/dengta-home/releases/download/vX.Y.Z/DengTa-X.Y.Z-N.apk --output E:\path\android-update-reviewed.json --sdk E:\chatgpt\DengTa-production-tools\android-sdk
 ```
 
 4. 审查清单并确认 APK 链接、签名、版本和更新内容，随后在发布授权范围内将该清单部署到网站的 `/updates/android.json`，配置不长期缓存该文件。
