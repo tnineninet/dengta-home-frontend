@@ -10496,3 +10496,8 @@ body,
 @media (max-width: 820px) and (prefers-reduced-motion: no-preference) {
   .main-panel.view-chat { transition: height 120ms ease-out; }
 }
+
+.message-content strong { font-weight: 700; color: inherit; }
+.message-content em { font-style: italic; }
+.message-content del { opacity: .68; text-decoration-thickness: 1px; }
+.message-content code { padding: 1px 5px; border-radius: 6px; background: rgba(90, 66, 76, .08); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }

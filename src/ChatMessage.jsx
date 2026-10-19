@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import DeviceActionReceipts from "./DeviceActionReceipts";
 import CompanionActivityCards from "./CompanionActivityCards.jsx";
 import { MessageAttachments, ThinkingPanel } from "./ChatMessageExtras";
+import { renderChatMarkdown } from "./chat-markdown.jsx";
 import { AuthenticatedImage } from "./PrivateMedia";
 import {
   longPressMovementExceeded,
@@ -288,7 +289,7 @@ function ChatMessage({
             </div>
           )}
           {item.content && (
-            <div className="message-content">{displayContent.content}</div>
+            <div className="message-content">{renderChatMarkdown(displayContent.content)}</div>
           )}
           {displayContent.nextActions.length > 0 && <aside className="message-next-actions" aria-label="伴侣的小提议"><strong>接下来可以…</strong><ul>{displayContent.nextActions.map((action, index) => <li key={index}>{action}</li>)}</ul></aside>}
           {!isUser && streamProgress && (
