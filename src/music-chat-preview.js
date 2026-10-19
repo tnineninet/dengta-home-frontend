@@ -1,9 +1,9 @@
 import { apiRequest } from "./api.js";
-import { extractMusicRequest } from "./music-request-intent.js";
+import { extractMusicRequest, isRandomMusicRequest } from "./music-request-intent.js";
 
 export async function fetchEarlyMusicCard(message) {
   const keyword = extractMusicRequest(message);
-  if (!keyword) return null;
+  if (!keyword && !isRandomMusicRequest(message)) return null;
   const data = await apiRequest("/api/v2/music/chat-card", {
     method: "POST",
     body: JSON.stringify({ message }),
@@ -12,4 +12,4 @@ export async function fetchEarlyMusicCard(message) {
   return data?.ok === true && data.music ? data.music : null;
 }
 
-export { extractMusicRequest };
+export { extractMusicRequest, isRandomMusicRequest };
