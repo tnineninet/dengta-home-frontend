@@ -17,6 +17,9 @@ test("explicit song requests extract song and artist before the model starts", (
 test("random music requests are explicit but not keyword-based", () => {
   assert.equal(isRandomMusicRequest("随便来首歌"), true);
   assert.equal(isRandomMusicRequest("来点音乐"), true);
+  assert.equal(isRandomMusicRequest("下一首"), true);
+  assert.equal(isRandomMusicRequest("再来一首"), true);
+  assert.equal(isRandomMusicRequest("换一首"), true);
   assert.equal(isRandomMusicRequest("不要放歌"), false);
   assert.equal(isRandomMusicRequest("怎么放歌"), false);
 });

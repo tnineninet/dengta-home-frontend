@@ -29,5 +29,5 @@ export function extractMusicRequest(value) {
 export function isRandomMusicRequest(value) {
   const phrase = String(value || "").trim();
   if (!phrase || /(不要|别放|不用放|怎么放|如何放|能不能放|可以放吗|为什么|什么歌)/i.test(phrase)) return false;
-  return /(随便|随机|来点音乐|来首歌|推荐.{0,6}歌|每日推荐|今天听什么|听点什么)/i.test(phrase);
+  return /(随便|随机|来点音乐|来首歌|推荐.{0,6}歌|每日推荐|今天听什么|听点什么|再来一首|换一首|换首|下一首|再放一首|不要这首|不喜欢这首)/i.test(phrase);
 }
