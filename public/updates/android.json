@@ -3,18 +3,19 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 132,
-    "version": "2.10.84",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.10.84/DengTa-2.10.84-132.apk",
-    "sha256": "01db1e69b4dc11277baa88b8d722107fcb49214e5ff3213a7c057f584f379106",
-    "size_bytes": 41224054,
-    "published_at": "2026-10-19T19:28:37Z",
+    "version_code": 133,
+    "version": "2.10.85",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.10.85/DengTa-2.10.85-133.apk",
+    "sha256": "0e4ed4e1f6d52e96520e8eab23bed5d79ca6ed60cc781699f43c57acc703a71c",
+    "size_bytes": 41226354,
+    "published_at": "2026-10-19T19:59:35Z",
     "notes": [
-      "日常聊天可以直接画图：明确说“画一张/画给我们/要个头像”时，伴侣会调用 create_artwork，在后台生成并让图片出现在这条消息里。",
-      "图片生成不再阻塞聊天：先返回“开始画了”，前端轮询作品状态，画好后自动显示，不让人干等两分钟。",
-      "图片接口更好填：新增 OpenAI/OpenRouter/硅基流动预设，一键填地址和模型；还可以“复用聊天接口”直接把当前聊天接口的地址与密钥加密保存到图片接口。",
-      "主动唤醒防重复：最近 10 条主动消息会带入上下文并做近似查重，重复或换个说法的旧句会直接不发；超过 30 天的旧记忆默认不进入主动消息上下文。",
-      "继承 2.10.83：长回复一句一句出现；2.10.82 Markdown；2.10.81 地图滚动；2.10.80 工具代码隐藏。"
+      "新增「放映厅」入口，侧边栏和快捷入口都能直接打开；投屏接收状态、端口、网络会显示在页面顶部，可一键开启/重启。",
+      "DLNA 发现修复：SSDP 响应补上 AVTransport / ConnectionManager / RenderingControl 服务类型，DATE 改为标准 RFC1123 GMT，严格电视/视频 App 更容易搜到「灯塔 DENGTA」。",
+      "聊天后台运行修复：客户端切后台/断网不会再把服务器 SSE 写崩；回到前台会按 client_message_id 找回已经完成的回复，不再只留下本地报错。",
+      "回复完成后立刻恢复发送按钮，不再因为后台刷新聊天记录而一直卡在停止按钮。",
+      "网页登录体验：邮箱/密码支持浏览器密码管理器（autocomplete=email/current-password），新增显示/隐藏密码，移动端减少顶部空白。",
+      "继承 2.10.84：聊天画图、图片接口复用、主动唤醒去重；2.10.83 一句一句出现。"
     ]
   }
 }
