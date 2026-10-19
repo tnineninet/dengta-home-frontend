@@ -3,17 +3,17 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 146,
-    "version": "2.10.98",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.10.98/DengTa-2.10.98-146.apk",
-    "sha256": "fe9425babd44dfc54ff422bfa520aefeae9ea2c7492d82dd803ee8e1dda06193",
-    "size_bytes": 41230942,
-    "published_at": "2026-10-19T23:20:02Z",
+    "version_code": 147,
+    "version": "2.10.99",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.10.99/DengTa-2.10.99-147.apk",
+    "sha256": "6c4ec43a4664f13f560dbe59d7b0f4c67c79161fc4d5beb330c0ccd9d03113d6",
+    "size_bytes": 41231242,
+    "published_at": "2026-10-19T23:30:11Z",
     "notes": [
-      "听歌卡片新增“歌词”：点开显示滚动歌词，跟随播放进度高亮当前句。",
-      "歌词按需加载，失败/无歌词会明确提示，不影响播放。",
-      "显式点歌优先找可播版本；换首、随机、下一首继续保留。",
-      "动态缓存、日记预加载、全局迷你播放器继续保留。"
+      "歌词支持点击跳转：点任意一句直接跳到对应播放位置。",
+      "歌词支持翻译显示：接口有 tlyric 时在原文下显示翻译。",
+      "当前句高亮、自动滚动继续保留。",
+      "显式点歌可播优先、换首、随机、下一首、动态缓存继续保留。"
     ]
   }
 }
