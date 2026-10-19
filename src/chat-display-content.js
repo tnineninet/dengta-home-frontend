@@ -1,6 +1,11 @@
+import { stripLegacyToolMarkupForDisplay } from "./legacy-tool-markup.js";
+
 // Older providers sometimes append this UI payload as plain text instead of tool metadata.
 export function readChatDisplayContent(message = {}) {
-  const content = typeof message.content === "string" ? message.content : "";
+  const rawContent = typeof message.content === "string" ? message.content : "";
+  const content = message.role === "assistant"
+    ? stripLegacyToolMarkupForDisplay(rawContent)
+    : rawContent;
   const unchanged = { content, nextActions: [] };
   if (message.role !== "assistant" || message.chatError || message.isStreaming || message.generationInProgress) return unchanged;
   const match = /\n\s*\n(\{\s*"next_best_actions"\s*:[\s\S]+\})\s*$/.exec(content);

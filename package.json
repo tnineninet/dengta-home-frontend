@@ -1,7 +1,7 @@
 {
   "name": "dengta-home-react",
   "private": true,
-  "version": "2.10.79",
+  "version": "2.10.80",
   "type": "module",
   "scripts": {
     "test:xhs": "node --test test/xhs-login-panel.test.js test/xhs-sticker-import.test.js test/xhs-sticker-import.component.test.js test/backend-test-root.test.js",
@@ -45,7 +45,7 @@
     "test:voice": "node test/voice.test.js",
     "test:voice-output": "node test/voice-output.test.js",
     "test:chat-tools": "node test/chat-tools.test.js",
-    "test:chat-latency": "node test/chat-latency.test.js && node --test test/chat-transcript.test.js test/chat-message-time.test.js test/chat-row-identity.test.js && node --test test/chat-send-preparation.test.js && npm run test:chat-text-impact",
+    "test:chat-latency": "node test/chat-latency.test.js && node --test test/legacy-tool-markup.test.js && node --test test/chat-transcript.test.js test/chat-message-time.test.js test/chat-row-identity.test.js && node --test test/chat-send-preparation.test.js && npm run test:chat-text-impact",
     "test:chat-text-impact": "node --test test/text-impact-player.test.js test/chat-text-impact.component.test.js test/text-impact-physics.test.js",
     "test:inner-monologue": "node test/inner-monologue.test.js && node test/monologue-recovery-ui.test.js && node --test test/inner-monologue-request-lifecycle.test.js test/monologue-visible-flow.test.js test/public-provider-summary.test.js test/chat-monologue-retry.test.js test/monologue-recovery-storage.test.js test/body-first-monologue.test.js",
     "test:inner-monologue-sync": "node test/inner-monologue-sync.test.js && node --test test/monologue-request-deadline.test.js",
