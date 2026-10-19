@@ -7124,8 +7124,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           </div>
         </section>
 
-        {activeView === "chat" && earlyMusicCard && (
-          <div className="early-music-dock">
+        {earlyMusicCard && (
+          <div className="early-music-dock" role="region" aria-label="正在播放的歌曲">
             <MusicChatCard
               music={earlyMusicCard}
               onPlaybackChange={(playing) => { earlyMusicPlayingRef.current = playing; }}
