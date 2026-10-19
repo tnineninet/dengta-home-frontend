@@ -95,6 +95,7 @@ import { useSettingsSheetNavigation } from "./useSettingsSheetNavigation.js";
 import { useAppBackNavigation } from "./useAppBackNavigation.js";
 import { installBrowserAccountBinding } from "./browser-account-binding.js";
 import { copyDiscoveryLink, emptyDiscoveryState, refreshDiscovery, DISCOVERY_ERROR_FEEDBACK } from "./discovery-feed.js";
+import { readMomentsCache, writeMomentsCache } from "./moments-cache.js";
 import PersonalizationEditor from "./PersonalizationEditor.jsx";
 import { authSession } from "./auth-session.js";
 import { createScopedSettingsSession, registerSettingsSaveGuard, settingsSaveScope } from "./settings-save-scope.js";
@@ -1076,6 +1077,20 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     setPublicReasoningSummaryEnabled(false);
   }, [accountStorageScope, companionScope, activeSessionId]);
   const [modelsLoadMessage, setModelsLoadMessage] = useState("");
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const preload = () => {
+      void import("./CompanionDiary");
+      void import("./StoryChapters.jsx");
+    };
+    const idle = typeof window.requestIdleCallback === "function"
+      ? window.requestIdleCallback(preload, { timeout: 5000 })
+      : window.setTimeout(preload, 3000);
+    return () => {
+      if (typeof window.cancelIdleCallback === "function") window.cancelIdleCallback(idle);
+      else window.clearTimeout(idle);
+    };
+  }, []);
   const [settings, setSettings] = useState(emptySettings);
   const [draftSettings, setDraftSettings] = useState(emptySettings);
   const [settingsExitBusy, setSettingsExitBusy] = useState(false);
@@ -3309,7 +3324,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   useEffect(() => {
     if (activeView === "moments") {
-      void loadMoments();
+      const cached = readMomentsCache(privateMediaScope);
+      if (cached) {
+        setMoments(cached.entries);
+        setMomentsAvailable(cached.available);
+        setMomentsLoadError("");
+        void loadMoments({ silent: true });
+      } else {
+        void loadMoments();
+      }
       const refreshTimer = window.setInterval(() => {
         if (document.visibilityState === "visible") {
           void loadMoments({ silent: true });
@@ -3329,7 +3352,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
 
     return undefined;
-  }, [activeView, loadMoments]);
+  }, [activeView, loadMoments, privateMediaScope]);
+
+  useEffect(() => {
+    if (activeView === "moments" && momentsAvailable !== null && moments.length > 0) {
+      writeMomentsCache(privateMediaScope, { available: momentsAvailable, entries: moments });
+    }
+  }, [activeView, moments, momentsAvailable, privateMediaScope]);
 
   useLayoutEffect(() => {
     if (activeView !== "chat" || !messageListRef.current) return undefined;
