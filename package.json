@@ -1,7 +1,7 @@
 {
   "name": "dengta-home-react",
   "private": true,
-  "version": "2.10.99",
+  "version": "2.11.0",
   "type": "module",
   "scripts": {
     "test:xhs": "node --test test/xhs-login-panel.test.js test/xhs-sticker-import.test.js test/xhs-sticker-import.component.test.js test/backend-test-root.test.js",

@@ -1074,6 +1074,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
     return list.reverse();
   }, [messages]);
+  const musicDockQueue = useMemo(() => {
+    const all = [earlyMusicCard, ...recentChatMusic].filter(Boolean);
+    return all.filter((card, index) => all.findIndex((item) => item.id === card.id) === index);
+  }, [earlyMusicCard, recentChatMusic]);
   const [historyLoadState, setHistoryLoadState] = useState(null);
   const [historyRetryRevision, setHistoryRetryRevision] = useState(0);
   const historyLoadPendingRef = useRef(false);
@@ -10012,19 +10016,36 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             <div className="early-music-actions">
               <button
                 type="button"
-                className="early-music-next"
-                disabled={[earlyMusicCard, ...recentChatMusic].filter((card, index, all) => all.findIndex((item) => item.id === card.id) === index).length < 2}
+                className="early-music-prev"
+                aria-label="上一首"
+                disabled={musicDockQueue.length < 2}
                 onClick={() => {
-                  const all = [earlyMusicCard, ...recentChatMusic].filter((card, index, items) => items.findIndex((item) => item.id === card.id) === index);
-                  if (all.length < 2) return;
-                  const current = all.findIndex((card) => card.id === earlyMusicCard.id);
-                  const next = all[(current + 1) % all.length];
+                  const current = Math.max(0, musicDockQueue.findIndex((card) => card.id === earlyMusicCard.id));
+                  const next = musicDockQueue[(current - 1 + musicDockQueue.length) % musicDockQueue.length];
                   earlyMusicPlayingRef.current = false;
                   setEarlyMusicCard(next);
                 }}
               >
-                换首
+                ‹
               </button>
+              <span className="early-music-count" aria-label="最近歌曲位置">
+                {Math.max(0, musicDockQueue.findIndex((card) => card.id === earlyMusicCard.id)) + 1}/{musicDockQueue.length}
+              </span>
+              <button
+                type="button"
+                className="early-music-next"
+                aria-label="下一首"
+                disabled={musicDockQueue.length < 2}
+                onClick={() => {
+                  const current = Math.max(0, musicDockQueue.findIndex((card) => card.id === earlyMusicCard.id));
+                  const next = musicDockQueue[(current + 1) % musicDockQueue.length];
+                  earlyMusicPlayingRef.current = false;
+                  setEarlyMusicCard(next);
+                }}
+              >
+                ›
+              </button>
+
               <button
                 type="button"
                 className="early-music-open"
