@@ -5170,19 +5170,21 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           }
 
           if (event.type === "monologue") {
-            setMessages((current) =>
-              current.map((item) =>
-                item.id === localAssistantId
-                  ? {
-                      ...item,
-                      visibleMonologue: reduceVisibleMonologueEvent(
-                        item.visibleMonologue,
-                        event,
-                      ),
-                    }
-                  : item,
-              ),
-            );
+            flushNow(() => {
+              setMessages((current) =>
+                current.map((item) =>
+                  item.id === localAssistantId
+                    ? {
+                        ...item,
+                        visibleMonologue: reduceVisibleMonologueEvent(
+                          item.visibleMonologue,
+                          event,
+                        ),
+                      }
+                    : item,
+                ),
+              );
+            });
           }
 
           if (event.type === "text") {
