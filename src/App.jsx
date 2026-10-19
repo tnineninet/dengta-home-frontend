@@ -115,6 +115,7 @@ import { useChatDraft } from "./use-chat-draft.js";
 import ChatBackground from "./ChatBackground";
 import MusicChatCard from "./MusicChatCard.jsx";
 import { fetchEarlyMusicCard, extractMusicRequest } from "./music-chat-preview.js";
+import { isRandomMusicRequest } from "./music-request-intent.js";
 import CelestialBackdrop from "./CelestialBackdrop";
 import SunGlassTimeDeck from "./SunGlassTimeDeck";
 import FeatureAtmosphere from "./FeatureAtmosphere";
@@ -4929,7 +4930,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   async function loadEarlyMusicCard(text) {
     const keyword = extractMusicRequest(text);
-    if (!keyword) return;
+    if (!keyword && !isRandomMusicRequest(text)) return;
     const requestId = ++earlyMusicRequestRef.current;
     earlyMusicPlayingRef.current = false;
     setEarlyMusicCard(null);
