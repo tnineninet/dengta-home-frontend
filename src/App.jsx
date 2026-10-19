@@ -7124,23 +7124,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           </div>
         </section>
 
-        {earlyMusicCard && (
-          <div className="early-music-dock" role="region" aria-label="正在播放的歌曲">
-            <MusicChatCard
-              music={earlyMusicCard}
-              onPlaybackChange={(playing) => { earlyMusicPlayingRef.current = playing; }}
-            />
-            <button
-              type="button"
-              className="early-music-dismiss"
-              aria-label="收起预听歌曲"
-              onClick={() => { earlyMusicPlayingRef.current = false; setEarlyMusicCard(null); }}
-            >
-              ×
-            </button>
-          </div>
-        )}
-
         <div className="composer-wrap">
           <ActivityReturnBar
             activity={resolveActivityReturn(activityReturn, coWatchIdentityRef.current, coWatchSession)}
@@ -9966,6 +9949,23 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           <div className="notice" role="status">
             <span>{notice}</span>
             <button onClick={() => setNotice("")}>×</button>
+          </div>
+        )}
+
+        {earlyMusicCard && (
+          <div className="early-music-dock" role="region" aria-label="正在播放的歌曲">
+            <MusicChatCard
+              music={earlyMusicCard}
+              onPlaybackChange={(playing) => { earlyMusicPlayingRef.current = playing; }}
+            />
+            <button
+              type="button"
+              className="early-music-dismiss"
+              aria-label="收起预听歌曲"
+              onClick={() => { earlyMusicPlayingRef.current = false; setEarlyMusicCard(null); }}
+            >
+              ×
+            </button>
           </div>
         )}
 
