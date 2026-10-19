@@ -3,17 +3,17 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 141,
-    "version": "2.10.93",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.10.93/DengTa-2.10.93-141.apk",
-    "sha256": "810611bbb740a522c033154b9ea724b0a8b97029283362d68344c9cb64d2b67c",
-    "size_bytes": 41228674,
-    "published_at": "2026-10-19T21:48:46Z",
+    "version_code": 142,
+    "version": "2.10.94",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.10.94/DengTa-2.10.94-142.apk",
+    "sha256": "3aab6b2d49d6d2574fc5a5c52b2454d3d70564283fe9164f749ff42595f065b6",
+    "size_bytes": 41437514,
+    "published_at": "2026-10-19T22:06:34Z",
     "notes": [
-      "侧栏新增“设置”快捷入口，不用再找顶栏齿轮。",
-      "保留顶栏齿轮；打开设置仍会关闭侧栏和更多菜单。",
-      "继承 2.10.92：点歌防误判、全局迷你播放器、一起听入口、跨页面播放。",
-      "继承 2.10.89/2.10.90：点歌约 2 秒先出卡片、原唱优先、卡片持久化。"
+      "动态页加入本地缓存：二次打开先显示上次内容，再后台刷新，减少 8 秒空白。",
+      "日记/故事章节在前台空闲时预加载，减少首次打开等待。",
+      "缓存按账号和伴侣分区，最多 20 条；缓存失败不影响正常刷新。",
+      "继承 2.10.93：侧栏设置入口、全局迷你播放器、一起听、点歌防误判。"
     ]
   }
 }
