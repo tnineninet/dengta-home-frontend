@@ -3,19 +3,17 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 126,
-    "version": "2.10.78",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.10.78/DengTa-2.10.78-126.apk",
-    "sha256": "264b6a1d957eb00b987e49b4a2899ecdc143061b0cc55fd3189ce7252875b876",
-    "size_bytes": 41424212,
-    "published_at": "2026-10-19T18:00:19Z",
+    "version_code": 127,
+    "version": "2.10.79",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.10.79/DengTa-2.10.79-127.apk",
+    "sha256": "9b57eb582564f7b65c96f30112fe05d1b128cf32384e1fc6c10ca75bc1a33837",
+    "size_bytes": 41424198,
+    "published_at": "2026-10-19T18:16:39Z",
     "notes": [
-      "聊天流式显示：每个正文分片到达后立即同步提交，不再被后续状态更新合批到结尾；流式正文先于完成回执显示。",
-      "减少每个 token 的整树重绘：夜空/海岸背景画布改为 memo，只有天气或天空变化才重渲染。",
-      "移除空正文的阻塞式自动重试：避免模型首轮空响应时等完两轮才显示；空正文仍会给出可手动重试的明确错误。",
-      "SSE 增加 no-transform，减少代理压缩/缓冲导致的整段延迟。",
-      "错误说明继续明确：波浪号等符号会原样发送，不是本地拦截。",
-      "继承 2.10.77：聊天闪动修复、侧边返回、重启灯塔、更新弹窗。"
+      "心声不再等本轮校验：模型一旦生成 [monologue] 里的字，就立即逐字显示在聊天里；正文开始生成后同样逐字立即显示。",
+      "前端对心声分片和正文分片都使用同步提交，避免被后续状态更新合批到结尾。",
+      "不再用心声校验结果延迟或撤回已经生成的内容；聊天主流程直接展示模型已经写出的文字。",
+      "继承 2.10.78：正文分片即时提交、背景画布 memo、移除空正文阻塞重试、聊天闪动修复。"
     ]
   }
 }
