@@ -10501,3 +10501,9 @@ body,
 .message-content em { font-style: italic; }
 .message-content del { opacity: .68; text-decoration-thickness: 1px; }
 .message-content code { padding: 1px 5px; border-radius: 6px; background: rgba(90, 66, 76, .08); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
+
+.chat-sentences { display: flex; flex-direction: column; gap: 7px; }
+.chat-sentence { display: block; width: fit-content; max-width: 100%; }
+.chat-sentence { animation: chat-sentence-in .16s ease-out both; }
+@keyframes chat-sentence-in { from { opacity: .55; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .chat-sentence { animation: none; } }

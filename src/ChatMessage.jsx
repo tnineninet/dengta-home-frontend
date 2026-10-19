@@ -3,6 +3,7 @@ import DeviceActionReceipts from "./DeviceActionReceipts";
 import CompanionActivityCards from "./CompanionActivityCards.jsx";
 import { MessageAttachments, ThinkingPanel } from "./ChatMessageExtras";
 import { renderChatMarkdown } from "./chat-markdown.jsx";
+import { splitChatSegments } from "./chat-sentences.js";
 import { AuthenticatedImage } from "./PrivateMedia";
 import {
   longPressMovementExceeded,
@@ -92,6 +93,7 @@ function ChatMessage({
     item.tool_calls?.artwork_alt || `${aiName}创作的图片`;
   const isGenerating = item.isStreaming === true || item.generationInProgress === true;
   const displayContent = useMemo(() => readChatDisplayContent(item), [item]);
+  const chatSegments = useMemo(() => isUser ? [] : splitChatSegments(displayContent.content), [isUser, displayContent.content]);
   const formattedTime = useMemo(() =>
     typeof item.formattedTime === "string" && item.formattedTime
       ? item.formattedTime : formatMessageTime(item.created_at),
@@ -289,7 +291,13 @@ function ChatMessage({
             </div>
           )}
           {item.content && (
-            <div className="message-content">{renderChatMarkdown(displayContent.content)}</div>
+            <div className={`message-content${isUser ? "" : " chat-sentences"}`}>
+              {isUser
+                ? renderChatMarkdown(displayContent.content)
+                : chatSegments.map((segment, index) => (
+                    <span className="chat-sentence" key={index}>{renderChatMarkdown(segment)}</span>
+                  ))}
+            </div>
           )}
           {displayContent.nextActions.length > 0 && <aside className="message-next-actions" aria-label="伴侣的小提议"><strong>接下来可以…</strong><ul>{displayContent.nextActions.map((action, index) => <li key={index}>{action}</li>)}</ul></aside>}
           {!isUser && streamProgress && (

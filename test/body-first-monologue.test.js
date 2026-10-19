@@ -262,16 +262,17 @@ test("the real transcript renders early body before monologue or done, then inde
     const element = React.createElement(Transcript, props());
     if (tree) tree.update(element); else tree = TestRenderer.create(element);
   });
+  const contentText = () => words(tree.root.findAll(node => String(node.props?.className || "").split(" ").includes("message-content"))[0]);
   try {
     await commit();
     h.emit({ type: "text", content: "Synthetic first body token ~🙂" });
     await commit();
-    assert.equal(tree.root.findByProps({ className: "message-content" }).children.join(""), "Synthetic first body token ~🙂");
+    assert.equal(contentText(), "Synthetic first body token ~🙂");
     assert.ok(!words(tree.toJSON()).includes("Delayed visible thought"));
     assert.ok(tree.root.findAllByType("button").every(button => !words(button).includes("补充这次心声")));
     h.emit(mono("Delayed visible thought.")); await commit();
     assert.ok(words(tree.toJSON()).includes("Delayed visible thought."));
-    assert.equal(tree.root.findByProps({ className: "message-content" }).children.join(""), "Synthetic first body token ~🙂");
+    assert.equal(contentText(), "Synthetic first body token ~🙂");
     h.emit(endMono("truncated"));
     h.emit(done("Synthetic first body token ~🙂", snapshot("Delayed visible thought.", "truncated")));
     await commit();
