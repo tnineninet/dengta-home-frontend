@@ -38,13 +38,23 @@ export function validMapLocation(location) {
     typeof location.longitude === "number" && Number.isFinite(location.longitude) && Math.abs(location.longitude) <= 180 &&
     typeof location.accuracy === "number" && Number.isFinite(location.accuracy) && location.accuracy >= 0;
 }
+function withLocationTimeout(promise, timeoutMs, code = "location_timeout") {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(Object.assign(new Error("Location timed out"), { code })), timeoutMs);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
 export async function locateForSurpriseMap({ capacitor = Capacitor, geolocation = globalThis.navigator?.geolocation, now = () => Date.now() } = {}) {
   let location, capturedAt;
   if (capacitor?.isPluginAvailable?.("Whereabouts")) {
     const plugin = capacitor.Plugins.Whereabouts;
-    const permission = await plugin.requestPermissions();
+    const permission = await withLocationTimeout(plugin.requestPermissions(), 20_000, "location_permission_denied");
     if (permission?.granted !== true) throw Object.assign(new Error("Location not granted"), { code: "location_permission_denied" });
-    location = await plugin.getLocation();
+    location = await withLocationTimeout(plugin.getLocation(), 15_000, "location_timeout");
     capturedAt = typeof location?.timestamp === "number" ? location.timestamp : Date.parse(location?.timestamp || "");
   } else {
     if (!geolocation) throw Object.assign(new Error("Geolocation unavailable"), { code: "location_unavailable" });
