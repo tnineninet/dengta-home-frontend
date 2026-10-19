@@ -1236,7 +1236,6 @@ button:disabled {
 .message-row {
   display: flex;
   margin: 14px 0;
-  animation: content-in 0.28s ease both;
 }
 
 .message-row.user {
@@ -1273,13 +1272,9 @@ button:disabled {
   line-height: 1.7;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
-  animation: content-in 0.3s ease both;
 }
 
-/* 生成完成后从省略号到完整消息的平滑过渡 */
-.message-row:not(.user) .message-content {
-  animation: content-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
+/* 历史消息不逐条重播入场动画；切换页面或键盘重排时保持稳定。 */
 
 .message-attachments {
   display: grid;
@@ -10497,3 +10492,7 @@ body,
 
 .connection-recovery-actions { flex-wrap: wrap; }
 .connection-recovery-restart { border-color: #c99a6b !important; color: #f4dfc3 !important; }
+
+@media (max-width: 820px) and (prefers-reduced-motion: no-preference) {
+  .main-panel.view-chat { transition: height 120ms ease-out; }
+}

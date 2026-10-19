@@ -41,13 +41,16 @@ export function installVisualViewportController({ windowObject = globalThis.wind
   function schedule() {
     if (!disposed && frame === null) frame = windowObject.requestAnimationFrame(fitViewport);
   }
+  // 键盘打开时 visualViewport 的 scroll 会由布局变化反向触发；此时高度只跟 resize 走，
+  // 避免 fitViewport 写入 --app-height 后又触发 scroll 的循环抖动。
+  function scheduleScroll() { if (!keyboardOpen) schedule(); }
   fitViewport();
-  viewport.addEventListener("resize", schedule); viewport.addEventListener("scroll", schedule);
+  viewport.addEventListener("resize", schedule); viewport.addEventListener("scroll", scheduleScroll);
   windowObject.addEventListener("resize", schedule); windowObject.addEventListener("orientationchange", schedule);
   documentObject.addEventListener("focusin", schedule); documentObject.addEventListener("focusout", schedule);
   return () => {
     disposed = true; if (frame !== null) windowObject.cancelAnimationFrame(frame);
-    viewport.removeEventListener("resize", schedule); viewport.removeEventListener("scroll", schedule);
+    viewport.removeEventListener("resize", schedule); viewport.removeEventListener("scroll", scheduleScroll);
     windowObject.removeEventListener("resize", schedule); windowObject.removeEventListener("orientationchange", schedule);
     documentObject.removeEventListener("focusin", schedule); documentObject.removeEventListener("focusout", schedule);
     delete root.dataset.keyboardOpen;

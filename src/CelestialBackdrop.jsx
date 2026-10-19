@@ -307,6 +307,7 @@ function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode, ra
     };
 
     resize();
+    let resizeTimer = null;
     const hasVisibleMotion = starsVisible || mode === "cloudy" || mode === "rain" || mode === "storm";
     const loop = createVisualLoop(paint, { animated: hasVisibleMotion, reducedMotion: reduceMotion, interval: () => {
       if (document.documentElement.dataset.timeScrubbing === "true") return 120;
@@ -315,9 +316,19 @@ function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode, ra
       return 33;
     } });
     loopRef.current = loop;
-    const handleResize = () => { resize(); loop.invalidate(); };
+    const handleResize = () => {
+      clearTimeout(resizeTimer);
+      // 键盘弹出会连续触发 resize；此时画布应保持全屏尺寸，避免背景被逐帧拉伸。
+      resizeTimer = setTimeout(() => {
+        resizeTimer = null;
+        if (document.documentElement.dataset.keyboardOpen === "true") return;
+        resize();
+        loop.invalidate();
+      }, 140);
+    };
     window.addEventListener("resize", handleResize);
     return () => {
+      clearTimeout(resizeTimer);
       loop.dispose();
       loopRef.current = null;
       window.removeEventListener("resize", handleResize);

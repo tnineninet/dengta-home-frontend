@@ -1,6 +1,6 @@
 export const CHAT_ERROR_FEEDBACK = {
   "provider_empty_response": {
-    "reason": "模型接口有响应，但没有返回可显示的正文；具体原因尚未确认。",
+    "reason": "模型接口有响应，但没有返回可显示的正文；这不是波浪号或特殊符号被本地拦截，DengTa 会原样发送。",
     "action": "点同一条消息的“重试”；持续出现时检查模型输出预算和接口协议，或切换接口。"
   },
   "provider_balance_insufficient": {
@@ -72,7 +72,7 @@ export const CHAT_ERROR_FEEDBACK = {
     "action": "点“重试”；持续出现时检查接口流协议兼容性或切换接口。"
   },
   "reply_body_missing": {
-    "reason": "本轮未收到可分离的正文，可能只生成了心声或格式未闭合；本轮回复未保存。",
+    "reason": "本轮未收到可分离的正文，可能只生成了心声或格式未闭合；这不是符号被本地拦截。",
     "action": "点“重试”；持续出现时查看日志并检查模型的正文与心声格式支持。"
   },
   "context_budget_exceeded": {
