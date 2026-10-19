@@ -6,7 +6,7 @@ import vm from "node:vm";
 // Execute the production 2D atmosphere hook against canvas call receipts. This
 // checks rendered storm layers rather than matching implementation strings.
 const source = fs.readFileSync(new URL("../src/CelestialBackdrop.jsx", import.meta.url), "utf8");
-const componentAt = source.indexOf("export default function CelestialBackdrop");
+const componentAt = source.indexOf("function CelestialBackdrop(");
 const helpers = source.slice(0, componentAt).replace(/^import[^;]+;\r?\n/gm, "");
 
 function drawFixture(mode, intensity = 1) {
@@ -27,6 +27,7 @@ function drawFixture(mode, intensity = 1) {
     useRef: value => ({ current: value }),
     useEffect: callback => { cleanups.push(callback()); },
     performance: { now: () => 0 },
+    setTimeout: () => 0, clearTimeout: () => {},
     window: { devicePixelRatio: 1, innerWidth: 390, innerHeight: 844, addEventListener() {}, removeEventListener() {} },
     document: { hidden: false, documentElement: { dataset: {} }, querySelector: () => null },
     createVisualLoop(draw) { draw(1000); return { invalidate() {}, dispose() {} }; },

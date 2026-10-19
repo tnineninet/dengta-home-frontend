@@ -27,7 +27,10 @@ import { useBuiltInNowPlaying } from "./useBuiltInNowPlaying.js";
 import { chooseNowPlayingCard } from "./built-in-now-playing.js";
 import { createAiMusicConsumer } from "./ai-music-consumer.js";
 import MemoryGatewayStatus from "./MemoryGatewayStatus.jsx";
+import { flushSync } from "react-dom";
 import { Capacitor } from "@capacitor/core";
+
+const flushNow = typeof flushSync === "function" ? flushSync : (callback) => callback();
 import { LocalNotifications } from "@capacitor/local-notifications";
 import { App as CapacitorApp } from "@capacitor/app";
 import {
@@ -5183,13 +5186,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           }
 
           if (event.type === "text") {
-            setMessages((current) =>
-              current.map((item) =>
-                item.id === localAssistantId
-                  ? { ...item, content: item.content + event.content }
-                  : item,
-              ),
-            );
+            // 每个到达的正文分片立即提交，避免被后续状态更新或长时间渲染合批到结尾。
+            flushNow(() => {
+              setMessages((current) =>
+                current.map((item) =>
+                  item.id === localAssistantId
+                    ? { ...item, content: item.content + event.content }
+                    : item,
+                ),
+              );
+            });
           }
 
           if (event.type === "error") {

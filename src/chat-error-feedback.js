@@ -85,7 +85,7 @@ export const CHAT_ERROR_FEEDBACK = {
   }
 };
 export const CHAT_ERROR_MESSAGES = {
-  "provider_empty_response": "模型接口有响应，但没有返回可显示的正文；具体原因尚未确认。 点同一条消息的“重试”；持续出现时检查模型输出预算和接口协议，或切换接口。 / The provider returned no visible reply text. Retry the same message or check output budget and API compatibility.",
+  "provider_empty_response": "模型接口有响应，但没有返回可显示的正文；这不是波浪号或特殊符号被本地拦截，DengTa 会原样发送。 点同一条消息的“重试”；持续出现时检查模型输出预算和接口协议，或切换接口。 / The provider returned no visible reply text; symbols were sent unchanged. Retry the same message or check output budget and API compatibility.",
   "provider_balance_insufficient": "API 账户余额不足。 到当前供应商控制台充值或切换有余额的接口，保存后点“重试”。 / The API account balance is insufficient. Add credits or switch providers, then retry.",
   "provider_quota_exhausted": "API 额度或账单上限已耗尽；不一定是余额不足。 检查供应商用量、余额和账单限额；恢复额度或切换接口后点“重试”。 / The API quota or billing limit is exhausted. Check usage and billing limits, then retry.",
   "provider_rate_limited": "模型接口限制了请求频率或并发数。 等待片刻再点“重试”，避免连续点击；持续出现时检查供应商限额或切换接口。 / The provider rate-limited the request. Wait briefly before retrying.",
@@ -103,7 +103,7 @@ export const CHAT_ERROR_MESSAGES = {
   "MODEL_STREAM_CONNECT_TIMEOUT": "模型流式连接等待超时。 等待片刻后点“重试”；持续出现时更换模型或接口。 / The model stream connection timed out. Retry later.",
   "MODEL_STREAM_IDLE_TIMEOUT": "模型流式回复连续五分钟没有新数据。 等待片刻后点“重试”，或切换可用模型接口。 / The model stream was idle for five minutes. Retry later.",
   "provider_stream_incomplete": "上游模型流没有正常结束，本轮回复未保存。 点“重试”；持续出现时检查接口流协议兼容性或切换接口。 / The upstream stream did not complete; this reply was not saved.",
-  "reply_body_missing": "本轮未收到可分离的正文，可能只生成了心声或格式未闭合；本轮回复未保存。 点“重试”；持续出现时查看日志并检查模型的正文与心声格式支持。 / No separable reply body was received; this reply was not saved.",
+  "reply_body_missing": "本轮未收到可分离的正文，可能只生成了心声或格式未闭合；这不是符号被本地拦截。 点“重试”；持续出现时查看日志并检查模型的正文与心声格式支持。 / No separable reply body was received; this reply was not saved.",
   "context_budget_exceeded": "本轮上下文超过模型的估算容量。 选择更大窗口模型、减少本轮附件或降低输出预算后重试；日志可查看输入、窗口和预留输出。 / This turn exceeds the estimated model context capacity. Use a larger context or fewer attachments.",
   "provider_error_document": "模型接口返回了错误文档，尚未确认更具体原因；本轮回复未保存。 查看错误码及上游 HTTP 日志，检查接口设置或稍后重试。 / The model API returned an error document; this reply was not saved."
 };

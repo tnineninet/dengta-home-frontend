@@ -1,5 +1,5 @@
 import { createVisualLoop } from "./visual-loop.js";
-import { useEffect, useMemo, useRef } from "react";
+import { memo, useEffect, useMemo, useRef } from "react";
 import { getSunGlassSky, weatherModeFromAmbient, rainIntensityFromAmbient } from "./sun-glass-sky.js";
 import useReducedVisualMotion from "./use-reduced-visual-motion.js";
 import CoastVideoBackdrop from "./CoastVideoBackdrop.jsx";
@@ -336,7 +336,7 @@ function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode, ra
   }, [cloudsRef, mode, rainIntensity, starsRef, starsVisible, weatherRef, reduceMotion]);
 }
 
-export default function CelestialBackdrop({
+function CelestialBackdrop({
   snapshot,
   weather = null,
   weatherModeOverride = null,
@@ -418,3 +418,5 @@ export default function CelestialBackdrop({
     </div>
   );
 }
+
+export default memo(CelestialBackdrop);

@@ -82,6 +82,7 @@ function harness() {
     mergeStreamedAssistantMessage, VISIBLE_MONOLOGUE_SOURCE,
     publicChatErrorMessage, temporaryReplyOnFailure, isChatGenerationInProgress,
     clearChatClientMessage, updateChatClientMessage,
+    flushNow: callback => callback(),
     setMessages(update) { messages = typeof update === "function" ? update(messages) : update; writes.push(messages); },
     applyPromptReceipt(receipt) { receipts.push(receipt); },
     normalizeCompanionActivities: () => [], openCompanionActivity: () => {},
