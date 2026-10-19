@@ -9731,6 +9731,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           <div className="sidebar-account-slot">{accountControl}</div>
         )}
 
+        <button
+          type="button"
+          className="sidebar-settings-button"
+          aria-label="打开设置"
+          onClick={openSettingsPanel}
+        >
+          <span aria-hidden="true">⚙</span>
+          设置
+        </button>
+
         <div className="sidebar-footer">
           <span className={`connection-dot ${isOnline ? "online" : ""}`} />
           {isOnline ? "服务可连接" : "网络已断开"}
