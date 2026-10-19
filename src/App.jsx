@@ -1063,6 +1063,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [earlyMusicCard, setEarlyMusicCard] = useState(null);
   const [messages, setMessages] = useState([]);
+  const recentChatMusic = useMemo(() => {
+    const seen = new Set();
+    const list = [];
+    for (let index = messages.length - 1; index >= 0 && list.length < 8; index -= 1) {
+      const card = messages[index]?.tool_calls?.music_card;
+      if (!card?.id || !card?.audio_url || seen.has(String(card.id))) continue;
+      seen.add(String(card.id));
+      list.push(card);
+    }
+    return list.reverse();
+  }, [messages]);
   const [historyLoadState, setHistoryLoadState] = useState(null);
   const [historyRetryRevision, setHistoryRetryRevision] = useState(0);
   const historyLoadPendingRef = useRef(false);
@@ -9998,21 +10009,38 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               music={earlyMusicCard}
               onPlaybackChange={(playing) => { earlyMusicPlayingRef.current = playing; }}
             />
-            <button
-              type="button"
-              className="early-music-open"
-              onClick={() => changeView("music")}
-            >
-              一起听
-            </button>
-            <button
-              type="button"
-              className="early-music-dismiss"
-              aria-label="收起预听歌曲"
-              onClick={() => { earlyMusicPlayingRef.current = false; setEarlyMusicCard(null); }}
-            >
-              ×
-            </button>
+            <div className="early-music-actions">
+              <button
+                type="button"
+                className="early-music-next"
+                disabled={[earlyMusicCard, ...recentChatMusic].filter((card, index, all) => all.findIndex((item) => item.id === card.id) === index).length < 2}
+                onClick={() => {
+                  const all = [earlyMusicCard, ...recentChatMusic].filter((card, index, items) => items.findIndex((item) => item.id === card.id) === index);
+                  if (all.length < 2) return;
+                  const current = all.findIndex((card) => card.id === earlyMusicCard.id);
+                  const next = all[(current + 1) % all.length];
+                  earlyMusicPlayingRef.current = false;
+                  setEarlyMusicCard(next);
+                }}
+              >
+                换首
+              </button>
+              <button
+                type="button"
+                className="early-music-open"
+                onClick={() => changeView("music")}
+              >
+                一起听
+              </button>
+              <button
+                type="button"
+                className="early-music-dismiss"
+                aria-label="收起预听歌曲"
+                onClick={() => { earlyMusicPlayingRef.current = false; setEarlyMusicCard(null); }}
+              >
+                ×
+              </button>
+            </div>
           </div>
         )}
 

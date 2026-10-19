@@ -10553,3 +10553,10 @@ body,
 
 .sidebar-settings-button { display: flex; align-items: center; gap: 8px; width: 100%; margin: 6px 0; padding: 9px 12px; border: 1px solid rgba(255, 255, 255, .12); border-radius: 10px; color: inherit; background: rgba(255, 255, 255, .04); font-size: 13px; text-align: left; }
 .sidebar-settings-button:hover { background: rgba(255, 255, 255, .08); }
+
+.early-music-dock { flex-direction: column; align-items: flex-end; gap: 5px; }
+.early-music-dock .chat-music-card { width: min(330px, 100%); }
+.early-music-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; pointer-events: auto; }
+.early-music-next, .early-music-open { align-self: center; flex: 0 0 auto; padding: 5px 9px; border: 1px solid rgba(255, 255, 255, .28); border-radius: 999px; color: #fff; background: rgba(40, 30, 34, .72); font-size: 11px; white-space: nowrap; }
+.early-music-next:disabled { opacity: .4; }
+.early-music-dismiss { align-self: center; }
