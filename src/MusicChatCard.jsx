@@ -9,7 +9,9 @@ function formatTime(value) {
   return Math.floor(seconds / 60) + ":" + String(Math.floor(seconds % 60)).padStart(2, "0");
 }
 
-export default function MusicChatCard({ music }) {
+export default function MusicChatCard({ music, onPlaybackChange }) {
+  const playbackChangeRef = useRef(onPlaybackChange);
+  useEffect(() => { playbackChangeRef.current = onPlaybackChange; }, [onPlaybackChange]);
   const audioRef = useRef(null);
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(0);
@@ -25,11 +27,12 @@ export default function MusicChatCard({ music }) {
     const onDuration = () => setDuration(Number.isFinite(audio.duration) ? audio.duration : Number(music?.duration_seconds) || 0);
     const onPlay = () => {
       setPlaying(true);
+      playbackChangeRef.current?.(true);
       eventBus.dispatchEvent?.(new CustomEvent(PLAY_EVENT, { detail: { id: music?.id } }));
     };
-    const onPause = () => setPlaying(false);
-    const onEnded = () => { setPlaying(false); setPosition(0); };
-    const onError = () => { setPlaying(false); setError("这首暂时无法在内置播放器加载，可能受版权或链接有效期限制。"); };
+    const onPause = () => { setPlaying(false); playbackChangeRef.current?.(false); };
+    const onEnded = () => { setPlaying(false); setPosition(0); playbackChangeRef.current?.(false); };
+    const onError = () => { setPlaying(false); playbackChangeRef.current?.(false); setError("这首暂时无法在内置播放器加载，可能受版权或链接有效期限制。"); };
     audio.addEventListener("timeupdate", onTime);
     audio.addEventListener("loadedmetadata", onDuration);
     audio.addEventListener("play", onPlay);

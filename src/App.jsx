@@ -1575,6 +1575,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }, []);
   const isSendingRef = useRef(false);
   const earlyMusicRequestRef = useRef(0);
+  const earlyMusicPlayingRef = useRef(false);
   const voiceStateRef = useRef(VOICE_STATES.idle);
   const voicePointerHeldRef = useRef(false);
   const voicePointerIdRef = useRef(null);
@@ -4901,6 +4902,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     const keyword = extractMusicRequest(text);
     if (!keyword) return;
     const requestId = ++earlyMusicRequestRef.current;
+    earlyMusicPlayingRef.current = false;
     setEarlyMusicCard(null);
     try {
       const card = await fetchEarlyMusicCard(text);
@@ -5376,6 +5378,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             );
             completedAssistantMessageId =
               event.assistant_message?.id || localAssistantId;
+            if (event.assistant_message?.tool_calls?.music_card && !earlyMusicPlayingRef.current) {
+              setEarlyMusicCard(null);
+            }
             applyPromptReceipt(event.prompt_receipt);
             if (event.companion_status) {
               setCompanionStatus((current) =>
@@ -7121,12 +7126,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
         {activeView === "chat" && earlyMusicCard && (
           <div className="early-music-dock">
-            <MusicChatCard music={earlyMusicCard} />
+            <MusicChatCard
+              music={earlyMusicCard}
+              onPlaybackChange={(playing) => { earlyMusicPlayingRef.current = playing; }}
+            />
             <button
               type="button"
               className="early-music-dismiss"
               aria-label="收起预听歌曲"
-              onClick={() => setEarlyMusicCard(null)}
+              onClick={() => { earlyMusicPlayingRef.current = false; setEarlyMusicCard(null); }}
             >
               ×
             </button>
