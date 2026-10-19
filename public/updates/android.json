@@ -8,10 +8,10 @@
     "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.10.87/DengTa-2.10.87-135.apk",
     "sha256": "fa712d38144d5969edc81d0f6bc5e35460b66420039d9bd1c63e5ea8cf4744be",
     "size_bytes": 41227874,
-    "published_at": "2026-10-19T20:31:18Z",
+    "published_at": "2026-10-19T20:41:15Z",
     "notes": [
       "修复模型把 <function=netese_play_song> 写进正文时露出函数代码的问题；这类文本工具调用会被隐藏，并尽量执行成真正的放歌动作。",
-      "听歌卡片继续支持 App 内播放；没有内播音频时明确提示，不打开外部 App。",
+      "听歌卡片现在能持久化到聊天记录；没有内播音频时明确提示，不打开外部 App。",
       "放歌搜索优先原唱/匹配歌手，减少搜到翻唱或深情版。",
       "继承 2.10.86：聊天听歌卡片、图片卡片、放映厅入口、后台聊天恢复、网页登录优化。"
     ]
