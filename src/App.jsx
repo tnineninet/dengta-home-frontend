@@ -1074,10 +1074,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
     return list.reverse();
   }, [messages]);
-  const musicDockQueue = useMemo(() => {
-    const all = [...recentChatMusic, earlyMusicCard].filter(Boolean);
-    return all.filter((card, index) => all.findIndex((item) => item.id === card.id) === index);
-  }, [earlyMusicCard, recentChatMusic]);
+  const [musicDockQueue, setMusicDockQueue] = useState([]);
+  const [musicDockIndex, setMusicDockIndex] = useState(-1);
+  useEffect(() => {
+    setEarlyMusicCard(null);
+    setMusicDockQueue([]);
+    setMusicDockIndex(-1);
+  }, [activeSessionId, privateMediaScope]);
   const [historyLoadState, setHistoryLoadState] = useState(null);
   const [historyRetryRevision, setHistoryRetryRevision] = useState(0);
   const historyLoadPendingRef = useRef(false);
@@ -4952,6 +4955,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     try {
       const card = await fetchEarlyMusicCard(text);
       if (requestId === earlyMusicRequestRef.current && card && componentMountedRef.current) {
+        const base = musicDockQueue.length > 0 ? musicDockQueue : [...recentChatMusic];
+        const existingIndex = base.findIndex((item) => item.id === card.id);
+        const nextQueue = existingIndex >= 0 ? base : [...base, card].slice(-10);
+        setMusicDockQueue(nextQueue);
+        setMusicDockIndex(existingIndex >= 0 ? existingIndex : nextQueue.length - 1);
         setEarlyMusicCard(card);
       }
     } catch {
@@ -10020,16 +10028,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 aria-label="上一首"
                 disabled={musicDockQueue.length < 2}
                 onClick={() => {
-                  const current = Math.max(0, musicDockQueue.findIndex((card) => card.id === earlyMusicCard.id));
-                  const next = musicDockQueue[(current - 1 + musicDockQueue.length) % musicDockQueue.length];
+                  const current = musicDockIndex >= 0 ? musicDockIndex : 0;
+                  const nextIndex = (current - 1 + musicDockQueue.length) % musicDockQueue.length;
                   earlyMusicPlayingRef.current = false;
-                  setEarlyMusicCard(next);
+                  setMusicDockIndex(nextIndex);
+                  setEarlyMusicCard(musicDockQueue[nextIndex]);
                 }}
               >
                 ‹
               </button>
               <span className="early-music-count" aria-label="最近歌曲位置">
-                {Math.max(0, musicDockQueue.findIndex((card) => card.id === earlyMusicCard.id)) + 1}/{musicDockQueue.length}
+                {Math.max(0, musicDockIndex) + 1}/{musicDockQueue.length}
               </span>
               <button
                 type="button"
@@ -10037,10 +10046,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 aria-label="下一首"
                 disabled={musicDockQueue.length < 2}
                 onClick={() => {
-                  const current = Math.max(0, musicDockQueue.findIndex((card) => card.id === earlyMusicCard.id));
-                  const next = musicDockQueue[(current + 1) % musicDockQueue.length];
+                  const current = musicDockIndex >= 0 ? musicDockIndex : 0;
+                  const nextIndex = (current + 1) % musicDockQueue.length;
                   earlyMusicPlayingRef.current = false;
-                  setEarlyMusicCard(next);
+                  setMusicDockIndex(nextIndex);
+                  setEarlyMusicCard(musicDockQueue[nextIndex]);
                 }}
               >
                 ›
@@ -10057,7 +10067,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 type="button"
                 className="early-music-dismiss"
                 aria-label="收起预听歌曲"
-                onClick={() => { earlyMusicPlayingRef.current = false; setEarlyMusicCard(null); }}
+                onClick={() => { earlyMusicPlayingRef.current = false; setEarlyMusicCard(null); setMusicDockQueue([]); setMusicDockIndex(-1); }}
               >
                 ×
               </button>
