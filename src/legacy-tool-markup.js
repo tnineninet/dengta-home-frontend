@@ -38,6 +38,19 @@ export function stripLegacyToolMarkupForDisplay(value) {
     const start = source.indexOf("<", index);
     if (start < 0) { output += source.slice(index); break; }
     output += source.slice(index, start);
+    const suffix = source.slice(start);
+    if (/^<\s*\/?\s*toolcall\b/i.test(suffix)) {
+      const closeEnd = suffix.indexOf(">");
+      if (closeEnd >= 0) { index = start + closeEnd + 1; continue; }
+      index = start + 1;
+      continue;
+    }
+    if (/^<\s*function\s*=/i.test(suffix)) {
+      const end = findTagEnd(source, start);
+      if (end < 0) { index = start + 1; continue; }
+      index = end;
+      continue;
+    }
     if (!knownAt(source, start)) { output += "<"; index = start + 1; continue; }
     const end = findTagEnd(source, start);
     if (end < 0) { index = start + 1; continue; }

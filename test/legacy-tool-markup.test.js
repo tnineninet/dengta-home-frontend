@@ -9,3 +9,10 @@ test("historical assistant messages hide legacy tool markup", () => {
   assert.equal(stripLegacyToolMarkupForDisplay("<update_companion_status mood=\"x\">text</update_companion_status>"), "");
   assert.equal(stripLegacyToolMarkupForDisplay("普通 <微笑> 文本"), "普通 <微笑> 文本");
 });
+
+
+test("historical function-call text is also hidden", () => {
+  const cleaned = stripLegacyToolMarkupForDisplay("好呀 <function=neteseplaysong> <parameter=keyword> 晴天 </parameter> </function> </toolcall>");
+  assert.equal(cleaned, "好呀");
+  assert.equal(cleaned.includes("function"), false);
+});
