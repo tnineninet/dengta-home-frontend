@@ -3,6 +3,13 @@ import { apiRequest } from "./api";
 import { authSession } from "./auth-session.js";
 import { AuthenticatedImage } from "./PrivateMedia";
 
+const IMAGE_PROVIDER_PRESETS = [
+  { id: "openai", name: "OpenAI Images", base_url: "https://api.openai.com/v1", model: "gpt-image-1" },
+  { id: "openrouter", name: "OpenRouter Images", base_url: "https://openrouter.ai/api/v1", model: "openai/gpt-image-1" },
+  { id: "siliconflow", name: "硅基流动 SiliconFlow", base_url: "https://api.siliconflow.cn/v1", model: "Kwai-Kolors/Kolors" },
+  { id: "custom", name: "自定义 OpenAI Images 接口", base_url: "", model: "" },
+];
+
 const EMPTY_STATUS = {
   settings: {
     generation_mode: "confirm",
@@ -713,6 +720,7 @@ export default function CompanionCreativeSettings() {
   const [providerDraft, setProviderDraft] = useState(EMPTY_STATUS.provider);
   const [hiddenAction, setHiddenAction] = useState("reveal");
   const [credential, setCredential] = useState("");
+  const [providerPreset, setProviderPreset] = useState("custom");
   const [busy, setBusy] = useState("");
   const [feedback, setFeedback] = useState("");
 
@@ -820,6 +828,42 @@ export default function CompanionCreativeSettings() {
 
   function updateProvider(field, value) {
     setProviderDraft((current) => ({ ...current, [field]: value }));
+  }
+
+  function applyProviderPreset(id) {
+    const preset = IMAGE_PROVIDER_PRESETS.find((item) => item.id === id) || IMAGE_PROVIDER_PRESETS[3];
+    setProviderPreset(preset.id);
+    setProviderDraft((current) => ({
+      ...current,
+      name: preset.name,
+      base_url: preset.base_url,
+      model: preset.model,
+    }));
+  }
+
+  async function reuseChatProvider() {
+    if (busy) return;
+    const model = String(providerDraft.model || "").trim();
+    if (!model) {
+      setFeedback("先选择预设或填写图片模型名，再复用聊天接口。");
+      return;
+    }
+    setBusy("provider-chat");
+    setFeedback("");
+    try {
+      const data = await creativeRequest("/provider/from-chat", {
+        method: "POST",
+        body: JSON.stringify({ model }),
+      });
+      if (data?.ok !== true || !data.provider) throw new Error("复用聊天接口失败。");
+      await load();
+      setFeedback("已复用当前聊天接口的地址和密钥；密钥不会显示在页面上。");
+      setProviderPreset("custom");
+    } catch (error) {
+      setFeedback(creativeErrorFeedback(error, "复用聊天接口失败；可以继续手动填写图片接口。"));
+    } finally {
+      setBusy("");
+    }
   }
 
   const providerCredentialRecoveryRequired =
@@ -955,13 +999,33 @@ export default function CompanionCreativeSettings() {
         )}
         <div className="provider-section-title">
           <div>
-            <strong>独立图片生成接口</strong>
+            <strong>图片生成接口</strong>
             <small>
-              首版支持 OpenAI Images API 兼容接口。保存只检查格式和公网地址，不调用模型、不收费。
+              支持 OpenAI Images API 兼容接口。选预设可直接填地址和模型；也可以复用当前聊天接口的密钥，少粘贴一次 API Key。
             </small>
           </div>
+          <button
+            type="button"
+            className="creative-provider-reuse"
+            onClick={reuseChatProvider}
+            disabled={busy === "provider-chat"}
+          >
+            {busy === "provider-chat" ? "正在复用…" : "复用聊天接口"}
+          </button>
         </div>
         <div className="creative-provider-grid">
+          <label className="creative-provider-wide">
+            快速配置
+            <select
+              value={providerPreset}
+              onChange={(event) => applyProviderPreset(event.target.value)}
+            >
+              {IMAGE_PROVIDER_PRESETS.map((preset) => (
+                <option key={preset.id} value={preset.id}>{preset.name}</option>
+              ))}
+            </select>
+            <small>预设只填 Base URL 和模型名；仍需填该服务的 API Key，或点右上角“复用聊天接口”。</small>
+          </label>
           <label>
             显示名称
             <input

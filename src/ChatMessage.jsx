@@ -4,6 +4,7 @@ import CompanionActivityCards from "./CompanionActivityCards.jsx";
 import { MessageAttachments, ThinkingPanel } from "./ChatMessageExtras";
 import { renderChatMarkdown } from "./chat-markdown.jsx";
 import { splitChatSegments } from "./chat-sentences.js";
+import ChatArtwork from "./ChatArtwork.jsx";
 import { AuthenticatedImage } from "./PrivateMedia";
 import {
   longPressMovementExceeded,
@@ -329,24 +330,13 @@ function ChatMessage({
               onPreview={onPreview}
             />
           )}
-          {artworkId && (
-            <div className="message-artwork">
-              {item.tool_calls?.is_surprise_reveal === true && (
-                <span className="message-artwork-reveal">
-                  悄悄准备的惊喜，现在揭晓
-                </span>
-              )}
-              <AuthenticatedImage
-                src={`/api/v2/creative/artworks/${encodeURIComponent(
-                  artworkId,
-                )}/image`}
-                alt={artworkAlt}
-                className="message-artwork-image"
-                buttonClassName="message-artwork-preview"
-                onPreview={onPreview}
-              />
-            </div>
-          )}
+          <ChatArtwork
+            artworkId={artworkId}
+            alt={artworkAlt}
+            initialState={item.tool_calls?.artwork_state || ""}
+            isSurpriseReveal={item.tool_calls?.is_surprise_reveal === true}
+            onPreview={onPreview}
+          />
           <MessageAttachments
             value={item.attachments || item.files}
             apiBaseUrl={apiBaseUrl}
