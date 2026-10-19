@@ -3,17 +3,17 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 127,
-    "version": "2.10.79",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.10.79/DengTa-2.10.79-127.apk",
-    "sha256": "9b57eb582564f7b65c96f30112fe05d1b128cf32384e1fc6c10ca75bc1a33837",
-    "size_bytes": 41424198,
-    "published_at": "2026-10-19T18:16:39Z",
+    "version_code": 128,
+    "version": "2.10.80",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.10.80/DengTa-2.10.80-128.apk",
+    "sha256": "4469f553944b8ef3c9fbb2da3c11de8e60093dbf0e36100bfab0959082bec45f",
+    "size_bytes": 41221630,
+    "published_at": "2026-10-19T18:29:45Z",
     "notes": [
-      "心声不再等本轮校验：模型一旦生成 [monologue] 里的字，就立即逐字显示在聊天里；正文开始生成后同样逐字立即显示。",
-      "前端对心声分片和正文分片都使用同步提交，避免被后续状态更新合批到结尾。",
-      "不再用心声校验结果延迟或撤回已经生成的内容；聊天主流程直接展示模型已经写出的文字。",
-      "继承 2.10.78：正文分片即时提交、背景画布 memo、移除空正文阻塞重试、聊天闪动修复。"
+      "不再显示模型误输出的工具代码：<update_companion_status .../> 等标记会从可见回复中剥离，并尽量解析为真实状态更新。",
+      "历史消息也会在显示层清理同类标记，不需要重新发送。",
+      "心声与正文仍然即时逐字显示；继承 2.10.79。",
+      "后端会识别标签里的 mood/place/focus/note/energy_level/pulse_bpm/hot_zones/micro_state 并更新胶囊状态。"
     ]
   }
 }
