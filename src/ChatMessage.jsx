@@ -5,6 +5,7 @@ import { MessageAttachments, ThinkingPanel } from "./ChatMessageExtras";
 import { renderChatMarkdown } from "./chat-markdown.jsx";
 import { splitChatSegments } from "./chat-sentences.js";
 import ChatArtwork from "./ChatArtwork.jsx";
+import MusicChatCard from "./MusicChatCard.jsx";
 import { AuthenticatedImage } from "./PrivateMedia";
 import {
   longPressMovementExceeded,
@@ -328,6 +329,12 @@ function ChatMessage({
               height={customSticker.height}
               buttonClassName="message-sticker"
               onPreview={onPreview}
+            />
+          )}
+          {item.tool_calls?.music_card && (
+            <MusicChatCard
+              key={item.tool_calls.music_card.id}
+              music={item.tool_calls.music_card}
             />
           )}
           <ChatArtwork

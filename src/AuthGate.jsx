@@ -420,7 +420,6 @@ export function AccountMenu({ sessionManager, snapshot }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const rootRef = useRef(null);
   const alive = useRef(false);
   const exiting = useRef(false);
