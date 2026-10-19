@@ -10574,3 +10574,9 @@ body,
 .music-lyrics-list p { margin: 0; padding: 7px 6px; color: #9a8579; font-size: 15px; line-height: 1.45; text-align: center; transition: color .2s ease, transform .2s ease; }
 .music-lyrics-list p[data-active="true"] { color: #8f5267; font-weight: 700; transform: scale(1.04); }
 .music-lyrics-status { padding: 24px 8px; color: #846f63; font-size: 13px; text-align: center; }
+
+.music-lyric-line { display: grid; width: 100%; gap: 2px; margin: 0; padding: 7px 6px; border: 0; border-radius: 8px; color: #9a8579; background: transparent; font: inherit; font-size: 15px; line-height: 1.45; text-align: center; transition: color .2s ease, transform .2s ease, background .2s ease; }
+.music-lyric-line span { display: block; }
+.music-lyric-line small { display: block; color: #b09b8f; font-size: 11px; line-height: 1.35; }
+.music-lyric-line[data-active="true"] { color: #8f5267; background: rgba(143, 82, 103, .08); font-weight: 700; transform: scale(1.02); }
+.music-lyric-line[data-active="true"] small { color: #8f5267; }

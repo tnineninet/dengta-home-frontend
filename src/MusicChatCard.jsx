@@ -43,8 +43,15 @@ export default function MusicChatCard({ music, onPlaybackChange }) {
     try {
       const data = await fetchMusicLyrics(music?.id);
       const parsed = parseLrc(data?.lyric);
+      const translated = parseLrc(data?.translated_lyric);
       if (parsed.length === 0) setLyricsError("这首歌暂时没有可显示的歌词。");
-      else setLyrics(parsed);
+      else {
+        const translationByTime = new Map(translated.map((line) => [line.time.toFixed(2), line.text]));
+        setLyrics(parsed.map((line) => ({
+          ...line,
+          translation: translationByTime.get(line.time.toFixed(2)) || "",
+        })));
+      }
     } catch {
       setLyricsError("歌词暂时加载失败，稍后再试。");
     } finally {
@@ -91,6 +98,15 @@ export default function MusicChatCard({ music, onPlaybackChange }) {
   }, [music?.id]);
 
   if (!music?.id || !music?.title) return null;
+
+  const seekTo = (time) => {
+    const audio = audioRef.current;
+    if (!audio || !canPlay) return;
+    const next = Math.max(0, Number(time) || 0);
+    audio.currentTime = next;
+    setPosition(next);
+    if (audio.paused) void audio.play().catch(() => {});
+  };
 
   const toggle = async () => {
     const audio = audioRef.current;
@@ -163,9 +179,16 @@ export default function MusicChatCard({ music, onPlaybackChange }) {
           {!lyricsLoading && !lyricsError && (
             <div className="music-lyrics-list" ref={lyricsListRef}>
               {lyrics.map((line, index) => (
-                <p key={line.time + "-" + index} data-active={index === activeIndex ? "true" : "false"}>
-                  {line.text}
-                </p>
+                <button
+                  type="button"
+                  className="music-lyric-line"
+                  key={line.time + "-" + index}
+                  data-active={index === activeIndex ? "true" : "false"}
+                  onClick={() => seekTo(line.time)}
+                >
+                  <span>{line.text}</span>
+                  {line.translation && <small>{line.translation}</small>}
+                </button>
               ))}
             </div>
           )}
