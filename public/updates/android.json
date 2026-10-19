@@ -3,17 +3,17 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 140,
-    "version": "2.10.92",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.10.92/DengTa-2.10.92-140.apk",
-    "sha256": "4cb8d0917804cb8f4db763e5736005bd0014cf82a4450518af2832b653c441e1",
-    "size_bytes": 41228570,
-    "published_at": "2026-10-19T21:38:41Z",
+    "version_code": 141,
+    "version": "2.10.93",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.10.93/DengTa-2.10.93-141.apk",
+    "sha256": "810611bbb740a522c033154b9ea724b0a8b97029283362d68344c9cb64d2b67c",
+    "size_bytes": 41228674,
+    "published_at": "2026-10-19T21:48:46Z",
     "notes": [
-      "修复点歌误判：放个假、放点儿盐、播放列表、放首歌不再触发搜歌。",
-      "全局迷你播放器新增“一起听”按钮，点开直接进入完整听歌页，音乐继续播放。",
-      "预听卡片仍支持跨页面播放、手动收起、正式回复不掐断。",
-      "继承 2.10.91/2.10.90：点歌约 2 秒先出卡片、原唱优先、卡片持久化。"
+      "侧栏新增“设置”快捷入口，不用再找顶栏齿轮。",
+      "保留顶栏齿轮；打开设置仍会关闭侧栏和更多菜单。",
+      "继承 2.10.92：点歌防误判、全局迷你播放器、一起听入口、跨页面播放。",
+      "继承 2.10.89/2.10.90：点歌约 2 秒先出卡片、原唱优先、卡片持久化。"
     ]
   }
 }
