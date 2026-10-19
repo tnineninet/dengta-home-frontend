@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import { resizeComposerInput } from "./composer-size.js";
+import { restartDengTa } from "./app-runtime.js";
 import { createMonologueRequestOperation } from "./monologue-request-lifecycle.js";
 import { createCompanionInteractionLifecycle } from "./companion-interaction-lifecycle.js";
 import { invalidMemoryReceipt, memoryCount, memoryUiFailure, useMemoryUiRequest as useScopedUiRequest } from "./memory-ui-feedback.js";
@@ -9772,6 +9773,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             <div className="connection-recovery-actions">
               <button type="button" onClick={retryStartupConnection}>
                 {startupConnection.status === "connecting" ? "重新发起连接" : "重新连接"}
+              </button>
+              <button type="button" className="connection-recovery-restart" onClick={() => { setNotice("正在重启灯塔，重新建立后端连接…"); void restartDengTa(); }}>
+                重启灯塔
               </button>
             </div>
           </div>

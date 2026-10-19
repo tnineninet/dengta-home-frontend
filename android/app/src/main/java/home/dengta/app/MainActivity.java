@@ -1,17 +1,25 @@
 package home.dengta.app;
 
+import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebView;
+import android.window.OnBackInvokedDispatcher;
+import androidx.annotation.RequiresApi;
 
 import com.getcapacitor.BridgeActivity;
 import com.getcapacitor.WebViewListener;
 
 public class MainActivity extends BridgeActivity {
     private static final String TAG = "DengTaMainActivity";
+    private static volatile boolean webBackReady = false;
     private boolean rendererRecoveryScheduled = false;
+
+    static void setWebBackReady(boolean ready) {
+        webBackReady = ready;
+    }
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -34,6 +42,36 @@ public class MainActivity extends BridgeActivity {
         PushNotificationWorker.schedule(this);
         AppUpdateWorker.schedule(this);
         PushNotificationWorker.markAppVisible(this);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            try {
+                registerPredictiveBack();
+            } catch (Exception ignored) {
+                // Some OEM back dispatchers reject direct registration; onBackPressed still covers the gesture.
+            }
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    private void registerPredictiveBack() {
+        // Android 13+ 的侧边返回可能绕过 BridgeActivity.onBackPressed：直接注册系统回调，
+        // 把返回交给网页的返回栈（键盘、弹层、页面、二次退出），而不是立即结束 Activity。
+        getOnBackInvokedDispatcher().registerOnBackInvokedCallback(
+            OnBackInvokedDispatcher.PRIORITY_DEFAULT,
+            this::dispatchBackToWeb
+        );
+    }
+
+    private void dispatchBackToWeb() {
+        if (webBackReady && getBridge() != null) {
+            getBridge().triggerWindowJSEvent("dengta:native-back");
+            return;
+        }
+        finish();
+    }
+
+    @Override
+    public void onBackPressed() {
+        dispatchBackToWeb();
     }
 
     private void configureStableWebView() {

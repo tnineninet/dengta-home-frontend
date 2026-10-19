@@ -148,9 +148,10 @@ export default function AppUpdateCenter({ canPrompt = true }) {
       <section ref={panelRef} className="app-update-dialog" role="dialog" aria-modal="true" aria-labelledby="app-update-title" tabIndex={-1} onClick={event => event.stopPropagation()}>
         <small>DENGTA · 新版本</small><h2 id="app-update-title">灯塔有更新了</h2>
         <p>{installed} → {release.version} · {(release.size_bytes / 1024 / 1024).toFixed(1)} MB</p>
+        <h3 className="app-update-notes-title">本次更新</h3>
         <ul>{release.notes.map((note, index) => <li key={index}>{note}</li>)}</ul>
-        <p>下载安装后按系统提示更新。无需卸载当前应用。</p>
-        <div className="app-update-actions"><button type="button" onClick={dismiss}>稍后提醒</button><button type="button" disabled={opening} onClick={() => void download()}>{opening ? "正在打开…" : "下载更新"}</button></div>
+        <p>下载安装后按系统提示更新。无需卸载当前应用，聊天与账号数据会保留。</p>
+        <div className="app-update-actions"><button type="button" onClick={dismiss}>稍后提醒</button><button type="button" disabled={opening} onClick={() => void download()}>{opening ? "正在打开…" : "立即更新"}</button></div>
         <button className="app-update-notifications" type="button" disabled={notificationSaving} onClick={() => void allowNotifications()}>{notificationSaving ? "正在保存…" : "允许后台更新通知"}</button>
       </section>
     </div>}

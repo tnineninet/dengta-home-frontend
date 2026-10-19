@@ -55,7 +55,7 @@ test("actual native hook closes keyboard and registered panel, returns through p
   fixture.keyboard = true; await back(); assert.equal(fixture.panel, true);
   await back(); assert.equal(fixture.panel, false); assert.equal(fixture.view, "diary");
   await back(); assert.equal(fixture.view, "chat"); assert.equal(fixture.exits, 0);
-  await back(); assert.equal(fixture.notices.at(-1), "再返回一次退出灯塔"); assert.equal(fixture.exits, 0);
+  await back(); assert.equal(fixture.notices.at(-1), "再滑一次返回桌面"); assert.equal(fixture.exits, 0);
   await act(async () => fixture.listeners.get("appStateChange")({ isActive: false }));
   await back(); assert.equal(fixture.exits, 0);
   await back(); assert.equal(fixture.exits, 1);

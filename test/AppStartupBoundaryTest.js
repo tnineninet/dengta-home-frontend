@@ -79,8 +79,8 @@ class AppStartupBoundaryTest {
     assert.equal(failurePage.props.role, "alert");
     assert.match(textContent(renderer.toJSON()), /账号和聊天数据不会因此丢失/);
     assert.match(textContent(renderer.toJSON()), /DT-START-PM-01/);
-    assert.equal(renderer.root.findAllByType("button").length, 3);
-    await act(async () => renderer.root.findAllByType("button")[2].props.onClick());
+    assert.equal(renderer.root.findAllByType("button").length, 4);
+    await act(async () => renderer.root.findAllByType("button")[3].props.onClick());
     assert.equal(signOutCount, 1);
     reloadCount = 0;
     storage.set("dengta:app-chunk-recovery", "attempted");

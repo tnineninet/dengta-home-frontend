@@ -4,6 +4,7 @@ import {
   reloadApplication,
   startupDiagnosticCode,
 } from "./app-startup-recovery.js";
+import { restartDengTa } from "./app-runtime.js";
 
 export function AppLoadingScreen() {
   return (
@@ -22,6 +23,7 @@ export function AppFailureScreen({
   sessionManager,
 }) {
   const [signOutState, setSignOutState] = useState("");
+  const [restartState, setRestartState] = useState("");
 
   async function exitAccount() {
     setSignOutState("busy");
@@ -31,6 +33,12 @@ export function AppFailureScreen({
     } catch {
       setSignOutState("error");
     }
+  }
+
+  async function restartApplication() {
+    setRestartState("busy");
+    const scheduled = await restartDengTa();
+    if (!scheduled) setRestartState("");
   }
 
   return (
@@ -45,6 +53,9 @@ export function AppFailureScreen({
         </small>
       ) : null}
       <button type="button" onClick={reloadApplication}>重新载入应用</button>
+      <button type="button" disabled={restartState === "busy"} onClick={restartApplication}>
+        {restartState === "busy" ? "正在重启灯塔…" : "重启灯塔（结束进程后重新打开）"}
+      </button>
       <button
         type="button"
         onClick={() => clearUiPreferencesAndReload(accountScope)}

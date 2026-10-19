@@ -10494,3 +10494,6 @@ body,
 }
 .chat-context-settings > button { margin-bottom: 14px; }
 .chat-context-settings > .card-hint { margin: 12px 0 16px; line-height: 1.6; }
+
+.connection-recovery-actions { flex-wrap: wrap; }
+.connection-recovery-restart { border-color: #c99a6b !important; color: #f4dfc3 !important; }

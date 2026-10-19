@@ -70,7 +70,7 @@ test("real update UI reads the public feed over HTTP, waits for idle, and downlo
   const native = globalThis.__updateFixture.Native, openDownload = native.openDownload;
   let finishDownload;
   native.openDownload = value => { downloads.push(value.url); return new Promise(resolve => { finishDownload = resolve; }); };
-  const activateDownload = button("下载更新").props.onClick;
+  const activateDownload = button("立即更新").props.onClick;
   await act(async () => { activateDownload(); activateDownload(); });
   assert.deepEqual(downloads, [release.apk_url]);
   assert.equal(button("正在打开…").props.disabled, true);
@@ -90,7 +90,7 @@ test("manual checks explain invalid receipts; notification preferences stop back
   await act(async () => listeners.get("dengta:check-app-updates")());
   await until(() => requests.length > prior && text(tree.toJSON()).includes("当前没有比已安装版本更新"));
   assert.equal(tree.root.findAllByProps({ role: "dialog" }).length, 0);
-  assert.equal(button("下载更新"), undefined);
+  assert.equal(button("立即更新"), undefined);
   payload = {};
   await act(async () => listeners.get("dengta:check-app-updates")());
   await until(() => text(tree.toJSON()).includes("app_update_manifest_invalid"));
