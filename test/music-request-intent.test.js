@@ -8,4 +8,8 @@ test("explicit song requests extract song and artist before the model starts", (
   assert.equal(extractMusicRequest("播放 晴天 周杰伦"), "晴天 周杰伦");
   assert.equal(extractMusicRequest("不要放歌"), "");
   assert.equal(extractMusicRequest("怎么放歌"), "");
+  assert.equal(extractMusicRequest("放个假"), "");
+  assert.equal(extractMusicRequest("放点儿盐"), "");
+  assert.equal(extractMusicRequest("播放列表"), "");
+  assert.equal(extractMusicRequest("放首歌"), "");
 });

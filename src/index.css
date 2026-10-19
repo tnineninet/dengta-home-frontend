@@ -10547,3 +10547,6 @@ body,
 .early-music-dock .chat-music-card { width: min(360px, 100%); margin: 0; pointer-events: auto; border-color: rgba(143, 82, 103, .35); box-shadow: 0 12px 30px rgba(20, 14, 18, .24); }
 .early-music-dismiss { align-self: flex-start; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; color: #fff; background: rgba(40, 30, 34, .72); font-size: 18px; line-height: 1; pointer-events: auto; }
 @media (max-width: 600px) { .early-music-dock { bottom: calc(82px + env(safe-area-inset-bottom)); } }
+
+.early-music-open { align-self: center; flex: 0 0 auto; padding: 6px 9px; border: 1px solid rgba(255, 255, 255, .28); border-radius: 999px; color: #fff; background: rgba(40, 30, 34, .72); font-size: 11px; white-space: nowrap; pointer-events: auto; }
+.early-music-dock .chat-music-card { width: min(330px, calc(100% - 96px)); }

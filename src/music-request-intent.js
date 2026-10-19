@@ -2,7 +2,7 @@
 export function extractMusicRequest(value) {
   const phrase = String(value || "").trim();
   if (!phrase || /(不要|别放|不用放|怎么放|如何放|能不能放|可以放吗|为什么|什么歌|放歌功能)/i.test(phrase)) return "";
-  if (!/播放|放(?:一首|首|首歌|首歌|个|点)|放《/.test(phrase)) return "";
+  if (!/播放|放(?:一首|首|首歌|首歌|歌)|放《/.test(phrase)) return "";
   const quoted = phrase.match(/《([^》]{1,80})》/);
   let candidate = quoted?.[1] || "";
   if (candidate) {
@@ -22,6 +22,6 @@ export function extractMusicRequest(value) {
   candidate = String(candidate)
     .replace(/^(?:一首|首|个|点)?\s*(?:歌|歌曲|音乐)?\s*/i, "")
     .trim();
-  if (!candidate || /^(?:歌|歌曲|音乐|首歌)$/.test(candidate)) return "";
+  if (!candidate || /^(?:歌|歌曲|音乐|首歌|列表|歌单|电台)$/.test(candidate)) return "";
   return candidate.slice(0, 80);
 }

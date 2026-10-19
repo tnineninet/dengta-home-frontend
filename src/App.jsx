@@ -9960,6 +9960,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             />
             <button
               type="button"
+              className="early-music-open"
+              onClick={() => changeView("music")}
+            >
+              一起听
+            </button>
+            <button
+              type="button"
               className="early-music-dismiss"
               aria-label="收起预听歌曲"
               onClick={() => { earlyMusicPlayingRef.current = false; setEarlyMusicCard(null); }}
