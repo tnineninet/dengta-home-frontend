@@ -3,18 +3,18 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 137,
-    "version": "2.10.89",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.10.89/DengTa-2.10.89-137.apk",
-    "sha256": "c5cc1242788c47f99fd961f5d04092fe44ad2c45043c510834475c8238866e98",
-    "size_bytes": 41228546,
-    "published_at": "2026-10-19T21:04:16Z",
+    "version_code": 138,
+    "version": "2.10.90",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.10.90/DengTa-2.10.90-138.apk",
+    "sha256": "0bff516dad582f07148abe7e8b5dd504e01f939c0c6a03b56323531b493f2e4b",
+    "size_bytes": 41228522,
+    "published_at": "2026-10-19T21:17:31Z",
     "notes": [
-      "预听听歌卡片在模型回复落地后继续播放，不会因为正式卡片出现而突然暂停。",
-      "预听卡片可以手动收起；下一次点歌会替换。",
-      "模型未生成卡片时，预听卡片继续保留。",
-      "继承 2.10.88：点歌约 2 秒先出现可播放卡片，不用等模型一两分钟。",
-      "继承 2.10.87：原唱优先、函数代码隐藏、卡片持久化。"
+      "预听歌曲变成全局迷你播放器：从聊天切到动态、日记、设置，音乐继续播放。",
+      "预听卡片可手动收起；下一次点歌会替换。",
+      "正式回复落地不会掐断正在播放的预听音乐。",
+      "继承 2.10.89：点歌约 2 秒先出卡片。",
+      "继承 2.10.87/2.10.88：原唱优先、函数代码隐藏、卡片持久化。"
     ]
   }
 }
