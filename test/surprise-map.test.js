@@ -31,4 +31,7 @@ test("radar positions stay bounded and error feedback cannot expose raw causes",
   }
   assert.equal(mapRadarPoint({ latitude: NaN, longitude: 0 }), null);
   assert.doesNotMatch(surpriseMapError({ message: "PRIVATE_FIXTURE", code: "surprise_map_out_of_range" }), /PRIVATE_FIXTURE/);
+  assert.match(surpriseMapError({ code: "request_timeout", message: "PRIVATE_FIXTURE" }, { operation: "read" }), /来信列表/);
+  assert.doesNotMatch(surpriseMapError({ code: "request_timeout", message: "PRIVATE_FIXTURE" }, { operation: "read" }), /重复留信|PRIVATE_FIXTURE/);
+  assert.match(surpriseMapError({ code: "request_timeout" }), /避免重复留信/);
 });

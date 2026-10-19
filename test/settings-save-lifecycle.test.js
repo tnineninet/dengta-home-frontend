@@ -43,7 +43,7 @@ const tick = async () => {
   for (let index = 0; index < 8; index += 1) await Promise.resolve();
 };
 
-function harness() {
+function harness({ ignoreModelAbort = false } = {}) {
   let sequence = 0;
   let authScope = "account-a/companion-a";
   const timers = new Map();
@@ -62,6 +62,7 @@ function harness() {
     settingsPayloadFingerprint(value) { work.fingerprints += 1; return settingsPayloadFingerprint(value); },
     pendingAutosaveAfterFailure,
     createScopedSettingsSession,
+    settingsSaveScope,
     registerSettingsSaveGuard,
     canLeaveWorkspace: () => true,
     chooseChatModel,
@@ -126,7 +127,9 @@ function harness() {
           reject,
         };
         requests.push(request);
-        options.signal?.addEventListener("abort", () => reject(new DOMException("synthetic abort", "AbortError")), { once: true });
+        if (path !== "/models" || !ignoreModelAbort) {
+          options.signal?.addEventListener("abort", () => reject(new DOMException("synthetic abort", "AbortError")), { once: true });
+        }
       });
     },
   };
@@ -482,6 +485,170 @@ test("model-catalog follow-up uses the same scoped lifecycle and ignores its lat
   assert.equal(h.stateChanges.length, stateCount, "late model-list success or cancellation cannot publish a stale error");
   assert.equal(h.writes().length, 1);
   assert.equal(h.timers.size, 0);
+});
+
+test("a slow model catalog does not delay confirmation of a successful settings PUT", async () => {
+  const h = harness({ ignoreModelAbort: true });
+  try {
+    h.subject.updateDraft("model", "synthetic-new-model");
+    const flush = h.subject.flushLatestSettingsDraft();
+    let confirmed = false;
+    void flush.then(value => { confirmed = value; });
+    h.writes()[0].resolveSettings();
+    await tick();
+    const catalog = h.requests.find(request => request.path === "/models");
+    assert.ok(catalog);
+    assert.equal(catalog.options.retry, false);
+    assert.equal(confirmed, true, "the confirmed settings save cannot await an optional catalog response");
+    assert.equal(h.context.settingsSaveRunRef.current, null);
+    assert.equal(h.context.settingsSaveInFlightRef.current, false);
+    assert.equal(h.ui.setSettingsAutosaveState, "saved");
+    assert.equal(h.context.confirmedSettingsRef.current.model, "synthetic-new-model");
+    assert.ok(h.runTimer(8000), "the background catalog has an explicit total deadline");
+    await tick();
+    assert.equal(catalog.options.signal.aborted, true);
+    assert.equal(h.context.settingsSaveFailureRef.current, false);
+    assert.match(h.ui.setModelsLoadMessage, /设置已保存.*继续聊天/);
+    assert.equal(h.ui.setSettingsSaveError, "");
+    assert.equal(h.timers.size, 0);
+    const changes = h.stateChanges.length;
+    catalog.resolve({ models: [{ id: "synthetic-late-after-timeout" }] });
+    await tick();
+    assert.equal(h.stateChanges.length, changes, "a transport ignoring cancellation cannot publish after the total deadline");
+  } finally { h.unmount(); }
+});
+
+test("model-catalog failure cannot turn a confirmed PUT into a save failure or resubmit it", async () => {
+  const h = harness();
+  try {
+    h.subject.updateDraft("model", "synthetic-new-model");
+    const flush = h.subject.flushLatestSettingsDraft();
+    h.writes()[0].resolveSettings();
+    await tick();
+    const catalog = h.requests.find(request => request.path === "/models");
+    catalog.reject(new Error("synthetic model directory unavailable"));
+    await tick();
+    assert.equal(await flush, true);
+    assert.equal(h.context.settingsSaveFailureRef.current, false);
+    assert.equal(h.context.pendingSettingsSaveRef.current, null);
+    assert.equal(h.ui.setSettingsAutosaveState, "saved");
+    assert.equal(h.ui.setSettingsSaveError, "");
+    assert.match(h.ui.setModelsLoadMessage, /设置已保存/);
+    assert.equal(await h.subject.flushLatestSettingsDraft(), true);
+    assert.equal(h.writes().length, 1);
+    assert.equal(h.timers.size, 0);
+  } finally { h.unmount(); }
+});
+
+test("another settings PUT proceeds while the previous model directory is still loading", async () => {
+  const h = harness();
+  try {
+    h.subject.updateDraft("model", "synthetic-new-model");
+    const first = h.subject.flushLatestSettingsDraft();
+    h.writes()[0].resolveSettings();
+    await tick();
+    assert.equal(await first, true);
+    const catalog = h.requests.find(request => request.path === "/models");
+    h.subject.updateDraft("user_details", "  synthetic exact newer details\r\n");
+    const second = h.subject.flushLatestSettingsDraft();
+    assert.equal(h.writes().length, 2, "the catalog must not occupy the serialized settings write queue");
+    h.writes()[1].resolveSettings();
+    assert.equal(await second, true);
+    catalog.resolve({ models: [{ id: "synthetic-new-model" }] });
+    await tick();
+    assert.equal(h.ui.setAvailableModels[0].id, "synthetic-new-model");
+    assert.equal(h.context.draftSettingsRef.current.user_details, "  synthetic exact newer details\r\n");
+    assert.equal(h.context.confirmedSettingsRef.current.user_details, "  synthetic exact newer details\r\n");
+    assert.equal(h.ui.setSettingsAutosaveState, "saved");
+  } finally { h.unmount(); }
+});
+
+test("an old catalog cannot clear or replace newer unsaved connection edits", async () => {
+  const h = harness();
+  try {
+    h.subject.updateDraft("model", "synthetic-model-a");
+    const flush = h.subject.flushLatestSettingsDraft();
+    h.writes()[0].resolveSettings();
+    await flush;
+    const catalog = h.requests.find(request => request.path === "/models");
+    h.subject.updateDraft("model", "synthetic-dirty-model-b");
+    const changes = h.stateChanges.length;
+    catalog.resolve({ models: [{ id: "synthetic-model-a" }] });
+    await tick();
+    assert.equal(h.stateChanges.length, changes, "the stale catalog must not change feedback or selection");
+    assert.equal(h.context.draftSettingsRef.current.model, "synthetic-dirty-model-b");
+    assert.equal(h.context.confirmedSettingsRef.current.model, "synthetic-model-a");
+    assert.equal(h.ui.setSettingsAutosaveState, "pending");
+    assert.ok(h.runTimer(800));
+    h.writes()[1].resolveSettings();
+    await h.context.settingsSaveRunRef.current;
+  } finally { h.unmount(); }
+});
+
+test("a newer confirmed connection aborts the older directory and accepts only its own catalog", async () => {
+  const h = harness();
+  try {
+    h.subject.updateDraft("model", "synthetic-model-a");
+    const first = h.subject.flushLatestSettingsDraft();
+    h.writes()[0].resolveSettings();
+    await first;
+    const oldCatalog = h.requests.find(request => request.path === "/models");
+    h.subject.updateDraft("model", "synthetic-model-b");
+    const second = h.subject.flushLatestSettingsDraft();
+    h.writes()[1].resolveSettings();
+    await second;
+    const latestCatalog = h.requests.filter(request => request.path === "/models").at(-1);
+    assert.notEqual(latestCatalog, oldCatalog);
+    assert.equal(oldCatalog.options.signal.aborted, true);
+    oldCatalog.resolve({ models: [{ id: "synthetic-model-a" }] });
+    latestCatalog.resolve({ models: [{ id: "synthetic-model-b" }] });
+    await tick();
+    assert.equal(h.ui.setSelectedChatModel, "synthetic-model-b");
+    assert.equal(h.ui.setAvailableModels[0].id, "synthetic-model-b");
+    assert.equal(h.ui.setModelsLoadMessage, "");
+    assert.equal(h.context.draftSettingsRef.current.model, "synthetic-model-b");
+  } finally { h.unmount(); }
+});
+
+test("model directory receipts are ignored after an account or companion changes before unmount", async () => {
+  for (const nextScope of ["account-b/companion-a", "account-a/companion-b"]) {
+    const h = harness();
+    try {
+      h.subject.updateDraft("model", "synthetic-new-model");
+      const flush = h.subject.flushLatestSettingsDraft();
+      h.writes()[0].resolveSettings();
+      assert.equal(await flush, true);
+      const catalog = h.requests.find(request => request.path === "/models");
+      h.setAuthScope(nextScope);
+      const changes = h.stateChanges.length;
+      catalog.resolve({ models: [{ id: "synthetic-other-scope-model" }] });
+      await tick();
+      assert.equal(h.stateChanges.length, changes);
+    } finally { h.unmount(); }
+  }
+});
+
+test("a late directory cannot override a different session or a newer session-model binding operation", async () => {
+  for (const change of [
+    h => { h.context.activeSessionIdRef.current = "synthetic-other-session"; },
+    h => { h.context.sessionModelSaveQueueRef.current = new Promise(() => {}); },
+  ]) {
+    const h = harness();
+    try {
+      h.subject.updateDraft("model", "synthetic-new-model");
+      const flush = h.subject.flushLatestSettingsDraft();
+      h.writes()[0].resolveSettings();
+      assert.equal(await flush, true);
+      const catalog = h.requests.find(request => request.path === "/models");
+      change(h);
+      const changes = h.stateChanges.length;
+      catalog.resolve({ models: [{ id: "synthetic-obsolete-selection" }] });
+      await tick();
+      assert.equal(h.stateChanges.length, changes);
+    } finally { h.unmount(); }
+  }
+  assert.match(app, /await awaitChatPreparation\(\(\) => sessionModelSaveQueueRef\.current, request\.controller\.signal\)/,
+    "chat still separately waits for required session-model persistence");
 });
 
 test("large text remains exact during lifecycle flush and the keepalive size boundary is explicit", async () => {

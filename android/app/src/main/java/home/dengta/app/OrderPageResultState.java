@@ -12,4 +12,5 @@ final class OrderPageResultState {
     String result() { return result; }
     boolean published() { return published; }
     void markPublished() { published = true; }
+    void reset() { result = null; published = false; }
 }

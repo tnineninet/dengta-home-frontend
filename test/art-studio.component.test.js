@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
 import { after, test } from "node:test";
 import React, { act } from "react";
 import TestRenderer from "react-test-renderer";
@@ -15,11 +18,18 @@ globalThis.__artStudioRequest = async (url, options = {}) => {
   if (url.endsWith("/artworks")) return { artworks: [] };
   throw new Error("Unexpected request");
 };
-const vite = await createServer({ configFile: false, envFile: false, appType: "custom", logLevel: "silent", server: { middlewareMode: true }, plugins: [{ name: "art-studio-fictional-api", enforce: "pre", load(id) {
+const cacheDir = await mkdtemp(join(tmpdir(), "dengta-art-studio-component-"));
+const vite = await createServer({ configFile: false, envFile: false, cacheDir, appType: "custom", logLevel: "silent", server: { middlewareMode: true }, plugins: [{ name: "art-studio-fictional-api", enforce: "pre", load(id) {
   if (id.replaceAll("\\", "/").endsWith("/src/api.js")) return "export const apiRequest=globalThis.__artStudioRequest; export const API_BASE_URL=''; export const apiFetch=()=>{throw Error('Unexpected media fetch')};";
   if (id.replaceAll("\\", "/").endsWith("/src/auth-session.js")) return "export const authSession={getSnapshot:()=>({user:{id:'fictional-account'},activeCompanionId:'fictional-companion'})};";
 } }] });
-after(async () => { await vite.close(); delete globalThis.__artStudioRequest; });
+after(async () => {
+  await vite.close();
+  delete globalThis.__artStudioRequest;
+  assert.equal(dirname(resolve(cacheDir)), resolve(tmpdir()));
+  assert.ok(basename(cacheDir).startsWith("dengta-art-studio-component-"));
+  await rm(cacheDir, { recursive: true, force: true });
+});
 const text = node => typeof node === "string" ? node : (node?.children || []).map(text).join("");
 test("actual navigation includes a searchable independent drawing entry", () => {
   const source = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");

@@ -2,15 +2,16 @@ package home.dengta.app;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.graphics.Bitmap;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.IntentFilter;
 import android.os.Bundle;
 import android.os.SystemClock;
-import android.util.Base64;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.WindowManager;
 import android.webkit.CookieManager;
-import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
@@ -18,10 +19,10 @@ import android.webkit.WebViewClient;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import androidx.core.content.ContextCompat;
 
 import org.json.JSONObject;
 
-import java.io.ByteArrayOutputStream;
 import java.util.Random;
 
 /**
@@ -51,6 +52,17 @@ public class OrderWebActivity extends Activity {
     };
     private String mode;
     private String requestId = "";
+    private String requestScope = "";
+    private boolean cancelReceiverRegistered;
+    private final BroadcastReceiver cancelReceiver = new BroadcastReceiver() {
+        @Override public void onReceive(Context context, Intent intent) {
+            if (!OrderBrowserPlugin.CANCEL_ACTION.equals(intent.getAction())) return;
+            String cancelledId = intent.getStringExtra("request_id");
+            if (!intent.getBooleanExtra("cancel_all", false) && (cancelledId != null ? !cancelledId.equals(requestId) : requestScope == null || !requestScope.equals(intent.getStringExtra("scope")))) return;
+            automationStopped = true;
+            if (operationStatus != null) operationStatus.setText("当前点餐任务已停止，网页和登录仍保留；请先核对购物车，再手动返回。");
+        }
+    };
     private TextView operationStatus;
     private final OrderPageResultState resultState = new OrderPageResultState();
     private String configJson;
@@ -60,13 +72,17 @@ public class OrderWebActivity extends Activity {
     private boolean backHintShown = false;
     private String currentUrl = "";
     private int searchRetries = 0;
+    private int menuRetries = 0;
+    private int settlementRetries = 0;
     private boolean enterTickPending = false;
     private long pageGeneration = 0;
     // 帖子 11 节「钱的闸」+ 14 节「截图」：
-    // maxAmount<=0 表示未设上限（不拦）；quiet 表示加购完自动收手（不等人点「完成后点这里返回」）。
+    // maxAmount<=0 表示未设上限；完成回执不关闭网页，也不提交付款。
     private double maxAmount = -1.0;
-    private boolean quietMode = false;
-    private String screenshotBase64 = "";
+    // 系统内存紧张时 WebView 渲染进程会被回收；自动重建而不是直接判失败（闪退/白屏的主因）。
+    private int rendererRecoveries = 0;
+    // 主文档网络失败只自动重试一次。
+    private int networkRetries = 0;
     private final Random random = new Random();
 
     private static final String TAG = "OrderWebActivity";
@@ -209,6 +225,11 @@ public class OrderWebActivity extends Activity {
         return targetView == webView && generation == pageGeneration && canAutomate();
     }
 
+    private void postOnMain(Runnable action, long delay) {
+        if (isFinishing() || isDestroyed()) return;
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(action, delay);
+    }
+
     private void postOnPage(WebView target, Runnable action, long delay) {
         long generation = pageGeneration;
         target.postDelayed(() -> { if (activePage(target, generation)) action.run(); }, delay);
@@ -228,10 +249,13 @@ public class OrderWebActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        // 自动点餐期间保持屏幕常亮：灭屏会让部分机型冻结 WebView，看起来像网页自己关掉。
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         try {
             Intent intent = getIntent();
             mode = intent == null ? "" : intent.getStringExtra("mode");
             requestId = intent == null ? "" : intent.getStringExtra("request_id");
+            requestScope = intent == null ? "" : intent.getStringExtra("scope");
             currentUrl = savedInstanceState == null ? intent == null ? "" : intent.getStringExtra("url") : savedInstanceState.getString("dengta_order_url", "");
             accountBinding = intent == null ? null : savedInstanceState == null
                 ? BrowserSessionSupport.ACCOUNTS.consume(intent.getStringExtra(BrowserSessionSupport.REQUEST_TICKET))
@@ -239,10 +263,16 @@ public class OrderWebActivity extends Activity {
             if (accountBinding == null) { showTechnicalError(savedInstanceState == null ? "browser_account_required" : "browser_account_restore_required"); return; }
             BrowserSessionSupport.requireAccountProfiles();
             BrowserSessionSupport.ACCOUNTS.addListener(accountChanged);
+            ContextCompat.registerReceiver(this, cancelReceiver, new IntentFilter(OrderBrowserPlugin.CANCEL_ACTION), ContextCompat.RECEIVER_NOT_EXPORTED);
+            cancelReceiverRegistered = true;
             if (savedInstanceState != null) {
                 automationStopped = savedInstanceState.getBoolean("dengta_order_automation_stopped", true);
                 if (savedInstanceState.getBoolean("dengta_order_result_published", false)) resultState.markPublished();
-                showTechnicalError("takeout_page_interrupted");
+                // 系统重建页面时恢复同一页面的登录态和购物车，而不是把整页判死。
+                String restored = currentUrl;
+                if (restored == null || !(restored.startsWith("https://") || restored.startsWith("http://"))) restored = "https://h5.ele.me/msite/";
+                onCreateGuarded(savedInstanceState, restored);
+                if (operationStatus != null) operationStatus.setText("页面已恢复，自动点餐仍已停止。请手动核对登录和购物车。");
                 return;
             }
             onCreateGuarded(savedInstanceState);
@@ -252,6 +282,52 @@ public class OrderWebActivity extends Activity {
             android.util.Log.e(TAG, "takeout_page_init_failed");
             showTechnicalError("takeout_page_init_failed");
         }
+    }
+
+    @Override protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        String nextMode = intent.getStringExtra("mode");
+        String nextUrl = intent.getStringExtra("url");
+        // 下一步还是同一页（同一个搜索词）时不要销毁重建：重建会让用户看到"网页自己关了/刷新了"。
+        boolean samePage = webView != null && !resultState.published() && nextUrl != null && nextUrl.equals(currentUrl)
+            && nextMode != null && nextMode.equals(mode);
+        if (!resultState.published() && requestId != null && !requestId.isEmpty()) OrderBrowserPlugin.publishSearchResult(this, requestId, null, "cancelled");
+        automationStopped = true;
+        pageGeneration += 1;
+        WebView previous = webView;
+        if (!samePage) webView = null;
+        BrowserSessionSupport.persistCookiesNow(accountCookies);
+        if (!samePage) disposeWebView(previous);
+        setIntent(intent);
+        try {
+            accountBinding = BrowserSessionSupport.ACCOUNTS.consume(intent.getStringExtra(BrowserSessionSupport.REQUEST_TICKET));
+            BrowserSessionSupport.ACCOUNTS.requireCurrent(accountBinding);
+            BrowserSessionSupport.ACCOUNTS.addListener(accountChanged);
+            if (!cancelReceiverRegistered) {
+                ContextCompat.registerReceiver(this, cancelReceiver, new IntentFilter(OrderBrowserPlugin.CANCEL_ACTION), ContextCompat.RECEIVER_NOT_EXPORTED);
+                cancelReceiverRegistered = true;
+            }
+            mode = nextMode;
+            requestId = intent.getStringExtra("request_id");
+            requestScope = intent.getStringExtra("scope");
+            resultState.reset();
+            orderStep = 0;
+            searchRetries = 0;
+            menuRetries = 0;
+            settlementRetries = 0;
+            enterTickPending = false;
+            backHintShown = false;
+            technicalErrorCode = "";
+            maxAmount = -1;
+            automationStopped = false;
+            if (samePage) {
+                // 沿用已经登录、已经加载好的页面，只继续这一步的自动操作。
+                if (operationStatus != null) operationStatus.setText("继续这一步；页面和登录都保留着。");
+                startModeAutomation(webView);
+            } else {
+                onCreateGuarded(null);
+            }
+        } catch (RuntimeException invalid) { showTechnicalError(BrowserSessionSupport.accountErrorCode(invalid)); }
     }
 
     private void onCreateGuarded(Bundle savedInstanceState) {
@@ -280,7 +356,6 @@ public class OrderWebActivity extends Activity {
                 if (config.has("max_amount")) {
                     maxAmount = config.optDouble("max_amount", -1.0);
                 }
-                quietMode = config.optBoolean("quiet", false);
             }
         } catch (Exception ignored) {
         }
@@ -312,6 +387,9 @@ public class OrderWebActivity extends Activity {
         BrowserSessionSupport.useDeviceUserAgent(webView);
         settings.setUseWideViewPort(true);
         settings.setLoadWithOverviewMode(true);
+        // 外卖 H5 会偷偷 window.open 广告页；禁止多窗口，避免"点着点着整页被替换/关掉"。
+        settings.setSupportMultipleWindows(false);
+        settings.setJavaScriptCanOpenWindowsAutomatically(false);
         accountCookies.setAcceptCookie(true);
         accountCookies.setAcceptThirdPartyCookies(webView, true);
         webView.setWebChromeClient(new WebChromeClient() {
@@ -323,12 +401,29 @@ public class OrderWebActivity extends Activity {
                 // Only the origin-aware main-frame bridge can read location; native prompts lack frame identity.
                 callback.invoke(origin, false, false);
             }
+
+            @Override
+            public void onCloseWindow(WebView window) {
+                // 平台活动页可能调用 window.close()；这里吞掉，页面留在原地由人决定。
+            }
         });
         // 无 GMS 手机 WebView 定位必失败：document-start 注入 mock geolocation（真实坐标）。
         if (!LocationFix.apply(webView, () -> BrowserSessionSupport.ACCOUNTS.isCurrent(accountBinding)) && BrowserLocationPolicy.isTrustedPage(url))
             android.widget.Toast.makeText(this, "当前系统 WebView 不支持安全定位，请更新 WebView，或在外卖 App 中手动选择地址。", android.widget.Toast.LENGTH_LONG).show();
-        webView.addJavascriptInterface(new OrderBridge(this), "DengTaOrderBridge");
         webView.setWebViewClient(new WebViewClient() {
+            @Override public boolean shouldOverrideUrlLoading(WebView view, android.webkit.WebResourceRequest request) {
+                String url = request.getUrl().toString();
+                if (url.startsWith("https://") || url.startsWith("http://")) return false;
+                // Platform promotion timers cannot dismiss this page or launch another app.
+                if (!BrowserSessionSupport.mayOpenExternalNavigation(request.hasGesture(), request.isForMainFrame())) return true;
+                try { startActivity(new Intent(Intent.ACTION_VIEW, request.getUrl())); } catch (Exception ignored) {}
+                return true;
+            }
+
+            @Override public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                return url != null && !url.startsWith("https://") && !url.startsWith("http://");
+            }
+
             @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
                 super.onPageStarted(view, url, favicon);
@@ -348,13 +443,38 @@ public class OrderWebActivity extends Activity {
                     if (view == webView) webView = null;
                     return true;
                 }
+                // 渲染进程被系统回收（内存紧张最常见）：先自动重建同一页，而不是直接判"闪退"。
+                if (BrowserSessionSupport.canRecoverRenderer(rendererRecoveries)) {
+                    rendererRecoveries += 1;
+                    String resumeUrl = currentUrl;
+                    webView = null;
+                    disposeWebView(view);
+                    if (operationStatus != null) operationStatus.setText("页面渲染被系统回收，正在恢复同一页（登录已保留）…");
+                    automationStopped = true;
+                    postOnMain(() -> {
+                        try {
+                            onCreateGuarded(null, resumeUrl);
+                            // 页面已恢复，但自动操作不再继续：如实把本轮标记为中断，交给用户核对。
+                            finishWithResult("{\"status\":\"error\",\"code\":\"takeout_page_interrupted\",\"loading\":false,\"shops\":[]}");
+                        } catch (Throwable error) { showTechnicalError("takeout_page_renderer_failed"); }
+                    }, 600);
+                    return true;
+                }
                 showTechnicalError("takeout_page_renderer_failed");
                 return true;
             }
 
             @Override
             public void onReceivedError(WebView view, android.webkit.WebResourceRequest request, android.webkit.WebResourceError error) {
-                if (view == webView && BrowserSessionSupport.isCurrentNavigationFailure(request.getUrl().toString(), currentUrl, request.isForMainFrame()) && !isFinishing() && !isDestroyed()) showTechnicalError("takeout_page_load_failed");
+                if (view != webView || isFinishing() || isDestroyed()) return;
+                if (!BrowserSessionSupport.isCurrentNavigationFailure(request.getUrl().toString(), currentUrl, request.isForMainFrame())) return;
+                if (BrowserSessionSupport.canRetryNavigation(networkRetries)) {
+                    networkRetries += 1;
+                    if (operationStatus != null) operationStatus.setText("网络暂时不可用，正在重试打开同一页…");
+                    postOnMain(() -> { if (canAutomate() || webView != null) webView.loadUrl(currentUrl); }, 900);
+                    return;
+                }
+                showTechnicalError("takeout_page_load_failed");
             }
 
             @Override
@@ -362,28 +482,10 @@ public class OrderWebActivity extends Activity {
                 super.onPageFinished(view, finishedUrl);
                 if (view != webView || isFinishing() || isDestroyed()) return;
                 currentUrl = finishedUrl;
+                networkRetries = 0;
                 LocationFix.injectMock(view);
                 BrowserSessionSupport.persistCookies(accountCookies);
-                if (!canAutomate()) return;
-                if ("search".equals(mode)) {
-                    postOnPage(view, () -> runSearchStep(view), 2500);
-                } else if ("order".equals(mode)) {
-                    if (orderStep == 0) {
-                        postOnPage(view, () -> runOrderStep(view), 2500);
-                    } else if (orderStep == 1) {
-                        // 坑 50：进店后先识门（小柜台→重建正门；还在搜索→再点一次；正店→选品）
-                        if (!enterTickPending) {
-                            enterTickPending = true;
-                            postOnPage(view, () -> {
-                                enterTickPending = false;
-                                enterShop(view, 0);
-                            }, 2000 + random.nextInt(1500));
-                        }
-                    }
-                    // orderStep>=2：购物车/结算页
-                    // 加载后执行结算价检查（帖子 11 节「钱的闸」）
-                    postOnPage(view, () -> settlementCheck(), 2000 + random.nextInt(1500));
-                }
+                startModeAutomation(view);
             }
         });
         root.addView(webView, new LinearLayout.LayoutParams(
@@ -399,12 +501,8 @@ public class OrderWebActivity extends Activity {
                 return;
             }
             if (resultState.result() != null) { returnToDengTa(resultState.result()); return; }
-            captureScreenshot();
-            String result = "{\"status\":\"awaiting_payment\",\"note\":\"用户已在页面确认\"";
-            if (!screenshotBase64.isEmpty()) {
-                result += ",\"screenshot\":\"" + screenshotBase64 + "\"";
-            }
-            result += "}";
+            String result = "{\"status\":\"manual_review\",\"code\":\"takeout_manual_review_required\",\"paymentSubmitted\":false}";
+            finishWithResult(result);
             returnToDengTa(result);
         });
         root.addView(done, new LinearLayout.LayoutParams(
@@ -414,6 +512,30 @@ public class OrderWebActivity extends Activity {
         setContentView(root);
         SafeWindow.apply(this, root);
         webView.loadUrl(url);
+    }
+
+    private void startModeAutomation(WebView view) {
+        if (!canAutomate()) return;
+        if ("search".equals(mode)) {
+            postOnPage(view, () -> runSearchStep(view), 2200 + random.nextInt(900));
+            return;
+        }
+        if (!"order".equals(mode) && !"menu".equals(mode)) return; // review 模式：只让人看和付款
+        if (orderStep == 0) {
+            postOnPage(view, () -> runOrderStep(view), 2200 + random.nextInt(900));
+        } else if (orderStep == 1) {
+            // 坑 50：进店后先识门（小柜台→重建正门；还在搜索→再点一次；正店→选品）
+            if (!enterTickPending) {
+                enterTickPending = true;
+                postOnPage(view, () -> {
+                    enterTickPending = false;
+                    enterShop(view, 0);
+                }, 2000 + random.nextInt(1500));
+            }
+        }
+        // orderStep>=2：购物车/结算页
+        // 加载后执行结算价检查（帖子 11 节「钱的闸」）
+        if (orderStep >= 3 && "order".equals(mode)) postOnPage(view, () -> settlementCheck(), 2000 + random.nextInt(1500));
     }
 
     private void runSearchStep(WebView view) {
@@ -465,7 +587,7 @@ public class OrderWebActivity extends Activity {
     }
 
     private void runOrderStep(WebView view) {
-        if (!canAutomate()) return;
+        if (!canAutomate() || orderStep != 0) return;
         try {
             JSONObject config = new JSONObject(configJson);
             String shopName = config.optString("shop_name", "");
@@ -499,6 +621,7 @@ public class OrderWebActivity extends Activity {
                     if (hasScriptStatus(value, "opening_shop")) {
                         // 真触摸打开店卡（坑 8：认元素打标记后真点），先来一拍真人节奏（坑 13）
                         slow(() -> tapMarked("[data-dengta-pick='1']"));
+                        postOnPage(view, () -> enterShop(view, 0), 6000);
                         // 进店后的识门/选品交给 onPageFinished → enterShop 处理（坑 50）
                     } else {
                         finishWithResult(value == null || "null".equals(value)
@@ -512,29 +635,54 @@ public class OrderWebActivity extends Activity {
         }
     }
 
+    private void readMenuStep(WebView view) {
+        if (!canAutomate() || !"menu".equals(mode) || orderStep < 1 || orderStep > 2) return;
+        orderStep = 2;
+        String js = "(function(){"
+            + "function text(e){return String(e&&e.innerText||'').replace(/\\s+/g,' ').trim();}"
+            + "var titles=[].slice.call(document.querySelectorAll('[class*=\"food-name\" i],[class*=\"foodName\" i],[class*=\"item-name\" i]'));"
+            + "var seen=Object.create(null),products=[];"
+            + "titles.forEach(function(title){var name=text(title);if(!name||name.length>80||seen[name])return;"
+            + "var row=title.closest&&title.closest('[class*=\"food-item\" i],[class*=\"foodItem\" i],[class*=\"menu-item\" i],[class*=\"goods-item\" i]')||title.parentElement;"
+            + "if(!row)return;var r=row.getBoundingClientRect();if(r.width<2||r.height<2)return;"
+            + "var body=text(row);if(body.length>500)return;var prices=body.match(/[¥￥]\\s*\\d+(?:\\.\\d{1,2})?/g)||[];"
+            + "var price=prices.length===1?Number(prices[0].replace(/[¥￥\\s]/g,'')):null;"
+            + "var unavailable=/售罄|已售完|已售罄|暂不供应|不可购买/.test(body);"
+            + "var add=row.querySelector&&row.querySelector('button,[class*=\"add\" i],[role=\"button\"]');"
+            + "seen[name]=true;products.push({name:name,price:price,available:unavailable?false:add?true:null});});"
+            + "return {status:products.length?'done':'error',code:products.length?'':'takeout_menu_unavailable',products:products.slice(0,30),loading:false};"
+            + "})();";
+        checkVerification(() -> evaluateOnPage(view, js, value -> {
+            if (hasScriptStatus(value, "error") && menuRetries < 6) {
+                menuRetries += 1;
+                postOnPage(view, () -> readMenuStep(view), 700);
+            } else finishWithResult(value);
+        }));
+    }
+
     // 坑 50 + 坑 19：进店后先识门再选品。
     //  - 正店页（SHOP_SCHEME/restaurant）→ 直接选品
     //  - 小柜台（ITEM_STICKY_CATEGORY_SCHEME「猜你喜欢」）→ 拿 shopId 重建正门
     //  - 还在搜索/中间页 → 再认一拍（坑 19），认不出就按小柜台兜底找 shopId
     private void enterShop(WebView view, int attempt) {
-        if (!canAutomate()) return;
+        if (!canAutomate() || orderStep != 1) return;
         checkLoginState(() -> enterShopReady(view, attempt));
     }
 
     private void enterShopReady(WebView view, int attempt) {
-        if (!canAutomate()) return;
+        if (!canAutomate() || orderStep != 1) return;
         if (attempt > 4) {
             // 实在认不出门：直接从当前页尝试选品，至少不会卡死
-            addProductStep(view);
+            if ("menu".equals(mode)) readMenuStep(view); else addProductStep(view);
             return;
         }
-        String url = currentUrl == null ? "" : currentUrl;
+        String url = view.getUrl() == null ? currentUrl == null ? "" : currentUrl : view.getUrl();
         boolean isShopDoor = url.contains("SHOP_SCHEME") || url.contains("restaurant")
             || url.contains("pages-poi") || url.contains("/poi/") || url.contains("shopId");
         boolean miniCounter = url.contains("ITEM_STICKY") || url.contains("menu_extra_info")
             || (url.contains("scheme_type") && !url.contains("SHOP_SCHEME"));
         if (isShopDoor && !miniCounter) {
-            addProductStep(view);
+            if ("menu".equals(mode)) readMenuStep(view); else addProductStep(view);
             return;
         }
         if (miniCounter) {
@@ -576,6 +724,10 @@ public class OrderWebActivity extends Activity {
         try {
             JSONObject config = new JSONObject(configJson);
             final String product = config.optString("product", "");
+            if (config.optInt("quantity", 1) != 1) {
+                finishWithResult("{\"status\":\"manual_review\",\"code\":\"takeout_quantity_unverified\",\"paymentSubmitted\":false}");
+                return;
+            }
             orderStep = 2;
             String js = "(function(){"
                 + "var p=" + JSONObject.quote(product) + ";"
@@ -665,6 +817,8 @@ public class OrderWebActivity extends Activity {
     // 坑 7：加完购回购物车页（详情页里没有「去结算」），停那儿让人付款。
     private void goToCart() {
         if (!canAutomate()) return;
+        orderStep = 3;
+        settlementRetries = 0;
         try {
             postOnPage(webView, () -> {
                 if (!canAutomate()) return;
@@ -681,20 +835,16 @@ public class OrderWebActivity extends Activity {
     // 若超出 maxAmount 或车里有旧货时停手，否则继续。
     // 帖子 14 节「截图」：拍下购物车页截图，base64 带回。
     private void settlementCheck() {
-        if (!canAutomate()) return;
+        if (!canAutomate() || orderStep != 3) return;
+        String product;
+        try { product = new JSONObject(configJson).optString("product", ""); }
+        catch (Exception invalid) { product = ""; }
         String js = "(function(){"
-            + "var t=document.body.innerText||'';"
-            + "/* 读合计（帖子 11 节：两种写法 A/B） */"
-            + "var tail=t.slice(Math.max(0,t.lastIndexOf('合计')));"
-            + "var total=NaN;"
-            + "var m=t.match(/合计¥\\s*(\\d+(?:\\.\\d+)?)/);"
-            + "if(!m)m=tail.match(/已优惠\\s*¥\\s*[\\d.]+[\\s\\S]{0,12}?¥\\s*(\\d+(?:\\.\\d+)?)/);"
-            + "if(!m)m=t.match(/¥\\s*(\\d+(?:\\.\\d+)?)/g);"
-            + "if(m){total=Number(m[1]||m[0].replace('¥','').trim());}"
-            + "/* 车里有旧货闸：商品明细段数 */"
-            + "var detail=t.slice(0,(t.indexOf('打包费')+1)||t.length);"
-            + "var items=(detail.match(/×\\s*\\d+/g)||[]).length;"
-            + "return {total:isNaN(total)?0:total,items:items};"
+            + "var t=String(document.body&&document.body.innerText||'').split(/猜你喜欢|为你推荐|推荐搭配/)[0],p=" + JSONObject.quote(product) + ";"
+            + "var m=t.match(/(?:合计|实付|应付)(?:金额)?\\s*[:：]?\\s*[¥￥]\\s*(\\d+(?:\\.\\d{1,2})?)/);"
+            + "var counts=t.match(/[×x]\\s*\\d+(?=\\s|$)/g)||[],items=counts.reduce(function(n,s){return n+Number(s.replace(/[×x\\s]/g,''));},0);"
+            + "return {cartDetected:/购物车|确认订单|去结算|应付|实付|合计/.test(t),total:m?Number(m[1]):null,items:items,"
+            + "expectedFound:!!p&&t.split(/\\n/).some(function(line){return line.replace(/\\s+/g,'')===p.replace(/\\s+/g,'');})};"
             + "})();";
         evaluateOnPage(webView, js, value -> {
             if (!canAutomate()) return;
@@ -703,54 +853,37 @@ public class OrderWebActivity extends Activity {
                     finishWithResult("{\"status\":\"error\",\"code\":\"takeout_page_script_failed\",\"error\":\"购物车金额尚未读取成功，请在当前页面手动核对。\"}");
                     return;
                 }
-                double total = 0;
-                int items = 0;
-                if (value != null && !value.equals("null")) {
-                    JSONObject o = new JSONObject(String.valueOf(value));
-                    total = o.optDouble("total", 0);
-                    items = o.optInt("items", 0);
+                JSONObject summary = new JSONObject(String.valueOf(value));
+                double total = summary.optDouble("total", Double.NaN);
+                int items = summary.optInt("items", 0);
+                if (!summary.optBoolean("cartDetected", false) || !summary.optBoolean("expectedFound", false)
+                    || !Double.isFinite(total) || total <= 0 || items != 1) {
+                    if (settlementRetries < 6 && items <= 1) {
+                        settlementRetries += 1;
+                        postOnPage(webView, this::settlementCheck, 700);
+                        return;
+                    }
+                    finishWithResult("{\"status\":\"manual_review\",\"code\":\"takeout_cart_unverified\",\"paymentSubmitted\":false}");
+                    return;
                 }
-                // 拍购物车截图
-                captureScreenshot();
                 // 钱闸：超限停手
                 if (maxAmount > 0 && total > maxAmount) {
                     finishWithResult("{\"status\":\"over_limit\",\"total\":" + total
                         + ",\"max_amount\":" + maxAmount
-                        + ",\"screenshot\":\"" + screenshotBase64 + "\""
                         + ",\"error\":\"合计¥" + total + " 超过上限¥" + maxAmount + "，一分没花，等你点头。\"}");
                     return;
                 }
-                // 安静模式：不等人点「完成后点这里返回」，自动收工
-                if (quietMode) {
-                    finishWithResult("{\"status\":\"done\",\"total\":" + total
-                        + ",\"items\":" + items
-                        + ",\"screenshot\":\"" + screenshotBase64 + "\""
-                        + ",\"message\":\"加购完成，在购物车页等你确认付款。\"}");
+                if (!new JSONObject(configJson).optString("note", "").trim().isEmpty()) {
+                    finishWithResult("{\"status\":\"manual_review\",\"code\":\"takeout_note_review_required\",\"total\":" + total + ",\"items\":" + items + ",\"paymentSubmitted\":false}");
                     return;
                 }
+                String name = new JSONObject(configJson).optString("product", "");
+                finishWithResult("{\"status\":\"ready_for_payment\",\"total\":" + total + ",\"items\":" + items
+                    + ",\"lines\":[{\"name\":" + JSONObject.quote(name) + ",\"quantity\":1}],\"paymentSubmitted\":false}");
             } catch (Exception ignored) {
+                finishWithResult("{\"status\":\"manual_review\",\"code\":\"takeout_cart_unverified\",\"paymentSubmitted\":false}");
             }
         });
-    }
-
-    // 帖子 14 节：截图（WebView 当前画面 → base64 JPEG）
-    // 使用 View.draw 到 Bitmap，不依赖废弃 API。
-    private void captureScreenshot() {
-        if (webView == null) return;
-        try {
-            int width = webView.getWidth();
-            int height = webView.getHeight();
-            if (width <= 0 || height <= 0) return;
-            Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-            android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
-            webView.draw(canvas);
-            // 帖子 14 节：JPEG 质量 70，够看不够大
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 70, out);
-            screenshotBase64 = Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP);
-            bitmap.recycle();
-        } catch (Exception ignored) {
-        }
     }
 
     private void finishWithResult(String resultJson) {
@@ -759,15 +892,16 @@ public class OrderWebActivity extends Activity {
         try { status = new JSONObject(resultState.result()).optString("status", "done"); } catch (Exception ignored) {}
         if (operationStatus != null) operationStatus.setText("verification".equals(status) ? "页面需要验证，自动操作已停止。你可以完成验证后手动返回。"
             : "logged_out".equals(status) ? "页面需要登录，自动操作已停止。你可以登录后手动返回。"
-            : "search".equals(mode) ? "搜索结果已交回 AI。你可以继续查看，完成后手动返回。"
+            : "search".equals(mode) || "menu".equals(mode) ? "页面结果已交回 AI。你可以继续查看，完成后手动返回。"
+            : "ready_for_payment".equals(status) ? "已核对本次商品与金额，自动操作已停止。请亲自检查收货地址并确认付款；页面不会自动关闭。"
             : "自动操作已停止，请核对页面后手动返回。");
-        if ("search".equals(mode) && requestId != null && !requestId.isEmpty()) {
+        if (requestId != null && !requestId.isEmpty()) {
             resultState.markPublished();
             OrderBrowserPlugin.publishSearchResult(this, requestId, resultState.result(), null);
         }
     }
 
-    private boolean canAutomate() { return webView != null && BrowserSessionSupport.ACCOUNTS.isCurrent(accountBinding) && !automationStopped && !isFinishing() && !isDestroyed() && !resultState.stopped(); }
+    private boolean canAutomate() { return webView != null && BrowserLocationPolicy.isTrustedPage(currentUrl) && BrowserSessionSupport.ACCOUNTS.isCurrent(accountBinding) && !automationStopped && !isFinishing() && !isDestroyed() && !resultState.stopped(); }
 
     private void disposeWebView(WebView view) {
         if (view == null) return;
@@ -788,7 +922,7 @@ public class OrderWebActivity extends Activity {
         WebView failed = webView;
         webView = null;
         disposeWebView(failed);
-        if ("search".equals(mode) && !resultState.published() && requestId != null && !requestId.isEmpty()) {
+        if (!resultState.published() && requestId != null && !requestId.isEmpty()) {
             resultState.markPublished();
             try { OrderBrowserPlugin.publishSearchResult(this, requestId, null, code); } catch (Exception ignored) {}
         }
@@ -835,7 +969,7 @@ public class OrderWebActivity extends Activity {
     }
 
     private void returnToDengTa(String resultJson) {
-        BrowserSessionSupport.persistCookies(accountCookies);
+        BrowserSessionSupport.persistCookiesNow(accountCookies);
         Intent data = new Intent();
         data.putExtra("result", resultJson);
         setResult(Activity.RESULT_OK, data);
@@ -883,14 +1017,21 @@ public class OrderWebActivity extends Activity {
     }
 
     @Override protected void onPause() {
-        BrowserSessionSupport.persistCookies(accountCookies);
+        BrowserSessionSupport.persistCookiesNow(accountCookies);
         super.onPause();
+    }
+
+    @Override protected void onStop() {
+        // 切到后台/锁屏时同步落盘登录 Cookie，降低"隔一会儿就掉登录"的概率。
+        BrowserSessionSupport.persistCookiesNow(accountCookies);
+        super.onStop();
     }
 
     @Override protected void onDestroy() {
         BrowserSessionSupport.ACCOUNTS.removeListener(accountChanged);
+        if (cancelReceiverRegistered) { try { unregisterReceiver(cancelReceiver); } catch (Exception ignored) {} }
         BrowserSessionSupport.persistCookies(accountCookies);
-        if ("search".equals(mode) && !isChangingConfigurations() && !resultState.published() && requestId != null && !requestId.isEmpty()) {
+        if (!isChangingConfigurations() && !resultState.published() && requestId != null && !requestId.isEmpty()) {
             resultState.markPublished();
             OrderBrowserPlugin.publishSearchResult(this, requestId, null, "cancelled");
         }
@@ -900,12 +1041,4 @@ public class OrderWebActivity extends Activity {
         super.onDestroy();
     }
 
-    private static final class OrderBridge {
-        private final OrderWebActivity activity;
-        OrderBridge(OrderWebActivity activity) { this.activity = activity; }
-        @JavascriptInterface
-        public void postResult(String json) {
-            activity.runOnUiThread(() -> activity.finishWithResult(json));
-        }
-    }
 }

@@ -23,6 +23,8 @@ final class BrowserSessionSupport {
         return thread;
     });
     private static final Pattern AUTH_COOKIE = Pattern.compile("(?:^|;\\s*)(?:SID|USERID|TOKEN)\\s*=\\s*[^;\\s]+");
+    private static final Pattern TAOBAO_SESSION_COOKIE = Pattern.compile("(?:^|;\\s*)cookie2\\s*=\\s*[^;\\s]+");
+    private static final Pattern TAOBAO_USER_COOKIE = Pattern.compile("(?:^|;\\s*)unb\\s*=\\s*[^;\\s]+");
 
     private BrowserSessionSupport() {}
 
@@ -59,6 +61,26 @@ final class BrowserSessionSupport {
         });
     }
 
+    /**
+     * 页面即将停止或返回时同步落盘一次登录 Cookie。
+     * 后台队列在进程被系统回收时可能来不及写盘，这正是"隔天掉登录"的常见原因之一；
+     * 这里只在 onStop / 返回灯塔这种非交互时刻调用，避免滚动或点击卡顿。
+     */
+    static void persistCookiesNow(CookieManager manager) {
+        if (manager == null) return;
+        try { manager.flush(); } catch (RuntimeException ignored) {}
+    }
+
+    /** WebView 渲染进程被系统回收后，最多自动重建两次，避免一次内存回收就把点餐页判死。 */
+    static boolean canRecoverRenderer(int attempts) {
+        return attempts >= 0 && attempts < 2;
+    }
+
+    /** 主文档网络失败只自动重试一次，随后交给用户，避免无限刷新。 */
+    static boolean canRetryNavigation(int attempts) {
+        return attempts >= 0 && attempts < 1;
+    }
+
     static String accountErrorCode(Throwable error) {
         String code = error == null ? "" : error.getMessage();
         if ("browser_account_required".equals(code) || "browser_account_changed".equals(code) || "browser_account_restore_required".equals(code)
@@ -90,12 +112,15 @@ final class BrowserSessionSupport {
             case "browser_account_isolation_unavailable": case "browser_account_binding_failed":
             case "takeout_page_not_ready": case "takeout_page_touch_unavailable": case "takeout_page_init_failed":
             case "takeout_page_renderer_failed": case "takeout_page_load_failed": case "takeout_page_interrupted": return code;
+            case "takeout_manual_review_required": case "takeout_cart_unverified": case "takeout_quantity_unverified":
+            case "takeout_menu_unavailable": case "takeout_note_review_required": return code;
             default: return "";
         }
     }
 
     static boolean hasAuthenticationCookie(String cookie) {
-        return cookie != null && AUTH_COOKIE.matcher(cookie).find();
+        return cookie != null && (AUTH_COOKIE.matcher(cookie).find()
+            || TAOBAO_SESSION_COOKIE.matcher(cookie).find() && TAOBAO_USER_COOKIE.matcher(cookie).find());
     }
 
     static LoginDecision loginDecision(String state, int attempt) {

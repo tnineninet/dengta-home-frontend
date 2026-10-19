@@ -48,6 +48,7 @@ test('the actual native-generated scripts compile, including dynamic selectors a
     ['OrderWebActivity', 'js', 'runOrderStep'], ['OrderWebActivity', 'js', 'reloadShopDoor'],
     ['OrderWebActivity', 'js', 'addProductStep'], ['OrderWebActivity', 'js', 'confirmAddToCart'],
     ['OrderWebActivity', 'js2', 'confirmAddToCart'], ['OrderWebActivity', 'js', 'settlementCheck'],
+    ['OrderWebActivity', 'js', 'readMenuStep'],
     ['PersistentBrowserActivity', 'js', 'runSearchExtract'],
     ['BrowserSessionSupport', 'LOGIN_STATE_SCRIPT'], ['LocationFix', 'MOCK_SCRIPT'],
   ];
@@ -159,6 +160,45 @@ test('native search receipts retain public reason codes and login errors keep th
   assert.match(plugin, /publicTakeoutSearchErrorCode\(status, parsed\.optString\("code", ""\)\)/);
   assert.match(plugin, /if \(!code\.isEmpty\(\)\) result\.put\("code", code\)/);
   assert.match(plugin, /BrowserSessionSupport\.accountErrorMessage\(code\) : BrowserSessionSupport\.browserErrorMessage\(code\)/);
+});
+
+test('menu inspection reads exact visible products, keeps ambiguous prices unknown and never invents availability', () => {
+  const script = stringExpression('OrderWebActivity', 'js', 'readMenuStep');
+  const title = (name, body, available = false, visible = true) => ({ innerText: name, closest: () => ({
+    innerText: body, getBoundingClientRect: () => ({ width: visible ? 200 : 0, height: 60 }), querySelector: () => available ? {} : null,
+  }) });
+  const result = run(script, { querySelectorAll: () => [
+    title('番茄鸡蛋饭', '番茄鸡蛋饭 ¥18', true), title('青菜粥', '青菜粥 ¥12 ¥10'),
+    title('酸奶', '酸奶 已售罄 ¥6', true), title('乌龙茶', '乌龙茶'), title('隐藏商品', '隐藏商品 ¥1', true, false),
+  ] });
+  assert.equal(result.status, 'done'); assert.equal(result.products.length, 4);
+  assert.equal(result.products[0].name, '番茄鸡蛋饭'); assert.equal(result.products[0].price, 18); assert.equal(result.products[0].available, true);
+  assert.equal(result.products[1].price, null); assert.equal(result.products[1].available, null);
+  assert.equal(result.products[2].available, false); assert.equal(result.products[3].price, null);
+  assert.equal(run(script, { querySelectorAll: () => [] }).code, 'takeout_menu_unavailable');
+});
+
+test('cart verification uses an explicit total and exact product line instead of first currency or recommendations', () => {
+  const script = stringExpression('OrderWebActivity', 'js', 'settlementCheck');
+  const probe = text => run(script, { body: { innerText: text } });
+  const good = probe('购物车\n标准美式\n×1\n合计 ￥18.50');
+  assert.equal(good.total, 18.5); assert.equal(good.items, 1); assert.equal(good.expectedFound, true); assert.equal(good.cartDetected, true);
+  assert.equal(probe('购物车\n标准美式\n×1\n原价¥50 配送¥3').total, null, 'individual prices cannot become a cart total');
+  assert.equal(probe('购物车\n果C标准美式\n×1\n合计¥18').expectedFound, false);
+  assert.equal(probe('购物车\n其他商品\n×1\n合计¥18\n猜你喜欢\n标准美式').expectedFound, false);
+  assert.equal(probe('购物车\n标准美式\n×2\n合计¥36').items, 2, 'multiple or old cart items require manual review');
+});
+
+test('native completion is separate from page closure and cannot claim payment readiness from the return button', () => {
+  const code = source('OrderWebActivity');
+  const finish = code.slice(code.indexOf('private void finishWithResult('), code.indexOf('private boolean canAutomate('));
+  assert.doesNotMatch(finish, /\bfinish\(/); assert.match(finish, /publishSearchResult/);
+  assert.doesNotMatch(code, /DengTaOrderBridge|@JavascriptInterface/);
+  assert.match(code, /orderStep >= 3 && "order"\.equals\(mode\)/);
+  assert.match(code, /items != 1/); assert.match(code, /Double\.isFinite\(total\)/);
+  const done = code.slice(code.indexOf('done.setOnClickListener'), code.indexOf('root.addView(done'));
+  assert.match(done, /manual_review/); assert.doesNotMatch(done, /ready_for_payment|awaiting_payment/);
+  assert.match(source('OrderBrowserPlugin'), /FLAG_ACTIVITY_REORDER_TO_FRONT \| Intent.FLAG_ACTIVITY_SINGLE_TOP/);
 });
 
 function locationContext(value, deferred = false) {

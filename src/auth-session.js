@@ -87,9 +87,24 @@ function storeCompanionId(storage, userId, companionId) {
 }
 
 function authFailure(error, fallbackMessage) {
-  const code = String(error?.details?.code || error?.code || "auth_error");
+  const rawCode = String(error?.details?.code || error?.code || "");
+  const status = Number(error?.status || 0);
+  const messageText = String(error?.message || "");
+  // 网络不可达时 Supabase SDK 往往不带业务 code，旧逻辑会退化成 auth_error，
+  // 看起来像"密码错误"。这里把网络/服务端故障和真正的凭据错误分开。
+  const networkCode = !rawCode || rawCode === "request_failed" || rawCode === "unexpected_failure";
+  const networkFailure = networkCode && (error?.name === "AuthRetryableFetchError" || status === 0 ||
+    /failed to fetch|networkerror|load failed|network request failed|fetch failed/i.test(messageText));
+  const rateLimited = status === 429 || rawCode === "over_request_rate_limit" || rawCode === "over_email_send_rate_limit";
+  const code = networkFailure ? "auth_network_unavailable"
+    : status >= 500 ? "auth_service_unavailable"
+      : rateLimited ? "auth_rate_limited"
+        : rawCode || "auth_error";
   const messages = {
     invalid_credentials: "邮箱或密码不正确。",
+    auth_network_unavailable: "暂时连不上登录服务（不是密码错误）。请切换 Wi-Fi/移动网络或稍后再试。",
+    auth_service_unavailable: "登录服务暂时不可用（不是密码错误），请稍后再试。",
+    auth_rate_limited: "尝试太频繁（不是密码错误），请等几分钟再试。",
     email_not_confirmed: "邮箱尚未验证。请打开最新的验证邮件；链接失效时可在这里重新发送，不需要重新注册。",
     otp_expired: "邮箱验证链接已过期或已使用。若已完成验证，请用注册时的邮箱和密码登录；否则重新发送验证邮件并打开最新一封。",
     access_denied: "邮箱验证未完成，请重新发送验证邮件并打开最新链接。",

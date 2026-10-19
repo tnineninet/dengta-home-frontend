@@ -241,6 +241,32 @@ function createFakeSupabase(initialSession = null) {
 }
 
 {
+  const cases = [
+    { label: "wrong password", error: { code: "invalid_credentials", status: 400, message: "Invalid login credentials" }, expected: "invalid_credentials", text: "邮箱或密码不正确" },
+    { label: "network blocked", error: Object.assign(new Error("Failed to fetch"), { name: "AuthRetryableFetchError", status: 0 }), expected: "auth_network_unavailable", text: "不是密码错误" },
+    { label: "paused service", error: { code: "unexpected_failure", status: 503, message: "Service unavailable" }, expected: "auth_service_unavailable", text: "不是密码错误" },
+    { label: "rate limited", error: { code: "over_request_rate_limit", status: 429, message: "Too many requests" }, expected: "auth_rate_limited", text: "不是密码错误" },
+  ];
+  for (const item of cases) {
+    const manager = createAuthSessionManager({
+      supabaseUrl: "https://example.supabase.co",
+      supabaseAnonKey: "public-anon-key",
+      storage: createStorage(),
+      createClientFn: () => ({ auth: {
+        getSession: async () => ({ data: { session: null }, error: null }),
+        onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
+        signInWithPassword: async () => ({ data: { session: null }, error: item.error }),
+      } }),
+    });
+    await assert.rejects(manager.signIn({ email: "user@example.com", password: "password" }), error => {
+      assert.equal(error.code, item.expected, item.label);
+      assert.match(error.message, new RegExp(item.text));
+      return true;
+    });
+  }
+}
+
+{
   const manager = createAuthSessionManager({
     supabaseUrl: "",
     supabaseAnonKey: "",

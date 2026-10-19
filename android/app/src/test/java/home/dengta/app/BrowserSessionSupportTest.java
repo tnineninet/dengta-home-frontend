@@ -15,7 +15,12 @@ public class BrowserSessionSupportTest {
         assertTrue(BrowserSessionSupport.hasAuthenticationCookie("other=1; SID=fictional-value"));
         assertTrue(BrowserSessionSupport.hasAuthenticationCookie("USERID=fictional-user; other=1"));
         assertTrue(BrowserSessionSupport.hasAuthenticationCookie("TOKEN=fictional-value"));
+        assertTrue(BrowserSessionSupport.hasAuthenticationCookie("cookie2=fictional-session; unb=fictional-user; _tb_token_=fictional"));
+        assertTrue(BrowserSessionSupport.hasAuthenticationCookie("unb=fictional-user; cookie2=fictional-session"));
         for (String cookie : new String[]{null, "", "NOTSID=fictional-value", "SID=; other=1", "other=SID=fictional-value", "TOKEN= "}) {
+            assertFalse(BrowserSessionSupport.hasAuthenticationCookie(cookie));
+        }
+        for (String cookie : new String[]{"cookie2=fictional-session", "unb=fictional-user", "cookie2=; unb=fictional-user", "notcookie2=fictional-session; unb=fictional-user", "cookie2=fictional-session; notunb=fictional-user", "_tb_token_=fictional-csrf"}) {
             assertFalse(BrowserSessionSupport.hasAuthenticationCookie(cookie));
         }
     }
@@ -63,6 +68,16 @@ public class BrowserSessionSupportTest {
         assertNull(BrowserSessionSupport.nativeTouchPoint(10, 700, 390, 700, 1080, 1938));
         assertNull(BrowserSessionSupport.nativeTouchPoint(10, 10, 390, 700, 0, 1938));
         assertNull(BrowserSessionSupport.nativeTouchPoint(10, 10, 1, 700, 1080, 1938));
+    }
+
+    @Test public void rendererAndNavigationRecoveryStayBounded() {
+        assertTrue(BrowserSessionSupport.canRecoverRenderer(0));
+        assertTrue(BrowserSessionSupport.canRecoverRenderer(1));
+        assertFalse(BrowserSessionSupport.canRecoverRenderer(2));
+        assertFalse(BrowserSessionSupport.canRecoverRenderer(-1));
+        assertTrue(BrowserSessionSupport.canRetryNavigation(0));
+        assertFalse(BrowserSessionSupport.canRetryNavigation(1));
+        assertFalse(BrowserSessionSupport.canRetryNavigation(-1));
     }
 
     @Test public void unknownLoginStateWaitsABoundedNumberOfTimesInsteadOfAdvancingOrClaimingExpiry() {

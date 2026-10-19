@@ -43,6 +43,7 @@ public final class PersistentBrowserActivity extends Activity {
     private boolean desktopUa = false;
     private boolean resultReady = false;
     private String pageErrorCode = "";
+    private int rendererRecoveries = 0;
 
     static SharedPreferences prefs(android.content.Context context) {
         return context.getSharedPreferences(PREFS, android.content.Context.MODE_PRIVATE);
@@ -136,7 +137,9 @@ public final class PersistentBrowserActivity extends Activity {
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setGeolocationEnabled(false);
-        settings.setJavaScriptCanOpenWindowsAutomatically(true);
+        settings.setJavaScriptCanOpenWindowsAutomatically(false);
+        // 登录页也会被活动广告 window.open 顶掉；禁止多窗口，保住这一页扫码结果。
+        settings.setSupportMultipleWindows(false);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         settings.setSupportZoom(true);
         settings.setBuiltInZoomControls(true);
@@ -207,6 +210,20 @@ public final class PersistentBrowserActivity extends Activity {
             public boolean onRenderProcessGone(WebView view, android.webkit.RenderProcessGoneDetail detail) {
                 if (view != webView || isFinishing() || isDestroyed()) {
                     disposeWebView(view);
+                    return true;
+                }
+                // 登录页被系统回收内存时自动重开同一页，扫码结果和 Cookie 都还在。
+                BrowserSessionSupport.persistCookiesNow(accountCookies);
+                webView = null;
+                disposeWebView(view);
+                if (BrowserSessionSupport.canRecoverRenderer(rendererRecoveries)) {
+                    rendererRecoveries += 1;
+                    String resumeUrl = currentUrl;
+                    Toast.makeText(PersistentBrowserActivity.this, "页面渲染被系统回收，正在恢复同一页…", Toast.LENGTH_SHORT).show();
+                    new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                        try { onCreateGuarded(null, resumeUrl); }
+                        catch (Throwable error) { showPageError("browser_page_renderer_failed"); }
+                    }, 600);
                     return true;
                 }
                 showPageError("browser_page_renderer_failed");
@@ -423,8 +440,15 @@ public final class PersistentBrowserActivity extends Activity {
 
     @Override
     protected void onPause() {
-        BrowserSessionSupport.persistCookies(accountCookies);
+        BrowserSessionSupport.persistCookiesNow(accountCookies);
         super.onPause();
+    }
+
+    @Override
+    protected void onStop() {
+        // 登录页切后台时同步落盘，避免进程被回收后登录态还没写进 Cookie 库。
+        BrowserSessionSupport.persistCookiesNow(accountCookies);
+        super.onStop();
     }
 
     @Override

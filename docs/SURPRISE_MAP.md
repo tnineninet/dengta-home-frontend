@@ -33,3 +33,22 @@
 ## 本地验证范围
 
 `npm run test:surprise-map` 覆盖真实组件操作、坐标与回执、定位授权、保存重放、公开版本确认、迟到回执、地图初始化/销毁、离屏/后台暂停与错误事件。浏览器检查使用真实 Leaflet，但所有底图请求都由本地虚构图片拦截，未访问 OSM、未定位真实用户；不能据此宣称外部底图已在生产或手机通过。
+## AI 代笔的公开信与笔名（2026-10-20）
+
+- 公开版本仍必须由用户亲自确认；新增「让 AI 写给路过的人」只会起草一段面向陌生人的短笺，不会自动发布。
+- 公开代笔使用独立的 `services/surprise-map-public-draft.js`：不读取记忆、不引用账号或伴侣称呼、不写真实姓名/联系方式/可识别信息。
+- 同一账号+伴侣的公开信共享一个确定性笔名（如「晚风的旅人」），可按作者归类，但服务端不会返回 user_id / companion_id，也无法从笔名反推账号。
+- 公开投影新增 `author_alias`、`source`（ai/human）、`contents`；仍不返回精确领取坐标或私人正文。
+- 底图可通过 `VITE_SURPRISE_MAP_TILES` / `VITE_SURPRISE_MAP_ATTRIBUTION` 替换为自建或授权瓦片；离线/高德方案见 `docs/surprise-map-tiles-offline.md`。
+## 底图来源与笔名筛选（2026-10-20）
+
+- 地图弹窗可选择 OpenStreetMap / 高德 / MapTiler / 自定义瓦片；高德使用 GCJ-02，显示与选点自动换算，服务端仍保存 WGS84。
+- 自定义底图支持填瓦片模板、署名，或导入 JSON 清单；详细授权与离线方案见 `docs/surprise-map-tiles-offline.md`。
+- 公共惊喜可按笔名筛选：卡片上的「看看 TA 的其他信」会带上 `author` 查询参数，只返回同一笔名的公开信；清除筛选恢复全部。
+- 公开投影仍不含账号、伴侣、精确领取坐标或私人正文。
+## MCP 接口（2026-10-20）
+
+- 地图右上角「MCP 接口」可生成只属于当前账号+伴侣的令牌，只显示一次，可撤回。
+- 外部 AI 客户端通过 `POST /api/v2/surprise-map/mcp` 使用 `hide_letter` / `list_letters` / `list_public_letters`。
+- 藏信必须 `confirm:true`；列表不返回未拆开正文或精确坐标；领取仍必须本人到位。
+- 详见 `docs/surprise-map-mcp.md`。接口需要后端部署后才在线上可用。

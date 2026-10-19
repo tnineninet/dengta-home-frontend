@@ -43,6 +43,7 @@ import java.util.UUID;
 @CapacitorPlugin(name = "OrderBrowser")
 public final class OrderBrowserPlugin extends Plugin {
     static final String SEARCH_RESULT_ACTION = "home.dengta.app.ORDER_SEARCH_RESULT";
+    static final String CANCEL_ACTION = "home.dengta.app.ORDER_CANCEL_AUTOMATION";
     private final OrderSearchRequests searchRequests = new OrderSearchRequests();
     private final Handler searchHandler = new Handler(Looper.getMainLooper());
     private final BroadcastReceiver searchReceiver = new BroadcastReceiver() {
@@ -65,7 +66,9 @@ public final class OrderBrowserPlugin extends Plugin {
     }
 
     @PluginMethod public void cancelSearch(PluginCall call) {
-        searchRequests.cancelScope(call.getString("scope", ""));
+        String scope = call.getString("scope", "");
+        searchRequests.cancelScope(scope);
+        getContext().sendBroadcast(new Intent(CANCEL_ACTION).setPackage(getContext().getPackageName()).putExtra("scope", scope));
         call.resolve();
     }
 
@@ -107,11 +110,97 @@ public final class OrderBrowserPlugin extends Plugin {
             shops.put(new JSONObject().put("name", name.substring(0, Math.min(40, name.length()))).put("meta", meta.substring(0, Math.min(240, meta.length()))));
         }
         result.put("shops", shops);
+        JSONArray products = new JSONArray();
+        JSONArray incomingProducts = parsed.optJSONArray("products");
+        if (incomingProducts != null) for (int index = 0; index < Math.min(30, incomingProducts.length()); index++) {
+            JSONObject product = incomingProducts.optJSONObject(index);
+            if (product == null) continue;
+            String name = product.optString("name", "").trim();
+            if (name.isEmpty()) continue;
+            double price = product.optDouble("price", Double.NaN);
+            Object available = product.opt("available");
+            products.put(new JSONObject().put("name", name.substring(0, Math.min(80, name.length())))
+                .put("price", Double.isFinite(price) && price >= 0 ? price : JSONObject.NULL)
+                .put("available", available instanceof Boolean ? available : JSONObject.NULL));
+        }
+        result.put("products", products);
         return result;
+    }
+
+    private JSObject orderReceipt(String raw) throws Exception {
+        JSONObject parsed = new JSONObject(raw);
+        String status = parsed.optString("status", "error");
+        if (!java.util.Arrays.asList("ready_for_payment", "manual_review", "verification", "logged_out", "error", "shop_not_found", "product_not_found", "over_limit").contains(status)) status = "error";
+        JSObject result = new JSObject().put("status", status);
+        String code = BrowserSessionSupport.publicTakeoutSearchErrorCode("error", parsed.optString("code", ""));
+        if (!code.isEmpty()) result.put("code", code);
+        double total = parsed.optDouble("total", Double.NaN);
+        if (Double.isFinite(total) && total >= 0) result.put("total", total);
+        result.put("items", Math.max(0, parsed.optInt("items", 0)));
+        JSONArray lines = new JSONArray();
+        JSONArray incomingLines = parsed.optJSONArray("lines");
+        if (incomingLines != null) for (int index = 0; index < Math.min(20, incomingLines.length()); index++) {
+            JSONObject line = incomingLines.optJSONObject(index);
+            if (line == null) continue;
+            String name = line.optString("name", "").trim();
+            int quantity = line.optInt("quantity", 0);
+            if (!name.isEmpty() && name.length() <= 80 && quantity > 0 && quantity <= 20) lines.put(new JSONObject().put("name", name).put("quantity", quantity));
+        }
+        result.put("lines", lines);
+        // 换店/换菜时把页面看到的候选名字带回去，AI 只能在这些真实商品里重新选择。
+        JSONArray candidates = new JSONArray();
+        JSONArray incomingCandidates = parsed.optJSONArray("candidates");
+        if (incomingCandidates != null) for (int index = 0; index < Math.min(10, incomingCandidates.length()); index++) {
+            String name = incomingCandidates.optString(index, "").trim();
+            if (!name.isEmpty()) candidates.put(name.substring(0, Math.min(80, name.length())));
+        }
+        result.put("candidates", candidates);
+        result.put("paymentSubmitted", false);
+        return result;
+    }
+
+    private void openRequest(PluginCall call, String url, String mode, String config, String title, long timeoutMs) {
+        withAccount(call, binding -> {
+            String id = UUID.randomUUID().toString();
+            Runnable timeout = () -> {
+                if (searchRequests.finish(id, null, "timeout")) getContext().sendBroadcast(new Intent(CANCEL_ACTION)
+                    .setPackage(getContext().getPackageName()).putExtra("request_id", id));
+            };
+            getBridge().saveCall(call);
+            searchRequests.begin(id, call.getString("scope", ""), (result, error) -> {
+                searchHandler.removeCallbacks(timeout);
+                try { BrowserSessionSupport.ACCOUNTS.requireCurrent(binding); }
+                catch (RuntimeException changed) {
+                    String code = BrowserSessionSupport.accountErrorCode(changed);
+                    call.reject(BrowserSessionSupport.accountErrorMessage(code), code);
+                    getBridge().releaseCall(call);
+                    return;
+                }
+                if ("timeout".equals(error)) call.resolve(new JSObject().put("status", "error").put("code", "takeout_page_not_ready").put("loading", true));
+                else if ("launch_failed".equals(error)) call.reject("外卖页面暂时无法打开。", "takeout_search_open_failed");
+                else if (technicalErrorMessage(error) != null) call.reject(technicalErrorMessage(error), error);
+                else if (error != null) call.reject("外卖自动操作已暂停，页面保留供你核对。", "takeout_automation_paused");
+                else {
+                    try { call.resolve("order".equals(mode) ? orderReceipt(result) : searchReceipt(result)); }
+                    catch (Exception invalid) { call.reject("外卖页面返回了无效结果，请在页面中核对。", "takeout_search_result_invalid"); }
+                }
+                getBridge().releaseCall(call);
+            });
+            try {
+                Intent intent = new Intent(getActivity(), OrderWebActivity.class);
+                intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                intent.putExtra("url", url).putExtra("mode", mode).putExtra("config", config).putExtra("title", title)
+                    .putExtra("request_id", id).putExtra("scope", call.getString("scope", ""));
+                intent.putExtra(BrowserSessionSupport.REQUEST_TICKET, BrowserSessionSupport.ACCOUNTS.issue(binding));
+                getActivity().startActivity(intent);
+                searchHandler.postDelayed(timeout, timeoutMs);
+            } catch (Exception error) { searchRequests.finish(id, null, "launch_failed"); }
+        });
     }
 
     @Override protected void handleOnDestroy() {
         searchRequests.cancelAll();
+        getContext().sendBroadcast(new Intent(CANCEL_ACTION).setPackage(getContext().getPackageName()).putExtra("cancel_all", true));
         searchHandler.removeCallbacksAndMessages(null);
         try { getContext().unregisterReceiver(searchReceiver); } catch (Exception ignored) {}
     }
@@ -122,9 +211,10 @@ public final class OrderBrowserPlugin extends Plugin {
         withAccount(call, binding -> {
             CookieManager cookies = BrowserSessionSupport.accountCookies(binding);
             String cookie = cookies.getCookie("https://h5.ele.me");
-            boolean hasCookie = cookie != null && !cookie.isEmpty();
+            String taobaoCookie = cookies.getCookie("https://h5.m.taobao.com");
+            boolean hasCookie = cookie != null && !cookie.isEmpty() || taobaoCookie != null && !taobaoCookie.isEmpty();
             // Presence is only a local credential hint, never proof the platform still accepts the session.
-            boolean loggedIn = BrowserSessionSupport.hasAuthenticationCookie(cookie);
+            boolean loggedIn = BrowserSessionSupport.hasAuthenticationCookie(cookie) || BrowserSessionSupport.hasAuthenticationCookie(taobaoCookie);
             BrowserSessionSupport.persistCookies(cookies);
             JSObject out = new JSObject();
             out.put("loggedIn", loggedIn);
@@ -175,38 +265,18 @@ public final class OrderBrowserPlugin extends Plugin {
             call.reject("缺少搜索关键词。");
             return;
         }
-        withAccount(call, binding -> {
         String url = "https://h5.ele.me/minisearch/result?keyword="
             + android.net.Uri.encode(keyword.trim()) + "&from=mobile.default";
-        String id = UUID.randomUUID().toString();
-        Runnable timeout = () -> searchRequests.finish(id, null, "timeout");
-        getBridge().saveCall(call);
-        searchRequests.begin(id, call.getString("scope", ""), (result, error) -> {
-            searchHandler.removeCallbacks(timeout);
-            if ("timeout".equals(error)) call.resolve(new JSObject().put("status", "error").put("loading", true).put("shops", new JSONArray()));
-            else if ("launch_failed".equals(error)) call.reject("外卖页面暂时无法打开。", "takeout_search_open_failed");
-            else if (technicalErrorMessage(error) != null) call.reject(technicalErrorMessage(error), error);
-            else if (error != null) call.reject("外卖搜索等待已取消，页面可由你手动返回。", "takeout_search_cancelled");
-            else {
-                try { call.resolve(searchReceipt(result)); }
-                catch (Exception invalid) { call.reject("外卖搜索返回了无效结果，请在页面中核对。", "takeout_search_result_invalid"); }
-            }
-            getBridge().releaseCall(call);
-        });
-        try {
-            Intent intent = new Intent(getActivity(), OrderWebActivity.class);
-            intent.putExtra("url", url);
-            intent.putExtra("mode", "search");
-            intent.putExtra("config", "{}");
-            intent.putExtra("title", "搜索：" + keyword.trim());
-            intent.putExtra("request_id", id);
-            intent.putExtra(BrowserSessionSupport.REQUEST_TICKET, BrowserSessionSupport.ACCOUNTS.issue(binding));
-            getActivity().startActivity(intent);
-            searchHandler.postDelayed(timeout, 45_000);
-        } catch (Exception error) {
-            searchRequests.finish(id, null, "launch_failed");
-        }
-        });
+        openRequest(call, url, "search", "{}", "搜索：" + keyword.trim(), 45_000);
+    }
+
+    @PluginMethod public void inspectMenu(PluginCall call) {
+        String shopName = call.getString("shopName", "").trim();
+        if (shopName.isEmpty()) { call.reject("缺少准确店名。", "takeout_command_invalid"); return; }
+        JSONObject config = new JSONObject();
+        try { config.put("shop_name", shopName); } catch (Exception ignored) {}
+        String url = "https://h5.ele.me/minisearch/result?keyword=" + android.net.Uri.encode(shopName) + "&from=mobile.default";
+        openRequest(call, url, "menu", config.toString(), "查看菜单：" + shopName, 90_000);
     }
 
     @PluginMethod
@@ -222,10 +292,37 @@ public final class OrderBrowserPlugin extends Plugin {
             config.put("shop_name", shopName.trim());
             config.put("product", product.trim());
             config.put("quantity", Math.max(1, Math.min(20, call.getInt("quantity", 1))));
+            Double maxAmount = call.getDouble("maxAmount");
+            if (maxAmount != null && Double.isFinite(maxAmount) && maxAmount > 0) config.put("max_amount", maxAmount);
+            config.put("note", call.getString("note", "").trim());
         } catch (Exception ignored) {}
         String url = "https://h5.ele.me/minisearch/result?keyword="
             + android.net.Uri.encode(shopName.trim()) + "&from=mobile.default";
-        startOrderActivity(call, url, "order", config.toString(), "点单：" + product.trim());
+        openRequest(call, url, "order", config.toString(), "点单：" + product.trim(), 120_000);
+    }
+
+    /**
+     * 把已经打开的外卖页面调回前台，让用户核对地址和付款。
+     * 只发一次新的账号票据、不重载页面、不触发任何自动点击。
+     */
+    @PluginMethod
+    public void resumePage(PluginCall call) {
+        String requested = call.getString("url", "");
+        String url = requested != null && (requested.startsWith("https://h5.ele.me") || requested.startsWith("https://h5.m.taobao.com"))
+            ? requested : "https://h5.ele.me/msite/cart";
+        withAccount(call, binding -> {
+            try {
+                Intent intent = new Intent(getActivity(), OrderWebActivity.class);
+                intent.addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                intent.putExtra("url", url).putExtra("mode", "review").putExtra("config", "{}")
+                    .putExtra("title", "核对与付款").putExtra("request_id", "").putExtra("scope", call.getString("scope", ""));
+                intent.putExtra(BrowserSessionSupport.REQUEST_TICKET, BrowserSessionSupport.ACCOUNTS.issue(binding));
+                getActivity().startActivity(intent);
+                call.resolve(new JSObject().put("opened", true));
+            } catch (Exception error) {
+                call.reject("暂时无法切回外卖页面，请从最近任务里找回。", "takeout_page_resume_failed");
+            }
+        });
     }
 
     @PluginMethod
@@ -255,48 +352,4 @@ public final class OrderBrowserPlugin extends Plugin {
         call.resolve(out);
     }
 
-    private void startOrderActivity(PluginCall call, String url, String mode, String config, String title) {
-        if (call == null) return;
-        withAccount(call, binding -> { try {
-            Intent intent = new Intent(getContext(), OrderWebActivity.class);
-            intent.putExtra("url", url);
-            intent.putExtra("mode", mode);
-            intent.putExtra("config", config);
-            intent.putExtra("title", title);
-            intent.putExtra(BrowserSessionSupport.REQUEST_TICKET, BrowserSessionSupport.ACCOUNTS.issue(binding));
-            if (call != null) {
-                // 必须同任务内启动：带 FLAG_ACTIVITY_NEW_TASK 时
-                // startActivityForResult 会立即返回 RESULT_CANCELED，
-                // 导致"外卖搜索被取消"的假失败（页面其实还开着）。
-                startActivityForResult(call, intent, "orderResult");
-            } else {
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                getContext().startActivity(intent);
-            }
-        } catch (Exception error) {
-            // 页面打不开时不要崩掉整个 App,直接按失败回给调用方。
-            if (call != null) {
-                call.reject("外卖页面暂时无法打开。");
-            }
-        } });
-    }
-
-    @ActivityCallback
-    private void orderResult(PluginCall call, ActivityResult result) {
-        try { BrowserSessionSupport.ACCOUNTS.capture(call.getString("accountScope", "")); }
-        catch (RuntimeException error) { String code = BrowserSessionSupport.accountErrorCode(error); call.reject(BrowserSessionSupport.accountErrorMessage(code), code); return; }
-        if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
-            String resultJson = result.getData().getStringExtra("result");
-            try {
-                call.resolve(new JSObject(resultJson));
-            } catch (Exception error) {
-                call.reject("执行结果格式不正确。");
-            }
-        } else if (result.getResultCode() == Activity.RESULT_CANCELED) {
-            String message = result.getData() != null ? result.getData().getStringExtra("message") : null;
-            call.reject(message != null ? message : "用户取消了操作。");
-        } else {
-            call.reject("执行失败。");
-        }
-    }
 }

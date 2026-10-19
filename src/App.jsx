@@ -10,6 +10,7 @@ import {
 } from "react";
 import { resizeComposerInput } from "./composer-size.js";
 import { createMonologueRequestOperation } from "./monologue-request-lifecycle.js";
+import { createCompanionInteractionLifecycle } from "./companion-interaction-lifecycle.js";
 import { invalidMemoryReceipt, memoryCount, memoryUiFailure, useMemoryUiRequest as useScopedUiRequest } from "./memory-ui-feedback.js";
 import { MAX_SESSION_TITLE, readSessionDelete, readSessionRename, sessionDialogFailure } from "./session-dialog-feedback.js";
 import SessionDialog from "./SessionDialog.jsx";
@@ -51,7 +52,8 @@ import WebInstallButton from "./WebInstallButton.jsx";
 import TypewriterText from "./TypewriterText.jsx";
 import DlnaCastPlayer from "./DlnaCastPlayer.jsx";
 import { activityRequestInScope, buildCompanionActivityRequest, normalizeCompanionActivities } from "./companion-activities.js";
-import { TakeoutQueryPanel } from "./ActivityQueryPanels.jsx";
+import TakeoutAssistant, { TakeoutTaskCard } from "./TakeoutAssistant.jsx";
+import { updateTakeoutTask } from "./takeout-assistant.js";
 import {
   BackgroundNotifications,
   openReminderNotificationSettings,
@@ -251,7 +253,9 @@ import {
   startWhereaboutsScheduler,
 } from "./whereabouts.js";
 import {
+  resumeTakeoutPage,
   startTakeoutRunner,
+  stopTakeoutAutomation,
   takeoutPluginAvailable,
 } from "./takeout-executor.js";
 import TakeoutLoginPanel from "./TakeoutLoginPanel.jsx";
@@ -1044,6 +1048,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const visualPreview = arguments[0]?.visualPreview === true;
   const companionScope = String(arguments[0]?.companionScope || "").trim();
   const accountStorageScope = String(accountScope || "").trim();
+  const privateMediaScope = JSON.stringify([accountStorageScope, companionScope]);
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -1085,6 +1090,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [musicActivityRequest, setMusicActivityRequest] = useState(null);
   const [watchActivityRequest, setWatchActivityRequest] = useState(null);
   const [takeoutActivityRequest, setTakeoutActivityRequest] = useState(null);
+  const [isTakeoutOpen, setIsTakeoutOpen] = useState(false);
+  const [takeoutTask, setTakeoutTask] = useState(null);
+  const takeoutLifetime = useMemo(() => ({ scope: privateMediaScope }), [privateMediaScope]);
+  const takeoutLifetimeRef = useRef(takeoutLifetime);
+  takeoutLifetimeRef.current = takeoutLifetime;
+  const closeTakeoutAssistant = useCallback(() => setIsTakeoutOpen(false), []);
+  useEffect(() => {
+    setIsTakeoutOpen(false);
+    setTakeoutTask(null);
+  }, [privateMediaScope]);
   const [activityReturn, setActivityReturn] = useState(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsCategory, setSettingsCategory] = useState(null);
@@ -1124,11 +1139,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [isSending, setIsSending] = useState(false);
   const [sendPreparationStage, setSendPreparationStage] = useState("");
   const [isCompanionResponding, setIsCompanionResponding] = useState(false);
+  const [interactionFeedback, setInteractionFeedback] = useState({ state: "idle", message: "" });
   const [hasLoadedSettings, setHasLoadedSettings] = useState(false);
   const [settingsAutosaveState, setSettingsAutosaveState] = useState("idle");
   const [settingsSaveError, setSettingsSaveError] = useState("");
   const [settingsSaveReceipt, setSettingsSaveReceipt] = useState(null);
-  const privateMediaScope = JSON.stringify([accountStorageScope, companionScope]);
   const {
     catalog: privateMediaCatalog, loading: privateMediaLoading, error: privateMediaError,
     refresh: refreshPrivateMediaCatalog, updateCatalog: setPrivateMediaCatalog,
@@ -1411,10 +1426,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     readGroqExpiryDate(globalThis.localStorage, accountStorageScope),
   );
   const [companionStatus, setCompanionStatus] = useState(() =>
-    readCompanionStatus(accountStorageScope),
+    readCompanionStatus(privateMediaScope),
   );
   const [companionInteractionStats, setCompanionInteractionStats] = useState(
-    () => readCompanionInteractionStats(accountStorageScope),
+    () => readCompanionInteractionStats(privateMediaScope),
   );
   const [innerMonologues, setInnerMonologues] = useState(() =>
     readInnerMonologues(globalThis.localStorage, accountStorageScope),
@@ -1502,11 +1517,53 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const turnContextRef = useRef("");
   const companionInteractionStatsRef = useRef(companionInteractionStats);
   const runtimeStateHydratedRef = useRef(false);
+  const companionStateStorageScopeRef = useRef(privateMediaScope);
+  useLayoutEffect(() => {
+    if (companionStateStorageScopeRef.current !== privateMediaScope) {
+      companionStateStorageScopeRef.current = privateMediaScope;
+      const status = readCompanionStatus(privateMediaScope);
+      const stats = readCompanionInteractionStats(privateMediaScope);
+      companionStatusRef.current = status;
+      companionInteractionStatsRef.current = stats;
+      runtimeStateHydratedRef.current = false;
+      setCompanionStatus(status);
+      setCompanionInteractionStats(stats);
+      return;
+    }
+    companionStatusRef.current = companionStatus;
+    companionInteractionStatsRef.current = companionInteractionStats;
+  }, [privateMediaScope, companionStatus, companionInteractionStats]);
   const companionInteractionHandlerRef = useRef(null);
   const companionInteractionQueueRef = useRef([]);
   const companionInteractionTimerRef = useRef(null);
   const companionInteractionInFlightRef = useRef(false);
   const companionReplyTimesRef = useRef([]);
+  const companionInteractionScopeRef = useRef(privateMediaScope);
+  companionInteractionScopeRef.current = privateMediaScope;
+  const companionInteractionLifecycleRef = useRef(null);
+  if (!companionInteractionLifecycleRef.current) {
+    companionInteractionLifecycleRef.current = createCompanionInteractionLifecycle({
+      getScope: () => companionInteractionScopeRef.current,
+      getSessionId: () => activeSessionIdRef.current,
+      authSession,
+    });
+  }
+  useLayoutEffect(() => {
+    activeSessionIdRef.current = activeSessionId;
+    if (!companionInteractionLifecycleRef.current.synchronize(privateMediaScope, activeSessionId)) return;
+    window.clearTimeout(companionInteractionTimerRef.current);
+    companionInteractionTimerRef.current = null;
+    companionInteractionQueueRef.current = [];
+    companionInteractionInFlightRef.current = false;
+    companionReplyTimesRef.current = [];
+    setIsCompanionResponding(false);
+    setInteractionFeedback({ state: "idle", message: "" });
+  }, [privateMediaScope, activeSessionId]);
+  useLayoutEffect(() => () => {
+    companionInteractionLifecycleRef.current.dispose();
+    window.clearTimeout(companionInteractionTimerRef.current);
+    companionInteractionQueueRef.current = [];
+  }, []);
   const isSendingRef = useRef(false);
   const voiceStateRef = useRef(VOICE_STATES.idle);
   const voicePointerHeldRef = useRef(false);
@@ -1544,6 +1601,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const settingsSaveFailureRef = useRef(false);
   const settingsWriteRevisionRef = useRef(0);
   const settingsScopeControllerRef = useRef(null);
+  const settingsModelCatalogRefreshRef = useRef(null);
   const chatSkinPreferencesRef = useRef(chatSkinPreferences);
   const chatSkinSaveTimerRef = useRef(null);
   const chatSkinSaveRunRef = useRef(Promise.resolve());
@@ -2138,9 +2196,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
   }, []);
 
-  const refreshComposerHint = useCallback(async (sessionId) => {
+  const refreshComposerHint = useCallback(async (sessionId, requestOptions = {}) => {
+    const { isCurrent = () => true, ...apiOptions } = requestOptions;
     if (
       !sessionId ||
+      !isCurrent() ||
       chatSkinPreferencesRef.current.dynamicComposerHint !== true
     ) {
       return;
@@ -2151,6 +2211,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           sessionId,
         )}/hint/refresh`,
         {
+          ...apiOptions,
           method: "POST",
           body: JSON.stringify({
             mood_summary: companionStatusRef.current.mood || "",
@@ -2158,6 +2219,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         },
       );
       if (
+        isCurrent() &&
         data?.updated === true &&
         activeSessionIdRef.current === sessionId &&
         composerHintSessionRef.current === sessionId
@@ -2409,25 +2471,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       );
       const nextSessions = sessionsData.sessions || [];
       const serverRuntimeState = runtimeData?.state || {};
-      const legacyOwnerStatus =
-        nextSettings.account_role === "owner" && !serverRuntimeState.status
-          ? readCompanionStatus()
-          : null;
-      const legacyOwnerInteractionStats =
-        nextSettings.account_role === "owner" &&
-        !serverRuntimeState.interaction_stats
-          ? readCompanionInteractionStats()
-          : null;
       const nextCompanionStatus = normalizeCompanionStatus(
         serverRuntimeState.status ||
-          legacyOwnerStatus ||
-          readCompanionStatus(accountStorageScope),
+          readCompanionStatus(privateMediaScope),
       );
       const nextCompanionInteractionStats =
         normalizeCompanionInteractionStats(
           serverRuntimeState.interaction_stats ||
-            legacyOwnerInteractionStats ||
-            readCompanionInteractionStats(accountStorageScope),
+            readCompanionInteractionStats(privateMediaScope),
         );
       const settingsFingerprint = settingsPayloadFingerprint(nextSettings);
       const hadLoadedSettings = hasLoadedSettingsRef.current;
@@ -2575,6 +2626,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       componentMountedRef.current = false;
       hasLoadedSettingsRef.current = false;
       controller.abort();
+      settingsModelCatalogRefreshRef.current?.abort();
       unregisterSettingsGuard();
       pendingSettingsSaveRef.current = null;
       window.clearTimeout(chatSkinSaveTimerRef.current);
@@ -2723,26 +2775,29 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   ]);
 
   useEffect(() => {
-    companionStatusRef.current = companionStatus;
-    saveCompanionStatus(companionStatus, accountStorageScope);
-  }, [accountStorageScope, companionStatus]);
+    if (companionStatusRef.current !== companionStatus) return;
+    saveCompanionStatus(companionStatus, privateMediaScope);
+  }, [privateMediaScope, companionStatus]);
 
   useEffect(() => {
-    companionInteractionStatsRef.current = companionInteractionStats;
+    if (companionInteractionStatsRef.current !== companionInteractionStats) return;
     saveCompanionInteractionStats(
       companionInteractionStats,
-      accountStorageScope,
+      privateMediaScope,
     );
-  }, [accountStorageScope, companionInteractionStats]);
+  }, [privateMediaScope, companionInteractionStats]);
 
   useEffect(() => {
     if (
       visualPreview ||
       !accountStorageScope ||
-      !runtimeStateHydratedRef.current
+      !runtimeStateHydratedRef.current ||
+      companionStatusRef.current !== companionStatus ||
+      companionInteractionStatsRef.current !== companionInteractionStats
     ) {
       return undefined;
     }
+    const controller = new AbortController();
     const timer = window.setTimeout(() => {
       void apiRequest("/api/v2/companion-state", {
         method: "PUT",
@@ -2750,14 +2805,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           status: companionStatus,
           interaction_stats: companionInteractionStats,
         }),
+        signal: controller.signal,
+        authSession: createScopedSettingsSession(authSession, privateMediaScope, controller.signal),
         retry: false,
       }).catch(() => {
         // 本机的账号隔离副本仍保留，后端恢复后会由下一次状态变化重试。
       });
     }, 900);
-    return () => window.clearTimeout(timer);
+    return () => { window.clearTimeout(timer); controller.abort(); };
   }, [
     accountStorageScope,
+    privateMediaScope,
     companionInteractionStats,
     companionStatus,
     visualPreview,
@@ -4090,24 +4148,29 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     delay = COMPANION_INTERACTION_DEBOUNCE_MS,
   ) {
     window.clearTimeout(companionInteractionTimerRef.current);
-    companionInteractionTimerRef.current = window.setTimeout(() => {
+    const sessionId = activeSessionIdRef.current;
+    const timer = window.setTimeout(() => {
+      if (companionInteractionTimerRef.current !== timer ||
+          !companionInteractionLifecycleRef.current.matches(privateMediaScope, sessionId)) return;
       companionInteractionTimerRef.current = null;
       void processCompanionInteractionQueue();
     }, delay);
+    companionInteractionTimerRef.current = timer;
   }
 
-  async function syncDisplayedMessages(sessionId) {
-    if (!sessionId || activeSessionIdRef.current !== sessionId) return;
+  async function syncDisplayedMessages(sessionId, operation) {
+    if (!sessionId || !operation.isCurrent()) return;
 
     const loadToken = messageLoadTokenRef.current + 1;
     messageLoadTokenRef.current = loadToken;
     messagesSessionIdRef.current = sessionId;
-    const history = await apiRequest(
+    const history = await operation.wait(() => apiRequest(
       `/api/v2/sessions/${sessionId}/messages`,
-    );
+      { signal: operation.controller.signal, authSession: operation.authSession, retry: false },
+    ));
 
     if (
-      activeSessionIdRef.current === sessionId &&
+      operation.isCurrent() &&
       messageLoadTokenRef.current === loadToken
     ) {
       messagesSessionIdRef.current = sessionId;
@@ -4116,7 +4179,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   function registerCompanionInteraction(zoneId) {
-    if (!COMPANION_INTERACTION_TYPES.includes(zoneId)) {
+    if (!COMPANION_INTERACTION_TYPES.includes(zoneId) ||
+        (!visualPreview && !companionInteractionLifecycleRef.current.matches(privateMediaScope, activeSessionIdRef.current))) {
       return companionInteractionStatsRef.current;
     }
 
@@ -4147,6 +4211,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       maxBatchSize: 100,
     });
 
+    setInteractionFeedback({ state: "queued", message: "已记下这次互动，正在等待伴侣回应。" });
     scheduleCompanionInteraction();
     return nextStats;
   }
@@ -4345,6 +4410,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   async function processCompanionInteractionQueue() {
     if (companionInteractionQueueRef.current.length === 0) return;
+    const lifecycle = companionInteractionLifecycleRef.current;
+    if (!lifecycle.matches(privateMediaScope, activeSessionIdRef.current)) return;
 
     if (
       companionInteractionInFlightRef.current ||
@@ -4357,6 +4424,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
     if (!navigator.onLine) {
       companionInteractionQueueRef.current = [];
+      setInteractionFeedback({ state: "failed", message: "当前离线，互动次数已保留。联网后再点一次即可重试。" });
       setNotice(
         "这次互动已保留在状态记录中；离线时不会调用模型，联网后下一次互动再回应。",
       );
@@ -4382,62 +4450,82 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       return;
     }
 
-    if (!(await flushLatestSettingsDraft())) {
-      setNotice(
-        "互动已经记下了，但最新角色设置还没有保存成功；恢复网络后再碰一下，我会按新设置回应。",
-      );
+    let interaction = companionInteractionQueueRef.current[0];
+    if ((interaction.sessionId || null) !== (activeSessionIdRef.current || null)) {
+      companionInteractionQueueRef.current.shift();
+      if (companionInteractionQueueRef.current.length) scheduleCompanionInteraction(250);
       return;
     }
-
-    await refreshDeviceActivityContext({ silent: true });
-
-    const interaction = companionInteractionQueueRef.current.shift();
-    // The model reacts from before this batch; optimistic revisions only guard
-    // the UI against responses that finish after a newer local interaction.
-    const requestCompanionStatus = companionStatusForRequest(
-      interaction.preInteractionStatus || companionStatusRef.current,
-    );
-    const responseBaseRevision = Math.min(
-      Number.MAX_SAFE_INTEGER,
-      requestCompanionStatus.revision + interaction.burstCount,
-    );
+    const operation = lifecycle.begin(interaction.eventId);
+    if (!operation) return;
     companionInteractionInFlightRef.current = true;
     setIsCompanionResponding(true);
+    setInteractionFeedback({ state: "generating", message: "正在根据刚才的互动生成心理、感受和心情…" });
     setNotice("");
 
-    let sessionId = interaction.sessionId || activeSessionIdRef.current;
-    const localAssistantId = `local-interaction-${Date.now()}`;
+    let sessionId = operation.sessionId;
+    let consumedInteraction = false;
+    const localAssistantId = `local-interaction-${interaction.eventId}`;
+    const requestOptions = { signal: operation.controller.signal, authSession: operation.authSession, retry: false };
 
     try {
+      const saved = await operation.wait(() => flushLatestSettingsDraft());
+      if (!operation.isCurrent()) return;
+      if (!saved) throw Object.assign(new Error("最新角色设置尚未保存。请恢复连接后再点一次互动。"), { code: "companion_interaction_settings_pending" });
+      interaction = companionInteractionQueueRef.current[0];
+      if (!interaction || interaction.eventId !== operation.eventId) {
+        throw Object.assign(new Error("待回应的互动已变化，请重新互动。"), { code: "companion_interaction_receipt_invalid" });
+      }
+      companionInteractionQueueRef.current.shift();
+      consumedInteraction = true;
+      // Clicks during the settings save stay in this batch; later clicks form
+      // a new batch whose optimistic revisions cannot be overwritten here.
+      const requestCompanionStatus = companionStatusForRequest(
+        interaction.preInteractionStatus || companionStatusRef.current,
+      );
+      const responseBaseRevision = Math.min(
+        Number.MAX_SAFE_INTEGER,
+        requestCompanionStatus.revision + interaction.burstCount,
+      );
+      await operation.wait(() => refreshDeviceActivityContext({ silent: true }));
+      if (!operation.isCurrent()) return;
       if (!sessionId) {
-        const created = await apiRequest("/api/v2/sessions", {
+        const created = await operation.wait(() => apiRequest("/api/v2/sessions", {
+          ...requestOptions,
           method: "POST",
           body: JSON.stringify({
             title: `和${effectiveAiName}的互动`,
           }),
-        });
-        sessionId = created.session.id;
+        }));
+        if (!operation.isCurrent()) return;
+        if (!created?.session?.id || !operation.adoptSession(created.session.id)) {
+          throw Object.assign(new Error("互动对话的创建回执不完整，请刷新后重试。"), { code: "companion_interaction_receipt_invalid" });
+        }
+        sessionId = operation.sessionId;
+        moveSessionDraft(null, sessionId);
+        activeSessionIdRef.current = sessionId;
+        messagesSessionIdRef.current = sessionId;
+        companionInteractionQueueRef.current = companionInteractionQueueRef.current.map(item =>
+          item.sessionId ? item : { ...item, sessionId },
+        );
         setSessions((current) =>
+          !operation.isCurrent() ? current :
           current.some((item) => item.id === sessionId)
             ? current
             : [created.session, ...current],
         );
-        if (!activeSessionIdRef.current) {
-          moveSessionDraft(null, sessionId);
-          activeSessionIdRef.current = sessionId;
-          messagesSessionIdRef.current = sessionId;
-          setActiveSessionId(sessionId);
-        }
+        setActiveSessionId(sessionId);
         initializeSessionChatModel(sessionId);
       }
 
+      if (!operation.isCurrent()) return;
       streamingSessionIdRef.current = sessionId;
       if (activeSessionIdRef.current === sessionId) {
         const messagesBelongToSession =
           messagesSessionIdRef.current === sessionId;
         messageLoadTokenRef.current += 1;
         messagesSessionIdRef.current = sessionId;
-        setMessages((current) => [
+        setMessages((current) => !operation.isCurrent() ? current : [
           ...(messagesBelongToSession ? current : []),
           {
             id: localAssistantId,
@@ -4450,7 +4538,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       }
 
       companionReplyTimesRef.current.push(Date.now());
-      const data = await apiRequest("/companion/interact", {
+      const data = await operation.wait(() => apiRequest("/companion/interact", {
+        ...requestOptions,
         method: "POST",
         body: JSON.stringify({
           event_id: interaction.eventId,
@@ -4475,25 +4564,35 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           environment_context: environmentContextRef.current,
         }),
         timeoutMs: 60 * 1000,
-      });
-
-      if (data.companion_status) {
-        setCompanionStatus((current) =>
-          mergeCompanionStatus(current, data.companion_status, {
-            baseRevision: responseBaseRevision,
-          }),
-        );
-      }
+      }));
+      if (!operation.isCurrent()) return;
 
       const assistantMessage = data?.assistant_message;
       if (
         !assistantMessage ||
         assistantMessage.role !== "assistant" ||
         typeof assistantMessage.content !== "string" ||
-        !assistantMessage.content.trim()
+        !assistantMessage.content.trim() ||
+        (data.interaction_event_id && data.interaction_event_id !== interaction.eventId) ||
+        ((assistantMessage.conversation_id || assistantMessage.session_id) &&
+          (assistantMessage.conversation_id || assistantMessage.session_id) !== sessionId)
       ) {
-        throw new Error("服务器没有返回可保存的互动回复，请稍后再试。");
+        throw Object.assign(new Error("服务器没有返回匹配本次互动的回复，请稍后再试。"), { code: "companion_interaction_receipt_invalid" });
       }
+
+      const statusUnavailable = data.status_generation?.state === "unavailable" ||
+        data.companion_status?.statusSource === "interaction_fallback" || !data.companion_status;
+      if (!statusUnavailable) {
+        setCompanionStatus((current) => operation.isCurrent()
+          ? mergeCompanionStatus(current, data.companion_status, { baseRevision: responseBaseRevision })
+          : current,
+        );
+      }
+      setInteractionFeedback(companionInteractionQueueRef.current.length
+        ? { state: "queued", message: "新的互动也记下了，正在等待下一次回应。" }
+        : statusUnavailable
+          ? { state: "fallback", message: "互动回复已收到，这次未生成新的心理和感受；保留上次状态，可再点一次互动。" }
+          : { state: "idle", message: "" });
 
       if (voiceAutoSpeakEnabled) {
         void playAssistantReply(
@@ -4510,6 +4609,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         messageLoadTokenRef.current += 1;
         messagesSessionIdRef.current = sessionId;
         setMessages((current) => {
+          if (!operation.isCurrent()) return current;
           const currentSessionMessages = messagesBelongToSession ? current : [];
           if (
             currentSessionMessages.some(
@@ -4531,37 +4631,44 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         });
       }
 
-      await refreshSessions(activeSessionIdRef.current || sessionId);
-      void refreshComposerHint(sessionId);
+      void apiRequest("/api/v2/sessions", requestOptions).then(sessionData => {
+        if (operation.isCurrent()) setSessions(current => operation.isCurrent() ? sessionData.sessions || current : current);
+      }).catch(() => {});
+      void refreshComposerHint(sessionId, { ...requestOptions, isCurrent: operation.isCurrent });
     } catch (error) {
+      if (!operation.isScopeCurrent()) return;
       if (activeSessionIdRef.current === sessionId) {
         messageLoadTokenRef.current += 1;
         setMessages((current) =>
-          current.filter((item) => item.id !== localAssistantId),
+          operation.isScopeCurrent() ? current.filter((item) => item.id !== localAssistantId) : current,
         );
       }
+      const detail = describeOperationError(error);
+      setInteractionFeedback({ state: "failed", message: `这次互动未完成，之前的状态仍保留。检查连接或接口设置后，再点一次互动即可重试。（${detail.code}）` });
       setNotice(
         error.message ||
           "这次互动已经记下，但刚才没连上模型；不会自动重复请求。",
       );
     } finally {
-      if (streamingSessionIdRef.current === sessionId) {
-        streamingSessionIdRef.current = null;
-      }
-      companionInteractionInFlightRef.current = false;
-      setIsCompanionResponding(false);
-      if (activeSessionIdRef.current === sessionId) {
-        void syncDisplayedMessages(sessionId).catch((error) => {
-          console.warn("互动后刷新聊天记录失败：", error.message);
-        });
-      }
+      if (lifecycle.finish(operation)) {
+        if (streamingSessionIdRef.current === sessionId) {
+          streamingSessionIdRef.current = null;
+        }
+        companionInteractionInFlightRef.current = false;
+        setIsCompanionResponding(false);
+        if (consumedInteraction && activeSessionIdRef.current === sessionId) {
+          void syncDisplayedMessages(sessionId, operation).catch((error) => {
+            if (operation.isCurrent()) console.warn("互动后刷新聊天记录失败：", error.message);
+          });
+        }
 
-      const next = companionInteractionQueueRef.current[0];
-      if (next) {
-        const elapsed = Date.now() - next.lastClickedAt;
-        scheduleCompanionInteraction(
-          Math.max(250, COMPANION_INTERACTION_DEBOUNCE_MS - elapsed),
-        );
+        const next = companionInteractionQueueRef.current[0];
+        if (next && consumedInteraction) {
+          const elapsed = Date.now() - next.lastClickedAt;
+          scheduleCompanionInteraction(
+            Math.max(250, COMPANION_INTERACTION_DEBOUNCE_MS - elapsed),
+          );
+        }
       }
     }
   }
@@ -4729,6 +4836,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       return;
     }
 
+    // 点餐意图在聊天侧先处理：像 Kimi 一样浮出外卖面板，并唤醒本机执行器。
+    // 放在发送准备之前，避免把 UI 副作用混进可取消的设置/模型等待。
+    if (/外卖|闪购|饿了么|点餐/.test(text)) {
+      window.dispatchEvent(new CustomEvent("dengta:takeout-wake", { detail: { scope: diagnosticScopeKey(accountStorageScope, companionScope) } }));
+      const orderingIntent = /点外卖|叫外卖|点个外卖|帮我点|帮我叫|外卖点单/.test(text);
+      if (orderingIntent && !preserveComposer && !isTakeoutOpen && takeoutPluginAvailable() && !takeoutTask?.executing && accountStorageScope && companionScope) {
+        setTakeoutActivityRequest(Object.freeze({ kind: "takeout", id: "composer", query: String(text).slice(0, 120), videos: [], pageUrl: "", accountScope: accountStorageScope, companionScope }));
+        changeView("takeout");
+      }
+    }
     isSendingRef.current = true;
     setIsSending(true);
     const startingSessionId = activeSessionIdRef.current;
@@ -4974,7 +5091,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         (event) => {
           if (
             request.controller.signal.aborted ||
-            chatRequestRef.current !== request
+            chatRequestRef.current !== request ||
+            !componentMountedRef.current ||
+            settingsSaveScope(authSession.getSnapshot()) !== privateMediaScope
           ) {
             return;
           }
@@ -5463,6 +5582,69 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     settingsAutosaveTimerRef.current = window.setTimeout(enqueue, 800);
   }
 
+  function refreshModelsAfterSettingsSave(nextSettings, scopeController) {
+    settingsModelCatalogRefreshRef.current?.abort();
+    const controller = new AbortController();
+    settingsModelCatalogRefreshRef.current = controller;
+    const sessionId = activeSessionIdRef.current;
+    const sessionModelQueue = sessionModelSaveQueueRef.current;
+    const sameConnection = value => value?.provider === nextSettings.provider &&
+      value?.api_url === nextSettings.api_url && value?.model === nextSettings.model;
+    const ownsRefresh = () => componentMountedRef.current &&
+      settingsModelCatalogRefreshRef.current === controller &&
+      !scopeController.signal.aborted &&
+      settingsSaveScope(authSession.getSnapshot()) === privateMediaScope &&
+      sameConnection(confirmedSettingsRef.current) && sameConnection(draftSettingsRef.current) &&
+      activeSessionIdRef.current === sessionId && sessionModelSaveQueueRef.current === sessionModelQueue;
+    let timedOut = false;
+    const abort = () => controller.abort();
+    scopeController.signal.addEventListener("abort", abort, { once: true });
+    const timeout = window.setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, 8000);
+    let rejectAborted;
+    const aborted = new Promise((_, reject) => {
+      rejectAborted = () => reject(new Error("模型目录刷新已取消。"));
+      controller.signal.addEventListener("abort", rejectAborted, { once: true });
+    });
+    const refresh = (async () => {
+      try {
+        if (scopeController.signal.aborted) controller.abort();
+        const modelsData = await Promise.race([
+          apiRequest("/models", {
+            signal: controller.signal,
+            retry: false,
+            authSession: createScopedSettingsSession(authSession, privateMediaScope, controller.signal),
+          }),
+          aborted,
+        ]);
+        if (controller.signal.aborted || !ownsRefresh()) return;
+        const catalog = reconcileModelCatalog(modelsData, {
+          previous: readStoredSessionChatModel(sessionId),
+          fallback: nextSettings.model,
+        });
+        setAvailableModels(catalog.models);
+        setSelectedChatModel(chooseChatModel({
+          models: catalog.models,
+          stored: readStoredSessionChatModel(sessionId),
+          current: nextSettings.model,
+          fallback: catalog.currentModel,
+        }));
+        setModelsLoadMessage("");
+      } catch {
+        if (!ownsRefresh() || (controller.signal.aborted && !timedOut)) return;
+        setModelsLoadMessage("设置已保存，模型目录暂时无法刷新；仍可使用已保存的模型继续聊天。");
+      } finally {
+        window.clearTimeout(timeout);
+        scopeController.signal.removeEventListener("abort", abort);
+        controller.signal.removeEventListener("abort", rejectAborted);
+        if (settingsModelCatalogRefreshRef.current === controller) settingsModelCatalogRefreshRef.current = null;
+      }
+    })();
+    void refresh;
+  }
+
   function flushSettingsSaveQueue() {
     if (!componentMountedRef.current || !hasLoadedSettingsRef.current) return Promise.resolve(false);
     if (settingsSaveRunRef.current) return settingsSaveRunRef.current;
@@ -5536,36 +5718,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           setSettingsSaveReceipt(receipt);
 
           if (connectionChanged) {
-            try {
-              const modelsData = await apiRequest("/models", {
-                signal: controller.signal,
-                authSession: createScopedSettingsSession(authSession, privateMediaScope, controller.signal),
-              });
-              if (!componentMountedRef.current || controller.signal.aborted) return false;
-              const catalog = reconcileModelCatalog(modelsData, {
-                previous: readStoredSessionChatModel(
-                  activeSessionIdRef.current,
-                ),
-                fallback: nextSettings.model,
-              });
-              setAvailableModels(catalog.models);
-              setSelectedChatModel(
-                chooseChatModel({
-                  models: catalog.models,
-                  stored: readStoredSessionChatModel(
-                    activeSessionIdRef.current,
-                  ),
-                  current: nextSettings.model,
-                  fallback: catalog.currentModel,
-                }),
-              );
-              setModelsLoadMessage("");
-            } catch {
-              if (!componentMountedRef.current || controller.signal.aborted) return false;
-              setModelsLoadMessage(
-                "设置已保存，但新的模型列表暂时无法读取。重新打开 App 后会再次加载。",
-              );
-            }
+            refreshModelsAfterSettingsSave(nextSettings, controller);
           }
         } catch (error) {
           if (!componentMountedRef.current || controller.signal.aborted) return false;
@@ -5775,13 +5928,58 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     setTakeoutLoginFeedback({ status: "idle", message: "" });
     return startTakeoutRunner({
       scope: diagnosticScopeKey(accountStorageScope, companionScope),
-      onCommandDone: (_command, outcome) => setTakeoutLoginFeedback({
-        scope: diagnosticScopeKey(accountStorageScope, companionScope),
-        status: outcome.ok && outcome.receipt_synced ? "success" : "error",
-        message: outcome.message ? `${outcome.message}（代码：${outcome.code}）` : "外卖页面操作完成，结果已同步。请在外卖页面确认商品和支付。",
-      }),
+      onCommandStart: command => setTakeoutTask(current => updateTakeoutTask(current, { scope: privateMediaScope, type: "start", command })),
+      onProgress: (command, message) => setTakeoutTask(current => updateTakeoutTask(current, { scope: privateMediaScope, type: "progress", command, message })),
+      onCommandDone: (command, outcome) => {
+        setTakeoutTask(current => updateTakeoutTask(current, { scope: privateMediaScope, type: "done", command, outcome }));
+        setTakeoutLoginFeedback({
+          scope: diagnosticScopeKey(accountStorageScope, companionScope),
+          status: outcome.ok && outcome.receipt_synced ? "success" : "error",
+          code: outcome.code || "",
+          message: outcome.message || "外卖页面操作结果已同步，请核对平台页面。",
+        });
+      },
     });
-  }, [accountStorageScope, companionScope]);
+  }, [accountStorageScope, companionScope, privateMediaScope]);
+
+  function startTakeoutFromChat(request) {
+    if (isSendingRef.current || companionInteractionInFlightRef.current || voiceBlocksComposer(voiceStateRef.current)) {
+      return { ok: false, message: "先等这次回复完成，或暂停当前回复，再开始选餐。" };
+    }
+    if (!takeoutPluginAvailable() || !accountStorageScope || !companionScope) {
+      return { ok: false, message: "请在已登录的 Android App 中打开外卖助手。" };
+    }
+    const runId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const scope = privateMediaScope;
+    const owner = takeoutLifetimeRef.current;
+    setTakeoutTask({ scope, runId, status: "working", executing: false, completed: [], message: "正在把你的口味告诉 AI", query: request.query });
+    void sendMessage({ text: request.text, attachments: [], messageReference: {}, turnContext: "", preserveComposer: true }).finally(() => {
+      if (takeoutLifetimeRef.current !== owner || settingsSaveScope(authSession.getSnapshot()) !== scope || !componentMountedRef.current) return;
+      setTakeoutTask(current => current?.runId === runId && current.status === "working" && !current.executing
+        ? { ...current, status: "manual_review", message: current.commandId ? "选餐进度已保留。请查看聊天回复或平台页面，再决定是否继续。" : "还没有收到手机执行回执，请检查聊天回复、登录与网络后再试。" }
+        : current);
+    });
+    return { ok: true };
+  }
+
+  async function pauseTakeoutFromChat() {
+    const owner = takeoutLifetimeRef.current;
+    const targetKey = takeoutTask?.runId || takeoutTask?.commandId;
+    if (!targetKey) return;
+    const ownsTask = current => current?.scope === privateMediaScope && (current.runId || current.commandId) === targetKey;
+    setTakeoutTask(current => ownsTask(current) ? { ...current, pausedByUser: true, executing: false, status: "manual_review", message: "正在停止自动操作，请先核对购物车。" } : current);
+    abortChatRequest(chatRequestRef, "user-cancel");
+    const outcome = await stopTakeoutAutomation({ scope: diagnosticScopeKey(accountStorageScope, companionScope) });
+    if (takeoutLifetimeRef.current !== owner || !componentMountedRef.current || settingsSaveScope(authSession.getSnapshot()) !== privateMediaScope) return;
+    setTakeoutTask(current => ownsTask(current) ? { ...current, status: "manual_review", message: outcome.message || "自动操作已暂停，网页与登录资料保留，请核对购物车。" } : current);
+  }
+  async function openTakeoutPlatform() {
+    if (!takeoutPluginAvailable()) return;
+    const outcome = await resumeTakeoutPage({ url: "https://h5.ele.me/msite/cart" });
+    if (!outcome.ok) {
+      setTakeoutLoginFeedback(current => ({ ...current, status: "error", code: outcome.code || "", message: outcome.message }));
+    }
+  }
   const funScope = JSON.stringify([accountStorageScope, companionScope]);
   const funToken = useMemo(() => ({ scope: funScope, requestId: 0 }), [funScope]);
   const funTokenRef = useRef(funToken);
@@ -6578,6 +6776,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   function changeView(view) {
     if (!canLeaveWorkspace(view)) return false;
+    if (view === "takeout") {
+      setIsTakeoutOpen(true);
+      view = "chat";
+    } else {
+      setIsTakeoutOpen(false);
+    }
     if (view !== activeViewRef.current && ["music", "together"].includes(activeViewRef.current)) {
       setActivityReturn(createActivityReturn(coWatchSessionRef.current, coWatchIdentityRef.current, activeViewRef.current));
     }
@@ -6784,6 +6988,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             onOpen={returnToActivity}
             onDismiss={() => setActivityReturn(null)}
           />
+          <TakeoutTaskCard task={takeoutTask?.scope === privateMediaScope ? takeoutTask : null} onOpen={() => setIsTakeoutOpen(true)} />
           {sendPreparationStage && (
             <small role="status" aria-live="polite" className="composer-send-preparation">
               {CHAT_SEND_PREPARATION_LABELS[sendPreparationStage]}
@@ -7499,16 +7704,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           <h2>🛵 外卖点单</h2>
           <p>让 AI 帮你搜店、挑店、加购；付款永远由你在页面里亲自确认。</p>
         </header>
-        <TakeoutQueryPanel
-          key={JSON.stringify([accountStorageScope, companionScope, takeoutActivityRequest?.id || "takeout"])}
-          initialQuery={activityRequestInScope(takeoutActivityRequest, accountStorageScope, companionScope)?.query || ""}
-          onPrepare={query => {
-            setMessage(current => appendActivityDraft(current, "帮我搜索外卖店铺：" + query));
-            changeView("chat");
-          }}
-        />
-        <TakeoutLoginPanel key={diagnosticScopeKey(accountStorageScope, companionScope)}
-          scope={diagnosticScopeKey(accountStorageScope, companionScope)} feedback={takeoutLoginFeedback} />
+        <button type="button" onClick={() => changeView("takeout")}>在聊天里打开外卖助手</button>
         <div className="notification-feature-panel device-activity-panel">
           <p>
             <strong>怎么用：</strong>
@@ -9241,7 +9437,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   useAppBackNavigation({
     scope: privateMediaScope,
     view: activeView,
-    layerKey: [Boolean(imageViewer), Boolean(dialog), distillState.modalOpen, isSettingsOpen, isStatusPanelExpanded, isComposerMenuOpen, isMobileNavOpen, isSidebarOpen].join(":"),
+    layerKey: [Boolean(imageViewer), Boolean(dialog), distillState.modalOpen, isTakeoutOpen, isSettingsOpen, isStatusPanelExpanded, isComposerMenuOpen, isMobileNavOpen, isSidebarOpen].join(":"),
     changeView,
     showNotice: setNotice,
     closeLayer: () => {
@@ -9279,7 +9475,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       data-ornament-activity={chatSkinPreferences.ornamentActivity}
       data-chat-streaming={isSending ? "true" : "false"}
     >
-      <Suspense fallback={null}><AppUpdateCenter canPrompt={!isSending && !isSettingsOpen && !isStatusPanelExpanded && !isComposerMenuOpen && !isMobileNavOpen && !isSidebarOpen && !dialog && !imageViewer && !distillState.modalOpen} /></Suspense>
+      <Suspense fallback={null}><AppUpdateCenter canPrompt={!isSending && !isTakeoutOpen && !isSettingsOpen && !isStatusPanelExpanded && !isComposerMenuOpen && !isMobileNavOpen && !isSidebarOpen && !dialog && !imageViewer && !distillState.modalOpen} /></Suspense>
+      <TakeoutAssistant scope={privateMediaScope} open={isTakeoutOpen} onClose={closeTakeoutAssistant} aiName={effectiveAiName}
+        initialQuery={activityRequestInScope(takeoutActivityRequest, accountStorageScope, companionScope)?.query || ""}
+        task={takeoutTask} available={takeoutPluginAvailable()} busy={isSending || isCompanionResponding || isVoiceInputBusy}
+        onStart={startTakeoutFromChat} onStop={() => void pauseTakeoutFromChat()} onReview={() => void openTakeoutPlatform()}
+        loginPanel={<TakeoutLoginPanel key={diagnosticScopeKey(accountStorageScope, companionScope)}
+          scope={diagnosticScopeKey(accountStorageScope, companionScope)} feedback={takeoutLoginFeedback} />} />
       <CelestialBackdrop
         snapshot={celestialSnapshot}
         weather={ambientWeather}
@@ -9519,6 +9721,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             status={companionStatus}
             aiPronoun={companionPronoun(settings)}
             interactionStats={companionInteractionStats}
+            interactionFeedback={interactionFeedback}
             intimateExpressionEnabled={
               settings.intimate_expression_enabled === true
             }

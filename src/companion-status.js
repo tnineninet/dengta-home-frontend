@@ -279,6 +279,11 @@ export function createDefaultCompanionStatus() {
     pulseBpm: 76,
     hotZones: [],
     microState: "安静地守着一小团暖光",
+    psychology: "",
+    feeling: "",
+    moodLevel: null,
+    patienceLevel: null,
+    statusSource: "",
     recentRecords: [],
     countdown: { ...DEFAULT_COUNTDOWN },
     revision: 0,
@@ -297,6 +302,11 @@ export function createResetCompanionStatus() {
     pulseBpm: 0,
     hotZones: [],
     microState: "",
+    psychology: "",
+    feeling: "",
+    moodLevel: null,
+    patienceLevel: null,
+    statusSource: "",
     recentRecords: [],
     countdown: { ...DEFAULT_COUNTDOWN },
     revision: 0,
@@ -754,6 +764,13 @@ export function normalizeCompanionStatus(value, fallbackValue) {
       160,
       fallback.microState || "安静地发着光",
     ),
+    psychology: source.psychology === "" ? "" : cleanText(source.psychology, 240, fallback.psychology || ""),
+    feeling: source.feeling === "" ? "" : cleanText(source.feeling, 240, fallback.feeling || ""),
+    moodLevel: normalizeStatusLevel(source.moodLevel, fallback.moodLevel),
+    patienceLevel: normalizeStatusLevel(source.patienceLevel, fallback.patienceLevel),
+    statusSource: ["initial", "model", "interaction_fallback"].includes(source.statusSource)
+      ? source.statusSource
+      : fallback.statusSource || "",
     recentRecords: normalizeRecords(
       source.recentRecords ?? fallback.recentRecords,
     ),
@@ -768,6 +785,15 @@ export function normalizeCompanionStatus(value, fallbackValue) {
       fallback.updatedAt || new Date().toISOString(),
     ),
   };
+}
+
+function normalizeStatusLevel(value, fallback) {
+  if (value === null || value === "") return null;
+  if (value === undefined) {
+    return Number.isFinite(fallback) ? clamp(Math.round(fallback), 0, 100) : null;
+  }
+  const number = Number(value);
+  return Number.isFinite(number) ? clamp(Math.round(number), 0, 100) : null;
 }
 
 export function settleExpiredCountdown(value, now = Date.now()) {

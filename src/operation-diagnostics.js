@@ -34,6 +34,7 @@ TAKEOUT_CODES.add("takeout_product_not_found");
 TAKEOUT_CODES.add("takeout_page_not_ready");
 TAKEOUT_CODES.add("takeout_page_touch_unavailable");
 TAKEOUT_CODES.add("takeout_page_load_failed");
+for (const code of ["takeout_manual_review_required", "takeout_cart_unverified", "takeout_quantity_unverified", "takeout_menu_unavailable", "takeout_note_review_required"]) TAKEOUT_CODES.add(code);
 for (const code of ["takeout_login_check_failed", "takeout_login_check_timeout", "takeout_login_state_invalid", "takeout_login_open_failed"]) TAKEOUT_CODES.add(code);
 for (const code of ["browser_page_init_failed", "browser_page_renderer_failed", "browser_page_load_failed"]) TAKEOUT_CODES.add(code);
 for (const code of ["browser_account_required", "browser_account_changed", "browser_account_restore_required", "browser_account_isolation_unavailable", "browser_account_binding_failed"]) TAKEOUT_CODES.add(code);

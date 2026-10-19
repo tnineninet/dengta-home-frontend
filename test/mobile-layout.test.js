@@ -857,11 +857,11 @@ const companionInteractionSource = sourceBetween(
   "async function selectChatAttachments",
 );
 assert.ok(
-  companionInteractionSource.indexOf("await flushLatestSettingsDraft()") >= 0 &&
-    companionInteractionSource.indexOf("await flushLatestSettingsDraft()") <
-      companionInteractionSource.indexOf(
-        "companionInteractionQueueRef.current.shift()",
-      ),
+  companionInteractionSource.indexOf("await operation.wait(() => flushLatestSettingsDraft())") >= 0 &&
+    companionInteractionSource.indexOf("await operation.wait(() => flushLatestSettingsDraft())") <
+      companionInteractionSource.indexOf("companionInteractionQueueRef.current.shift()", companionInteractionSource.indexOf("const saved =")) &&
+    companionInteractionSource.indexOf("lifecycle.begin(interaction.eventId)") <
+      companionInteractionSource.indexOf("await operation.wait(() => flushLatestSettingsDraft())"),
   "companion interactions must not consume an event before settings are saved",
 );
 assert.doesNotMatch(

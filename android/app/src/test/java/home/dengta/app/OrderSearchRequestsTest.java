@@ -54,4 +54,14 @@ public class OrderSearchRequestsTest {
             assertFalse(page.stage("unsupported-page-late"));
         }
     }
+    @Test public void aReusedPageStartsANewReceiptWithoutChangingTheCompletedRequest() {
+        OrderPageResultState page = new OrderPageResultState();
+        assertTrue(page.stage("fictional-search-result"));
+        page.markPublished();
+        page.reset();
+        assertFalse(page.stopped()); assertFalse(page.published()); assertNull(page.result());
+        assertTrue(page.stage("fictional-menu-result"));
+        assertEquals("fictional-menu-result", page.result());
+        assertFalse(page.stage("late-old-result"));
+    }
 }

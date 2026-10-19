@@ -15,7 +15,7 @@ function navigation(activeView, guard) {
     const hasLoadedSettingsRef={current:false},draftSettingsRef={current:{}};
     const shouldScheduleSettingsOnViewChange=()=>false,scheduleSettingsAutosave=()=>calls.push("save");
     const closeComposerMenu=()=>calls.push("composer"),requestStatusPanelClose=()=>calls.push("status");
-    const setActiveView=view=>calls.push(view),setIsSidebarOpen=()=>calls.push("sidebar"),setIsMobileNavOpen=()=>calls.push("nav");
+    const setActiveView=view=>calls.push(view),setIsSidebarOpen=()=>calls.push("sidebar"),setIsMobileNavOpen=()=>calls.push("nav"),setIsTakeoutOpen=()=>calls.push("takeout");
     ${code}
     return {changeView,canLeaveWorkspace};
   `);
@@ -26,7 +26,7 @@ test("cancelled workspace navigation preserves the page and navigation controls"
 });
 test("confirmed workspace navigation changes view once", () => {
   let prompts = 0; const nav = navigation("workspace", () => { prompts++; return true; }); nav.changeView("music");
-  assert.equal(prompts, 1); assert.deepEqual(nav.calls, ["composer", "status", "music", "sidebar", "nav"]);
+  assert.equal(prompts, 1); assert.deepEqual(nav.calls, ["takeout", "composer", "status", "music", "sidebar", "nav"]);
 });
 test("opening the current workspace or another feature does not ask to discard", () => {
   const unexpected = () => { throw Error("unexpected discard prompt"); };

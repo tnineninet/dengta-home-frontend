@@ -1,6 +1,6 @@
 import { Capacitor } from "@capacitor/core";
 
-export function surpriseMapError(error) {
+export function surpriseMapError(error, { operation = "write" } = {}) {
   const code = /^[a-z0-9_]{1,90}$/i.test(String(error?.code || "")) ? error.code : "surprise_map_request_failed";
   const help = {
     surprise_map_schema_required: "藏宝地图的数据结构尚未安装，现有聊天与记忆不受影响。",
@@ -16,6 +16,7 @@ export function surpriseMapError(error) {
     surprise_map_draft_failed: "本次模型未返回完整信件，可以重试写信或自行填写。",
     surprise_map_publication_exists: "这封信已有公开版本，请先刷新查看，避免重复发布。",
     surprise_map_invalid_request: "请检查标题、正文、地点与坐标是否完整。",
+    surprise_map_viewport_invalid: "地图查看范围无效，请缩放到附近区域后刷新；不会因此重新获取定位。",
     surprise_map_not_found: "这封信已撤回，或不属于当前空间，请刷新。",
     surprise_map_draft_unavailable: "当前模型暂时无法写信，请检查接口设置；也可以自己填写。",
     surprise_map_draft_invalid: "模型没有返回完整信件，可重试写信或自行填写。",
@@ -26,6 +27,9 @@ export function surpriseMapError(error) {
     settings_scope_changed: "空间已切换，本次操作已取消。",
     request_timeout: "等待确认超时，请先刷新核对结果，避免重复留信。",
   };
+  if (operation === "read" && ["request_timeout", "request_failed", "network_error"].includes(code)) {
+    return `来信列表暂时未加载成功，请点击重新加载；已藏好的信与本页草稿不会改变。（${code}）`;
+  }
   return `${help[code] || "本次操作未确认完成，请刷新核对；仍失败时可提供错误代码检查。"}（${code}）`;
 }
 

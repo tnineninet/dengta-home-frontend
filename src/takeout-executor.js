@@ -59,6 +59,23 @@ export async function readTakeoutLoginState({ plugin = OrderBrowser, capacitor =
   finally { clearTimeout(timer); }
 }
 
+/**
+ * 把已经打开的外卖页面调回前台。只切窗口，不重载、不点击、不提交。
+ * 用户核对地址和付款时用得到；页面本身不会因为弹窗关闭而消失。
+ */
+export async function resumeTakeoutPage({ plugin = OrderBrowser, capacitor = Capacitor, url = "" } = {}) {
+  if (!takeoutPluginAvailable(capacitor)) {
+    return { ok: false, code: "takeout_native_unavailable", message: "回到平台页面仅在 Android App 中可用。" };
+  }
+  try {
+    const value = await callAccountBrowser(plugin, "resumePage", { url: String(url || "").trim() });
+    return { ok: true, ...(value || {}) };
+  } catch (error) {
+    const failure = nativePageFailure(error?.code);
+    return { ok: false, code: failure?.[0] || "takeout_page_resume_failed", message: failure?.[1] || "暂时无法切回外卖页面，请从最近任务里找回；页面和登录没有被清除。" };
+  }
+}
+
 export async function readPendingTakeoutCommands({ client = apiRequest } = {}) {
   try {
     const data = await client("/api/v2/takeout/pending", { timeoutMs: 12_000 });
@@ -101,6 +118,12 @@ const NATIVE_PAGE_FAILURES = {
   takeout_page_renderer_failed: "外卖页面渲染异常，自动操作已停止。请核对购物车后手动返回。",
   takeout_page_load_failed: "当前外卖网页未能加载，自动操作已停止。可点击“恢复网页，手动核对”检查网络、登录和购物车。",
   takeout_page_interrupted: "外卖页面因系统重建中断，未重复自动操作。请核对购物车后手动返回。",
+  takeout_manual_review_required: "自动操作尚未确认购物车商品和金额，请在平台页面核对后继续；未提交订单或付款。",
+  takeout_cart_unverified: "尚未核对到购物车中的目标商品或合计金额，自动操作已停止。请在当前页面手动核对，避免重复加购。",
+  takeout_quantity_unverified: "当前页面暂不能可靠确认多份商品的数量，未继续自动加购。请在平台页面手动调整数量并核对金额。",
+  takeout_menu_unavailable: "当前店铺菜单尚未提供可读取的商品列表，未猜测或替换商品。请在平台页面手动确认，或换一家店再试。",
+  takeout_note_review_required: "商品和金额已读取，但餐品备注尚待你在平台页面核对填写。未提交订单或付款。",
+  takeout_automation_paused: "自动点餐已暂停，网页和登录仍保留，请先核对购物车。",
   browser_page_init_failed: "外卖登录网页初始化失败，请重新打开；已保存的登录资料未被清除。",
   browser_page_renderer_failed: "外卖登录网页渲染进程已退出，请重新打开网页或更新系统 WebView。",
   browser_page_load_failed: "外卖登录网页加载失败，请检查网络后重新打开；未将它判定为未登录。",
@@ -123,15 +146,30 @@ function nativePageFailure(code) {
 
 function nativeFeedback(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("takeout_native_result_invalid");
-  const failure = (value.status === "error" ? nativePageFailure(value.code) : null) || (Object.hasOwn(NATIVE_FAILURES, value.status) ? NATIVE_FAILURES[value.status] : null) || (value.loading === true
+  const failure = (["error", "manual_review"].includes(value.status) ? nativePageFailure(value.code) : null)
+    || (value.status === "manual_review" ? nativePageFailure("takeout_manual_review_required") : null)
+    || (value.status === "ready_for_payment" && (!Number.isFinite(value.total) || value.total <= 0 || value.items !== 1 || value.paymentSubmitted !== false
+      || !Array.isArray(value.lines) || value.lines.length !== 1 || !String(value.lines[0]?.name || "").trim() || value.lines[0]?.quantity !== 1) ? nativePageFailure("takeout_cart_unverified") : null)
+    || (Object.hasOwn(NATIVE_FAILURES, value.status) ? NATIVE_FAILURES[value.status] : null) || (value.loading === true
     ? ["takeout_search_incomplete", "外卖搜索页面尚未加载完整，请检查网络或登录状态后重试。"]
     : value.error ? NATIVE_FAILURES.error : null);
   return failure ? { ok: false, code: failure[0], message: failure[1], error: failure[1] } : { ok: true };
 }
 
+export async function stopTakeoutAutomation({ scope = "", plugin = OrderBrowser, capacitor = Capacitor } = {}) {
+  if (!scope || !takeoutPluginAvailable(capacitor)) return { ok: false, code: "takeout_native_unavailable", message: "请从当前灯塔账号的 Android 点餐任务中暂停自动操作。" };
+  window.dispatchEvent?.(new CustomEvent("dengta:takeout-pause", { detail: { scope } }));
+  try {
+    await callAccountBrowser(plugin, "cancelSearch", { scope });
+    return { ok: true, code: "takeout_automation_paused", message: "自动点餐已暂停，网页和登录仍保留。请先核对购物车，再决定是否继续。" };
+  } catch (error) {
+    return { ok: false, code: nativePageFailure(error?.code)?.[0] || "takeout_native_execution_failed", message: "已暂停领取新任务，但未确认原生页面是否停止。请先在平台页面核对购物车，勿重复加购。" };
+  }
+}
+
 export async function executeTakeoutCommand(
   command,
-  { client = apiRequest, plugin = OrderBrowser, onProgress = () => {}, shouldContinue = () => true, scope = "" } = {}
+  { client = apiRequest, plugin = OrderBrowser, onProgress = () => {}, onStart = () => {}, shouldContinue = () => true, scope = "" } = {}
 ) {
   const id = command?.id;
   const payload = command?.command || {};
@@ -146,6 +184,7 @@ export async function executeTakeoutCommand(
     return null; // 已被处理或已过期。
   }
   if (!shouldContinue()) return null;
+  onStart(command);
   const report = (text) => {
     if (!shouldContinue()) return;
     onProgress(text);
@@ -153,7 +192,7 @@ export async function executeTakeoutCommand(
   };
   let result;
   try {
-    if (!["search", "order"].includes(payload.action) || !String(payload.requirement || "").trim()) {
+    if (!["search", "menu", "order"].includes(payload.action) || !String(payload.requirement || "").trim()) {
       throw new Error("takeout_command_invalid");
     }
     if (payload.action === "search") {
@@ -166,19 +205,27 @@ export async function executeTakeoutCommand(
         keyword: payload.requirement,
         shops: Array.isArray(value?.shops) ? value.shops : [],
       };
+    } else if (payload.action === "menu") {
+      report("正在读取这家店的真实菜单…");
+      const value = await callAccountBrowser(plugin, "inspectMenu", { shopName: payload.shop_name || payload.requirement, scope });
+      result = { ...nativeFeedback(value), status: value?.status || "done", action: "menu", shop_name: payload.shop_name || payload.requirement,
+        products: Array.isArray(value?.products) ? value.products : [] };
     } else {
       report("正在打开外卖页面选品加购…");
       const value = await callAccountBrowser(plugin, "orderProduct", {
         shopName: payload.shop_name || payload.requirement,
-        product: payload.requirement,
+        product: payload.product_name || payload.requirement,
         quantity: Number(payload.quantity) || 1,
+        maxAmount: Number(payload.budget_max) > 0 ? Number(payload.budget_max) : undefined,
+        note: String(payload.note || ""),
+        scope,
       });
       result = {
         ...(value || {}),
         ...nativeFeedback(value),
         action: "order",
         shop_name: payload.shop_name || "",
-        product: payload.requirement,
+        product: payload.product_name || payload.requirement,
         quantity: Number(payload.quantity) || 1,
       };
     }
@@ -219,6 +266,8 @@ export function startTakeoutRunner({
   plugin = OrderBrowser,
   pollMs = TAKEOUT_POLL_MS,
   onCommandDone = () => {},
+  onCommandStart = () => {},
+  onProgress = () => {},
   scope = "",
   capacitor = Capacitor,
 } = {}) {
@@ -227,8 +276,25 @@ export function startTakeoutRunner({
   }
   let stopped = false;
   let running = false;
+  let burstTimer = null;
+  let burstDeadline = null;
+  let activeCommand = null;
+  let resumeRevision = 0;
+  const pauseKey = "dengta_takeout_paused_v1:" + scope;
+  let paused = false;
+  try { paused = Boolean(JSON.parse(window.localStorage.getItem(pauseKey) || "null")?.paused); } catch { /* Older or unavailable storage has no saved pause. */ }
   const controller = new AbortController();
   const scopedClient = (path, options) => client(path, { ...options, retry: false, signal: controller.signal });
+  const cancelCommand = async command => {
+    if (!command?.id) return;
+    try { await scopedClient(`/api/v2/takeout/${command.id}/cancel`, { method: "POST", timeoutMs: 12_000, body: "{}" }); }
+    catch (error) { if (![404, 409].includes(error?.status)) throw error; }
+  };
+  const cancelQueued = async () => {
+    const value = await scopedClient("/api/v2/takeout/pending", { timeoutMs: 12_000 });
+    if (!Array.isArray(value?.commands)) throw new Error("takeout_pending_invalid");
+    for (const item of value.commands) { if (stopped) return; await cancelCommand(item); }
+  };
   // 崩溃护栏:执行前写入本地标记。若上次执行时应用崩溃,
   // 下次启动会看到同一命令的标记,直接上报失败,不再触发原生页面。
   const markerKey = "dengta_takeout_attempted_v2:" + scope;
@@ -245,6 +311,16 @@ export function startTakeoutRunner({
     try {
       const commands = await readPendingTakeoutCommands({ client: scopedClient });
       if (stopped || commands.length === 0) return;
+      if (paused) {
+        for (const item of commands) {
+          if (stopped) return;
+          try {
+            await cancelCommand(item);
+            onCommandDone(item, { ok: false, code: "takeout_automation_paused", message: "已按你的要求取消这条排队点餐任务，未自动点击或加购。", receipt_synced: true });
+          } catch { /* Keep the pause gate closed until cancellation can be confirmed. */ }
+        }
+        return;
+      }
       const command = commands[0];
       const marker = readMarker();
       if (marker.id === command.id) {
@@ -275,7 +351,12 @@ export function startTakeoutRunner({
       } catch {
         // 存储不可用时仍然继续,由服务端 pending 状态兜底。
       }
-      const outcome = await executeTakeoutCommand(command, { client: scopedClient, plugin, scope, shouldContinue: () => !stopped });
+      activeCommand = command;
+      const outcome = await executeTakeoutCommand(command, { client: scopedClient, plugin, scope, shouldContinue: () => !stopped && !paused,
+        onStart: item => { if (!stopped && !paused) onCommandStart(item); },
+        onProgress: text => { if (!stopped && !paused) onProgress(command, text); },
+      });
+      activeCommand = null;
       if (!stopped && outcome?.receipt_synced) {
         try {
           window.localStorage.removeItem(markerKey);
@@ -286,6 +367,7 @@ export function startTakeoutRunner({
       if (!stopped && outcome) {
         if (!outcome.ok || !outcome.receipt_synced) recordOperationFailure(scope, "/api/v2/takeout", outcome);
         onCommandDone(command, outcome);
+        wake();
       }
     } finally {
       running = false;
@@ -294,16 +376,55 @@ export function startTakeoutRunner({
   const timer = setInterval(() => {
     void tick();
   }, pollMs);
+  const wake = () => {
+    if (stopped || paused) return;
+    if (burstTimer === null) burstTimer = setInterval(() => { void tick(); }, 2000);
+    clearTimeout(burstDeadline);
+    burstDeadline = setTimeout(() => { clearInterval(burstTimer); burstTimer = null; burstDeadline = null; }, 120_000);
+    void tick();
+  };
+  const pause = event => {
+    if (event?.detail?.scope !== scope) return;
+    paused = true;
+    resumeRevision++;
+    try { window.localStorage.setItem(pauseKey, JSON.stringify({ paused: true, activeId: activeCommand?.id || "" })); } catch { /* The in-memory gate remains closed. */ }
+    void cancelCommand(activeCommand).catch(() => {});
+    void tick();
+  };
+  const resume = async event => {
+    if (event?.detail?.scope && event.detail.scope !== scope || stopped) return;
+    if (!paused) { wake(); return; }
+    const revision = ++resumeRevision;
+    try {
+      let previous;
+      try { previous = JSON.parse(window.localStorage.getItem(pauseKey) || "null"); } catch { /* No stored command. */ }
+      if (previous?.activeId) await cancelCommand({ id: previous.activeId });
+      await cancelQueued();
+      if (stopped || revision !== resumeRevision) return;
+      paused = false;
+      try { window.localStorage.removeItem(pauseKey); } catch { /* A stale persisted pause is conservative on restart. */ }
+      wake();
+    } catch {
+      if (!stopped && revision === resumeRevision) onCommandDone(null, { ok: false, code: "takeout_previous_attempt_unknown", message: "旧点餐任务尚未确认结束，自动操作仍暂停。请先检查网络和购物车，再重新开始。", receipt_synced: false });
+    }
+  };
+  window.addEventListener?.("dengta:takeout-wake", resume);
+  window.addEventListener?.("dengta:takeout-pause", pause);
   // 延迟启动:避免 App 一打开就弹出外卖页面,留给启动流程喘息空间。
   const firstTimer = setTimeout(() => {
     void tick();
-  }, 10_000);
+  }, 1500);
   return () => {
     if (stopped) return;
     stopped = true;
+    resumeRevision++;
     controller.abort();
     clearInterval(timer);
     clearTimeout(firstTimer);
+    clearInterval(burstTimer);
+    clearTimeout(burstDeadline);
+    window.removeEventListener?.("dengta:takeout-wake", resume);
+    window.removeEventListener?.("dengta:takeout-pause", pause);
     try { Promise.resolve(plugin.cancelSearch?.({ scope })).catch(() => {}); } catch { /* Older native builds have no independent search wait. */ }
   };
 }

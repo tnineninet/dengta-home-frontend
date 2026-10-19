@@ -43,6 +43,11 @@ public class MainActivity extends BridgeActivity {
 
         WebView webView = getBridge().getWebView();
         webView.setLayerType(View.LAYER_TYPE_NONE, null);
+        // 安卓密码保险箱/系统自动填充会在登录输入框抢焦点：输入一个字符就收键盘，
+        // 再弹出旧密码快捷栏。App 内只有登录需要输密码，这里关闭 WebView 自动填充。
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            webView.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
+        }
         // 启动随机播放等场景允许无手势自动播放（内置播放器/后台音乐）。
         webView.getSettings().setMediaPlaybackRequiresUserGesture(false);
         webView.addJavascriptInterface(new DengTaFileBridge(this), "DengTaFileBridge");

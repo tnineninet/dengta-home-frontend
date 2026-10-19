@@ -35,6 +35,7 @@ import {
 } from "./companion-status";
 import StatusFlowField from "./StatusFlowField";
 import NowPlayingCard from "./NowPlayingCard.jsx";
+import "./companion-live-status.css";
 
 const DESIRE_ACTIONS = [
   {
@@ -76,6 +77,7 @@ function CompanionStatus({
   interactionStats,
   intimateExpressionEnabled = false,
   isResponding = false,
+  interactionFeedback = { state: "idle", message: "" },
   nowPlaying = null,
   nowPlayingBusy = false,
   onNowPlayingPlayPause,
@@ -246,10 +248,6 @@ function CompanionStatus({
       );
       return {
         ...current,
-        mood: reaction.mood,
-        focus: reaction.focus,
-        note: reaction.text,
-        microState: reaction.microState,
         energyLevel: clamp(
           zone.recoveryAction === true
             ? Math.max(
@@ -272,7 +270,7 @@ function CompanionStatus({
                 0,
                 HOT_ZONES.length,
               ),
-        recentRecords: addStatusRecord(current, reaction.record),
+        recentRecords: addStatusRecord(current, `${zone.label} · 第 ${reaction.totalCount || interactionMeta?.counts?.[zone.id] || normalizedInteractionStats.counts[zone.id] + 1} 次`),
       };
     });
   }
@@ -459,6 +457,33 @@ function CompanionStatus({
                 ? "等你写下新的此刻。"
                 : personalized(normalized.note)}
             </p>
+
+            <section className="companion-live-state" aria-label="此刻的心理与感受" aria-busy={isResponding || interactionFeedback.state === "queued"}>
+              <div className="companion-live-state-heading">
+                <strong>心理与感受</strong>
+                <span>{normalized.statusSource === "model" ? "AI 生成的角色状态" : normalized.psychology ? "按互动次数实时生成" : "等待这次感受"}</span>
+              </div>
+              <dl>
+                <div><dt>心理</dt><dd>{normalized.psychology ? personalized(normalized.psychology) : "互动后，会在这里写下此刻的想法。"}</dd></div>
+                <div><dt>感受</dt><dd>{normalized.feeling ? personalized(normalized.feeling) : "还没有收到新生成的感受。"}</dd></div>
+              </dl>
+              <div className="companion-live-meters">
+                {[["心情", normalized.moodLevel], ["耐心", normalized.patienceLevel]].map(([label, value]) => (
+                  <div key={label}>
+                    <span>{label}<strong>{value === null ? "待生成" : `${value}/100`}</strong></span>
+                    {value !== null && <meter min="0" max="100" value={value} aria-label={label}>{value}</meter>}
+                  </div>
+                ))}
+              </div>
+              <p className="companion-live-feedback" role="status" aria-live="polite">
+                {interactionFeedback.state === "queued" ? "互动已收到，正在准备这次感受…"
+                  : interactionFeedback.state === "generating" || isResponding ? "正在感受刚才的互动，生成后会在这里更新…"
+                    : interactionFeedback.state === "failed" || interactionFeedback.state === "fallback" ? interactionFeedback.message || "这次没有收到新的状态，再碰一下可以重试。"
+                      : normalized.statusSource === "model" ? "会随你的互动次数、节奏和刚才的心情变化。"
+                        : normalized.psychology ? "这次没有等到模型状态，已按互动次数实时生成本地版本；心情与耐心会随节奏变化。"
+                          : "等待时保留上次内容；心情与耐心是角色化数值。"}
+              </p>
+            </section>
 
             <div className="sun-glass-energy-row">
               <span>

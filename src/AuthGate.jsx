@@ -281,7 +281,10 @@ export function AuthScreen({
                   type="email"
                   inputMode="email"
                   autoCapitalize="none"
-                  autoComplete={mode === "login" ? "username" : "email"}
+                  autoCorrect="off"
+                  autoComplete={mode === "login" ? "off" : "email"}
+                  enterKeyHint="next"
+                  spellCheck={false}
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   placeholder="name@example.com"
@@ -297,9 +300,12 @@ export function AuthScreen({
                   minLength={
                     ["register", "reset"].includes(mode) ? 8 : undefined
                   }
+                  autoCorrect="off"
                   autoComplete={
-                    mode === "login" ? "current-password" : "new-password"
+                    mode === "login" ? "off" : "new-password"
                   }
+                  enterKeyHint={mode === "login" ? "go" : "next"}
+                  spellCheck={false}
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   placeholder={

@@ -10,15 +10,22 @@ const vite = await createServer({ root: fileURLToPath(new URL('..', import.meta.
 }] });
 const descriptors = new Map();
 function stub(name, value) { descriptors.set(name, Object.getOwnPropertyDescriptor(globalThis, name)); Object.defineProperty(globalThis, name, { configurable: true, value, writable: true }); }
-const interval = [], timeout = [], storage = new Map();
+const interval = [], timeout = [], storage = new Map(), listeners = new Map();
 stub('setInterval', fn => { interval.push(fn); return interval.length; });
 stub('setTimeout', fn => { timeout.push(fn); return timeout.length; });
 stub('clearInterval', () => {}); stub('clearTimeout', () => {});
-stub('window', { localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) } });
+stub('window', { localStorage: { getItem: key => storage.get(key), setItem: (key, value) => storage.set(key, value), removeItem: key => storage.delete(key) },
+  addEventListener: (name, callback) => { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name).add(callback); },
+  removeEventListener: (name, callback) => listeners.get(name)?.delete(callback),
+  dispatchEvent: event => { for (const callback of listeners.get(event.type) || []) callback(event); return true; },
+});
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 const settle = async () => { for (let i = 0; i < 20; i++) await Promise.resolve(); };
 try {
-  const { executeTakeoutCommand, startTakeoutRunner } = await vite.ssrLoadModule('/src/takeout-executor.js');
+  const { executeTakeoutCommand, resumeTakeoutPage, startTakeoutRunner, stopTakeoutAutomation } = await vite.ssrLoadModule('/src/takeout-executor.js');
+  const resumeUnavailable = await resumeTakeoutPage({ capacitor: { isNativePlatform: () => false, isPluginAvailable: () => false } });
+  assert.equal(resumeUnavailable.ok, false);
+  assert.equal(resumeUnavailable.code, 'takeout_native_unavailable');
   const command = { id: 'fixture-command', command: { action: 'order', requirement: '虚构餐品', shop_name: '虚构店铺' } };
   let opens = 0; const calls = [];
   const plugin = { orderProduct: async () => { opens++; return { added: true }; }, searchShops: async () => { opens++; return { shops: [] }; } };
@@ -66,6 +73,26 @@ try {
   assert.equal(malformed.code, 'takeout_native_result_invalid');
   const invalid = await executeTakeoutCommand({ ...command, command: { action: 'invalid', requirement: 'fixture' } }, { client: async () => ({}), plugin });
   assert.equal(invalid.code, 'takeout_command_invalid'); assert.equal(opens, 1);
+  let menuInput, orderInput;
+  const menuResult = await executeTakeoutCommand({ ...command, command: { action: 'menu', requirement: '看看菜单', shop_name: '虚构准确店名' } }, {
+    scope: 'fictional-menu-scope', client: async () => ({}), plugin: { inspectMenu: async input => { menuInput = input; return { status: 'done', products: [{ name: '番茄饭', price: 18, available: true }] }; } },
+  });
+  assert.deepEqual(menuInput, { shopName: '虚构准确店名', scope: 'fictional-menu-scope' });
+  assert.equal(menuResult.ok, true); assert.equal(menuResult.action, 'menu'); assert.equal(menuResult.products[0].name, '番茄饭');
+  const cartResult = await executeTakeoutCommand({ ...command, command: { ...command.command, product_name: '准确餐品', budget_max: 35, note: '少盐', quantity: 2 } }, {
+    scope: 'fictional-order-scope', client: async () => ({}), plugin: { orderProduct: async input => { orderInput = input; return { status: 'manual_review', code: 'takeout_quantity_unverified', paymentSubmitted: false }; } },
+  });
+  assert.deepEqual(orderInput, { shopName: '虚构店铺', product: '准确餐品', quantity: 2, maxAmount: 35, note: '少盐', scope: 'fictional-order-scope' });
+  assert.equal(cartResult.ok, false); assert.equal(cartResult.code, 'takeout_quantity_unverified');
+  const unverified = await executeTakeoutCommand(command, { client: async () => ({}), plugin: { orderProduct: async () => ({ status: 'ready_for_payment', items: 1, total: null, paymentSubmitted: false }) } });
+  assert.equal(unverified.ok, false); assert.equal(unverified.code, 'takeout_cart_unverified');
+  const candidates = await executeTakeoutCommand(command, { client: async () => ({}), plugin: { orderProduct: async () => ({ status: 'product_not_found', candidates: ['虚构备选菜'] }) } });
+  assert.equal(candidates.code, 'takeout_product_not_found');
+  assert.deepEqual(candidates.candidates, ['虚构备选菜']);
+  const verified = await executeTakeoutCommand(command, { client: async () => ({}), plugin: { orderProduct: async () => ({ status: 'ready_for_payment', items: 1, total: 18, lines: [{ name: '虚构餐品', quantity: 1 }], paymentSubmitted: false }) } });
+  assert.equal(verified.ok, true); assert.equal(verified.status, 'ready_for_payment');
+  const manual = await executeTakeoutCommand(command, { client: async () => ({}), plugin: { orderProduct: async () => ({ status: 'manual_review' }) } });
+  assert.equal(manual.ok, false); assert.equal(manual.code, 'takeout_manual_review_required');
   let active = true; const ack = deferred();
   const stoppedExecution = executeTakeoutCommand(command, { client: () => ack.promise, plugin, shouldContinue: () => active });
   active = false; ack.resolve({}); assert.equal(await stoppedExecution, null); assert.equal(opens, 1);
@@ -126,6 +153,54 @@ try {
     return {};
   } });
   interval.at(-1)(); await settle(); collisionStop(); assert.equal(failedOtherDevice, false);
+  const work = deferred(), updates = [], starts = []; let wakePolls = 0;
+  const wakeStop = startTakeoutRunner({ scope: 'fictional-live-panel', capacitor,
+    plugin: { inspectMenu: () => work.promise }, onCommandStart: item => starts.push(item.id), onProgress: (item, text) => updates.push([item.id, text]),
+    client: async path => { if (path.endsWith('/pending')) { wakePolls++; return { commands: [{ ...command, command: { action: 'menu', requirement: '虚构店铺', shop_name: '虚构店铺' } }] }; } return {}; },
+  });
+  const wakeHandler = [...listeners.get('dengta:takeout-wake')][0];
+  const intervalsBeforeWake = interval.length;
+  wakeHandler(); wakeHandler(); await settle();
+  assert.equal(wakePolls, 1, 'wakes cannot duplicate a claimed native operation');
+  assert.equal(interval.length, intervalsBeforeWake + 1, 'a burst reuses one interval');
+  assert.deepEqual(starts, [command.id]); assert.equal(updates[0][0], command.id); assert.match(updates[0][1], /菜单/);
+  const pollsBeforeStop = wakePolls;
+  wakeStop(); assert.equal(listeners.get('dengta:takeout-wake').size, 0);
+  work.resolve({ status: 'done', products: [] }); await settle(); wakeHandler(); interval.at(-1)(); await settle();
+  assert.equal(wakePolls, pollsBeforeStop, 'stopped listeners and timers cannot restart the previous identity');
+  const nativeWait = deferred(), cancelled = [], pendingItems = [], pausedOutcomes = []; let pausedOpens = 0;
+  const pausePlugin = { orderProduct: () => { pausedOpens++; return nativeWait.promise; }, cancelSearch: async input => { cancelled.push(input.scope); nativeWait.resolve({ status: 'manual_review' }); } };
+  const pauseClient = async path => {
+    if (path.endsWith('/pending')) return { commands: pendingItems.slice() };
+    if (path.endsWith('/cancel')) { const id = path.split('/').at(-2); const index = pendingItems.findIndex(item => item.id === id); if (index >= 0) pendingItems.splice(index, 1); cancelled.push(id); }
+    return {};
+  };
+  pendingItems.push(command);
+  const pauseStop = startTakeoutRunner({ scope: 'fictional-pause', capacitor, plugin: pausePlugin, client: pauseClient, onCommandDone: (item, outcome) => pausedOutcomes.push({ item, outcome }) });
+  interval.at(-1)(); await settle(); assert.equal(pausedOpens, 1);
+  const pausedResult = await stopTakeoutAutomation({ scope: 'fictional-pause', capacitor, plugin: pausePlugin });
+  assert.equal(pausedResult.ok, true); await settle();
+  assert.ok(storage.has('dengta_takeout_paused_v1:fictional-pause'));
+  pendingItems.push({ ...command, id: 'fictional-late-command' }); interval.at(-1)(); await settle();
+  assert.equal(pausedOpens, 1); assert.ok(cancelled.includes('fictional-late-command'));
+  assert.equal(pausedOutcomes.at(-1).outcome.code, 'takeout_automation_paused');
+  pauseStop();
+  let restartOpens = 0;
+  const restartStop = startTakeoutRunner({ scope: 'fictional-pause', capacitor, plugin: { orderProduct: async () => { restartOpens++; return { added: true }; } }, client: pauseClient });
+  pendingItems.push({ ...command, id: 'fictional-stale-after-restart' }); interval.at(-1)(); await settle();
+  assert.equal(restartOpens, 0); assert.ok(cancelled.includes('fictional-stale-after-restart'), 'saved pause cancels old pending work after restart');
+  const resumeHandler = [...listeners.get('dengta:takeout-wake')][0]; await resumeHandler({ detail: { scope: 'fictional-pause' } }); await settle();
+  assert.equal(storage.has('dengta_takeout_paused_v1:fictional-pause'), false);
+  restartStop();
+  storage.set('dengta_takeout_paused_v1:fictional-offline-resume', JSON.stringify({ paused: true }));
+  const resumeErrors = [];
+  const offlineStop = startTakeoutRunner({ scope: 'fictional-offline-resume', capacitor, plugin,
+    onCommandDone: (item, outcome) => resumeErrors.push({ item, outcome }), client: async () => { throw Error('fictional offline'); },
+  });
+  await [...listeners.get('dengta:takeout-wake')][0]({ detail: { scope: 'fictional-offline-resume' } });
+  assert.equal(resumeErrors[0].item, null); assert.equal(resumeErrors[0].outcome.code, 'takeout_previous_attempt_unknown');
+  assert.ok(storage.has('dengta_takeout_paused_v1:fictional-offline-resume'), 'failed cancellation cannot reopen the pause gate');
+  offlineStop();
   console.log('takeout lifecycle regression passed: receipt failures, invalid commands, polling lock, scope cancellation and scoped markers');
 } finally {
   for (const [name, descriptor] of descriptors) { if (descriptor) Object.defineProperty(globalThis, name, descriptor); else delete globalThis[name]; }

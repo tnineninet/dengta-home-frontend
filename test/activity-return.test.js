@@ -73,6 +73,7 @@ function navigationFixture() {
     scheduleSettingsAutosave: () => calls.push("settings-write"), closeComposerMenu: () => calls.push("close-menu"),
     requestStatusPanelClose: () => calls.push("close-status"),
     setActiveView: view => { calls.push(["view", view]); context.activeView = view; context.activeViewRef.current = view; },
+    setIsTakeoutOpen: value => calls.push(["takeout", value]),
     setIsSidebarOpen: value => calls.push(["sidebar", value]), setIsMobileNavOpen: value => calls.push(["navigation", value]),
     setActivityReturn: value => { context.activityReturn = value; }, setTogetherEntryMode: value => calls.push(["mode", value]),
   };
@@ -87,7 +88,7 @@ test("actual App navigation remembers only a confirmed same-scope activity and r
   assert.equal(context.activityReturn.sessionId, session.id);
   calls.length = 0;
   context.returnToActivity();
-  assert.deepEqual(calls.filter(Array.isArray).map(row => Array.from(row)), [["mode", "music"], ["view", "music"], ["sidebar", false], ["navigation", false]]);
+  assert.deepEqual(calls.filter(Array.isArray).map(row => Array.from(row)), [["mode", "music"], ["takeout", false], ["view", "music"], ["sidebar", false], ["navigation", false]]);
   assert.ok(!calls.includes("settings-write"));
 });
 
