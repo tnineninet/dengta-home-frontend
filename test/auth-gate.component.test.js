@@ -122,11 +122,11 @@ try {
     const renderer = await renderGate(AuthGate, manager);
     const emailInput = renderer.root.find(node => node.type === "input" && node.props.type === "email");
     const passwordInput = renderer.root.find(node => node.type === "input" && node.props.type === "password");
-    assert.equal(emailInput.props.autoComplete, "off");
+    assert.equal(emailInput.props.autoComplete, "email");
     assert.equal(emailInput.props.autoCorrect, "off");
     assert.equal(emailInput.props.spellCheck, false);
     assert.equal(emailInput.props.enterKeyHint, "next");
-    assert.equal(passwordInput.props.autoComplete, "off");
+    assert.equal(passwordInput.props.autoComplete, "current-password");
     assert.equal(passwordInput.props.autoCorrect, "off");
     assert.equal(passwordInput.props.spellCheck, false);
     assert.equal(passwordInput.props.enterKeyHint, "go");

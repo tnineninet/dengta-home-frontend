@@ -17,6 +17,7 @@ import { MAX_SESSION_TITLE, readSessionDelete, readSessionRename, sessionDialogF
 import SessionDialog from "./SessionDialog.jsx";
 import ImageViewer from "./ImageViewer.jsx";
 import { createCoWatchLifecycle } from "./co-watch-lifecycle.js";
+import { findRecoveredAssistant, shouldRecoverPendingChat } from "./chat-background-recovery.js";
 import { createScreenGlanceLifecycle } from "./screen-glance-lifecycle.js";
 import { createMusicPlaybackSync } from "./music-playback-sync.js";
 import { runNowPlayingControl, sameNowPlaying } from "./now-playing-controls.js";
@@ -799,6 +800,7 @@ const navItems = [
   { id: "nursery", icon: "♡", label: "Family" },
   { id: "cotton", icon: "✿", label: "小棉花" },
   { id: "together", icon: "▻", label: "Together" },
+  { id: "cast", icon: "▣", label: "放映厅" },
   { id: "music", icon: "🎵", label: "听歌" },
   { id: "duel", icon: "⚔", label: "Duel" },
   { id: "memories", icon: "◇", label: "Memory" },
@@ -1586,6 +1588,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const voiceRequestRef = useRef(null);
   const chatRequestRef = useRef(null);
   const pendingChatClientMessageRef = useRef(null);
+  const refreshSessionsRef = useRef(null);
   const createSessionPendingRef = useRef(false);
   const pendingMomentLikesRef = useRef({});
   const pendingMomentCommentsRef = useRef({});
@@ -4016,6 +4019,95 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
   }
 
+  useEffect(() => {
+    let disposed = false;
+    let timer = null;
+    let attempts = 0;
+    let nativeHandle = null;
+
+    const schedule = () => {
+      if (disposed || attempts >= 30) return;
+      timer = window.setTimeout(() => { void check(); }, 4000);
+    };
+
+    const check = async () => {
+      if (disposed || document.visibilityState !== "visible") return;
+      const pending = pendingChatClientMessageRef.current;
+      if (!shouldRecoverPendingChat(pending, activeSessionIdRef.current)) return;
+      attempts += 1;
+      try {
+        const data = await apiRequest(
+          `/api/v2/sessions/${encodeURIComponent(pending.sessionId)}/messages`,
+          { timeoutMs: 30_000 },
+        );
+        if (disposed || !shouldRecoverPendingChat(pendingChatClientMessageRef.current, activeSessionIdRef.current)) return;
+        const found = findRecoveredAssistant(data?.messages, pending.clientMessageId);
+        if (found) {
+          pendingChatClientMessageRef.current = null;
+          setMessages((current) => current.map((item) =>
+            item.id === pending.localAssistantId
+              ? {
+                  ...found,
+                  renderKey: item.renderKey ?? item.id,
+                  isStreaming: false,
+                  generationInProgress: false,
+                  chatError: false,
+                  retryAvailable: false,
+                }
+              : item,
+          ));
+          setNotice("刚才的回复已经在后台完成，已经补回聊天。");
+          void refreshSessionsRef.current?.(pending.sessionId);
+          return;
+        }
+        setMessages((current) => current.map((item) =>
+          item.id === pending.localAssistantId
+            ? {
+                ...item,
+                isStreaming: true,
+                generationInProgress: true,
+                chatError: false,
+                retryAvailable: false,
+                thinkingStatuses: appendThinkingStatus(
+                  item.thinkingStatuses,
+                  "generating_in_background",
+                ),
+              }
+            : item,
+        ));
+        setNotice("已经回到前台；刚才那一轮还在服务器后台生成，可以继续做别的。");
+        schedule();
+      } catch {
+        schedule();
+      }
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") {
+        window.clearTimeout(timer);
+        return;
+      }
+      attempts = 0;
+      void check();
+    };
+
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("online", onVisible);
+    void CapacitorApp.addListener("appStateChange", ({ isActive }) => {
+      if (isActive) onVisible();
+    }).then((handle) => { nativeHandle = handle; }).catch(() => {});
+
+    return () => {
+      disposed = true;
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("online", onVisible);
+      nativeHandle?.remove?.();
+    };
+  }, [privateMediaScope]);
+
+  refreshSessionsRef.current = refreshSessions;
+
   async function createSession() {
     if (createSessionPendingRef.current) return;
     if (!canLeaveWorkspace("chat")) return;
@@ -5315,6 +5407,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         throw error;
       }
       sendSucceeded = true;
+      // 回复已经提交。后续刷新历史/会话是收尾工作，不能让输入框一直停在“发送中”。
+      isSendingRef.current = false;
+      if (componentMountedRef.current) setIsSending(false);
       void refreshFunLabs();
       if (
         !preserveComposer &&
@@ -5335,6 +5430,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
       const history = await apiRequest(
         `/api/v2/sessions/${sessionId}/messages`,
+        { timeoutMs: 15_000 },
       );
       if (activeSessionIdRef.current === sessionId) {
         messageLoadTokenRef.current += 1;
@@ -5373,19 +5469,31 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         generationInProgress ||
         error?.generationInProgress === true ||
         isChatGenerationInProgress(error);
+      // 网络被系统挂起/切后台时，服务端可能仍在生成；保留 clientMessageId，
+      // 回前台后可以按 id 把已经保存的回复补回来，而不是只留下一个本地报错。
+      const interruptedAfterCommit =
+        userMessageWasCommitted &&
+        !request.cancelReason &&
+        (requestWasAborted ||
+          error?.code === "chat_stream_interrupted" ||
+          error?.name === "TypeError" ||
+          error?.name === "AbortError");
+      const recoverAfterBackground = userMessageWasCommitted &&
+        (generationStillInProgress || interruptedAfterCommit);
       const restoreDraft =
         !preserveComposer &&
         shouldRestoreAttachmentDrafts({
           requestWasAborted,
           cancelReason: request.cancelReason,
         });
-      if (restoreDraft) {
+      if (restoreDraft || recoverAfterBackground) {
         pendingChatClientMessageRef.current = updateChatClientMessage(
           pendingChatClientMessageRef.current,
           request.clientMessageId,
           {
             userMessageCommitted: userMessageWasCommitted,
-            generationInProgress: generationStillInProgress,
+            generationInProgress: generationStillInProgress || recoverAfterBackground,
+            detached: recoverAfterBackground,
             localUserId,
             localAssistantId,
           },
@@ -8052,17 +8160,40 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   function renderDlnaCastPlayer() {
+    const receiverHint = !dlnaState.supported
+      ? "请在 Android App 内使用投屏接收；网页端不能注册 DLNA 设备。"
+      : dlnaState.active
+        ? "同一 Wi-Fi 下的视频 App 投屏列表里选择「灯塔 DENGTA」。"
+        : dlnaState.discoveryStatus === "starting"
+          ? "正在注册 SSDP / 描述服务，稍等几秒再搜。"
+          : "接收服务未就绪" + (dlnaState.errorCode ? "：" + dlnaState.errorCode : "") + "。点右侧开启或重启。";
     return (
-      <DlnaCastPlayer
-        key={JSON.stringify([accountStorageScope, companionScope, dlnaCastInfo?.receivedAt || "cast"])}
-        info={dlnaCastInfo}
-        userName={effectiveUserName}
-        aiName={effectiveAiName}
-        onClose={() => {
-          setDlnaCastInfo(null);
-          setActiveView("chat");
-        }}
-      />
+      <>
+        <div className={"cast-receiver-banner " + (dlnaState.active ? "is-ready" : "is-off")} role="status">
+          <div>
+            <strong>{dlnaState.active ? "投屏接收已开启" : "投屏接收未开启"}</strong>
+            <small>{receiverHint}</small>
+            {dlnaState.wifiName && <small>网络：{dlnaState.wifiName}{dlnaState.ip ? ` · ${dlnaState.ip}` : ""} · 端口 {dlnaState.port || 48620}</small>}
+          </div>
+          <button
+            type="button"
+            disabled={dlnaBusy || !dlnaState.supported}
+            onClick={() => void toggleDlnaReceiver()}
+          >
+            {dlnaBusy ? "处理中…" : dlnaState.active ? "重启接收" : "开启接收"}
+          </button>
+        </div>
+        <DlnaCastPlayer
+          key={JSON.stringify([accountStorageScope, companionScope, dlnaCastInfo?.receivedAt || "cast"])}
+          info={dlnaCastInfo}
+          userName={effectiveUserName}
+          aiName={effectiveAiName}
+          onClose={() => {
+            setDlnaCastInfo(null);
+            setActiveView("chat");
+          }}
+        />
+      </>
     );
   }
 

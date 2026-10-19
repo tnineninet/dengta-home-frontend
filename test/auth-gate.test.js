@@ -65,7 +65,7 @@ assert.doesNotMatch(source, /SUPABASE_SERVICE_ROLE_KEY/);
 
 assert.match(source, /type="email"/);
 assert.match(source, /type="password"/);
-assert.match(source, /mode === "login" \? "off" : "new-password"/);
+assert.match(source, /mode === "login" \? "current-password" : "new-password"/);
 assert.match(source, /"new-password"/);
 assert.match(
   source,

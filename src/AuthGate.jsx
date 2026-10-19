@@ -73,6 +73,7 @@ export function AuthScreen({
   const [displayName, setDisplayName] = useState("");
   const [busy, setBusy] = useState("");
   const [feedback, setFeedback] = useState(initialMessage);
+  const [showPassword, setShowPassword] = useState(false);
   const [verificationEmail, setVerificationEmail] = useState("");
   const [verificationLink, setVerificationLink] = useState("");
 
@@ -282,7 +283,8 @@ export function AuthScreen({
                   inputMode="email"
                   autoCapitalize="none"
                   autoCorrect="off"
-                  autoComplete={mode === "login" ? "off" : "email"}
+                  name="email"
+                  autoComplete="email"
                   enterKeyHint="next"
                   spellCheck={false}
                   value={email}
@@ -294,24 +296,36 @@ export function AuthScreen({
             {mode !== "forgot" && (
               <label>
                 <span>{mode === "reset" ? "新密码" : "密码"}</span>
-                <input
-                  required
-                  type="password"
-                  minLength={
-                    ["register", "reset"].includes(mode) ? 8 : undefined
-                  }
-                  autoCorrect="off"
-                  autoComplete={
-                    mode === "login" ? "off" : "new-password"
-                  }
-                  enterKeyHint={mode === "login" ? "go" : "next"}
-                  spellCheck={false}
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  placeholder={
-                    mode === "login" ? "输入密码" : "至少 8 个字符"
-                  }
-                />
+                <div className="auth-password-control">
+                  <input
+                    required
+                    type={showPassword ? "text" : "password"}
+                    name="password"
+                    minLength={
+                      ["register", "reset"].includes(mode) ? 8 : undefined
+                    }
+                    autoCorrect="off"
+                    autoComplete={
+                      mode === "login" ? "current-password" : "new-password"
+                    }
+                    enterKeyHint={mode === "login" ? "go" : "next"}
+                    spellCheck={false}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    placeholder={
+                      mode === "login" ? "输入密码" : "至少 8 个字符"
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="auth-password-toggle"
+                    aria-label={showPassword ? "隐藏密码" : "显示密码"}
+                    aria-pressed={showPassword}
+                    onClick={() => setShowPassword((visible) => !visible)}
+                  >
+                    {showPassword ? "隐藏" : "显示"}
+                  </button>
+                </div>
               </label>
             )}
             {mode === "reset" && (
@@ -320,6 +334,7 @@ export function AuthScreen({
                 <input
                   required
                   type="password"
+                  name="password_confirmation"
                   minLength="8"
                   autoComplete="new-password"
                   value={passwordConfirmation}
@@ -368,7 +383,7 @@ export function AuthScreen({
                   setFeedback("邮箱尚未验证时，在此重新发送验证邮件；已经验证的账号可直接返回登录。");
                 }}
               >
-                没收到验证邮件／验证链接失效？
+                没收到邮箱验证邮件／验证链接失效？
               </button>
             )}
             {mode === "login" && (
@@ -405,6 +420,7 @@ export function AccountMenu({ sessionManager, snapshot }) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const rootRef = useRef(null);
   const alive = useRef(false);
   const exiting = useRef(false);

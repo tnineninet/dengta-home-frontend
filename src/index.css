@@ -10518,3 +10518,12 @@ body,
 .message-artwork-error { padding: 9px 11px; border-radius: 10px; background: rgba(160, 80, 70, .07); color: #8b4d45; font-size: 12px; }
 @keyframes artwork-skeleton { to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .message-artwork-skeleton { animation: none; } }
+
+.cast-receiver-banner { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin: 12px 16px 0; padding: 12px 14px; border: 1px solid rgba(126, 100, 78, .18); border-radius: 14px; background: rgba(255, 250, 242, .92); color: #4d4038; }
+.cast-receiver-banner > div { display: grid; gap: 3px; min-width: 0; }
+.cast-receiver-banner strong { font-size: 13px; }
+.cast-receiver-banner small { color: #857269; font-size: 11px; line-height: 1.45; }
+.cast-receiver-banner button { flex: 0 0 auto; padding: 8px 11px; border: 1px solid rgba(126, 100, 78, .26); border-radius: 9px; background: #fffaf1; color: #6d5044; font-size: 12px; font-weight: 600; }
+.cast-receiver-banner.is-ready { border-color: rgba(87, 132, 103, .28); background: rgba(244, 251, 245, .94); }
+.cast-receiver-banner.is-ready button { color: #426b51; border-color: rgba(87, 132, 103, .3); }
+.cast-receiver-banner button:disabled { opacity: .55; }

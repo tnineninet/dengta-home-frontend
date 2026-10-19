@@ -1,10 +1,10 @@
 export const FEATURE_GROUPS = [
   { label: "日常陪伴", ids: ["chat", "cotton", "moments", "diary", "art"] },
-  { label: "一起体验", ids: ["together", "music", "duel", "nursery"] },
+  { label: "一起体验", ids: ["together", "cast", "music", "duel", "nursery"] },
   { label: "记录与探索", ids: ["memories", "treasure", "achievements", "discover", "takeout", "workspace"] },
 ];
-export const FEATURE_LABELS = { chat: "聊天", moments: "动态", diary: "日记", art: "涂鸦画室", nursery: "家庭", cotton: "小棉花", together: "一起看", music: "听歌", duel: "互动挑战", memories: "记忆", treasure: "藏宝地图", achievements: "成就", discover: "发现", takeout: "外卖", workspace: "工作区" };
-export const QUICK_FEATURES = ["chat", "together", "cotton", "achievements"];
+export const FEATURE_LABELS = { chat: "聊天", moments: "动态", diary: "日记", art: "涂鸦画室", nursery: "家庭", cotton: "小棉花", together: "一起看", cast: "放映厅", music: "听歌", duel: "互动挑战", memories: "记忆", treasure: "藏宝地图", achievements: "成就", discover: "发现", takeout: "外卖", workspace: "工作区" };
+export const QUICK_FEATURES = ["chat", "together", "cast", "cotton"];
 
 export const FEATURE_DETAILS = {
   chat: { hint: "接着聊，也能一起编故事", keywords: "对话 消息 故事 接龙 游戏 语音" },
@@ -13,6 +13,7 @@ export const FEATURE_DETAILS = {
   diary: { hint: "翻翻伴侣留下的日常", keywords: "日志 日常 回忆" },
   art: { hint: "画张涂鸦，或收到一份小礼物", keywords: "绘画 图片 画册 创作 自主 惊喜 头像 表情包" },
   together: { hint: "选个视频，一起看", keywords: "电影 视频 观影 放映厅 投屏 哔哩哔哩 B站" },
+  cast: { hint: "投屏到这里，和别人一起看", keywords: "放映厅 投屏 DLNA 一起看 房间 邀请码 电视" },
   music: { hint: "放一首歌，一起听", keywords: "音乐 歌单 网易云 一起听" },
   duel: { hint: "来一场互动挑战", keywords: "对决 比赛 游戏 duel" },
   nursery: { hint: "看看你们的小家庭", keywords: "养成 家人 孩子 宝宝 family" },

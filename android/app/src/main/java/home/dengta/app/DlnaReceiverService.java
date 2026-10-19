@@ -78,6 +78,9 @@ public final class DlnaReceiverService extends Service {
     private static final int SSDP_PORT = 1900;
     private static final int HTTP_PORT = 48620;
     private static final String DEVICE_TYPE = "urn:schemas-upnp-org:device:MediaRenderer:1";
+    private static final String AV_TRANSPORT_TYPE = "urn:schemas-upnp-org:service:AVTransport:1";
+    private static final String CONNECTION_MANAGER_TYPE = "urn:schemas-upnp-org:service:ConnectionManager:1";
+    private static final String RENDERING_CONTROL_TYPE = "urn:schemas-upnp-org:service:RenderingControl:1";
 
     private static volatile boolean running = false;
     private static volatile boolean wifiAware = false;
@@ -99,6 +102,7 @@ public final class DlnaReceiverService extends Service {
     private volatile DatagramSocket ssdpSocket;
     private volatile ServerSocket httpServer;
     private volatile String advertisedAddress = "";
+    private static volatile String lastAdvertisedAddress = "";
     private WifiManager.MulticastLock multicastLock;
     private String deviceId = "";
 
@@ -122,6 +126,7 @@ public final class DlnaReceiverService extends Service {
             state.put("errorCode", status.errorCode);
             state.put("enabled", running);
             state.put("port", HTTP_PORT);
+            state.put("ip", lastAdvertisedAddress);
             state.put("transportState", transportState);
             state.put("currentUri", currentUri);
             state.put("mediaReceived", currentUri.isEmpty() ? "" : currentUri);
@@ -358,6 +363,7 @@ public final class DlnaReceiverService extends Service {
                     if (!running || !discovery.isCurrent(generation)) return;
                     ssdpSocket = socket;
                     advertisedAddress = address;
+                    lastAdvertisedAddress = address;
                     discovery.ready(generation, false);
                 }
                 broadcastState();
@@ -389,36 +395,43 @@ public final class DlnaReceiverService extends Service {
     private void handleSsdpPacket(DatagramSocket socket, DatagramPacket packet) throws IOException {
         String request = new String(packet.getData(), packet.getOffset(), packet.getLength(),
             StandardCharsets.UTF_8);
-        if (!request.contains("M-SEARCH")) return;
-        boolean matchAll = request.contains("ssdp:all");
-        boolean matchRenderer = request.contains("urn:schemas-upnp-org:device:MediaRenderer:1");
-        boolean matchRoot = request.contains("upnp:rootdevice");
-        boolean matchUuid = request.contains(deviceId);
-        if (!matchAll && !matchRenderer && !matchRoot && !matchUuid) return;
+        if (!request.toLowerCase(Locale.US).contains("m-search")) return;
+
+        String searchTarget = "";
+        for (String line : request.split("\r?\n")) {
+            int colon = line.indexOf(':');
+            if (colon > 0 && "ST".equalsIgnoreCase(line.substring(0, colon).trim())) {
+                searchTarget = line.substring(colon + 1).trim();
+                break;
+            }
+        }
+        String target = searchTarget.isEmpty() ? "" : searchTarget.toLowerCase(Locale.US);
+        boolean matchAll = target.contains("ssdp:all") || request.toLowerCase(Locale.US).contains("ssdp:all");
         String localIp = localIpAddress();
         if (localIp.isEmpty()) return;
         String location = "http://" + localIp + ":" + HTTP_PORT + "/description.xml";
         String uuidPrefix = "uuid:" + deviceId;
-        // 构造三条响应（rootdevice / deviceType / uuid），满足 UPnP 规范对 ssdp:all 的要求
-        String[] ntList = {
+
+        // 有些电视/视频 App 不搜 MediaRenderer，而是直接搜 AVTransport 服务。
+        String[] stList = {
             "upnp:rootdevice",
             DEVICE_TYPE,
-            uuidPrefix
+            uuidPrefix,
+            AV_TRANSPORT_TYPE,
+            CONNECTION_MANAGER_TYPE,
+            RENDERING_CONTROL_TYPE
         };
-        String[] usnList = {
-            uuidPrefix + "::upnp:rootdevice",
-            uuidPrefix + "::" + DEVICE_TYPE,
-            uuidPrefix
-        };
-        // RFC 1123 DATE 头：部分严格客户端（爱奇艺/腾讯视频）要求 M-SEARCH 响应带 DATE
-        String dateHeader = java.text.SimpleDateFormat.getDateTimeInstance(
-                java.text.SimpleDateFormat.MEDIUM, java.text.SimpleDateFormat.MEDIUM, Locale.US)
-            .format(new java.util.Date());
-        for (int i = 0; i < ntList.length; i++) {
-            String st = ntList[i];
-            if (!matchAll && !matchRoot && !st.equals(DEVICE_TYPE) && !st.equals(uuidPrefix)) continue;
-            if (!matchAll && !matchRenderer && st.equals(DEVICE_TYPE) && !matchUuid) continue;
-            if (!matchAll && !matchRoot && st.equals("upnp:rootdevice")) continue;
+        java.text.SimpleDateFormat httpDate = new java.text.SimpleDateFormat(
+            "EEE, dd MMM yyyy HH:mm:ss 'GMT'", Locale.US);
+        httpDate.setTimeZone(java.util.TimeZone.getTimeZone("GMT"));
+        String dateHeader = httpDate.format(new java.util.Date());
+
+        for (String st : stList) {
+            boolean matches = matchAll
+                || (searchTarget.isEmpty() && request.toLowerCase(Locale.US).contains(st.toLowerCase(Locale.US)))
+                || st.equalsIgnoreCase(searchTarget);
+            if (!matches) continue;
+            String usn = st.startsWith("uuid:") ? st : uuidPrefix + "::" + st;
             String response =
                 "HTTP/1.1 200 OK\r\n"
                     + "CACHE-CONTROL: max-age=1800\r\n"
@@ -427,7 +440,7 @@ public final class DlnaReceiverService extends Service {
                     + "LOCATION: " + location + "\r\n"
                     + "SERVER: DENGTA/2.10 UPnP/1.0 DENGTA-DLNA/1.0\r\n"
                     + "ST: " + st + "\r\n"
-                    + "USN: " + usnList[i] + "\r\n"
+                    + "USN: " + usn + "\r\n"
                     + "BOOTID.UPNP.ORG: 1\r\n"
                     + "CONFIGID.UPNP.ORG: 1\r\n"
                     + "SUPPORTS.LV.UPNP.ORG: 1\r\n"
