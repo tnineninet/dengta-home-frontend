@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Music2, Pause, Play } from "lucide-react";
+import { FileText, Music2, Pause, Play } from "lucide-react";
+import { fetchMusicLyrics } from "./music-lyrics-client.js";
+import { activeLyricIndex, parseLrc } from "./music-lyrics.js";
 
 const PLAY_EVENT = "dengta:chat-music-play";
 const eventBus = globalThis.window || new EventTarget();
@@ -17,8 +19,38 @@ export default function MusicChatCard({ music, onPlaybackChange }) {
   const [position, setPosition] = useState(0);
   const [duration, setDuration] = useState(Number(music?.duration_seconds) || 0);
   const [error, setError] = useState("");
+  const [lyricsOpen, setLyricsOpen] = useState(false);
+  const [lyrics, setLyrics] = useState([]);
+  const [lyricsLoading, setLyricsLoading] = useState(false);
+  const [lyricsError, setLyricsError] = useState("");
+  const lyricsListRef = useRef(null);
   const audioUrl = String(music?.audio_url || "");
   const canPlay = /^https:\/\//i.test(audioUrl);
+  const activeIndex = activeLyricIndex(lyrics, position);
+
+  useEffect(() => {
+    if (!lyricsOpen) return;
+    const active = lyricsListRef.current?.querySelector("[data-active='true']");
+    active?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+  }, [activeIndex, lyricsOpen]);
+
+  async function openLyrics() {
+    if (!canPlay) return;
+    setLyricsOpen(true);
+    if (lyrics.length > 0 || lyricsLoading) return;
+    setLyricsLoading(true);
+    setLyricsError("");
+    try {
+      const data = await fetchMusicLyrics(music?.id);
+      const parsed = parseLrc(data?.lyric);
+      if (parsed.length === 0) setLyricsError("这首歌暂时没有可显示的歌词。");
+      else setLyrics(parsed);
+    } catch {
+      setLyricsError("歌词暂时加载失败，稍后再试。");
+    } finally {
+      setLyricsLoading(false);
+    }
+  }
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -75,6 +107,7 @@ export default function MusicChatCard({ music, onPlaybackChange }) {
   };
 
   return (
+    <>
     <article className={`chat-music-card${playing ? " is-playing" : ""}${!canPlay ? " is-unavailable" : ""}`}>
       <div className="chat-music-cover" aria-hidden="true">
         {music.cover_url ? <img src={music.cover_url} alt="" loading="lazy" /> : <Music2 size={22} />}
@@ -105,10 +138,40 @@ export default function MusicChatCard({ music, onPlaybackChange }) {
         )}
         {error && <small className="chat-music-error" role="alert">{error}</small>}
       </div>
+      {canPlay && (
+        <button type="button" className="chat-music-lyric-button" aria-label="查看歌词" onClick={() => void openLyrics()}>
+          <FileText size={16} />
+        </button>
+      )}
       <button type="button" className="chat-music-toggle" aria-label={playing ? "暂停" : "播放"} disabled={!canPlay} onClick={() => void toggle()}>
         {playing ? <Pause size={18} /> : <Play size={18} />}
       </button>
       {canPlay && <audio ref={audioRef} src={audioUrl} preload="metadata" playsInline />}
     </article>
+    {lyricsOpen && (
+      <div className="music-lyrics-backdrop" role="presentation" onClick={() => setLyricsOpen(false)}>
+        <section className="music-lyrics-sheet" role="dialog" aria-modal="true" aria-label={"歌词：" + music.title} onClick={(event) => event.stopPropagation()}>
+          <header>
+            <div>
+              <strong>{music.title}</strong>
+              <span>{music.artist || "网易云音乐"}</span>
+            </div>
+            <button type="button" aria-label="关闭歌词" onClick={() => setLyricsOpen(false)}>×</button>
+          </header>
+          {lyricsLoading && <p className="music-lyrics-status">正在加载歌词…</p>}
+          {!lyricsLoading && lyricsError && <p className="music-lyrics-status">{lyricsError}</p>}
+          {!lyricsLoading && !lyricsError && (
+            <div className="music-lyrics-list" ref={lyricsListRef}>
+              {lyrics.map((line, index) => (
+                <p key={line.time + "-" + index} data-active={index === activeIndex ? "true" : "false"}>
+                  {line.text}
+                </p>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+    )}
+    </>
   );
 }
