@@ -3,19 +3,18 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 133,
-    "version": "2.10.85",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.10.85/DengTa-2.10.85-133.apk",
-    "sha256": "0e4ed4e1f6d52e96520e8eab23bed5d79ca6ed60cc781699f43c57acc703a71c",
-    "size_bytes": 41226354,
-    "published_at": "2026-10-19T19:59:35Z",
+    "version_code": 134,
+    "version": "2.10.86",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.10.86/DengTa-2.10.86-134.apk",
+    "sha256": "99b86deed596378638e850ded38ded7149aacdcbbbc22231a84af8b30a3e3038",
+    "size_bytes": 41228110,
+    "published_at": "2026-10-19T20:14:48Z",
     "notes": [
-      "新增「放映厅」入口，侧边栏和快捷入口都能直接打开；投屏接收状态、端口、网络会显示在页面顶部，可一键开启/重启。",
-      "DLNA 发现修复：SSDP 响应补上 AVTransport / ConnectionManager / RenderingControl 服务类型，DATE 改为标准 RFC1123 GMT，严格电视/视频 App 更容易搜到「灯塔 DENGTA」。",
-      "聊天后台运行修复：客户端切后台/断网不会再把服务器 SSE 写崩；回到前台会按 client_message_id 找回已经完成的回复，不再只留下本地报错。",
-      "回复完成后立刻恢复发送按钮，不再因为后台刷新聊天记录而一直卡在停止按钮。",
-      "网页登录体验：邮箱/密码支持浏览器密码管理器（autocomplete=email/current-password），新增显示/隐藏密码，移动端减少顶部空白。",
-      "继承 2.10.84：聊天画图、图片接口复用、主动唤醒去重；2.10.83 一句一句出现。"
+      "AI 放歌不跳外部 App：聊天里直接生成听歌卡片，解析到 HTTPS 音频时可在 DengTa 内播放、暂停、拖动进度。",
+      "听歌卡片显示封面、歌名、歌手、专辑与时长；同一时间只播放一张卡片。",
+      "没有可内播音频（会员/版权受限）时，卡片明确提示，不再静默打开网易云。",
+      "AI 放歌工具优先解析网易云音频地址；本地导入/直链音频仍由一起听页内置播放器播放。",
+      "继承 2.10.85：放映厅入口、投屏发现、后台聊天恢复和网页登录优化。"
     ]
   }
 }
