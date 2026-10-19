@@ -3,17 +3,17 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 142,
-    "version": "2.10.94",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.10.94/DengTa-2.10.94-142.apk",
-    "sha256": "3aab6b2d49d6d2574fc5a5c52b2454d3d70564283fe9164f749ff42595f065b6",
-    "size_bytes": 41437514,
-    "published_at": "2026-10-19T22:06:34Z",
+    "version_code": 143,
+    "version": "2.10.95",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.10.95/DengTa-2.10.95-143.apk",
+    "sha256": "b2c9c11d44347750775b3d02c27e4e6511ae00785b6637343cd1834c571e3725",
+    "size_bytes": 41229274,
+    "published_at": "2026-10-19T22:42:41Z",
     "notes": [
-      "动态页加入本地缓存：二次打开先显示上次内容，再后台刷新，减少 8 秒空白。",
-      "日记/故事章节在前台空闲时预加载，减少首次打开等待。",
-      "缓存按账号和伴侣分区，最多 20 条；缓存失败不影响正常刷新。",
-      "继承 2.10.93：侧栏设置入口、全局迷你播放器、一起听、点歌防误判。"
+      "“随便来首歌/每日推荐”也能在聊天里出听歌卡片；优先选有内播音频的原唱。",
+      "随机点歌在模型回复前先解析预听卡片。",
+      "动态缓存已上线：二次打开先显示上次内容；日记代码块空闲预加载。",
+      "继承 2.10.93/2.10.94：侧栏设置、全局迷你播放器、一起听、点歌防误判。"
     ]
   }
 }
