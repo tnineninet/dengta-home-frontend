@@ -1075,7 +1075,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     return list.reverse();
   }, [messages]);
   const musicDockQueue = useMemo(() => {
-    const all = [earlyMusicCard, ...recentChatMusic].filter(Boolean);
+    const all = [...recentChatMusic, earlyMusicCard].filter(Boolean);
     return all.filter((card, index) => all.findIndex((item) => item.id === card.id) === index);
   }, [earlyMusicCard, recentChatMusic]);
   const [historyLoadState, setHistoryLoadState] = useState(null);
