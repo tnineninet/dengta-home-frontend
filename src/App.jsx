@@ -112,6 +112,8 @@ import { ACHIEVEMENT_ACTIONS, freshAchievements, guideStorageKey } from "./achie
 import { appendActivityDraft } from "./chat-activities.js";
 import { useChatDraft } from "./use-chat-draft.js";
 import ChatBackground from "./ChatBackground";
+import MusicChatCard from "./MusicChatCard.jsx";
+import { fetchEarlyMusicCard, extractMusicRequest } from "./music-chat-preview.js";
 import CelestialBackdrop from "./CelestialBackdrop";
 import SunGlassTimeDeck from "./SunGlassTimeDeck";
 import FeatureAtmosphere from "./FeatureAtmosphere";
@@ -1057,6 +1059,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const privateMediaScope = JSON.stringify([accountStorageScope, companionScope]);
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);
+  const [earlyMusicCard, setEarlyMusicCard] = useState(null);
   const [messages, setMessages] = useState([]);
   const [historyLoadState, setHistoryLoadState] = useState(null);
   const [historyRetryRevision, setHistoryRetryRevision] = useState(0);
@@ -1571,6 +1574,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     companionInteractionQueueRef.current = [];
   }, []);
   const isSendingRef = useRef(false);
+  const earlyMusicRequestRef = useRef(0);
   const voiceStateRef = useRef(VOICE_STATES.idle);
   const voicePointerHeldRef = useRef(false);
   const voicePointerIdRef = useRef(null);
@@ -4893,6 +4897,21 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     window.requestAnimationFrame(() => messageInputRef.current?.focus());
   }
 
+  async function loadEarlyMusicCard(text) {
+    const keyword = extractMusicRequest(text);
+    if (!keyword) return;
+    const requestId = ++earlyMusicRequestRef.current;
+    setEarlyMusicCard(null);
+    try {
+      const card = await fetchEarlyMusicCard(text);
+      if (requestId === earlyMusicRequestRef.current && card && componentMountedRef.current) {
+        setEarlyMusicCard(card);
+      }
+    } catch {
+      // 预解析失败不阻塞聊天；模型回复后的兜底卡片仍可显示。
+    }
+  }
+
   async function sendMessage() {
     const publicReasoningSummaryAtRequest = publicReasoningSummaryEnabled && settings.provider === "openai-responses";
     const options =
@@ -5167,6 +5186,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         new Promise((resolve) => window.setTimeout(resolve, 250)),
       ]);
 
+      void loadEarlyMusicCard(text);
       await streamChat(
         {
           session_id: sessionId,
@@ -7098,6 +7118,20 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           )}
           </div>
         </section>
+
+        {activeView === "chat" && earlyMusicCard && (
+          <div className="early-music-dock">
+            <MusicChatCard music={earlyMusicCard} />
+            <button
+              type="button"
+              className="early-music-dismiss"
+              aria-label="收起预听歌曲"
+              onClick={() => setEarlyMusicCard(null)}
+            >
+              ×
+            </button>
+          </div>
+        )}
 
         <div className="composer-wrap">
           <ActivityReturnBar

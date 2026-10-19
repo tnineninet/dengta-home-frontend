@@ -10542,3 +10542,8 @@ body,
 .chat-music-toggle:disabled { opacity: .45; }
 .chat-music-card.is-playing { border-color: rgba(143, 82, 103, .38); }
 .chat-music-card.is-unavailable { opacity: .82; }
+
+.early-music-dock { position: fixed; right: 12px; bottom: calc(86px + env(safe-area-inset-bottom)); left: 12px; z-index: 40; display: flex; justify-content: flex-end; gap: 6px; pointer-events: none; }
+.early-music-dock .chat-music-card { width: min(360px, 100%); margin: 0; pointer-events: auto; border-color: rgba(143, 82, 103, .35); box-shadow: 0 12px 30px rgba(20, 14, 18, .24); }
+.early-music-dismiss { align-self: flex-start; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; color: #fff; background: rgba(40, 30, 34, .72); font-size: 18px; line-height: 1; pointer-events: auto; }
+@media (max-width: 600px) { .early-music-dock { bottom: calc(82px + env(safe-area-inset-bottom)); } }
