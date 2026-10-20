@@ -3,15 +3,15 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 175,
-    "version": "2.12.17",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.17/DengTa-2.12.17-175.apk",
-    "sha256": "a6094f0c22a3342649b247c378b312e05e0e5f213009a3fdcde389329bd2f7af",
-    "size_bytes": 41654625,
-    "published_at": "2026-10-20T06:04:26Z",
+    "version_code": 176,
+    "version": "2.12.18",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.18/DengTa-2.12.18-176.apk",
+    "sha256": "d08f7faef7f8acd1263023f82df33e5b7a9c45d62ccd3dc71b665fd6f87fc9d5",
+    "size_bytes": 41447569,
+    "published_at": "2026-10-20T06:40:25Z",
     "notes": [
       "稳定性优化与体验修复。",
-      "应用内更新会直接下载安装包并打开系统安装界面。"
+      "应用内更新会显示下载进度，并在下载完成后打开系统安装界面。"
     ]
   }
 }
