@@ -1,0 +1,115 @@
+/*
+ * 夜间主题可读性补丁：设置面板里仍沿用浅色主题文字色的元素，
+ * 在深色玻璃卡片上会变成“深字 + 深底”。这里只覆盖夜间外观下的设置页，
+ * 不改变浅色主题、用户已选主题色和任何用户内容。
+ */
+
+:root[data-dengta-appearance="night"] .settings-sheet .install-button,
+:root[data-dengta-appearance="night"] .settings-app-actions .install-button {
+  border: 1px solid rgb(255 255 255 / 0.22);
+  color: #f5f5f7;
+  background: rgb(255 255 255 / 0.12);
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .install-button:hover,
+:root[data-dengta-appearance="night"] .settings-app-actions .install-button:hover {
+  color: #ffffff;
+  background: rgb(255 255 255 / 0.22);
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .eyebrow,
+:root[data-dengta-appearance="night"] .settings-sheet .settings-kicker,
+:root[data-dengta-appearance="night"] .settings-page .eyebrow {
+  color: #f0a9bd;
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .prompt-name-field,
+:root[data-dengta-appearance="night"] .settings-sheet .prompt-name-field > span,
+:root[data-dengta-appearance="night"] .settings-sheet .mcp-form-grid label,
+:root[data-dengta-appearance="night"] .settings-sheet .settings-grid label {
+  color: #f2f2f7;
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .prompt-name-field > small,
+:root[data-dengta-appearance="night"] .settings-sheet .settings-grid label small,
+:root[data-dengta-appearance="night"] .settings-sheet .card-hint {
+  color: #c7c7cc;
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .service-status,
+:root[data-dengta-appearance="night"] .settings-sheet .notification-feature-panel,
+:root[data-dengta-appearance="night"] .settings-sheet .voice-privacy-note,
+:root[data-dengta-appearance="night"] .settings-sheet .voice-analysis-card {
+  border-color: rgb(255 255 255 / 0.14);
+  color: #f2f2f7;
+  background: rgb(44 44 46 / 0.66);
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .service-status-title strong,
+:root[data-dengta-appearance="night"] .settings-sheet .service-expiry-panel label {
+  color: #f5f5f7;
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .service-status-title em,
+:root[data-dengta-appearance="night"] .settings-sheet .service-status p,
+:root[data-dengta-appearance="night"] .settings-sheet .voice-privacy-note p,
+:root[data-dengta-appearance="night"] .settings-sheet .notification-feature-panel p,
+:root[data-dengta-appearance="night"] .settings-sheet .notification-feature-panel small {
+  color: #c7c7cc;
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .service-status a,
+:root[data-dengta-appearance="night"] .settings-sheet .service-quick-links a {
+  color: #ffb3c7;
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .autosave-status strong {
+  color: #8fd6a0;
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .autosave-status small,
+:root[data-dengta-appearance="night"] .settings-sheet .autosave-hint {
+  color: #c7c7cc;
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .service-expiry-panel {
+  border-color: rgb(255 255 255 / 0.14);
+  color: #f2f2f7;
+  background: rgb(44 44 46 / 0.66);
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .notification-feature-feedback {
+  color: #e5e5ea;
+  background: rgb(255 255 255 / 0.08);
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .notification-feature-feedback.checking {
+  color: #e7c8ff;
+  background: rgb(255 255 255 / 0.1);
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .notification-feature-feedback.success {
+  color: #8fd6a0;
+  background: rgb(143 214 160 / 0.12);
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .notification-feature-feedback.error {
+  color: #ffb4b4;
+  background: rgb(255 180 180 / 0.12);
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .device-activity-heading span,
+:root[data-dengta-appearance="night"] .settings-sheet .screen-glance-heading span,
+:root[data-dengta-appearance="night"] .settings-sheet .notification-feature-panel .device-activity-heading small {
+  color: #a1a1a6;
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .theme-live-dot {
+  color: #f5f5f7;
+  background: rgb(255 255 255 / 0.14);
+}
+
+/* 主题色卡本身始终是浅色，勾选标记不能跟随夜间文字色，否则会看不见。 */
+.theme-preset-swatch em {
+  color: #1d1d1f;
+}

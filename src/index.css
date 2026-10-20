@@ -4382,6 +4382,12 @@ button:disabled {
   margin-bottom: 0;
 }
 
+/* 全局 .card-hint 有 -8px 上边距，但这里的标题已无下边距，会把说明文字顶到标题上。 */
+.service-manager-heading .card-hint {
+  margin-top: 6px;
+  line-height: 1.6;
+}
+
 .service-refresh-button {
   flex: 0 0 auto;
   padding: 9px 13px;
