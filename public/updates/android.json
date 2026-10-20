@@ -3,14 +3,14 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 149,
-    "version": "2.11.1",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.11.1/DengTa-2.11.1-149.apk",
-    "sha256": "f9ce4f7e40fe8a05cf64e392cdeae89e623751a6ba002c19390d08c17fa55576",
-    "size_bytes": 41231290,
-    "published_at": "2026-10-19T23:49:59Z",
+    "version_code": 150,
+    "version": "2.11.2",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.11.2/DengTa-2.11.2-150.apk",
+    "sha256": "e7a58aeaaabb75bfbe9d235cfc4d480462dcad029c48edc381df718acf708d06",
+    "size_bytes": 41231398,
+    "published_at": "2026-10-19T23:59:59Z",
     "notes": [
-      "修复最近播放队列计数：下一首/上一首后位置真实变化。",
+      "最近播放队列改为稳定数组：上一首/下一首后长度不再变化。",
       "歌词点击跳转、翻译、随机/下一首、动态缓存继续保留。"
     ]
   }
