@@ -161,5 +161,7 @@ test("receiver route, SW bypass, Vercel rewrite and controller contract are wire
   assert.match(coWatch, /playlist_id \?\? value\.music_playlist_id/);
   assert.match(coWatch, /value\.session_mode === "direct" \? "direct_media"/);
   assert.match(sw, /url\.pathname\.startsWith\("\/api\/v2\/cast\/"\)/);
-  assert.deepEqual(vercel.rewrites, [{ source: "/receive", destination: "/index.html" }]);
+  assert.deepEqual(vercel.rewrites.find(item => item.source === "/receive"), { source: "/receive", destination: "/index.html" });
+  assert.deepEqual(vercel.rewrites.find(item => item.source === "/download"), { source: "/download", destination: "/download.html" });
+  assert.match(vercel.rewrites.find(item => item.source === "/downloads/DengTa-latest.apk")?.destination || "", /^https:\/\/github\.com\/DengTaHome\/dengta-home\/releases\/download\//);
 });

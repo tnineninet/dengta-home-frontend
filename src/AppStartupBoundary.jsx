@@ -9,15 +9,17 @@ import { restartDengTa } from "./app-runtime.js";
 
 export function AppLoadingScreen() {
   const [slow, setSlow] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
   useEffect(() => {
     const timer = setTimeout(() => setSlow(true), 20_000);
-    return () => clearTimeout(timer);
+    const ticker = setInterval(() => setElapsed(value => value + 1), 1000);
+    return () => { clearTimeout(timer); clearInterval(ticker); };
   }, []);
   return (
     <main className="app-startup-page" aria-busy={slow ? "false" : "true"} aria-live="polite">
       <div className="app-startup-mark" aria-hidden="true">灯</div>
       <strong>正在点亮你的家</strong>
-      <span>{slow ? "启动时间比平时更长，可以重新载入或清理启动缓存。" : "载入聊天、记忆与伴侣空间…"}</span>
+      <span>{slow ? `启动时间比平时更长（已等待 ${elapsed} 秒），可以重新载入或清理启动缓存。` : "载入聊天、记忆与伴侣空间…"}</span>
       {slow && (
         <div className="app-startup-actions">
           <button type="button" onClick={reloadApplication}>重新载入</button>

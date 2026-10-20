@@ -71,16 +71,29 @@ public final class AppUpdatesPlugin extends Plugin {
                     byte[] buffer = new byte[64 * 1024];
                     int read;
                     long total = 0;
+                    int lastPercent = -1;
                     while ((read = input.read(buffer)) != -1) {
                         total += read;
                         if (total > 120L * 1024 * 1024) throw new IllegalStateException("apk too large");
                         output.write(buffer, 0, read);
+                        if (length > 0) {
+                            int percent = (int) Math.min(100, total * 100 / length);
+                            if (percent >= lastPercent + 5) {
+                                lastPercent = percent;
+                                int shown = percent;
+                                getActivity().runOnUiThread(() -> notifyListeners("downloadProgress", new JSObject().put("percent", shown)));
+                            }
+                        }
                     }
                 }
                 if (!target.isFile() || target.length() <= 0) throw new IllegalStateException("empty apk");
-                getActivity().runOnUiThread(() -> installApk(target));
+                getActivity().runOnUiThread(() -> {
+                    notifyListeners("downloadComplete", new JSObject().put("installing", true));
+                    installApk(target);
+                });
             } catch (Exception error) {
                 if (target.exists()) target.delete();
+                getActivity().runOnUiThread(() -> notifyListeners("downloadFailed", new JSObject().put("message", "更新包下载失败，请检查网络后重试。")));
             } finally {
                 if (connection != null) connection.disconnect();
             }

@@ -74,6 +74,13 @@ export default function AppUpdateCenter({ canPrompt = true }) {
     document.addEventListener("focusin", focus);
     document.addEventListener("focusout", focus);
     focus();
+    const updateHandles = [];
+    const listenUpdate = (name, callback) => {
+      try {
+        const pendingHandle = AppUpdates?.addListener?.(name, callback);
+        if (pendingHandle?.then) updateHandles.push(pendingHandle);
+      } catch { /* 旧测试夹具或旧原生插件没有事件接口。 */ }
+    };
     if (Capacitor.getPlatform() === "android") {
       const scheduledAt = preferenceRevision.current;
       void AppUpdates.schedule().then(value => { if (!disposed && scheduledAt === preferenceRevision.current) setNotificationsEnabled(value.enabled === true); }).catch(() => {});
@@ -83,6 +90,15 @@ export default function AppUpdateCenter({ canPrompt = true }) {
         void AppUpdates.consumeLaunch().then(value => { if (!disposed) void check(value.available === true); }).catch(() => { if (!disposed) void check(); });
       };
       resumed();
+      listenUpdate("downloadProgress", ({ percent }) => {
+        if (!disposed) setFeedback("正在下载更新 " + Math.max(0, Math.min(100, Number(percent) || 0)) + "%…");
+      });
+      listenUpdate("downloadComplete", () => {
+        if (!disposed) setFeedback("更新已下载，正在打开系统安装界面…");
+      });
+      listenUpdate("downloadFailed", ({ message }) => {
+        if (!disposed) setFeedback(message || "更新包下载失败，请检查网络后重试。");
+      });
       void App.addListener("appStateChange", ({ isActive }) => { if (isActive) resumed(); }).then(value => { if (disposed) void value.remove(); else handle = value; }).catch(() => {});
     }
     return () => {
@@ -95,6 +111,7 @@ export default function AppUpdateCenter({ canPrompt = true }) {
       document.removeEventListener("focusin", focus);
       document.removeEventListener("focusout", focus);
       void handle?.remove();
+      for (const pendingHandle of updateHandles) void pendingHandle.then(value => value.remove()).catch(() => {});
     };
   }, [check]);
 
