@@ -3,17 +3,17 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 166,
-    "version": "2.12.8",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.8/DengTa-2.12.8-166.apk",
-    "sha256": "fd26d3aeccc9a87ccd3a6ad63ad5fb689ec2439839d18ea9165d874bdd63729b",
-    "size_bytes": 41446607,
-    "published_at": "2026-10-20T04:26:26Z",
+    "version_code": 167,
+    "version": "2.12.9",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.9/DengTa-2.12.9-167.apk",
+    "sha256": "2f09604e72e792484fa2ed85f80cbe7dc79c26485da8d9899d695b6062ed3530",
+    "size_bytes": 41235014,
+    "published_at": "2026-10-20T04:38:11Z",
     "notes": [
-      "修复 statusUpdated / companionStatus 未定义导致生成中途报错。",
-      "生成失败时保留已经生成并显示的正文，只追加错误信息，不再替换删除。",
-      "外卖本地预算/备注约束真正传到执行器，超出合并备注长度会安全停止。",
-      "动态骨架屏、错误日志复制、续播继续保留。"
+      "错误日志新增导出 JSON，只含技术字段。",
+      "生成中断保留已生成正文；后端失败时保存 partial assistant 消息。",
+      "外卖本地预算/备注约束传到执行器；非法约束安全停止。",
+      "日记骨架屏 3 张，约 1 秒出现。"
     ]
   }
 }
