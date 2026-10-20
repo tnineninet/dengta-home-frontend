@@ -51,15 +51,27 @@ const { default: AiProviderCenter } = await vite.ssrLoadModule("/src/AiProviderC
 let tree;
 const form = () => tree.root.findByProps({ className: "provider-create-card" });
 const placeholders = { name: "例如：我的 New API", base_url: "https://你的网关域名/v1", credential: "粘贴服务商生成的 API Key", default_model: "例如：gpt-5.5" };
+const notesPlaceholder = "例如：月付、适合聊天、额度页面在哪里、出现 429 时联系谁……";
 const draft = () => Object.fromEntries(Object.entries(placeholders).map(([key, placeholder]) => [key, form().findByProps({ placeholder }).props.value]));
 const mutations = () => fixture.calls.filter(call => call.options.method !== "GET");
 const profileReads = () => fixture.calls.filter(call => call.options.method === "GET" && call.path.endsWith("/manage"));
 const buttons = () => tree.root.findAllByType("button");
 const button = text => buttons().find(item => item.children.join("") === text) || buttons().find(item => item.children.join("").includes(text));
 const feedback = () => tree.root.findAllByProps({ className: "provider-feedback" }).map(item => item.children.join("")).join("\n");
+const catalogStatus = () => tree.root.findAll(item => typeof item.props.className === "string" && item.props.className.includes("provider-catalog-status")).map(item => item.children.join("")).join("\n");
+const hasButton = text => buttons().some(item => item.children.join("").includes(text));
 const savedNames = () => tree.root.findAll(item => item.type === "article").map(item => item.findByProps({ className: "provider-profile-head" }).findByType("strong").children.join(""));
 async function tick() { for (let index = 0; index < 30; index++) await Promise.resolve(); }
-async function mount() { await act(async () => { tree = TestRenderer.create(React.createElement(AiProviderCenter, { onStatusChange: value => fixture.statusEvents.push(value) })); await tick(); }); }
+async function waitForDebounce(ms = 40) { await act(async () => { await new Promise(resolve => setTimeout(resolve, ms)); await tick(); }); }
+async function mount(extraProps = {}) {
+  await act(async () => {
+    tree = TestRenderer.create(React.createElement(AiProviderCenter, {
+      onStatusChange: value => fixture.statusEvents.push(value),
+      ...extraProps,
+    }));
+    await tick();
+  });
+}
 async function fill(values = originalDraft) { await act(async () => { for (const [key, value] of Object.entries(values)) form().findByProps({ placeholder: placeholders[key] }).props.onChange({ target: { value } }); }); }
 async function submit() { await act(async () => { form().props.onSubmit({ preventDefault() {} }); await tick(); }); }
 async function saveSuccess(index = 0) {
@@ -79,7 +91,10 @@ test("same-tick create submissions send one POST and expose a busy save button",
   await mount(); await fill();
   await act(async () => { const submit = form().props.onSubmit; submit({ preventDefault() {} }); submit({ preventDefault() {} }); await tick(); });
   assert.equal(mutations().length, 1);
-  assert.equal(button("保存中").props.disabled, true);
+  const saveButton = button("保存并启用");
+  assert.ok(saveButton, "the single primary button must stay labelled 保存并启用");
+  assert.equal(saveButton.props.disabled, true);
+  assert.equal(saveButton.props["aria-busy"], true);
   await saveSuccess();
   assert.deepEqual(draft(), { name: "", base_url: "", credential: "", default_model: "" });
 });
@@ -97,7 +112,7 @@ test("POST failure retains the draft and reports an unconfirmed save without exp
   assert.deepEqual(draft(), originalDraft);
   assert.match(feedback(), /保存结果尚未确认/);
   assert.doesNotMatch(feedback(), /FICTIONAL_PRIVATE_UPSTREAM_BODY/);
-  assert.equal(button("安全保存接口").props.disabled, false);
+  assert.equal(button("保存并启用").props.disabled, false);
 });
 
 test("a confirmed save followed by a failed list refresh offers GET-only recovery without another POST", async () => {
@@ -118,13 +133,15 @@ test("the late initial list cannot replace the newer list recovered after a crea
 });
 
 test("a delayed draft probe cannot attach its models or success message to an edited gateway", async () => {
-  await mount(); await fill();
-  await act(async () => { button("检查模型目录但不保存").props.onClick(); await tick(); });
+  await mount({ autoCatalogDelayMs: 5 }); await fill();
+  await waitForDebounce();
+  assert.equal(mutations().length, 1);
+  assert.equal(mutations()[0].path, "/api/ai-providers/manage/test");
   await fill(latestDraft);
   await act(async () => { mutations()[0].resolve(response({ models: ["old-gateway-model"] })); await tick(); });
-  assert.equal(form().findByType("datalist").findAllByType("option").length, 0);
-  assert.doesNotMatch(feedback(), /发现 1 个模型/);
+  assert.doesNotMatch(catalogStatus(), /已自动读取/);
   assert.deepEqual(draft(), latestDraft);
+  assert.equal(form().findAllByProps({ role: "option" }).length, 0, "a stale probe must not open or fill the model list");
 });
 
 test("completion after panel unmount cannot start follow-up reads or notify the parent", async () => {
@@ -202,4 +219,99 @@ test("a failed initial status read is unknown, offers an explicit retry, and nev
   await act(async () => { retry.props.onClick(); await tick(); });
   assert.match(tree.root.findByProps({ className: "provider-state ready" }).children.join(""), /数据库已就绪/);
   assert.equal(mutations().length, 0);
+});
+
+test("the create form keeps only five primary fields and collapses advanced settings by default", async () => {
+  await mount();
+  const primary = form().findByProps({ className: "provider-form-grid provider-form-grid-primary" });
+  assert.equal(primary.findAllByType("label").length, 4, "name / protocol / base URL / API key are the only labelled fields");
+  assert.equal(primary.findAllByProps({ className: "provider-model-field" }).length, 1, "the model picker is the fifth primary field");
+  assert.equal(form().findAllByType("datalist").length, 0, "model selection must not depend on datalist");
+  const advanced = form().findByType("details");
+  assert.equal(advanced.props.className, "provider-advanced");
+  assert.equal(advanced.props.open, undefined, "advanced settings stay collapsed by default");
+  assert.ok(form().findByProps({ "aria-haspopup": "listbox" }), "the model button opens a real listbox");
+  assert.ok(button("保存并启用"), "the create card exposes exactly one primary save action");
+});
+
+test("a successful catalog read auto-selects the first model and the create POST explicitly enables the provider", async () => {
+  await mount({ autoCatalogDelayMs: 5 });
+  await fill({ base_url: "https://gw.example.test/v1", credential: "synthetic-key-placeholder" });
+  await waitForDebounce();
+  assert.equal(mutations().length, 1);
+  assert.equal(mutations()[0].path, "/api/ai-providers/manage/test");
+  await act(async () => { mutations()[0].resolve(response({ models: ["model-a", "model-b"] })); await tick(); });
+  assert.equal(draft().default_model, "model-a");
+  assert.match(catalogStatus(), /已自动读取 2 个模型/);
+  await act(async () => { form().findByProps({ "aria-haspopup": "listbox" }).props.onClick(); await tick(); });
+  const listbox = form().findByProps({ role: "listbox" });
+  const options = listbox.findAllByProps({ role: "option" });
+  assert.equal(options.length, 2);
+  assert.equal(options[0].props["aria-selected"], true, "the auto-selected model is highlighted");
+  await act(async () => { options[1].props.onClick(); await tick(); });
+  assert.equal(draft().default_model, "model-b");
+  assert.equal(form().findAllByProps({ role: "option" }).length, 0, "choosing a model closes the popover");
+  await submit();
+  const createCall = mutations()[1];
+  const payload = JSON.parse(createCall.options.body);
+  assert.equal(payload.enabled, true, "create must explicitly enable the provider");
+  assert.equal(payload.is_default, true, "create must explicitly make it the next-chat default");
+  assert.equal(payload.default_model, "model-b");
+  const returnedProfile = { ...payload, id: "fixture-created", credential: "", auth_configured: true };
+  fixture.profiles = [returnedProfile];
+  await act(async () => { createCall.resolve(response({ profile: returnedProfile }, 201)); await tick(); });
+  assert.match(feedback(), /已加密保存并启用/);
+  assert.equal(hasButton("启用并设为首选"), false, "a verified active profile needs no extra activation step");
+});
+
+test("a create receipt that is still disabled is not reported as enabled and offers an activation button", async () => {
+  await mount(); await fill(); await submit();
+  const payload = JSON.parse(mutations()[0].options.body);
+  const disabledProfile = { ...payload, id: "fixture-disabled", credential: "", auth_configured: true, enabled: false, is_default: false };
+  fixture.profiles = [disabledProfile];
+  await act(async () => { mutations()[0].resolve(response({ profile: disabledProfile }, 201)); await tick(); });
+  assert.match(feedback(), /未启用/);
+  assert.doesNotMatch(feedback(), /已加密保存并启用/);
+  const activation = button("启用并设为首选");
+  assert.ok(activation, "a disabled receipt must offer an activation button");
+  await act(async () => { activation.props.onClick(); await tick(); });
+  assert.equal(mutations().length, 2);
+  assert.equal(mutations()[1].path, "/api/ai-providers/manage/fixture-disabled");
+  assert.equal(mutations()[1].options.method, "PUT");
+  const enablePayload = JSON.parse(mutations()[1].options.body);
+  assert.equal(enablePayload.enabled, true);
+  assert.equal(enablePayload.is_default, true);
+  fixture.profiles = [{ ...disabledProfile, ...enablePayload }];
+  await act(async () => { mutations()[1].resolve(response({ profile: fixture.profiles[0] })); await tick(); });
+  assert.match(feedback(), /已加密保存并启用/);
+  assert.equal(hasButton("启用并设为首选"), false);
+});
+
+test("editing an advanced note while waiting does not cancel the automatic catalog read", async () => {
+  await mount({ autoCatalogDelayMs: 30 });
+  await fill({ base_url: "https://gw.example.test/v1", credential: "synthetic-key-placeholder" });
+  await act(async () => {
+    form().findByProps({ placeholder: notesPlaceholder }).props.onChange({ target: { value: "月付，额度见控制台" } });
+  });
+  await waitForDebounce(70);
+  assert.equal(mutations().length, 1);
+  assert.equal(mutations()[0].path, "/api/ai-providers/manage/test");
+  assert.equal(JSON.parse(mutations()[0].options.body).notes, "月付，额度见控制台");
+});
+
+test("a failed catalog read reports a readable reason and retries without losing the draft", async () => {
+  await mount({ autoCatalogDelayMs: 5 });
+  await fill({ base_url: "https://gw.example.test/v1", credential: "synthetic-key-placeholder" });
+  await waitForDebounce();
+  await act(async () => { mutations()[0].resolve(response({ error: "AI_PROVIDER_UPSTREAM_AUTH_FAILED" }, 502)); await tick(); });
+  assert.match(catalogStatus(), /自动读取模型目录失败/);
+  assert.match(catalogStatus(), /供应商拒绝了接口凭据/);
+  assert.equal(draft().base_url, "https://gw.example.test/v1");
+  assert.equal(draft().credential, "synthetic-key-placeholder");
+  const retry = button("重试读取");
+  assert.ok(retry, "a failed catalog read offers a retry button");
+  await act(async () => { retry.props.onClick(); await tick(); });
+  await waitForDebounce();
+  assert.equal(mutations().length, 2);
+  assert.equal(mutations()[1].path, "/api/ai-providers/manage/test");
 });

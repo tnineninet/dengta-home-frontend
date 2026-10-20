@@ -19,6 +19,15 @@ import {
   settingsServiceErrorDetail,
   settingsServiceErrorMessage,
 } from "../src/settings-service-errors.js";
+import {
+  AUTO_CATALOG_MIN_KEY_LENGTH,
+  buildProviderCreateIntent,
+  isProviderAutoCatalogReady,
+  mergeCatalogSelection,
+  providerActivationView,
+  providerDraftSignature,
+  suggestProviderName,
+} from "../src/provider-form.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const component = fs.readFileSync(
@@ -33,6 +42,14 @@ const bridge = fs.readFileSync(
 );
 const reasoning = fs.readFileSync(
   path.join(here, "..", "src", "provider-reasoning-effort.js"),
+  "utf8",
+);
+const providerFormSource = fs.readFileSync(
+  path.join(here, "..", "src", "provider-form.js"),
+  "utf8",
+);
+const modelPickerSource = fs.readFileSync(
+  path.join(here, "..", "src", "provider-model-picker.jsx"),
   "utf8",
 );
 
@@ -91,7 +108,7 @@ assert.match(component, /reasoning\.effort/);
 assert.match(reasoning, /xhigh · 极高/);
 assert.match(component, /Chat 兼容接口只能显式使用 none/);
 assert.match(component, /实际请求会写入安全回执/);
-assert.match(component, /检查模型目录但不保存/);
+assert.match(component, /重试读取/);
 assert.match(component, /付款页 \/ 控制台地址/);
 assert.match(component, /到期时间/);
 assert.match(component, /auth\.json/);
@@ -107,7 +124,7 @@ assert.match(component, /127\.0\.0\.1/);
 assert.doesNotMatch(component, /X-AI-Provider-Admin-Secret/);
 assert.doesNotMatch(component, /管理口令|adminSecret|unlocked|provider-unlock/);
 assert.match(component, /<ProviderHealthSummary profile=\{profile\} \/>/);
-assert.match(component, /检查模型目录但不保存/);
+assert.match(component, /重试读取/);
 assert.match(component, /已到期，不可设为首选/);
 assert.match(component, /下次聊天首选/);
 assert.match(component, /当前可路由/);
@@ -341,5 +358,222 @@ assert.equal(beijingDateTimeInputValue("2026-02-31T09:06"), "");
 assert.equal(formatBeijingDateTime("not-a-date"), "");
 assert.equal(beijingDateTimeInputValue("not-a-date"), "");
 assert.equal(component.includes("Invalid Date"), false);
+
+// ---- 本轮「极简 / 不闪 / 可读 / 自动读目录并真正启用」回归 ----
+
+// 1) 默认只保留必要字段，其余收进默认收起的「高级设置」。
+assert.match(component, /<ProviderModelPicker/);
+assert.match(component, /<details className="provider-advanced">/);
+assert.match(component, /默认只要下面 5 项/);
+assert.doesNotMatch(component, /<datalist/);
+assert.doesNotMatch(component, /data-compact/);
+assert.doesNotMatch(component, /<details[^>]*\bopen\b/);
+assert.match(component, /重试读取/);
+assert.match(component, /保存并启用/);
+assert.doesNotMatch(component, /保存并启用中/);
+assert.doesNotMatch(component, /hidden disabled=/);
+
+// 2) 自动读目录：https + Key 就绪后防抖触发，成功后选中首个模型并准备启用。
+assert.match(component, /isProviderAutoCatalogReady\(/);
+assert.match(component, /providerDraftSignature\(/);
+assert.match(component, /latestDraftRef/);
+assert.match(component, /\/api\/ai-providers\/manage\/test/);
+assert.match(component, /autoCatalogDelayMs/);
+assert.match(component, /mergeCatalogSelection\(/);
+assert.match(component, /已自动读取/);
+assert.match(component, /自动读取模型目录失败/);
+
+// 3) 保存必须显式发送启用/首选，并用后端返回 profile 校验后才敢提示成功。
+assert.match(component, /buildProviderCreateIntent\(submitted\)/);
+assert.match(component, /providerActivationView\(returnedProfile\)/);
+assert.match(component, /enableSavedProvider/);
+assert.match(providerFormSource, /enabled: true,\s*\n\s*is_default: true/);
+assert.match(providerFormSource, /AUTO_CATALOG_DEBOUNCE_MS = 900/);
+assert.match(providerFormSource, /enabled && isDefault/);
+assert.equal(isProviderAutoCatalogReady({
+  base_url: "https://gw.example.test/v1",
+  credential: "synthetic-placeholder-key",
+}), true);
+assert.equal(isProviderAutoCatalogReady({
+  base_url: "http://gw.example.test/v1",
+  credential: "synthetic-placeholder-key",
+}), false);
+assert.equal(isProviderAutoCatalogReady({
+  base_url: "https://gw.example.test/v1",
+  credential: "short",
+}), false);
+assert.equal(isProviderAutoCatalogReady({
+  base_url: "https://gw.example.test/v1",
+  auth_type: "none",
+}), true);
+assert.equal(isProviderAutoCatalogReady({
+  base_url: "https://gw.example.test/v1",
+  credential: "x".repeat(AUTO_CATALOG_MIN_KEY_LENGTH),
+}), true);
+assert.equal(
+  providerDraftSignature({
+    protocol: "openai-chat",
+    base_url: " https://a.example.test/v1 ",
+    auth_type: "bearer",
+    credential: " synthetic-key ",
+  }),
+  "openai-chat|https://a.example.test/v1|bearer|synthetic-key",
+);
+const createIntent = buildProviderCreateIntent({
+  name: "   ",
+  base_url: "https://gw.example.test/v1",
+  default_model: "  model-a  ",
+  protocol: "openai-chat",
+});
+assert.equal(createIntent.name, "gw.example.test");
+assert.equal(createIntent.default_model, "model-a");
+assert.equal(createIntent.enabled, true);
+assert.equal(createIntent.is_default, true);
+assert.equal(
+  buildProviderCreateIntent({ name: "  我的接口 ", base_url: "https://x.test" }).name,
+  "我的接口",
+);
+assert.equal(suggestProviderName({ base_url: "not-a-url" }), "我的模型接口");
+const autoSelection = mergeCatalogSelection({ default_model: "  " }, ["model-a", "model-b"]);
+assert.equal(autoSelection.default_model, "model-a");
+assert.equal(autoSelection.auto_selected_model, "model-a");
+assert.equal(autoSelection.enabled, true);
+assert.equal(autoSelection.is_default, true);
+const keptSelection = mergeCatalogSelection({ default_model: "manual-model" }, ["model-a"]);
+assert.equal(keptSelection.default_model, "manual-model");
+assert.equal(keptSelection.auto_selected_model, "");
+assert.equal(providerActivationView({ enabled: true, is_default: true }).state, "active");
+assert.match(
+  providerActivationView({ enabled: true, is_default: true }).message,
+  /已加密保存并启用/,
+);
+assert.equal(providerActivationView({ enabled: true, is_default: false }).state, "enabled");
+assert.match(
+  providerActivationView({ enabled: true, is_default: false }).message,
+  /还不是下次聊天首选/,
+);
+assert.equal(providerActivationView({ enabled: false, is_default: false }).state, "disabled");
+assert.match(
+  providerActivationView({ enabled: false, is_default: false }).message,
+  /未启用/,
+);
+assert.equal(providerActivationView(null).state, "unknown");
+assert.match(providerActivationView(null).message, /状态回执/);
+
+// 4) 闪烁修复：状态条常驻、按钮文字稳定、状态通知去重、无整页骨架切换。
+assert.doesNotMatch(component, /\{feedback &&/);
+assert.match(component, /className="provider-feedback" role="status" aria-live="polite"/);
+assert.match(component, /aria-busy=\{busy === "create"\}/);
+assert.match(component, /function applyStatus\(next\) \{[\s\S]*?serialized === statusSnapshotRef\.current/);
+assert.match(component, /setFeedback\(operationMessage\(name\)\)/);
+assert.doesNotMatch(component, /setFeedback\(""\)/);
+
+// 5) 模型按钮必须弹出真正的 listbox（不用 datalist），键盘与点选都要支持。
+assert.match(modelPickerSource, /role="listbox"/);
+assert.match(modelPickerSource, /role="option"/);
+assert.match(modelPickerSource, /aria-expanded=\{open\}/);
+assert.match(modelPickerSource, /aria-activedescendant/);
+assert.match(modelPickerSource, /ArrowDown/);
+assert.match(modelPickerSource, /ArrowUp/);
+assert.match(modelPickerSource, /Escape/);
+assert.match(modelPickerSource, /scrollIntoView/);
+assert.match(modelPickerSource, /onClick=\{\(\) => choose\(model\)\}/);
+assert.match(modelPickerSource, /provider-model-empty/);
+assert.doesNotMatch(component, /datalist/i);
+
+// 6) 本页样式：无动画/过渡，弹层可滚动，颜色集中在 --provider-* 变量。
+const providerCssStart = css.indexOf("模型接入 / 多供应商 API 控制台：本页专用样式");
+assert.notEqual(providerCssStart, -1, "missing provider page css block");
+const providerCss = css.slice(providerCssStart);
+assert.doesNotMatch(providerCss, /@keyframes/);
+assert.match(providerCss, /animation: none !important/);
+assert.match(providerCss, /transition: none !important/);
+assert.match(providerCss, /backdrop-filter: none !important/);
+assert.match(providerCss, /\.provider-model-popover \{[\s\S]*?position: absolute/);
+assert.match(providerCss, /max-height: min\(42vh, 320px\)/);
+assert.match(providerCss, /\.provider-model-option \{[\s\S]*?min-height: 44px/);
+assert.match(providerCss, /\.provider-advanced summary \{[\s\S]*?min-height: 44px/);
+assert.match(providerCss, /\.provider-help > summary \{[\s\S]*?min-height: 44px/);
+assert.match(providerCss, /\.provider-status-row \{[\s\S]*?min-height: 64px/);
+assert.match(providerCss, /\.provider-catalog-row \{[\s\S]*?min-height: 64px/);
+assert.match(
+  providerCss,
+  /\.ai-provider-center details:not\(\[open\]\) > \*:not\(summary\) \{\s*\n\s*display: none !important;/,
+);
+assert.match(
+  providerCss,
+  /\.ai-provider-center \.provider-form-grid label,[\s\S]*?color: var\(--provider-ink\)/,
+);
+assert.match(
+  providerCss,
+  /\.ai-provider-center \.primary-button \{[\s\S]*?color: var\(--provider-accent-ink\)/,
+);
+assert.match(providerCss, /background: var\(--provider-accent\);/);
+
+// 7) 对比度：逐对计算 WCAG 比值，浅色与夜间都必须 ≥ 4.5:1。
+const ruleBlocks = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+  .map((match) => ({ selector: match[1].trim(), body: match[2] }));
+function providerColors(selectorMatcher) {
+  const block = ruleBlocks.find((rule) => selectorMatcher(rule) && rule.body.includes("--provider-surface"));
+  assert.ok(block, "missing provider color block");
+  const colors = {};
+  for (const match of block.body.matchAll(/--provider-([a-z0-9-]+):\s*(#[0-9a-fA-F]{6})/g)) {
+    colors[match[1]] = match[2];
+  }
+  return colors;
+}
+const dayProviderColors = providerColors((rule) => rule.selector.endsWith(".ai-provider-center"));
+const nightProviderColors = providerColors(
+  (rule) => rule.selector === ':root[data-dengta-appearance="night"] .ai-provider-center',
+);
+function channelLuminance(value) {
+  const channel = value / 255;
+  return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+}
+function relativeLuminance(hex) {
+  const normalized = hex.replace("#", "");
+  const channels = [0, 2, 4].map((offset) => parseInt(normalized.slice(offset, offset + 2), 16));
+  return 0.2126 * channelLuminance(channels[0])
+    + 0.7152 * channelLuminance(channels[1])
+    + 0.0722 * channelLuminance(channels[2]);
+}
+function contrastRatio(foreground, background) {
+  const first = relativeLuminance(foreground);
+  const second = relativeLuminance(background);
+  const lighter = Math.max(first, second);
+  const darker = Math.min(first, second);
+  return (lighter + 0.05) / (darker + 0.05);
+}
+const contrastPairs = [
+  ["ink", "surface"],
+  ["muted", "surface"],
+  ["ink", "surface-2"],
+  ["muted", "surface-2"],
+  ["input-ink", "input-bg"],
+  ["accent-ink", "accent"],
+  ["accent-text", "surface"],
+  ["ok-ink", "ok-bg"],
+  ["warn-ink", "warn-bg"],
+  ["error-ink", "error-bg"],
+];
+for (const [theme, colors] of [
+  ["day", dayProviderColors],
+  ["night", nightProviderColors],
+]) {
+  for (const [foreground, background] of contrastPairs) {
+    assert.ok(colors[foreground] && colors[background], `missing ${theme} provider color ${foreground}/${background}`);
+    const ratio = contrastRatio(colors[foreground], colors[background]);
+    assert.ok(
+      ratio >= 4.5,
+      `${theme} theme contrast ${colors[foreground]} on ${colors[background]} is ${ratio.toFixed(2)} (< 4.5)`,
+    );
+  }
+}
+assert.deepEqual(
+  Object.keys(dayProviderColors).sort(),
+  Object.keys(nightProviderColors).sort(),
+  "day/night provider palettes must define the same tokens",
+);
+assert.ok(Object.keys(dayProviderColors).length >= 19, "provider palette is missing tokens");
 
 console.log("AI provider center UI tests passed");

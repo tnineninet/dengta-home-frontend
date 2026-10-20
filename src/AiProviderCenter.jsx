@@ -25,6 +25,17 @@ import {
   settingsServiceErrorDetail,
   settingsServiceErrorMessage,
 } from "./settings-service-errors";
+import ProviderModelPicker from "./provider-model-picker";
+import {
+  AUTO_CATALOG_DEBOUNCE_MS,
+  INITIAL_CATALOG_HINT,
+  buildProviderCreateIntent,
+  isProviderAutoCatalogReady,
+  mergeCatalogSelection,
+  providerActivationView,
+  providerDraftSignature,
+  suggestProviderName,
+} from "./provider-form";
 
 const PROTOCOL_OPTIONS = [
   {
@@ -72,6 +83,17 @@ function protocolLabel(value) {
 function providerErrorMessage(code, fallback) {
   const message = settingsServiceErrorMessage({ code, message: fallback }, fallback);
   return typeof message === "string" ? message : fallback;
+}
+
+function operationMessage(name) {
+  if (name === "refresh") return "正在刷新接口列表…";
+  if (name === "create") return "正在保存并启用…";
+  if (name.startsWith("save-")) return "正在保存修改…";
+  if (name.startsWith("test-")) return "正在检查模型目录…";
+  if (name.startsWith("default-")) return "正在设为下次聊天首选…";
+  if (name.startsWith("activate-")) return "正在启用这个接口…";
+  if (name.startsWith("delete-")) return "正在删除接口…";
+  return "正在处理…";
 }
 
 async function requestAiProvider(
@@ -174,32 +196,33 @@ function ProviderHealthSummary({ profile }) {
   );
 }
 
-function ProviderFields({ value, onChange, models = [], editing = false }) {
+function ProviderPrimaryFields({
+  value,
+  onChange,
+  models = [],
+  editing = false,
+  busy = false,
+  loading = false,
+  statusId = undefined,
+}) {
   const protocol = PROTOCOL_OPTIONS.find((item) => item.value === value.protocol);
-  const effortOptions = reasoningEffortOptions(value.protocol);
-  const reasoningHelp = value.protocol === "openai-responses"
-    ? "作为 reasoning.effort 发送。xhigh / max 可能明显增加等待时间与费用；实际请求会写入安全回执。"
-    : value.protocol === "openai-chat"
-      ? "为保留 DengTa 的函数工具，Chat 兼容接口只能显式使用 none；需要高推理请改用 Responses。"
-      : "当前原生协议不使用 OpenAI 推理强度参数。";
-  const expired = providerIsExpired(value);
-  const modelListId = editing
-    ? "provider-models-" + (value.id || "edit")
-    : "provider-models-new";
+  const suggestedName = suggestProviderName(value);
   return (
-    <div className="provider-form-grid">
+    <div className="provider-form-grid provider-form-grid-primary">
       <label>
-        显示名称
+        {editing ? "显示名称" : "显示名称（可留空自动生成）"}
         <input
           value={value.name || ""}
           onChange={(event) => onChange("name", event.target.value)}
           placeholder="例如：我的 New API"
           maxLength="80"
         />
-        <small>只是给你自己看的名称，不会发给模型。</small>
+        <small>{editing
+          ? "只用于你自己识别这个接口，不会发给模型。"
+          : `留空时保存为「${suggestedName}」，只用于你自己识别。`}</small>
       </label>
       <label>
-        接口类型
+        接口协议
         <select
           value={value.protocol || "openai-chat"}
           onChange={(event) => onChange("protocol", event.target.value)}
@@ -220,18 +243,7 @@ function ProviderFields({ value, onChange, models = [], editing = false }) {
           autoCapitalize="none"
           spellCheck="false"
         />
-        <small>填服务商给你的 API 根地址；不要填控制台网页地址、付款页或带账号密码的链接。</small>
-      </label>
-      <label>
-        授权方式
-        <select
-          value={value.auth_type || "bearer"}
-          onChange={(event) => onChange("auth_type", event.target.value)}
-        >
-          <option value="bearer">Bearer API Key（常用）</option>
-          <option value="none">不需要密钥（仅限可信私有网关）</option>
-        </select>
-        <small>New API、Sub2API 和普通中转通常都选择 Bearer。</small>
+        <small>填服务商给你的 API 根地址（https）；不要填控制台网页地址、付款页或带账号密码的链接。</small>
       </label>
       {value.auth_type !== "none" && (
         <label>
@@ -246,113 +258,151 @@ function ProviderFields({ value, onChange, models = [], editing = false }) {
             autoComplete="new-password"
             spellCheck="false"
           />
-          <small>这里只能填调用网关用的 API Key，不能填 Cookie、OAuth Refresh Token、auth.json 或卡密 JSON。</small>
+          <small>只填调用网关用的 API Key；不能填 Cookie、OAuth Token、auth.json 或卡密 JSON。</small>
         </label>
       )}
-      <label>
-        默认模型
-        <input
-          list={modelListId}
-          value={value.default_model || ""}
-          onChange={(event) => onChange("default_model", event.target.value)}
-          placeholder="例如：gpt-5.5"
-          autoCapitalize="none"
-          spellCheck="false"
-        />
-        <datalist id={modelListId}>
-          {models.map((model) => <option value={model} key={model} />)}
-        </datalist>
-        <small>模型目录可读取后可从发现的模型中选择；也可按服务商说明手动填写。</small>
-      </label>
-      <label>
-        推理强度
-        <select
-          value={reasoningEffortForProvider(
-            value.protocol,
-            value.reasoning_effort,
-          )}
-          onChange={(event) => onChange("reasoning_effort", event.target.value)}
-          disabled={effortOptions.length === 1}
-        >
-          {effortOptions.map((item) => (
-            <option value={item.value} key={item.value || "default"}>{item.label}</option>
-          ))}
-        </select>
-        <small>{reasoningHelp}</small>
-      </label>
-      <label>
-        优先级
-        <input
-          type="number"
-          min="1"
-          max="9999"
-          value={value.priority || 100}
-          onChange={(event) => onChange("priority", event.target.value)}
-        />
-        <small>数字越小越靠前，仅用于接口排序；当前不会自动切换供应商。</small>
-      </label>
-      <label>
-        到期时间（北京时间，可选）
-        <input
-          type="datetime-local"
-          value={inputDateTime(value.expires_at)}
-          onChange={(event) => onChange("expires_at", event.target.value)}
-        />
-        <small>到期后 DengTa 不再选择这个接口，方便管理临时中转或短期密钥。</small>
-      </label>
-      <label className="provider-wide-field">
-        付款页 / 控制台地址（可选）
-        <input
-          type="url"
-          value={value.billing_url || ""}
-          onChange={(event) => onChange("billing_url", event.target.value)}
-          placeholder="https://服务商的账单或控制台页面"
-        />
-        <small>保存后会显示可点击入口；它不会被当成模型接口使用。</small>
-      </label>
-      <label className="provider-wide-field">
-        备注（可选）
-        <textarea
-          rows="3"
-          maxLength="1000"
-          value={value.notes || ""}
-          onChange={(event) => onChange("notes", event.target.value)}
-          placeholder="例如：月付、适合聊天、额度页面在哪里、出现 429 时联系谁……"
-        />
-      </label>
-      <label className="provider-checkbox-row">
-        <input
-          type="checkbox"
-          checked={value.enabled === true}
-          onChange={(event) => onChange("enabled", event.target.checked)}
-        />
-        <span><strong>启用这个接口</strong><small>只有启用且未到期的接口才可能接管聊天。</small></span>
-      </label>
-      <label className="provider-checkbox-row">
-        <input
-          type="checkbox"
-          checked={value.is_default === true && !expired}
-          disabled={expired}
-          onChange={(event) => onChange("is_default", event.target.checked)}
-        />
-        <span>
-          <strong>保存后设为下次聊天首选</strong>
-          <small>{expired
-            ? "该接口已到期，不参与路由；更新到期时间后才能设为首选。"
-            : "必须同时启用；它会成为下一次聊天请求优先使用的接口。"}</small>
-        </span>
-      </label>
+      <ProviderModelPicker
+        value={value.default_model || ""}
+        models={models}
+        onChange={(model) => onChange("default_model", model)}
+        busy={busy}
+        loading={loading}
+        describedBy={statusId}
+      />
     </div>
   );
 }
 
-export default function AiProviderCenter({ onStatusChange = null } = {}) {
+function ProviderAdvancedFields({ value, onChange, editing = false }) {
+  const effortOptions = reasoningEffortOptions(value.protocol);
+  const reasoningHelp = value.protocol === "openai-responses"
+    ? "作为 reasoning.effort 发送。xhigh / max 可能明显增加等待时间与费用；实际请求会写入安全回执。"
+    : value.protocol === "openai-chat"
+      ? "为保留 DengTa 的函数工具，Chat 兼容接口只能显式使用 none；需要高推理请改用 Responses。"
+      : "当前原生协议不使用 OpenAI 推理强度参数。";
+  const expired = providerIsExpired(value);
+  return (
+    <details className="provider-advanced">
+      <summary>高级设置（可选）</summary>
+      <div className="provider-form-grid provider-form-grid-advanced">
+        <label>
+          授权方式
+          <select
+            value={value.auth_type || "bearer"}
+            onChange={(event) => onChange("auth_type", event.target.value)}
+          >
+            <option value="bearer">Bearer API Key（常用）</option>
+            <option value="none">不需要密钥（仅限可信私有网关）</option>
+          </select>
+          <small>New API、Sub2API 和普通中转通常都选择 Bearer。</small>
+        </label>
+        <label>
+          推理强度
+          <select
+            value={reasoningEffortForProvider(
+              value.protocol,
+              value.reasoning_effort,
+            )}
+            onChange={(event) => onChange("reasoning_effort", event.target.value)}
+            disabled={effortOptions.length === 1}
+          >
+            {effortOptions.map((item) => (
+              <option value={item.value} key={item.value || "default"}>{item.label}</option>
+            ))}
+          </select>
+          <small>{reasoningHelp}</small>
+        </label>
+        <label>
+          优先级
+          <input
+            type="number"
+            min="1"
+            max="9999"
+            value={value.priority || 100}
+            onChange={(event) => onChange("priority", event.target.value)}
+          />
+          <small>数字越小越靠前，仅用于接口排序；当前不会自动切换供应商。</small>
+        </label>
+        <label>
+          到期时间（北京时间，可选）
+          <input
+            type="datetime-local"
+            value={inputDateTime(value.expires_at)}
+            onChange={(event) => onChange("expires_at", event.target.value)}
+          />
+          <small>到期后 DengTa 不再选择这个接口，方便管理临时中转或短期密钥。</small>
+        </label>
+        <label className="provider-wide-field">
+          付款页 / 控制台地址（可选）
+          <input
+            type="url"
+            value={value.billing_url || ""}
+            onChange={(event) => onChange("billing_url", event.target.value)}
+            placeholder="https://服务商的账单或控制台页面"
+          />
+          <small>保存后会显示可点击入口；它不会被当成模型接口使用。</small>
+        </label>
+        <label className="provider-wide-field">
+          备注（可选）
+          <textarea
+            rows="3"
+            maxLength="1000"
+            value={value.notes || ""}
+            onChange={(event) => onChange("notes", event.target.value)}
+            placeholder="例如：月付、适合聊天、额度页面在哪里、出现 429 时联系谁……"
+          />
+        </label>
+        {editing ? (
+          <>
+            <label className="provider-checkbox-row provider-wide-field">
+              <input
+                type="checkbox"
+                checked={value.enabled === true}
+                onChange={(event) => onChange("enabled", event.target.checked)}
+              />
+              <span><strong>启用这个接口</strong><small>只有启用且未到期的接口才可能接管聊天。</small></span>
+            </label>
+            <label className="provider-checkbox-row provider-wide-field">
+              <input
+                type="checkbox"
+                checked={value.is_default === true && !expired}
+                disabled={expired}
+                onChange={(event) => onChange("is_default", event.target.checked)}
+              />
+              <span>
+                <strong>设为下次聊天首选</strong>
+                <small>{expired
+                  ? "该接口已到期，不参与路由；更新到期时间后才能设为首选。"
+                  : "会优先于其它已启用接口使用。"}</small>
+              </span>
+            </label>
+          </>
+        ) : (
+          <p className="provider-advanced-hint provider-wide-field">
+            保存时会自动发送「启用 + 下次聊天首选」，不需要再手动勾选。
+          </p>
+        )}
+      </div>
+    </details>
+  );
+}
+
+export default function AiProviderCenter({
+  onStatusChange = null,
+  autoCatalogDelayMs = AUTO_CATALOG_DEBOUNCE_MS,
+} = {}) {
   const [status, setStatus] = useState({ checking: true });
   const [profiles, setProfiles] = useState([]);
   const [draft, setDraft] = useState({ ...EMPTY_PROVIDER_DRAFT });
   const [draftModels, setDraftModels] = useState([]);
+  const [catalogInfo, setCatalogInfo] = useState({
+    status: "idle",
+    message: INITIAL_CATALOG_HINT,
+  });
+  const [catalogAttempt, setCatalogAttempt] = useState(0);
   const [busy, setBusy] = useState("");
   const [feedback, setFeedback] = useState("");
+  const [activationPrompt, setActivationPrompt] = useState(null);
   const [ccSwitchProfile, setCcSwitchProfile] = useState(null);
   const [ccSwitchTarget, setCcSwitchTarget] = useState("");
   const [ccSwitchApiKey, setCcSwitchApiKey] = useState("");
@@ -361,8 +411,17 @@ export default function AiProviderCenter({ onStatusChange = null } = {}) {
   const operationRef = useRef(null);
   const profileReadRevisionRef = useRef(0);
   const statusReadRevisionRef = useRef(0);
+  const statusSnapshotRef = useRef("");
   const draftRevisionRef = useRef(0);
   const profileEditsRef = useRef(new Map());
+  const autoCatalogRef = useRef(null);
+  const latestDraftRef = useRef(draft);
+
+  // 自动读目录只依赖 URL/Key/协议等签名字段；其它字段（备注、优先级…）
+  // 通过 ref 取最新值，避免编辑高级项时无谓取消已经开始的防抖计时。
+  useEffect(() => {
+    latestDraftRef.current = draft;
+  });
 
   function isCurrent(scope = scopeRef.current) {
     return scope && scopeRef.current === scope && !scope.controller.signal.aborted &&
@@ -381,12 +440,21 @@ export default function AiProviderCenter({ onStatusChange = null } = {}) {
     });
   }, []);
 
+  // 只有真实变化才通知 App：重复的相同状态会触发整页重渲染，是点击闪烁来源之一。
+  function applyStatus(next) {
+    const serialized = JSON.stringify(next ?? null);
+    if (serialized === statusSnapshotRef.current) return false;
+    statusSnapshotRef.current = serialized;
+    setStatus(next);
+    return true;
+  }
+
   function startOperation(name) {
     if (operationRef.current || !isCurrent()) return null;
     const operation = { name, scope: scopeRef.current };
     operationRef.current = operation;
     setBusy(name);
-    setFeedback("");
+    setFeedback(operationMessage(name));
     return operation;
   }
 
@@ -417,14 +485,13 @@ export default function AiProviderCenter({ onStatusChange = null } = {}) {
     try {
       const data = await aiProviderRequest("/api/ai-providers/status");
       if (!isCurrent(scope) || revision !== statusReadRevisionRef.current) return;
-      setStatus({ ...data, checking: false });
-      onStatusChange?.(data);
+      const next = { ...data, checking: false };
+      if (applyStatus(next)) onStatusChange?.(data);
       return data;
     } catch (error) {
       if (!isCurrent(scope) || revision !== statusReadRevisionRef.current) return;
       const failed = { checking: false, available: null, message: error.message };
-      setStatus(failed);
-      onStatusChange?.(failed);
+      if (applyStatus(failed)) onStatusChange?.(failed);
       return failed;
     }
   }
@@ -476,16 +543,15 @@ export default function AiProviderCenter({ onStatusChange = null } = {}) {
         if (!active || !isCurrent(scope)) return;
         if (!operationRef.current) setBusy("");
         if (statusResult.status === "fulfilled" && statusRevision === statusReadRevisionRef.current) {
-          setStatus({ ...statusResult.value, checking: false });
-          onStatusChange?.(statusResult.value);
+          const next = { ...statusResult.value, checking: false };
+          if (applyStatus(next)) onStatusChange?.(statusResult.value);
         } else if (statusResult.status === "rejected" && statusRevision === statusReadRevisionRef.current) {
           const failed = {
             checking: false,
             available: null,
             message: statusResult.reason.message,
           };
-          setStatus(failed);
-          onStatusChange?.(failed);
+          if (applyStatus(failed)) onStatusChange?.(failed);
         }
         if (profilesResult.status === "fulfilled" && profileRevision === profileReadRevisionRef.current) {
           setProfiles(
@@ -507,6 +573,81 @@ export default function AiProviderCenter({ onStatusChange = null } = {}) {
     };
   }, [onStatusChange, aiProviderRequest]);
 
+  // 输入合法 https Base URL + Key 后自动防抖读目录；成功后自动选首个模型并准备启用。
+  // 只调用既有的 /manage/test 探测接口，不新增后端校验、权限或内容限制。
+  useEffect(() => {
+    const currentDraft = latestDraftRef.current;
+    const ready = isProviderAutoCatalogReady(currentDraft);
+    if (!ready) {
+      if (autoCatalogRef.current) {
+        autoCatalogRef.current = null;
+        setCatalogInfo({ status: "idle", message: INITIAL_CATALOG_HINT });
+      }
+      return undefined;
+    }
+    const signature = providerDraftSignature(currentDraft);
+    if (autoCatalogRef.current?.signature === signature) return undefined;
+    autoCatalogRef.current = { signature };
+    setCatalogInfo({
+      status: "waiting",
+      message: "正在确认接口，马上自动读取模型目录…",
+    });
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      if (cancelled) return;
+      if (operationRef.current) {
+        autoCatalogRef.current = null;
+        return;
+      }
+      const probeDraft = { ...latestDraftRef.current };
+      setCatalogInfo({ status: "loading", message: "正在读取模型目录…" });
+      try {
+        const data = await aiProviderRequest("/api/ai-providers/manage/test", {
+          method: "POST",
+          body: providerPayload({ ...probeDraft, enabled: false, is_default: false }),
+        });
+        if (cancelled || autoCatalogRef.current?.signature !== signature) return;
+        const models = Array.isArray(data.models)
+          ? data.models.filter(model => typeof model === "string" && model.trim())
+          : [];
+        setDraftModels(models);
+        const selection = mergeCatalogSelection(probeDraft, models);
+        if (models.length) {
+          setDraft(current => ({ ...current, ...mergeCatalogSelection(current, models) }));
+        }
+        setCatalogInfo(models.length
+          ? {
+            status: "ready",
+            message: `已自动读取 ${models.length} 个模型${selection.auto_selected_model
+              ? `，已选择 ${selection.auto_selected_model}`
+              : "，保留你填写的模型"}；点「保存并启用」即可开始聊天。`,
+          }
+          : {
+            status: "empty",
+            message: "接口可以连接，但服务商没有返回模型列表；请在「默认模型」里手动填写模型名，或点「重试读取」。",
+          });
+      } catch (error) {
+        if (cancelled || autoCatalogRef.current?.signature !== signature) return;
+        autoCatalogRef.current = null;
+        setDraftModels([]);
+        setCatalogInfo({
+          status: "error",
+          message: `自动读取模型目录失败：${settingsServiceErrorDetail(error, "供应商请求失败 / Provider request failed.")}`,
+        });
+      }
+    }, autoCatalogDelayMs);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [
+    draft.protocol,
+    draft.base_url,
+    draft.auth_type,
+    draft.credential,
+    aiProviderRequest,
+    autoCatalogDelayMs,
+    catalogAttempt,
+    busy,
+  ]);
+
   const routableCount = useMemo(
     () => profiles.filter((profile) => providerIsRoutable(profile)).length,
     [profiles],
@@ -527,6 +668,12 @@ export default function AiProviderCenter({ onStatusChange = null } = {}) {
     if (["base_url", "protocol", "credential", "auth_type"].includes(field)) {
       setDraftModels([]);
     }
+  }
+
+  function retryCatalog() {
+    autoCatalogRef.current = null;
+    setCatalogInfo({ status: "waiting", message: "正在重试读取模型目录…" });
+    setCatalogAttempt(attempt => attempt + 1);
   }
 
   function editProfile(id, field, value) {
@@ -620,30 +767,6 @@ export default function AiProviderCenter({ onStatusChange = null } = {}) {
     }
   }
 
-  async function testDraft() {
-    const operation = startOperation("test-draft");
-    if (!operation) return;
-    const submitted = { ...draft };
-    const revision = draftRevisionRef.current;
-    try {
-      const data = await aiProviderRequest("/api/ai-providers/manage/test", {
-        method: "POST",
-        body: providerPayload(submitted),
-      });
-      if (!operationCurrent(operation) || revision !== draftRevisionRef.current) return;
-      setDraftModels(data.models || []);
-      setFeedback("模型目录可读取，发现 " + (data.models?.length || 0) + " 个模型。检查不会保存密钥。");
-    } catch (error) {
-      if (!operationCurrent(operation) || revision !== draftRevisionRef.current) return;
-      setDraftModels([]);
-      setFeedback(
-        settingsServiceErrorDetail(error, "供应商请求失败 / Provider request failed."),
-      );
-    } finally {
-      finishOperation(operation);
-    }
-  }
-
   async function createProfile(event) {
     event.preventDefault();
     const operation = startOperation("create");
@@ -652,18 +775,32 @@ export default function AiProviderCenter({ onStatusChange = null } = {}) {
     const revision = draftRevisionRef.current;
     let saved = false;
     try {
-      await aiProviderRequest("/api/ai-providers/manage", {
+      const data = await aiProviderRequest("/api/ai-providers/manage", {
         method: "POST",
-        body: providerPayload(submitted),
+        body: providerPayload(buildProviderCreateIntent(submitted)),
       });
       saved = true;
       if (!operationCurrent(operation)) return;
+      const returnedProfile = data?.profile && typeof data.profile === "object"
+        ? data.profile
+        : null;
+      const activation = providerActivationView(returnedProfile);
       setDraft(current => Object.keys(submitted).every(field => current[field] === submitted[field])
         ? { ...EMPTY_PROVIDER_DRAFT } : current);
-      if (revision === draftRevisionRef.current) setDraftModels([]);
+      if (revision === draftRevisionRef.current) {
+        setDraftModels([]);
+        autoCatalogRef.current = null;
+        setCatalogInfo({ status: "idle", message: INITIAL_CATALOG_HINT });
+      }
       await refreshProfiles();
       if (!operationCurrent(operation)) return;
-      setFeedback("接口已加密保存。启用并设为下次聊天首选后，新的聊天请求才会优先使用它。");
+      setActivationPrompt(activation.state === "active"
+        ? null
+        : {
+          profile: returnedProfile || submitted,
+          label: activation.state === "enabled" ? "设为下次聊天首选" : "启用并设为首选",
+        });
+      setFeedback(activation.message);
       await refreshStatus();
     } catch (error) {
       if (!operationCurrent(operation)) return;
@@ -678,22 +815,64 @@ export default function AiProviderCenter({ onStatusChange = null } = {}) {
     }
   }
 
+  async function enableSavedProvider(profile) {
+    if (!profile?.id) {
+      setFeedback("没有收到接口 ID，无法启用；请先点「刷新接口列表」核对后再操作。");
+      return;
+    }
+    const operation = startOperation("activate-" + profile.id);
+    if (!operation) return;
+    const submitted = buildProviderCreateIntent(profile);
+    try {
+      const data = await aiProviderRequest("/api/ai-providers/manage/" + profile.id, {
+        method: "PUT",
+        body: providerPayload(submitted),
+      });
+      if (!operationCurrent(operation)) return;
+      const activation = providerActivationView(
+        data?.profile && typeof data.profile === "object" ? data.profile : null,
+      );
+      clearSavedProfileEdits(submitted);
+      setActivationPrompt(activation.state === "active" ? null : {
+        profile: data?.profile || submitted,
+        label: activation.state === "enabled" ? "设为下次聊天首选" : "启用并设为首选",
+      });
+      await refreshProfiles();
+      if (!operationCurrent(operation)) return;
+      setFeedback(activation.message);
+      await refreshStatus();
+    } catch (error) {
+      if (!operationCurrent(operation)) return;
+      setFeedback("启用结果尚未确认。请先刷新接口列表核对后再操作。\n" +
+        settingsServiceErrorDetail(error, "供应商请求失败 / Provider request failed."));
+    } finally {
+      finishOperation(operation);
+    }
+  }
+
   async function saveProfile(profile) {
     const operation = startOperation("save-" + profile.id);
     if (!operation) return;
     const submitted = { ...profile };
     let saved = false;
     try {
-      await aiProviderRequest("/api/ai-providers/manage/" + profile.id, {
+      const data = await aiProviderRequest("/api/ai-providers/manage/" + profile.id, {
         method: "PUT",
         body: providerPayload(submitted),
       });
       saved = true;
       if (!operationCurrent(operation)) return;
+      const activation = providerActivationView(
+        data?.profile && typeof data.profile === "object"
+          ? data.profile
+          : { ...submitted, enabled: submitted.enabled === true },
+      );
       clearSavedProfileEdits(submitted);
       await refreshProfiles();
       if (!operationCurrent(operation)) return;
-      setFeedback("接口设置已保存，并会用于下一次新的模型请求。");
+      setFeedback(activation.state === "disabled"
+        ? "接口设置已保存，但当前是停用状态，聊天不会使用它；可在「高级设置」里勾选启用后再保存。"
+        : activation.message);
       await refreshStatus();
     } catch (error) {
       if (!operationCurrent(operation)) return;
@@ -804,217 +983,305 @@ export default function AiProviderCenter({ onStatusChange = null } = {}) {
         <div>
           <span className="settings-kicker">模型接入</span>
           <h3>多供应商 API 控制台</h3>
-          <p>统一管理正规 API、自建 New API、Sub2API、CPA 或其他兼容网关。这里保存的接口会真实接入聊天后端。</p>
-          <p>API Key 只发送到后端加密保存，页面不会回显已保存的密钥。</p>
+          <p>填 Base URL 和 API Key，页面会自动读取模型目录并选好模型；保存后自动启用并设为下次聊天首选。</p>
+          <p className="provider-key-note">API Key 只发送到后端加密保存，页面不会回显已保存的密钥。</p>
         </div>
         <span className={status.available ? "provider-state ready" : "provider-state pending"}>
           {status.checking ? "检查中" : status.available === true ? "数据库已就绪" : status.available === false ? "等待数据库迁移" : "状态未确认"}
         </span>
       </div>
 
-      <div className="provider-safety-note" role="note">
-        <strong>只填网关输出，不填账号登录材料</strong>
-        <p>如果某个教程要求 auth.json、OAuth 凭据、卡密 JSON、Cookie 或账号 Token，请在你自己信任的 Sub2API / CPA / Cockpit 工具里完成登录或导入。DengTa 这里只接收最终的 Base URL、对外 API Key 和模型名。</p>
-      </div>
-
-      <div className="provider-recovery-note" role="note">
-        <strong>迁移后无法聊天？重新保存活动 GPT 密钥 / Chat unavailable after migration?</strong>
-        <p>
-          更换 Render 服务或后端加密密钥后，旧接口仍会显示在列表里，但原密文不能继续使用。无需删除接口：在对应卡片重新粘贴 API Key，确认“启用这个接口”，保存修改，检查模型目录，再设为下次聊天首选。
-        </p>
-        <small>
-          After a backend migration, re-enter the API key on the existing profile, enable and save it, check the model catalog, then make it the next-chat default.
-        </small>
-      </div>
-
-      <div className="provider-summary-grid">
-        <span><strong>{profiles.length}</strong><small>已保存接口</small></span>
-        <span>
-          <strong>{routableCount}</strong>
-          <small>当前可路由</small>
+      <div className="provider-summary-bar" aria-label="接口状态概览">
+        <span><strong>{profiles.length}</strong> 已保存接口</span>
+        <span><strong>{routableCount}</strong> 当前可路由</span>
+        <span className="provider-summary-default">
+          下次聊天首选：<strong>{status.active_profile?.name || "旧版接口"}</strong>
         </span>
-        <span><strong>{status.active_profile?.name || "旧版接口"}</strong><small>下次聊天首选</small></span>
-      </div>
-
-      {feedback && <p className="provider-feedback" role="status">{feedback}</p>}
-      <div className="provider-card-actions">
-        <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={refreshCenter}>
-          {busy === "refresh" ? "刷新中" : "刷新接口列表"}
+        <button
+          type="button"
+          className="secondary-button provider-refresh-button"
+          disabled={Boolean(busy)}
+          onClick={() => void refreshCenter()}
+        >
+          刷新接口列表
         </button>
       </div>
 
-      <>
-        <form className="provider-create-card" onSubmit={createProfile}>
-            <div className="provider-section-title">
-              <div><strong>新增一个接口</strong><small>可先检查模型目录而不保存；确认无误后再保存并启用。</small></div>
-            </div>
-            <ProviderFields value={draft} onChange={updateDraft} models={draftModels} />
-            <div className="provider-card-actions">
-              <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={testDraft}>
-                {busy === "test-draft" ? "检查中" : "检查模型目录但不保存"}
-              </button>
-              <button className="primary-button" disabled={Boolean(busy)}>
-                {busy === "create" ? "保存中" : "安全保存接口"}
-              </button>
-            </div>
-        </form>
+      <div className="provider-status-row">
+        <p className="provider-feedback" role="status" aria-live="polite">{feedback}</p>
+        {activationPrompt && (
+          <button
+            type="button"
+            className="secondary-button provider-activation-button"
+            disabled={Boolean(busy)}
+            onClick={() => void enableSavedProvider(activationPrompt.profile)}
+          >
+            {activationPrompt.label}
+          </button>
+        )}
+      </div>
 
-        <div className="provider-profile-list">
-            {profiles.map((profile) => (
-              <article className={profile.is_default ? "provider-profile-card default" : "provider-profile-card"} key={profile.id}>
-                <div className="provider-profile-head">
-                  <div>
-                    <strong>{profile.name}</strong>
-                    <small>{protocolLabel(profile.protocol)} · {catalogLabel(profile)}</small>
-                  </div>
-                  <div className="provider-badges">
-                    {profile.is_default && (
-                      <span>{providerIsExpired(profile) ? "原首选已到期" : "下次聊天首选"}</span>
-                    )}
-                    <span>{profile.enabled
-                      ? providerIsExpired(profile)
-                        ? "已启用 · 已到期不参与路由"
-                        : "可参与路由"
-                      : "已停用"}</span>
-                    <ProviderExpiryBadge value={profile.expires_at} />
-                  </div>
-                </div>
-                <ProviderHealthSummary profile={profile} />
-                {providerCredentialNeedsRecovery(profile) && (
-                  <div className="provider-recovery-note is-required" role="alert">
-                    <strong>此接口需要重新保存 API Key / This provider key must be saved again</strong>
-                    <p>在下方密钥框粘贴新值并点“保存修改”，再点“检查模型目录”。其他资料不需要重填。</p>
-                  </div>
+      <form
+        className="provider-create-card"
+        onSubmit={createProfile}
+        aria-busy={busy === "create"}
+      >
+        <div className="provider-section-title">
+          <div>
+            <strong>粘贴地址与密钥，自动读目录并启用</strong>
+            <small>默认只要下面 5 项；其余选项收在「高级设置」里，默认不用管。</small>
+          </div>
+        </div>
+        <ProviderPrimaryFields
+          value={draft}
+          onChange={updateDraft}
+          models={draftModels}
+          busy={Boolean(busy)}
+          loading={catalogInfo.status === "loading"}
+          statusId="provider-catalog-status"
+        />
+        <div className="provider-catalog-row">
+          <p
+            className={`provider-catalog-status state-${catalogInfo.status}`}
+            id="provider-catalog-status"
+            role="status"
+            aria-live="polite"
+          >
+            {catalogInfo.message}
+          </p>
+          {catalogInfo.status === "error" && (
+            <button
+              type="button"
+              className="secondary-button provider-retry-button"
+              disabled={Boolean(busy)}
+              onClick={retryCatalog}
+            >
+              重试读取
+            </button>
+          )}
+        </div>
+        <ProviderAdvancedFields value={draft} onChange={updateDraft} />
+        <div className="provider-card-actions provider-card-actions-primary">
+          <button
+            className="primary-button provider-save-button"
+            disabled={Boolean(busy)}
+            aria-busy={busy === "create"}
+          >
+            保存并启用
+          </button>
+        </div>
+      </form>
+
+      <div className="provider-profile-list">
+        {profiles.map((profile) => (
+          <article className={profile.is_default ? "provider-profile-card default" : "provider-profile-card"} key={profile.id}>
+            <div className="provider-profile-head">
+              <div>
+                <strong>{profile.name}</strong>
+                <small>{protocolLabel(profile.protocol)} · {catalogLabel(profile)}</small>
+              </div>
+              <div className="provider-badges">
+                {profile.is_default && (
+                  <span>{providerIsExpired(profile) ? "原首选已到期" : "下次聊天首选"}</span>
                 )}
-                <ProviderFields
-                  value={profile}
-                  editing
-                  models={profile.discovered_models || []}
-                  onChange={(field, value) => editProfile(profile.id, field, value)}
-                />
-                {profile.billing_url && (
-                  <a className="provider-billing-link" href={profile.billing_url} target="_blank" rel="noreferrer">
-                    打开付款页或服务商控制台
-                  </a>
-                )}
-                <div className="provider-card-actions">
-                  <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => testProfile(profile)}>
-                    {busy === "test-" + profile.id ? "检查中" : "检查模型目录"}
+                <span>{profile.enabled
+                  ? providerIsExpired(profile)
+                    ? "已启用 · 已到期不参与路由"
+                    : "可参与路由"
+                  : "已停用"}</span>
+                <ProviderExpiryBadge value={profile.expires_at} />
+              </div>
+            </div>
+            <ProviderHealthSummary profile={profile} />
+            {providerCredentialNeedsRecovery(profile) && (
+              <div className="provider-recovery-note is-required" role="alert">
+                <strong>此接口需要重新保存 API Key / This provider key must be saved again</strong>
+                <p>在下方密钥框粘贴新值并点「保存修改」，再点「检查模型目录」。其他资料不需要重填。</p>
+              </div>
+            )}
+            <ProviderPrimaryFields
+              value={profile}
+              editing
+              models={profile.discovered_models || []}
+              busy={Boolean(busy)}
+              onChange={(field, value) => editProfile(profile.id, field, value)}
+            />
+            <ProviderAdvancedFields
+              value={profile}
+              editing
+              onChange={(field, value) => editProfile(profile.id, field, value)}
+            />
+            {profile.billing_url && (
+              <a className="provider-billing-link" href={profile.billing_url} target="_blank" rel="noreferrer">
+                打开付款页或服务商控制台
+              </a>
+            )}
+            <div className="provider-card-actions">
+              <button
+                type="button"
+                className="primary-button"
+                disabled={Boolean(busy)}
+                aria-busy={busy === "save-" + profile.id}
+                onClick={() => void saveProfile(profile)}
+              >
+                保存修改
+              </button>
+              <button
+                type="button"
+                className="danger-outline-button"
+                disabled={Boolean(busy)}
+                onClick={() => void removeProfile(profile)}
+              >
+                删除
+              </button>
+              <details className="provider-more-actions">
+                <summary>更多操作</summary>
+                <div className="provider-more-actions-body">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={Boolean(busy)}
+                    onClick={() => void testProfile(profile)}
+                  >
+                    检查模型目录
                   </button>
-                  <button type="button" className="primary-button" disabled={Boolean(busy)} onClick={() => saveProfile(profile)}>
-                    {busy === "save-" + profile.id ? "保存中" : "保存修改"}
-                  </button>
-                  <button type="button" className="secondary-button" disabled={Boolean(busy) || !profile.enabled || profile.is_default || providerIsExpired(profile)} onClick={() => makeDefault(profile)}>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={Boolean(busy) || !profile.enabled || profile.is_default || providerIsExpired(profile)}
+                    onClick={() => void makeDefault(profile)}
+                  >
                     {providerIsExpired(profile)
                       ? "已到期，不可设为首选"
                       : profile.is_default
                         ? "已设为下次聊天首选"
                         : "设为下次聊天首选"}
                   </button>
-                  <button type="button" className="danger-outline-button" disabled={Boolean(busy)} onClick={() => removeProfile(profile)}>
-                    删除
-                  </button>
-                  <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => openCcSwitchBridge(profile)}>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    disabled={Boolean(busy)}
+                    onClick={() => openCcSwitchBridge(profile)}
+                  >
                     交给 CC Switch
                   </button>
                 </div>
-                {ccSwitchProfile?.id === profile.id && (
-                  <section className="cc-switch-bridge" aria-label="CC Switch 本机桥接">
-                    <div className="cc-switch-bridge-heading">
-                      <div>
-                        <span className="settings-kicker">本机桥接</span>
-                        <strong>导入“{ccSwitchProfile.name}”到 CC Switch</strong>
-                        <small>使用 CC Switch 3.17.0 官方 V1 深度链接；导入前仍需你在 CC Switch 中确认。</small>
-                      </div>
-                      <button type="button" className="text-button" onClick={closeCcSwitchBridge}>关闭</button>
-                    </div>
-                    <div className="cc-switch-bridge-grid">
-                      <label>
-                        目标工具
-                        <select
-                          value={ccSwitchTarget}
-                          onChange={(event) => {
-                            setCcSwitchTarget(event.target.value);
-                            setCcSwitchFeedback("");
-                          }}
-                        >
-                          {ccSwitchTargetsForProtocol(ccSwitchProfile.protocol).map((target) => (
-                            <option value={target.value} key={target.value}>{target.label}</option>
-                          ))}
-                        </select>
-                        <small>{ccSwitchTargetsForProtocol(ccSwitchProfile.protocol).find((target) => target.value === ccSwitchTarget)?.help}</small>
-                      </label>
-                      <label>
-                        本机临时 API Key
-                        <input
-                          type="password"
-                          value={ccSwitchApiKey}
-                          onChange={(event) => {
-                            setCcSwitchApiKey(event.target.value);
-                            setCcSwitchFeedback("");
-                          }}
-                          placeholder="重新粘贴给 CC Switch 使用的网关 Key"
-                          autoComplete="off"
-                          spellCheck="false"
-                        />
-                        <small>只保存在当前页面内存，不提交 DengTa 后端；关闭本面板即清除。</small>
-                      </label>
-                    </div>
-                    {ccSwitchProfile.protocol === "openai-chat" && (
-                      <p className="cc-switch-protocol-note">
-                        这个接口当前是 OpenAI Chat 协议，所以不能直接导入 Codex。若服务商同时支持 Responses，请在 DengTa 新建一个“OpenAI Responses”接口后再导入 Codex。
-                      </p>
-                    )}
-                    <div className="cc-switch-preview">
-                      <span><small>Base URL</small><strong>{ccSwitchProfile.base_url}</strong></span>
-                      <span><small>默认模型</small><strong>{ccSwitchProfile.default_model || "由服务商决定"}</strong></span>
-                    </div>
-                    {ccSwitchFeedback && <p className="provider-feedback" role="status">{ccSwitchFeedback}</p>}
-                    <div className="provider-card-actions">
-                      <button type="button" className="primary-button" onClick={launchCcSwitch}>在本机打开 CC Switch</button>
-                      <button type="button" className="secondary-button" onClick={downloadCcSwitchBridge}>下载无密钥离线桥接文件</button>
-                      <button type="button" className="secondary-button" onClick={copyCcSwitchLink}>复制一次性导入链接</button>
-                    </div>
-                    <p className="cc-switch-security">
-                      不会读取 CC Switch 数据库、OAuth、Cookie、auth.json 或账号 Token。离线文件不含密钥；一次性链接包含密钥，只能自己使用。
-                    </p>
-                  </section>
+              </details>
+            </div>
+            {ccSwitchProfile?.id === profile.id && (
+              <section className="cc-switch-bridge" aria-label="CC Switch 本机桥接">
+                <div className="cc-switch-bridge-heading">
+                  <div>
+                    <span className="settings-kicker">本机桥接</span>
+                    <strong>导入“{ccSwitchProfile.name}”到 CC Switch</strong>
+                    <small>使用 CC Switch 3.17.0 官方 V1 深度链接；导入前仍需你在 CC Switch 中确认。</small>
+                  </div>
+                  <button type="button" className="text-button" onClick={closeCcSwitchBridge}>关闭</button>
+                </div>
+                <div className="cc-switch-bridge-grid">
+                  <label>
+                    目标工具
+                    <select
+                      value={ccSwitchTarget}
+                      onChange={(event) => {
+                        setCcSwitchTarget(event.target.value);
+                        setCcSwitchFeedback("");
+                      }}
+                    >
+                      {ccSwitchTargetsForProtocol(ccSwitchProfile.protocol).map((target) => (
+                        <option value={target.value} key={target.value}>{target.label}</option>
+                      ))}
+                    </select>
+                    <small>{ccSwitchTargetsForProtocol(ccSwitchProfile.protocol).find((target) => target.value === ccSwitchTarget)?.help}</small>
+                  </label>
+                  <label>
+                    本机临时 API Key
+                    <input
+                      type="password"
+                      value={ccSwitchApiKey}
+                      onChange={(event) => {
+                        setCcSwitchApiKey(event.target.value);
+                        setCcSwitchFeedback("");
+                      }}
+                      placeholder="重新粘贴给 CC Switch 使用的网关 Key"
+                      autoComplete="off"
+                      spellCheck="false"
+                    />
+                    <small>只保存在当前页面内存，不提交 DengTa 后端；关闭本面板即清除。</small>
+                  </label>
+                </div>
+                {ccSwitchProfile.protocol === "openai-chat" && (
+                  <p className="cc-switch-protocol-note">
+                    这个接口当前是 OpenAI Chat 协议，所以不能直接导入 Codex。若服务商同时支持 Responses，请在 DengTa 新建一个“OpenAI Responses”接口后再导入 Codex。
+                  </p>
                 )}
-              </article>
-            ))}
-            {profiles.length === 0 && <p className="provider-empty">还没有保存活动接口。请在上方填写并保存一个供应商配置，之后新聊天会使用它。</p>}
-        </div>
-      </>
+                <div className="cc-switch-preview">
+                  <span><small>Base URL</small><strong>{ccSwitchProfile.base_url}</strong></span>
+                  <span><small>默认模型</small><strong>{ccSwitchProfile.default_model || "由服务商决定"}</strong></span>
+                </div>
+                {ccSwitchFeedback && <p className="provider-feedback" role="status">{ccSwitchFeedback}</p>}
+                <div className="provider-card-actions">
+                  <button type="button" className="primary-button" onClick={launchCcSwitch}>在本机打开 CC Switch</button>
+                  <button type="button" className="secondary-button" onClick={downloadCcSwitchBridge}>下载无密钥离线桥接文件</button>
+                  <button type="button" className="secondary-button" onClick={copyCcSwitchLink}>复制一次性导入链接</button>
+                </div>
+                <p className="cc-switch-security">
+                  不会读取 CC Switch 数据库、OAuth、Cookie、auth.json 或账号 Token。离线文件不含密钥；一次性链接包含密钥，只能自己使用。
+                </p>
+              </section>
+            )}
+          </article>
+        ))}
+        {profiles.length === 0 && <p className="provider-empty">还没有保存活动接口。请在上方填写并保存一个供应商配置，之后新聊天会使用它。</p>}
+      </div>
 
-      <details className="provider-tutorial">
-        <summary>零基础填写教程：New API、Sub2API、CPA 和普通模型 API</summary>
-        <div>
-          <h4>你最终只需要准备三样东西</h4>
-          <ol>
-            <li><strong>Base URL：</strong>例如服务商提供的 HTTPS API 根地址，常见结尾是 <code>/v1</code>。</li>
-            <li><strong>网关 API Key：</strong>由该服务商或你自己的网关生成，通常类似 <code>sk-...</code>。不要使用网页登录密码。</li>
-            <li><strong>模型名：</strong>先点“检查模型目录”，能读到列表就直接选择；读取不到时按服务商文档填写。</li>
-          </ol>
-          <h4>如果教程给你的是 auth.json、OAuth、Cookie 或账号 JSON</h4>
-          <ol>
-            <li>只在你自己拥有、信任的电脑或服务器上打开对应的 Sub2API、CPA 或 Cockpit 管理后台。</li>
-            <li>在那个工具内部使用“添加账号 / OpenAI OAuth / 导入 JSON”，只导入你拥有或获授权使用的账号。</li>
-            <li>让该工具生成一个对外 Base URL 和独立 API Key。若再套 New API，则在 New API 中生成给 DengTa 使用的令牌。</li>
-            <li>回到本页面，只粘贴最终 Base URL 和 API Key。原始登录凭据永远留在外部工具内。</li>
-          </ol>
-          <h4>本机地址为什么不能直接填</h4>
-          <p><code>127.0.0.1</code>、<code>localhost</code>、<code>192.168.x.x</code> 只代表你自己的电脑或局域网。DengTa 后端运行在 Render，无法访问这些地址。你需要把网关部署到自己的服务器，或使用你信任的 HTTPS 隧道，再填写公开 HTTPS 地址。</p>
-          <h4>协议怎么选</h4>
-          <p>普通 New API 或写着 OpenAI Compatible 的服务选择“OpenAI Chat 兼容接口”；明确写着 Responses、Codex provider 或 Sub2API Responses 的服务选择“OpenAI Responses”；Claude 与 Gemini 官方原生地址选择各自原生协议。</p>
-          <p>ChatGPT、Claude 或其他网页会员不等于官方 API 额度。是否允许通过第三方网关调用，取决于服务条款和你获得的授权；临时账号和不明来源凭据可能随时失效，建议在备注和到期时间里记录来源与有效期。</p>
-          <h4>怎么与 CC Switch 配合</h4>
-          <ol>
-            <li>先在 DengTa 保存一个最终可调用的 Base URL、API Key 和模型名。</li>
-            <li>在该接口卡片底部点击“交给 CC Switch”，重新粘贴一次网关 API Key。</li>
-            <li>电脑上操作时可直接打开 CC Switch；手机上操作时下载无密钥离线桥接文件，再把文件传到电脑。</li>
-            <li>CC Switch 会显示导入预览。确认 Base URL、模型和目标工具无误后再导入并测试。</li>
-          </ol>
-          <p>这里只使用 CC Switch 官方 <code>ccswitch://v1/import</code> 协议，不会直接写入 <code>cc-switch.db</code>。官方下载地址：<a href="https://github.com/farion1231/cc-switch/releases" target="_blank" rel="noreferrer">farion1231/cc-switch Releases</a>。</p>
+      <details className="provider-help">
+        <summary>填写说明 · 安全须知 · 迁移恢复 · 零基础教程</summary>
+        <div className="provider-help-body">
+          <div className="provider-safety-note" role="note">
+            <strong>只填网关输出，不填账号登录材料</strong>
+            <p>如果某个教程要求 auth.json、OAuth 凭据、卡密 JSON、Cookie 或账号 Token，请在你自己信任的 Sub2API / CPA / Cockpit 工具里完成登录或导入。DengTa 这里只接收最终的 Base URL、对外 API Key 和模型名。</p>
+          </div>
+          <div className="provider-recovery-note" role="note">
+            <strong>迁移后无法聊天？重新保存活动 GPT 密钥 / Chat unavailable after migration?</strong>
+            <p>
+              更换 Render 服务或后端加密密钥后，旧接口仍会显示在列表里，但原密文不能继续使用。无需删除接口：在对应卡片重新粘贴 API Key，确认「启用这个接口」，保存修改，检查模型目录，再设为下次聊天首选。
+            </p>
+            <small>
+              After a backend migration, re-enter the API key on the existing profile, enable and save it, check the model catalog, then make it the next-chat default.
+            </small>
+          </div>
+          <div className="provider-tutorial">
+            <h4>零基础填写教程：New API、Sub2API、CPA 和普通模型 API</h4>
+            <div>
+              <h4>你最终只需要准备三样东西</h4>
+              <ol>
+                <li><strong>Base URL：</strong>例如服务商提供的 HTTPS API 根地址，常见结尾是 <code>/v1</code>。</li>
+                <li><strong>网关 API Key：</strong>由该服务商或你自己的网关生成，通常类似 <code>sk-...</code>。不要使用网页登录密码。</li>
+                <li><strong>模型名：</strong>填好前两项后页面会自动读取；读取不到时按服务商文档填写。</li>
+              </ol>
+              <h4>如果教程给你的是 auth.json、OAuth、Cookie 或账号 JSON</h4>
+              <ol>
+                <li>只在你自己拥有、信任的电脑或服务器上打开对应的 Sub2API、CPA 或 Cockpit 管理后台。</li>
+                <li>在那个工具内部使用“添加账号 / OpenAI OAuth / 导入 JSON”，只导入你拥有或获授权使用的账号。</li>
+                <li>让该工具生成一个对外 Base URL 和独立 API Key。若再套 New API，则在 New API 中生成给 DengTa 使用的令牌。</li>
+                <li>回到本页面，只粘贴最终 Base URL 和 API Key。原始登录凭据永远留在外部工具内。</li>
+              </ol>
+              <h4>本机地址为什么不能直接填</h4>
+              <p><code>127.0.0.1</code>、<code>localhost</code>、<code>192.168.x.x</code> 只代表你自己的电脑或局域网。DengTa 后端运行在 Render，无法访问这些地址。你需要把网关部署到自己的服务器，或使用你信任的 HTTPS 隧道，再填写公开 HTTPS 地址。</p>
+              <h4>协议怎么选</h4>
+              <p>普通 New API 或写着 OpenAI Compatible 的服务选择“OpenAI Chat 兼容接口”；明确写着 Responses、Codex provider 或 Sub2API Responses 的服务选择“OpenAI Responses”；Claude 与 Gemini 官方原生地址选择各自原生协议。</p>
+              <p>ChatGPT、Claude 或其他网页会员不等于官方 API 额度。是否允许通过第三方网关调用，取决于服务条款和你获得的授权；临时账号和不明来源凭据可能随时失效，建议在备注和到期时间里记录来源与有效期。</p>
+              <h4>怎么与 CC Switch 配合</h4>
+              <ol>
+                <li>先在 DengTa 保存一个最终可调用的 Base URL、API Key 和模型名。</li>
+                <li>在该接口卡片底部的「更多操作」里点击“交给 CC Switch”，重新粘贴一次网关 API Key。</li>
+                <li>电脑上操作时可直接打开 CC Switch；手机上操作时下载无密钥离线桥接文件，再把文件传到电脑。</li>
+                <li>CC Switch 会显示导入预览。确认 Base URL、模型和目标工具无误后再导入并测试。</li>
+              </ol>
+              <p>这里只使用 CC Switch 官方 <code>ccswitch://v1/import</code> 协议，不会直接写入 <code>cc-switch.db</code>。官方下载地址：<a href="https://github.com/farion1231/cc-switch/releases" target="_blank" rel="noreferrer">farion1231/cc-switch Releases</a>。</p>
+            </div>
+          </div>
         </div>
       </details>
     </div>
