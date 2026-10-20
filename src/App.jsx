@@ -5455,10 +5455,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 item.id === localAssistantId
                   ? {
                       ...item,
-                      content: eventGenerationInProgress
+                      content: item.content || (eventGenerationInProgress
                         ? "这条消息已经保存，AI 仍在服务器处理中。"
-                        : eventErrorMessage,
-                      partialContent: temporaryReplyOnFailure(item, event),
+                        : eventErrorMessage),
+                      partialContent: temporaryReplyOnFailure(item, event) || item.content || "",
+                      errorMessage: eventErrorMessage,
                       isStreaming: false,
                       chatError: true,
                       monologueUserMessageId: completedUserMessageId,
@@ -5729,16 +5730,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             item.id === localAssistantId
               ? {
                   ...item,
-                  content:
-                    (generationStillInProgress
-                      ? "这条消息已经保存，AI 仍在服务器处理中。稍后可以直接检查进度。"
-                      : `${publicErrorMessage}\n\n${retryGuidance}`) ||
+                  content: item.content || (generationStillInProgress
+                    ? "这条消息已经保存，AI 仍在服务器处理中。稍后可以直接检查进度。"
+                    : `${publicErrorMessage}\n\n${retryGuidance}`) ||
                     "连接暂时中断了，请检查后端后再试一次。",
+                  partialContent: temporaryReplyOnFailure(item, error) || item.content || "",
+                  errorMessage: `${publicErrorMessage} ${retryGuidance}`,
                   isStreaming: false,
                   chatError: true,
                   monologueUserMessageId: completedUserMessageId,
                   error_code: error?.code || 'CHAT_REQUEST_FAILED',
-                  partialContent: temporaryReplyOnFailure(item, error),
                   error_location: error?.error_location || '',
                   error_log_id: error?.error_log_id || '',
                   error_source: error?.error_source || '',

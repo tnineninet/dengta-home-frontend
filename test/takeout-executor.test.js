@@ -84,6 +84,45 @@ try {
   });
   assert.deepEqual(orderInput, { shopName: '虚构店铺', product: '准确餐品', quantity: 2, maxAmount: 35, note: '少盐', scope: 'fictional-order-scope' });
   assert.equal(cartResult.ok, false); assert.equal(cartResult.code, 'takeout_quantity_unverified');
+  const constraintInputs = [];
+  for (const [modelBudget, expected] of [[undefined, 30], [60, 30], [20, 20]]) {
+    const constrained = await executeTakeoutCommand({ ...command, command: { ...command.command, budget_max: modelBudget } }, {
+      scope: 'fictional-constrained-order', client: async () => ({}), getConstraints: () => ({ budget_max: 30, note: '不要花生\n酱料分装' }),
+      plugin: { orderProduct: async input => { constraintInputs.push(input); return { status: 'manual_review' }; } },
+    });
+    assert.equal(constraintInputs.at(-1).maxAmount, expected, 'model omission or higher budget cannot erase the local limit');
+    assert.equal(constraintInputs.at(-1).note, '不要花生\n酱料分装', 'explicit local note must reach native unchanged');
+    assert.equal(constrained.code, 'takeout_manual_review_required');
+  }
+  const noteInput = [];
+  await executeTakeoutCommand({ ...command, command: { ...command.command, note: '少盐' } }, {
+    client: async () => ({}), getConstraints: () => ({ budget_max: null, note: '不要花生' }),
+    plugin: { orderProduct: async input => { noteInput.push(input); return { added: true }; } },
+  });
+  assert.equal(noteInput[0].note, '不要花生；少盐', 'model additions cannot replace the user note');
+  let invalidConstraintOpens = 0;
+  for (const action of ['search', 'menu', 'order']) {
+    for (const constraints of [{ budget_max: -1 }, { budget_max: Infinity }, { budget_max: 100001 }, { budget_max: true }, { note: {} }, { note: '忌'.repeat(501) }, [], 'invalid']) {
+      const constrained = await executeTakeoutCommand({ ...command, command: { action, requirement: '虚构餐品' } }, {
+        client: async () => ({}), getConstraints: () => constraints,
+        plugin: { searchShops: async () => { invalidConstraintOpens++; return {}; }, inspectMenu: async () => { invalidConstraintOpens++; return {}; }, orderProduct: async () => { invalidConstraintOpens++; return {}; } },
+      });
+      assert.equal(constrained.code, 'takeout_constraints_invalid'); assert.equal(constrained.status, 'manual_review');
+      assert.equal(constrained.receipt_synced, true);
+    }
+  }
+  for (const getter of [() => { throw Error('fictional private note'); }, async () => ({ budget_max: 30 })]) {
+    const constrained = await executeTakeoutCommand(command, { client: async () => ({}), getConstraints: getter,
+      plugin: { orderProduct: async () => { invalidConstraintOpens++; return {}; } },
+    });
+    assert.equal(constrained.code, 'takeout_constraints_invalid'); assert.ok(!JSON.stringify(constrained).includes('fictional private note'));
+  }
+  const longMerged = await executeTakeoutCommand({ ...command, command: { ...command.command, note: '模'.repeat(300) } }, {
+    client: async () => ({}), getConstraints: () => ({ note: '用'.repeat(300) }),
+    plugin: { orderProduct: async () => { invalidConstraintOpens++; return {}; } },
+  });
+  assert.equal(longMerged.code, 'takeout_constraints_invalid', 'combined notes stop rather than truncate user restrictions');
+  assert.equal(invalidConstraintOpens, 0);
   const unverified = await executeTakeoutCommand(command, { client: async () => ({}), plugin: { orderProduct: async () => ({ status: 'ready_for_payment', items: 1, total: null, paymentSubmitted: false }) } });
   assert.equal(unverified.ok, false); assert.equal(unverified.code, 'takeout_cart_unverified');
   const candidates = await executeTakeoutCommand(command, { client: async () => ({}), plugin: { orderProduct: async () => ({ status: 'product_not_found', candidates: ['虚构备选菜'] }) } });
@@ -93,9 +132,14 @@ try {
   assert.equal(verified.ok, true); assert.equal(verified.status, 'ready_for_payment');
   const manual = await executeTakeoutCommand(command, { client: async () => ({}), plugin: { orderProduct: async () => ({ status: 'manual_review' }) } });
   assert.equal(manual.ok, false); assert.equal(manual.code, 'takeout_manual_review_required');
-  let active = true; const ack = deferred();
-  const stoppedExecution = executeTakeoutCommand(command, { client: () => ack.promise, plugin, shouldContinue: () => active });
-  active = false; ack.resolve({}); assert.equal(await stoppedExecution, null); assert.equal(opens, 1);
+  let active = true, stoppedGetterReads = 0; const ack = deferred();
+  const stoppedExecution = executeTakeoutCommand(command, { client: () => ack.promise, plugin, shouldContinue: () => active, getConstraints: () => { stoppedGetterReads++; return { budget_max: 30 }; } });
+  active = false; ack.resolve({}); assert.equal(await stoppedExecution, null); assert.equal(opens, 1); assert.equal(stoppedGetterReads, 0);
+  active = true;
+  assert.equal(await executeTakeoutCommand(command, { client: async () => ({}), plugin, shouldContinue: () => active,
+    onStart: () => { active = false; }, getConstraints: () => { stoppedGetterReads++; return { budget_max: 30 }; },
+  }), null);
+  assert.equal(stoppedGetterReads, 0, 'scope cancellation during start cannot read the prior getter');
 
   const capacitor = { isNativePlatform: () => true, isPluginAvailable: () => true };
   const pending = deferred(); let polls = 0, done = 0, signal;

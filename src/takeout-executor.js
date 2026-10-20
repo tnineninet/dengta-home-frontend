@@ -169,7 +169,7 @@ export async function stopTakeoutAutomation({ scope = "", plugin = OrderBrowser,
 
 export async function executeTakeoutCommand(
   command,
-  { client = apiRequest, plugin = OrderBrowser, onProgress = () => {}, onStart = () => {}, shouldContinue = () => true, scope = "" } = {}
+  { client = apiRequest, plugin = OrderBrowser, onProgress = () => {}, onStart = () => {}, shouldContinue = () => true, scope = "", getConstraints = () => null } = {}
 ) {
   const id = command?.id;
   const payload = command?.command || {};
@@ -185,6 +185,22 @@ export async function executeTakeoutCommand(
   }
   if (!shouldContinue()) return null;
   onStart(command);
+  if (!shouldContinue()) return null;
+  const invalidConstraints = () => ({
+    id,
+    ok: false,
+    code: "takeout_constraints_invalid",
+    status: "manual_review",
+    receipt_synced: true,
+    message: "本地点餐限制格式无效，已停止自动操作，请核对预算和备注后再试。",
+  });
+  let constraints = null;
+  try { constraints = getConstraints(); } catch { return invalidConstraints(); }
+  if (constraints && (typeof constraints !== "object" || Array.isArray(constraints) || typeof constraints.then === "function")) return invalidConstraints();
+  if (constraints?.budget_max !== undefined && constraints?.budget_max !== null) {
+    if (typeof constraints.budget_max !== "number" || !Number.isFinite(constraints.budget_max) || constraints.budget_max <= 0 || constraints.budget_max > 100000) return invalidConstraints();
+  }
+  if (constraints?.note !== undefined && (typeof constraints.note !== "string" || constraints.note.length > 500)) return invalidConstraints();
   const report = (text) => {
     if (!shouldContinue()) return;
     onProgress(text);
@@ -212,12 +228,23 @@ export async function executeTakeoutCommand(
         products: Array.isArray(value?.products) ? value.products : [] };
     } else {
       report("正在打开外卖页面选品加购…");
+      const localBudget = Number(constraints?.budget_max);
+      const modelBudget = Number(payload.budget_max);
+      const maxAmount = Number.isFinite(localBudget) && localBudget > 0
+        ? (Number.isFinite(modelBudget) && modelBudget > 0 ? Math.min(modelBudget, localBudget) : localBudget)
+        : (Number.isFinite(modelBudget) && modelBudget > 0 ? modelBudget : undefined);
+      const localNote = String(constraints?.note || "").trim();
+      const modelNote = String(payload.note || "").trim();
+      const mergedNote = localNote
+        ? (modelNote ? localNote + "；" + modelNote : localNote)
+        : modelNote;
+      if (mergedNote.length > 500) return invalidConstraints();
       const value = await callAccountBrowser(plugin, "orderProduct", {
         shopName: payload.shop_name || payload.requirement,
         product: payload.product_name || payload.requirement,
         quantity: Number(payload.quantity) || 1,
-        maxAmount: Number(payload.budget_max) > 0 ? Number(payload.budget_max) : undefined,
-        note: String(payload.note || ""),
+        maxAmount,
+        note: mergedNote,
         scope,
       });
       result = {

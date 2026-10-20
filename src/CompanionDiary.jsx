@@ -188,8 +188,20 @@ export default function CompanionDiary({
             </button>
           )}
         </div>
-      ) : loading && entries.length === 0 && !error ? (
-        <div className="diary-empty">正在读取我们的记忆手记…</div>
+) : loading && entries.length === 0 && !error ? (
+        <div className="diary-skeleton-list" aria-busy="true" aria-label="正在读取记忆手记">
+          {[0, 1, 2].map((index) => (
+            <article className="diary-entry diary-skeleton" key={"diary-skeleton-" + index} aria-hidden="true">
+              <div className="diary-skeleton-index" />
+              <div className="diary-skeleton-body">
+                <span className="diary-skeleton-line is-title" />
+                <span className="diary-skeleton-line is-meta" />
+                <span className="diary-skeleton-line is-wide" />
+                <span className="diary-skeleton-line is-short" />
+              </div>
+            </article>
+          ))}
+        </div>
       ) : entries.length === 0 && !error ? (
         <div className="diary-empty">
           <h3>第一页还留着空白</h3>

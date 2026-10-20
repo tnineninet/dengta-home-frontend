@@ -288,11 +288,11 @@ function ChatMessage({
           )}
           {item.chatError && item.partialContent && (
             <div className="message-content" role="note">
-              <small>回复中断 · 以下片段仅临时显示，尚未确认保存</small>
+              <small>回复中断 · 以下是本轮已经生成并保留的片段</small>
               <p>{item.partialContent}</p>
             </div>
           )}
-          {item.content && (
+          {item.content && !(item.chatError && item.partialContent) && (
             <div className={`message-content${isUser ? "" : " chat-sentences"}`}>
               {isUser
                 ? renderChatMarkdown(displayContent.content)
