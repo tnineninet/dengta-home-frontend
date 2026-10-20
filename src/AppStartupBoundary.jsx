@@ -1,5 +1,6 @@
-import { Component, useState } from "react";
+import { Component, useEffect, useState } from "react";
 import {
+  clearStartupCachesAndReload,
   clearUiPreferencesAndReload,
   reloadApplication,
   startupDiagnosticCode,
@@ -7,11 +8,22 @@ import {
 import { restartDengTa } from "./app-runtime.js";
 
 export function AppLoadingScreen() {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setSlow(true), 12_000);
+    return () => clearTimeout(timer);
+  }, []);
   return (
-    <main className="app-startup-page" aria-busy="true" aria-live="polite">
+    <main className="app-startup-page" aria-busy={slow ? "false" : "true"} aria-live="polite">
       <div className="app-startup-mark" aria-hidden="true">灯</div>
       <strong>正在点亮你的家</strong>
-      <span>载入聊天、记忆与伴侣空间…</span>
+      <span>{slow ? "启动时间比平时更长，可以重新载入或清理启动缓存。" : "载入聊天、记忆与伴侣空间…"}</span>
+      {slow && (
+        <div className="app-startup-actions">
+          <button type="button" onClick={reloadApplication}>重新载入</button>
+          <button type="button" onClick={() => void clearStartupCachesAndReload()}>清理启动缓存并重载</button>
+        </div>
+      )}
     </main>
   );
 }

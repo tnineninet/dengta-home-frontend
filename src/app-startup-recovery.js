@@ -61,3 +61,19 @@ export function installChunkRecovery() {
 export function markAppLoaded() {
   globalThis.sessionStorage?.removeItem(CHUNK_RECOVERY_KEY);
 }
+
+export async function clearStartupCachesAndReload() {
+  try {
+    if (typeof navigator !== "undefined" && navigator.serviceWorker) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((registration) => registration.unregister()));
+    }
+    if (typeof caches !== "undefined") {
+      const keys = await caches.keys();
+      await Promise.all(keys.map((key) => caches.delete(key)));
+    }
+  } catch {
+    // 清缓存失败仍然尝试重新载入。
+  }
+  reloadApplication();
+}
