@@ -63,7 +63,7 @@ assert.equal(readThemePreferences(storage, accountB).cardOpacity, 0.24);
 
 assert.equal(readStoredChatSkinPreferences(storage, accountA).skin, "taotao-cream");
 assert.equal(storage.getItem(CHAT_SKIN_STORAGE_KEY), null);
-assert.equal(readStoredChatSkinPreferences(storage, accountB).skin, "classic-glass");
+assert.equal(readStoredChatSkinPreferences(storage, accountB).skin, "taotao-cream");
 writeStoredChatSkinPreferences(
   { skin: "classic-glass", reduceMotion: true },
   storage,

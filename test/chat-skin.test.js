@@ -7,7 +7,45 @@ import {
   chatSkinPreferencesApiPayload,
   getMessageSkinPresentation,
   normalizeChatSkinPreferences,
+  readStoredChatSkinPreferences,
+  writeStoredChatSkinPreferences,
 } from "../src/chat-skin.js";
+
+function memoryStorage() {
+  const values = new Map();
+  return {
+    getItem: (key) => (values.has(key) ? values.get(key) : null),
+    setItem: (key, value) => values.set(key, String(value)),
+    removeItem: (key) => values.delete(key),
+  };
+}
+
+test("new accounts default to the cream skin while saved choices stay untouched", () => {
+  assert.equal(DEFAULT_CHAT_SKIN_PREFERENCES.skin, "taotao-cream");
+  assert.equal(normalizeChatSkinPreferences({}).skin, "taotao-cream");
+  assert.equal(
+    normalizeChatSkinPreferences({ skin: "classic-glass" }).skin,
+    "classic-glass",
+    "an explicitly saved classic-glass preference must not be replaced by the default",
+  );
+
+  const storage = memoryStorage();
+  // 新账号没有本地记录：首屏就应按老账号同款奶油皮肤渲染，而不是先闪 classic-glass。
+  assert.equal(
+    readStoredChatSkinPreferences(storage, "new-account").skin,
+    "taotao-cream",
+  );
+  // 老账号已保存 classic-glass 时，新默认值不得覆盖它。
+  writeStoredChatSkinPreferences({ skin: "classic-glass" }, storage, "old-account");
+  assert.equal(
+    readStoredChatSkinPreferences(storage, "old-account").skin,
+    "classic-glass",
+  );
+  assert.equal(
+    readStoredChatSkinPreferences(storage, "new-account").skin,
+    "taotao-cream",
+  );
+});
 
 test("chat skin preferences keep only supported user-facing choices", () => {
   assert.deepEqual(

@@ -1,5 +1,7 @@
+// 新账号默认使用与老账号一致的奶油小猫皮肤；账号已保存的皮肤由
+// /api/v2/chat-skin/preferences 记录决定，不会被这个默认值覆盖。
 export const DEFAULT_CHAT_SKIN_PREFERENCES = Object.freeze({
-  skin: "classic-glass",
+  skin: "taotao-cream",
   ornamentActivity: "natural",
   dynamicComposerHint: true,
   reduceMotion: false,
