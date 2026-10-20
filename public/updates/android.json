@@ -3,15 +3,15 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 168,
-    "version": "2.12.10",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.10/DengTa-2.12.10-168.apk",
-    "sha256": "8a19595c65ee8f4463610c705b4f8e9a55da401e629915354d82f449cdba0f48",
-    "size_bytes": 41234970,
-    "published_at": "2026-10-20T04:47:58Z",
+    "version_code": 169,
+    "version": "2.12.11",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.11/DengTa-2.12.11-169.apk",
+    "sha256": "11b52c48de225c34704078d7d3e17a540eade574fa56c985f97564e99ae53853",
+    "size_bytes": 41447743,
+    "published_at": "2026-10-20T05:03:05Z",
     "notes": [
-      "非聊天页底部为全局音乐 dock 预留 150px，地图/日记/设置内容可滚到 dock 上方。",
-      "错误日志导出 JSON、partial 正文保留、日记骨架继续保留。"
+      "藏宝地图加载改为 3 张雷达/信封骨架卡片，附无障碍加载文案。",
+      "非聊天页 dock 底部安全区、日志 JSON 导出、partial 正文保留继续保留。"
     ]
   }
 }
