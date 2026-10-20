@@ -3,16 +3,16 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 159,
-    "version": "2.12.1",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.1/DengTa-2.12.1-159.apk",
-    "sha256": "89c4d6d438601ac597cbff6146035f7c72724365264e4d932a3b6e7a8d91ce39",
-    "size_bytes": 41232518,
-    "published_at": "2026-10-20T01:43:41Z",
+    "version_code": 160,
+    "version": "2.12.2",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.2/DengTa-2.12.2-160.apk",
+    "sha256": "1bb66cf6ebeb940c037f8ab728523e33cdd320b009379fe431e6a910b8f87e4c",
+    "size_bytes": 41232842,
+    "published_at": "2026-10-20T01:57:30Z",
     "notes": [
-      "动态页后台预取：聊天页空闲 2.5 秒后预取动态并写入本机缓存。",
-      "第一次点开动态也优先显示缓存内容，再后台刷新。",
-      "队列恢复、续播、过期音频刷新、歌词点击继续保留。"
+      "启动加载超过 12 秒会出现急救按钮：重新载入、清理启动缓存并重载。",
+      "不自动清用户聊天/记忆/个性化数据；只清 Service Worker 与缓存。",
+      "其余听歌、续播、动态缓存继续保留。"
     ]
   }
 }
