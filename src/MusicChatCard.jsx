@@ -28,6 +28,8 @@ export default function MusicChatCard({ music, onPlaybackChange, onAudioRefresh 
   const lyricsListRef = useRef(null);
   const audioUrl = resolvedAudioUrl;
   const canPlay = /^https:\/\//i.test(audioUrl);
+  const positionKey = music?.id ? "dengta_music_position_v1:" + music.id : "";
+  const lastPositionSaveRef = useRef(0);
   const activeIndex = activeLyricIndex(lyrics, position);
 
   useEffect(() => {
@@ -83,15 +85,41 @@ export default function MusicChatCard({ music, onPlaybackChange, onAudioRefresh 
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return undefined;
-    const onTime = () => setPosition(audio.currentTime || 0);
-    const onDuration = () => setDuration(Number.isFinite(audio.duration) ? audio.duration : Number(music?.duration_seconds) || 0);
+    const onTime = () => {
+      const time = audio.currentTime || 0;
+      setPosition(time);
+      if (positionKey && time > 3 && Math.abs(time - lastPositionSaveRef.current) >= 2) {
+        lastPositionSaveRef.current = time;
+        try { globalThis.localStorage?.setItem(positionKey, String(Math.floor(time))); } catch { /* 续播保存失败不影响播放 */ }
+      }
+    };
+    const onDuration = () => {
+      const resolved = Number.isFinite(audio.duration) ? audio.duration : Number(music?.duration_seconds) || 0;
+      setDuration(resolved);
+      if (positionKey && audio.currentTime < 1 && resolved > 4) {
+        try {
+          const saved = Number(globalThis.localStorage?.getItem(positionKey));
+          if (Number.isFinite(saved) && saved > 3 && saved < resolved - 2) {
+            audio.currentTime = saved;
+            setPosition(saved);
+          }
+        } catch { /* 忽略续播读取失败 */ }
+      }
+    };
     const onPlay = () => {
       setPlaying(true);
       playbackChangeRef.current?.(true);
       eventBus.dispatchEvent?.(new CustomEvent(PLAY_EVENT, { detail: { id: music?.id } }));
     };
     const onPause = () => { setPlaying(false); playbackChangeRef.current?.(false); };
-    const onEnded = () => { setPlaying(false); setPosition(0); playbackChangeRef.current?.(false); };
+    const onEnded = () => {
+      setPlaying(false);
+      setPosition(0);
+      if (positionKey) {
+        try { globalThis.localStorage?.removeItem(positionKey); } catch { /* 忽略 */ }
+      }
+      playbackChangeRef.current?.(false);
+    };
     const onError = () => { setPlaying(false); playbackChangeRef.current?.(false); setError("这首暂时无法在内置播放器加载，可能受版权或链接有效期限制。"); };
     audio.addEventListener("timeupdate", onTime);
     audio.addEventListener("loadedmetadata", onDuration);
@@ -108,7 +136,7 @@ export default function MusicChatCard({ music, onPlaybackChange, onAudioRefresh 
       audio.removeEventListener("error", onError);
       audio.pause();
     };
-  }, [music?.id, music?.duration_seconds, audioUrl]);
+  }, [music?.id, music?.duration_seconds, audioUrl, positionKey]);
 
   useEffect(() => {
     const onOtherPlay = (event) => {
