@@ -3,16 +3,16 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 154,
-    "version": "2.11.6",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.11.6/DengTa-2.11.6-154.apk",
-    "sha256": "738743c1be4175e4aa61a4ef84bb4d1462cf9cf299c604d193551e968bcc1ef3",
-    "size_bytes": 41232318,
-    "published_at": "2026-10-20T00:42:33Z",
+    "version_code": 155,
+    "version": "2.11.7",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.11.7/DengTa-2.11.7-155.apk",
+    "sha256": "98b1afd85f0ab4eb1abdfea9db618b3a3a11f32dd2f5e48269968d1bc47e1a3b",
+    "size_bytes": 41232474,
+    "published_at": "2026-10-20T00:52:49Z",
     "notes": [
-      "音频过期重新获取后，新的 URL 同步写回持久化队列。",
-      "下次重开不再显示过期地址，减少重复解析。",
-      "队列持久化、歌词点击、下一首、动态缓存继续保留。"
+      "听歌记住上次位置：重开或切回队列时从上次秒数继续。",
+      "播放结束后清除该歌曲续播位置。",
+      "过期音频刷新写回队列、歌词点击、下一首、动态缓存继续保留。"
     ]
   }
 }
