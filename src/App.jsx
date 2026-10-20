@@ -1062,10 +1062,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const privateMediaScope = JSON.stringify([accountStorageScope, companionScope]);
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);
-  const initialMusicDockRef = useRef(null);
-  if (initialMusicDockRef.current === null) initialMusicDockRef.current = readMusicDockQueue(privateMediaScope);
   const [earlyMusicCard, setEarlyMusicCard] = useState(() => {
-    const saved = initialMusicDockRef.current;
+    const saved = readMusicDockQueue(privateMediaScope);
     return saved.queue[saved.index] || null;
   });
   const [messages, setMessages] = useState([]);
@@ -1080,8 +1078,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
     return list.reverse();
   }, [messages]);
-  const [musicDockQueue, setMusicDockQueue] = useState(() => initialMusicDockRef.current.queue);
-  const [musicDockIndex, setMusicDockIndex] = useState(() => initialMusicDockRef.current.index);
+  const [musicDockQueue, setMusicDockQueue] = useState(() => readMusicDockQueue(privateMediaScope).queue);
+  const [musicDockIndex, setMusicDockIndex] = useState(() => readMusicDockQueue(privateMediaScope).index);
   const musicQueueScopeRef = useRef(privateMediaScope);
   useEffect(() => {
     if (musicQueueScopeRef.current !== privateMediaScope) return;
