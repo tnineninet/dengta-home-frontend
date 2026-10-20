@@ -44,6 +44,7 @@ export function updateTakeoutTask(previous, { scope, type, command, outcome, mes
   const successful = outcome.ok === true && synced;
   const paymentReady = successful && outcome.status === "ready_for_payment" &&
     Number.isFinite(outcome.total) && outcome.total > 0 && outcome.paymentSubmitted === false &&
+    (current.budget === null || current.budget === undefined || Number.isFinite(current.budget) && outcome.total <= current.budget) &&
     Array.isArray(outcome.lines) && outcome.lines.length > 0 &&
     outcome.lines.every(line => typeof line.name === "string" && line.name.trim() && Number.isInteger(line.quantity) && line.quantity > 0);
   if (!successful && outcome.retryable === true && synced) {

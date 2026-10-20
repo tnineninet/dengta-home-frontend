@@ -89,7 +89,7 @@ try {
     await act(async () => callbacks.forEach(callback => callback()));
   };
   const unmount = async () => { await act(async () => tree.unmount()); tree = null; };
-  const refreshButton = () => tree.root.findByProps({ className: "error-logs-actions" }).findByType("button");
+  const refreshButton = () => tree.root.findByProps({ className: "error-logs-actions" }).findAllByType("button")[0];
   const reject = async (index, status = 401) => {
     await act(async () => fixture.calls[index].reject(Object.assign(new Error(privateBody), {
       code: "api_request_failed", status,

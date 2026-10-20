@@ -102,9 +102,9 @@ test("real App pause completion cannot overwrite a new run or a returned A scope
   for (const switchedAway of [false, true]) {
     const stop = deferred();
     let state = { scope, runId: "old-run", status: "working", executing: true, message: "旧任务正在运行" };
-    const owner = { scope }, takeoutLifetimeRef = { current: owner };
+    const owner = { scope }, takeoutLifetimeRef = { current: owner }, takeoutConstraintsRef = { current: null };
     const bindings = {
-      takeoutLifetimeRef, takeoutTask: state, privateMediaScope: scope,
+      takeoutLifetimeRef, takeoutConstraintsRef, takeoutTask: state, privateMediaScope: scope,
       setTakeoutTask: update => { state = update(state); },
       abortChatRequest() {}, chatRequestRef: { current: null },
       stopTakeoutAutomation: () => stop.promise,

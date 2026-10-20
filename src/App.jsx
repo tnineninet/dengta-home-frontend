@@ -480,6 +480,7 @@ function ErrorLogsPanel({ accountScope, companionScope, onOpenSettings }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [expandedId, setExpandedId] = useState(null);
+  const [copyState, setCopyState] = useState("");
   const requestRevision = useRef(0);
   const pendingLogRequest = useRef(null);
 
@@ -515,6 +516,29 @@ function ErrorLogsPanel({ accountScope, companionScope, onOpenSettings }) {
     return () => { window.clearTimeout(timer); revision.current++; pending.current?.abort(); pending.current = null; };
   }, [refresh]);
 
+  async function copyLogs() {
+    const text = logs
+      .map((log) => [log.created_at, log.method, log.path, log.error_code, log.error_location].filter(Boolean).join(" | "))
+      .join("\n");
+    if (!text) return;
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+      else {
+        const area = document.createElement("textarea");
+        area.value = text;
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand("copy");
+        area.remove();
+      }
+      setCopyState("已复制技术摘要");
+    } catch {
+      setCopyState("复制失败，请长按列表手动选择");
+    }
+  }
+
   function formatTime(value) {
     if (!value) return "";
     const date = new Date(value);
@@ -533,6 +557,9 @@ function ErrorLogsPanel({ accountScope, companionScope, onOpenSettings }) {
       <div className="error-logs-actions">
         <button type="button" onClick={() => void refresh()} disabled={loading}>
           {loading ? "刷新中…" : "刷新"}
+        </button>
+        <button type="button" onClick={() => void copyLogs()} disabled={loading || logs.length === 0}>
+          {copyState || "复制技术摘要"}
         </button>
       </div>
       {loadError && <div className="error-logs-load-error" role="alert"><OperationErrorHelp diagnostic={loadError} onOpenSettings={onOpenSettings} /><small>读取错误代码：{describeOperationError(loadError).code}</small></div>}
@@ -1152,10 +1179,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const takeoutLifetime = useMemo(() => ({ scope: privateMediaScope }), [privateMediaScope]);
   const takeoutLifetimeRef = useRef(takeoutLifetime);
   takeoutLifetimeRef.current = takeoutLifetime;
+  const takeoutConstraintsRef = useRef(null);
   const closeTakeoutAssistant = useCallback(() => setIsTakeoutOpen(false), []);
   useEffect(() => {
     setIsTakeoutOpen(false);
     setTakeoutTask(null);
+    takeoutConstraintsRef.current = null;
   }, [privateMediaScope]);
   const [activityReturn, setActivityReturn] = useState(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -5039,8 +5068,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     // 点餐意图在聊天侧先处理：像 Kimi 一样浮出外卖面板，并唤醒本机执行器。
     // 放在发送准备之前，避免把 UI 副作用混进可取消的设置/模型等待。
     if (/外卖|闪购|饿了么|点餐/.test(text)) {
-      window.dispatchEvent(new CustomEvent("dengta:takeout-wake", { detail: { scope: diagnosticScopeKey(accountStorageScope, companionScope) } }));
       const orderingIntent = /点外卖|叫外卖|点个外卖|帮我点|帮我叫|外卖点单/.test(text);
+      if (orderingIntent && !options.takeoutConstraints && takeoutTask?.scope === privateMediaScope && takeoutTask.status === "working") {
+        setIsTakeoutOpen(true);
+        setNotice("外卖任务还在处理中。请先查看进度或暂停并核对购物车，再开始新的点餐。");
+        return;
+      }
+      if (orderingIntent && !options.takeoutConstraints) takeoutConstraintsRef.current = null;
+      window.dispatchEvent(new CustomEvent("dengta:takeout-wake", { detail: { scope: diagnosticScopeKey(accountStorageScope, companionScope) } }));
       if (orderingIntent && !preserveComposer && !isTakeoutOpen && takeoutPluginAvailable() && !takeoutTask?.executing && accountStorageScope && companionScope) {
         setTakeoutActivityRequest(Object.freeze({ kind: "takeout", id: "composer", query: String(text).slice(0, 120), videos: [], pageUrl: "", accountScope: accountStorageScope, companionScope }));
         changeView("takeout");
@@ -6154,9 +6189,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     setTakeoutLoginFeedback({ status: "idle", message: "" });
     return startTakeoutRunner({
       scope: diagnosticScopeKey(accountStorageScope, companionScope),
+      getConstraints: () => {
+        const current = takeoutConstraintsRef.current;
+        return current?.owner === takeoutLifetimeRef.current && current.scope === privateMediaScope
+          ? Object.freeze({ budget_max: current.budget, note: current.note }) : null;
+      },
       onCommandStart: command => setTakeoutTask(current => updateTakeoutTask(current, { scope: privateMediaScope, type: "start", command })),
       onProgress: (command, message) => setTakeoutTask(current => updateTakeoutTask(current, { scope: privateMediaScope, type: "progress", command, message })),
       onCommandDone: (command, outcome) => {
+        if (command?.command?.action === "order" || (!outcome.ok && !outcome.retryable)) {
+          if (takeoutConstraintsRef.current?.owner === takeoutLifetimeRef.current) takeoutConstraintsRef.current = null;
+        }
         setTakeoutTask(current => updateTakeoutTask(current, { scope: privateMediaScope, type: "done", command, outcome }));
         setTakeoutLoginFeedback({
           scope: diagnosticScopeKey(accountStorageScope, companionScope),
@@ -6178,8 +6221,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     const runId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const scope = privateMediaScope;
     const owner = takeoutLifetimeRef.current;
-    setTakeoutTask({ scope, runId, status: "working", executing: false, completed: [], message: "正在把你的口味告诉 AI", query: request.query });
-    void sendMessage({ text: request.text, attachments: [], messageReference: {}, turnContext: "", preserveComposer: true }).finally(() => {
+    takeoutConstraintsRef.current = Object.freeze({ scope, owner, runId, budget: request.budget, note: request.note });
+    setTakeoutTask({ scope, runId, status: "working", executing: false, completed: [], message: "正在把你的口味告诉 AI", query: request.query, budget: request.budget, note: request.note });
+    void sendMessage({ text: request.text, attachments: [], messageReference: {}, turnContext: "", preserveComposer: true, takeoutConstraints: { runId } }).finally(() => {
       if (takeoutLifetimeRef.current !== owner || settingsSaveScope(authSession.getSnapshot()) !== scope || !componentMountedRef.current) return;
       setTakeoutTask(current => current?.runId === runId && current.status === "working" && !current.executing
         ? { ...current, status: "manual_review", message: current.commandId ? "选餐进度已保留。请查看聊天回复或平台页面，再决定是否继续。" : "还没有收到手机执行回执，请检查聊天回复、登录与网络后再试。" }
@@ -6192,6 +6236,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     const owner = takeoutLifetimeRef.current;
     const targetKey = takeoutTask?.runId || takeoutTask?.commandId;
     if (!targetKey) return;
+    if (takeoutConstraintsRef.current?.owner === owner) takeoutConstraintsRef.current = null;
     const ownsTask = current => current?.scope === privateMediaScope && (current.runId || current.commandId) === targetKey;
     setTakeoutTask(current => ownsTask(current) ? { ...current, pausedByUser: true, executing: false, status: "manual_review", message: "正在停止自动操作，请先核对购物车。" } : current);
     abortChatRequest(chatRequestRef, "user-cancel");
