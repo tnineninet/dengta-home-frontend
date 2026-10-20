@@ -171,7 +171,13 @@
 }
 
 :root[data-dengta-appearance="night"] .connection-recovery-restart {
-  color: #ffe9c9;
+  color: #ffffff;
+}
+
+:root[data-dengta-appearance="night"] .notification-feature-panel p,
+:root[data-dengta-appearance="night"] .notification-feature-panel small,
+:root[data-dengta-appearance="night"] .fun-achievements-wrap > small {
+  color: #c7c7cc;
 }
 
 /* 夜间成就页：卡片标题与说明仍沿用浅色主题深灰。 */
