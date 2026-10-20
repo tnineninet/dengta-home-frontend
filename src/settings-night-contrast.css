@@ -173,3 +173,39 @@
 :root[data-dengta-appearance="night"] .connection-recovery-restart {
   color: #ffe9c9;
 }
+
+/* 夜间成就页：卡片标题与说明仍沿用浅色主题深灰。 */
+:root[data-dengta-appearance="night"] .fun-achievement-card {
+  border-color: rgb(255 255 255 / 0.12);
+  color: #f5f5f7;
+  background: rgb(44 44 46 / 0.55);
+}
+
+:root[data-dengta-appearance="night"] .fun-achievement-card:not(.is-unlocked) {
+  background: rgb(255 255 255 / 0.05);
+}
+
+:root[data-dengta-appearance="night"] .fun-achievement-card strong {
+  color: #f5f5f7;
+}
+
+:root[data-dengta-appearance="night"] .fun-achievement-card small {
+  color: #c7c7cc;
+}
+
+:root[data-dengta-appearance="night"] .fun-onboarding-button,
+:root[data-dengta-appearance="night"] .fun-labs-retry {
+  color: #0a84ff;
+}
+
+/* 夜间一起看：表单标签与提示仍用浅色主题的灰。 */
+:root[data-dengta-appearance="night"] .together-page .together-setup label,
+:root[data-dengta-appearance="night"] .together-page .together-heading small,
+:root[data-dengta-appearance="night"] .together-page .together-now span,
+:root[data-dengta-appearance="night"] .together-page .together-dialog header span,
+:root[data-dengta-appearance="night"] .together-page .together-progress small,
+:root[data-dengta-appearance="night"] .together-page .together-device-note,
+:root[data-dengta-appearance="night"] .together-page .together-feedback,
+:root[data-dengta-appearance="night"] .together-page .together-cadence {
+  color: #a1a1a6;
+}
