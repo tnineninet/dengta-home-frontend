@@ -254,7 +254,20 @@ export function SurpriseMapContent({ request, isCurrent, aiName = "伴侣", scop
       <div className="surprise-map-location-row"><span><LocateFixed size={14} aria-hidden="true" />{position ? `本次定位 · 精度约 ${Math.ceil(position.accuracy)} 米` : "定位仅在你点击时进行，不持续记录轨迹"}</span><button type="button" disabled={Boolean(busy)} onClick={() => void perform("locate", locate)}>{busy === "locate" ? "定位中…" : "定位附近"}</button></div>
       {feedback && !hasDialog && <p role="status" className="surprise-map-feedback">{feedback}</p>}
       <div className="surprise-map-list" aria-busy={feed.status === "loading" || feed.status === "more"}>
-        {feed.status === "loading" && <div className="surprise-map-state" role="status"><Mail size={24} aria-hidden="true" /><p>正在整理{view === "collection" ? "收藏" : "沿途的来信"}…</p></div>}
+{feed.status === "loading" && (
+  <div className="surprise-map-skeleton-list" aria-busy="true" aria-label="正在整理沿途的来信">
+    <span className="surprise-map-sr-only">正在整理沿途的来信</span>
+    {[0, 1, 2].map(index => (
+      <article className="surprise-map-card surprise-map-skeleton" key={"map-skeleton-" + index} aria-hidden="true">
+        <span className="surprise-map-skeleton-badge" />
+        <span className="surprise-map-skeleton-line is-title" />
+        <span className="surprise-map-skeleton-line is-meta" />
+        <span className="surprise-map-skeleton-line is-wide" />
+        <span className="surprise-map-skeleton-line is-short" />
+      </article>
+    ))}
+  </div>
+)}
         {feed.error && <div className="surprise-map-state surprise-map-state-error" role="alert"><p>{feed.error}</p>{items.length > 0 && <p>下面保留的是上次加载的来信。</p>}<button type="button" onClick={() => void load(view)}>重新加载此页</button></div>}
         {feed.status !== "loading" && !feed.error && !items.length && <article className="surprise-map-envelope surprise-map-empty"><span className="surprise-map-letter-eyebrow"><Mail size={15} aria-hidden="true" />{view === "collection" ? "属于你的相遇" : "沿途有信"}</span><h3>{view === "private" ? "下一封惊喜，等你开始" : view === "public" ? "这片风景，还在等第一封信" : "拆过的信，会留在这里"}</h3><p>{view === "private" ? `让${aiName}写一句想对你说的话，藏在下次会经过的地方。` : view === "public" ? "私人来信不会自动公开。你也可以另写一份，送给偶然路过的人。" : "走近一处惊喜，打开来信后，它就会自动收入收藏。"}</p><button type="button" className="surprise-map-primary" onClick={() => { if (view === "collection") switchView("private"); else { setFeedback(""); setComposer(true); setStep(1); } }}>{view === "collection" ? "去找一封信" : "让伴侣留一封"}<ChevronRight size={17} aria-hidden="true" /></button></article>}
         {items.map(letter => <article className={`surprise-map-letter-card ${letter.unavailable ? "is-unavailable" : ""} ${letter.claimed ? "is-opened" : ""}`} key={`${letter.kind || view}:${letter.id}`}>

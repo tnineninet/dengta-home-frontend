@@ -233,3 +233,14 @@
 @keyframes surprise-envelope-in { from { opacity: 0; transform: translateY(18px) scale(.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes surprise-paper-in { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { .surprise-map-envelope-visual, .surprise-map-paper { animation: none; } }
+.surprise-map-skeleton-list { display: flex; flex-direction: column; gap: 10px; }
+.surprise-map-skeleton { pointer-events: none; }
+.surprise-map-skeleton-badge { display: block; width: 34px; height: 34px; border-radius: 12px; margin-bottom: 12px; background: rgba(255,255,255,.08); }
+.surprise-map-skeleton-line { display: block; border-radius: 999px; background: linear-gradient(100deg, rgba(255,255,255,.07) 20%, rgba(255,255,255,.18) 45%, rgba(255,255,255,.07) 70%); background-size: 240% 100%; animation: moment-skeleton-breathe 1.7s ease-in-out infinite; }
+.surprise-map-skeleton-line.is-title { width: 44%; height: 13px; }
+.surprise-map-skeleton-line.is-meta { width: 28%; height: 8px; margin-top: 8px; opacity: .7; }
+.surprise-map-skeleton-line.is-wide { width: 90%; height: 11px; margin-top: 15px; }
+.surprise-map-skeleton-line.is-short { width: 64%; height: 11px; margin-top: 7px; }
+@media (prefers-reduced-motion: reduce) { .surprise-map-skeleton-line { animation: none; } }
+
+.surprise-map-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
