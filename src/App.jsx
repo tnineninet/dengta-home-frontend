@@ -9111,9 +9111,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             <MemoryImportCard key={privateMediaScope} scopeKey={privateMediaScope} />
               </>
             )}
-            {settingsCategory === "logs" && (
-              <ErrorLogsPanel key={JSON.stringify([accountStorageScope, companionScope])} accountScope={accountStorageScope} companionScope={companionScope} onOpenSettings={setSettingsCategory} />
-            )}
 
             {settingsCategory === "devices" && (
               <>
@@ -9493,6 +9490,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             </div>
           </div>
           )}
+            {settingsCategory === "logs" && (
+              <ErrorLogsPanel key={JSON.stringify([accountStorageScope, companionScope])} accountScope={accountStorageScope} companionScope={companionScope} onOpenSettings={setSettingsCategory} />
+            )}
 
             {settingsCategory === "fun" && (
               <>
