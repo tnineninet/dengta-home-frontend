@@ -3,16 +3,16 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 161,
-    "version": "2.12.3",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.3/DengTa-2.12.3-161.apk",
-    "sha256": "8a97979ae20a0bc1b9ad2d38d01c67b684ea99073d00a9bee5ee7dad731d6010",
-    "size_bytes": 41232850,
-    "published_at": "2026-10-20T02:09:54Z",
+    "version_code": 162,
+    "version": "2.12.4",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.4/DengTa-2.12.4-162.apk",
+    "sha256": "fa75df3d247765ea36ba625dd01b79f3325c03df777823a39b2ff953710de51f",
+    "size_bytes": 41232934,
+    "published_at": "2026-10-20T02:22:20Z",
     "notes": [
-      "过期音频首次加载失败会自动重新解析一次，不再每个页面挂着错误。",
-      "自动失败后才显示“重新获取音频”按钮。",
-      "启动看门狗、队列恢复、续播、歌词点击继续保留。"
+      "移动端聊天顶部为悬浮胶囊预留 112px，避免压住消息。",
+      "音乐 dock 出现时，消息列表底部预留 166px，最后一条消息可以滚出遮挡。",
+      "过期音频自动刷新、续播、队列恢复、歌词点击继续保留。"
     ]
   }
 }
