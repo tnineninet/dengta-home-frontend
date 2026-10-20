@@ -148,7 +148,7 @@
 }
 
 /* 夜间聊天页与记忆页的次级文字：部分模块仍沿用浅色主题的深灰。 */
-:root[data-dengta-appearance="night"] .eyebrow {
+:root[data-dengta-appearance="night"] .memory-page .section-intro .eyebrow {
   color: #f0a9bd;
 }
 
