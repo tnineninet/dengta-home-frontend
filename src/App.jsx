@@ -96,6 +96,7 @@ import { useAppBackNavigation } from "./useAppBackNavigation.js";
 import { installBrowserAccountBinding } from "./browser-account-binding.js";
 import { copyDiscoveryLink, emptyDiscoveryState, refreshDiscovery, DISCOVERY_ERROR_FEEDBACK } from "./discovery-feed.js";
 import { readMomentsCache, writeMomentsCache } from "./moments-cache.js";
+import { readMusicDockQueue, writeMusicDockQueue } from "./music-queue-cache.js";
 import PersonalizationEditor from "./PersonalizationEditor.jsx";
 import { authSession } from "./auth-session.js";
 import { createScopedSettingsSession, registerSettingsSaveGuard, settingsSaveScope } from "./settings-save-scope.js";
@@ -1061,7 +1062,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const privateMediaScope = JSON.stringify([accountStorageScope, companionScope]);
   const [sessions, setSessions] = useState([]);
   const [activeSessionId, setActiveSessionId] = useState(null);
-  const [earlyMusicCard, setEarlyMusicCard] = useState(null);
+  const initialMusicDockRef = useRef(null);
+  if (initialMusicDockRef.current === null) initialMusicDockRef.current = readMusicDockQueue(privateMediaScope);
+  const [earlyMusicCard, setEarlyMusicCard] = useState(() => {
+    const saved = initialMusicDockRef.current;
+    return saved.queue[saved.index] || null;
+  });
   const [messages, setMessages] = useState([]);
   const recentChatMusic = useMemo(() => {
     const seen = new Set();
@@ -1074,13 +1080,21 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
     return list.reverse();
   }, [messages]);
-  const [musicDockQueue, setMusicDockQueue] = useState([]);
-  const [musicDockIndex, setMusicDockIndex] = useState(-1);
+  const [musicDockQueue, setMusicDockQueue] = useState(() => initialMusicDockRef.current.queue);
+  const [musicDockIndex, setMusicDockIndex] = useState(() => initialMusicDockRef.current.index);
+  const musicQueueScopeRef = useRef(privateMediaScope);
   useEffect(() => {
-    setEarlyMusicCard(null);
-    setMusicDockQueue([]);
-    setMusicDockIndex(-1);
-  }, [activeSessionId, privateMediaScope]);
+    if (musicQueueScopeRef.current !== privateMediaScope) return;
+    writeMusicDockQueue(privateMediaScope, { queue: musicDockQueue, index: musicDockIndex });
+  }, [musicDockQueue, musicDockIndex, privateMediaScope]);
+  useEffect(() => {
+    if (musicQueueScopeRef.current === privateMediaScope) return;
+    musicQueueScopeRef.current = privateMediaScope;
+    const saved = readMusicDockQueue(privateMediaScope);
+    setMusicDockQueue(saved.queue);
+    setMusicDockIndex(saved.index);
+    setEarlyMusicCard(saved.queue[saved.index] || null);
+  }, [privateMediaScope]);
   const [historyLoadState, setHistoryLoadState] = useState(null);
   const [historyRetryRevision, setHistoryRetryRevision] = useState(0);
   const historyLoadPendingRef = useRef(false);
