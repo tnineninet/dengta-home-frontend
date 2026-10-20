@@ -3,14 +3,14 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 172,
-    "version": "2.12.14",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.14/DengTa-2.12.14-172.apk",
-    "sha256": "dfdcd48c198065e3ca31582ff2522a4ff66243663d4c5d20c076070ed909b8d9",
-    "size_bytes": 41235742,
-    "published_at": "2026-10-20T05:31:44Z",
+    "version_code": 173,
+    "version": "2.12.15",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.15/DengTa-2.12.15-173.apk",
+    "sha256": "6065d9801e4f0d6924c9f62f0db02400a478c9f0b1309af2ab186c69d1c1b6f2",
+    "size_bytes": 41235734,
+    "published_at": "2026-10-20T05:40:48Z",
     "notes": [
-      "听歌卡片新增播放速度：1× → 1.25× → 1.5× → 0.8×。",
+      "播放速度按歌曲记住：刷新/切回不再回到 1×。",
       "地图骨架、partial 徽标/复制、日志导出继续保留。"
     ]
   }
