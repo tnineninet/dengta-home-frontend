@@ -113,3 +113,36 @@
 .theme-preset-swatch em {
   color: #1d1d1f;
 }
+
+/* 外观切换的选中项：部分主题色在浅色玻璃上偏亮，白字会看不清。 */
+.theme-appearance-control button.active {
+  border: 1px solid rgb(0 0 0 / 0.1);
+  color: #1d1d1f;
+  background: #ffffff;
+}
+
+/* 数据导入页：hero 与内容卡在两种外观下都是深色卡片，标题必须用浅色。 */
+.content-import-hero h3 {
+  color: #f5f5f7;
+}
+
+.content-import-hero p {
+  color: #c7c7cc;
+}
+
+.content-import-hero .eyebrow {
+  color: #f0a9bd;
+}
+
+.content-import-segments button[aria-pressed="true"],
+.content-import-decision button[aria-pressed="true"] {
+  color: #ffffff;
+  background: linear-gradient(135deg, #4a63a0, #7d4678);
+}
+
+/* 白天外观下，导入来源卡是浅色，标签与图例不能沿用夜间浅灰。 */
+:root[data-dengta-appearance="day"] .content-import label,
+:root[data-dengta-appearance="day"] .content-import-segments legend,
+:root[data-dengta-appearance="day"] .content-import small {
+  color: #5a5770;
+}
