@@ -10,7 +10,7 @@ import { restartDengTa } from "./app-runtime.js";
 export function AppLoadingScreen() {
   const [slow, setSlow] = useState(false);
   useEffect(() => {
-    const timer = setTimeout(() => setSlow(true), 12_000);
+    const timer = setTimeout(() => setSlow(true), 20_000);
     return () => clearTimeout(timer);
   }, []);
   return (
