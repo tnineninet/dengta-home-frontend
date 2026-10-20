@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { FileText, Music2, Pause, Play } from "lucide-react";
-import { fetchMusicLyrics } from "./music-lyrics-client.js";
+import { fetchMusicLyrics, fetchMusicTrackUrl } from "./music-lyrics-client.js";
 import { activeLyricIndex, parseLrc } from "./music-lyrics.js";
 
 const PLAY_EVENT = "dengta:chat-music-play";
@@ -23,8 +23,10 @@ export default function MusicChatCard({ music, onPlaybackChange }) {
   const [lyrics, setLyrics] = useState([]);
   const [lyricsLoading, setLyricsLoading] = useState(false);
   const [lyricsError, setLyricsError] = useState("");
+  const [resolvedAudioUrl, setResolvedAudioUrl] = useState(String(music?.audio_url || ""));
+  const [refreshingAudio, setRefreshingAudio] = useState(false);
   const lyricsListRef = useRef(null);
-  const audioUrl = String(music?.audio_url || "");
+  const audioUrl = resolvedAudioUrl;
   const canPlay = /^https:\/\//i.test(audioUrl);
   const activeIndex = activeLyricIndex(lyrics, position);
 
@@ -33,6 +35,24 @@ export default function MusicChatCard({ music, onPlaybackChange }) {
     const active = lyricsListRef.current?.querySelector("[data-active='true']");
     active?.scrollIntoView?.({ block: "center", behavior: "smooth" });
   }, [activeIndex, lyricsOpen]);
+
+  async function refreshAudio() {
+    if (refreshingAudio) return;
+    setRefreshingAudio(true);
+    try {
+      const url = await fetchMusicTrackUrl(music?.id);
+      if (url) {
+        setResolvedAudioUrl(url);
+        setError("");
+      } else {
+        setError("这首歌暂时没有可内播的音频。");
+      }
+    } catch {
+      setError("音频地址刷新失败，稍后再试。");
+    } finally {
+      setRefreshingAudio(false);
+    }
+  }
 
   async function openLyrics() {
     if (!canPlay) return;
@@ -152,7 +172,14 @@ export default function MusicChatCard({ music, onPlaybackChange }) {
         ) : (
           <small className="chat-music-unavailable">暂无可内播音频（可能需要会员或版权受限）</small>
         )}
-        {error && <small className="chat-music-error" role="alert">{error}</small>}
+        {error && (
+          <div className="chat-music-error" role="alert">
+            <small>{error}</small>
+            <button type="button" className="chat-music-retry" disabled={refreshingAudio} onClick={() => void refreshAudio()}>
+              {refreshingAudio ? "解析中…" : "重新获取音频"}
+            </button>
+          </div>
+        )}
       </div>
       {canPlay && (
         <button type="button" className="chat-music-lyric-button" aria-label="查看歌词" onClick={() => void openLyrics()}>

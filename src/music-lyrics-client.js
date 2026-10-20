@@ -7,3 +7,11 @@ export async function fetchMusicLyrics(trackId) {
   });
   return data?.ok === true ? data : null;
 }
+
+export async function fetchMusicTrackUrl(trackId) {
+  const data = await apiRequest("/api/v2/music/chat-track-url?track_id=" + encodeURIComponent(String(trackId || "")), {
+    method: "GET",
+    timeoutMs: 15_000,
+  });
+  return data?.ok === true && /^https:\/\//i.test(String(data.url || "")) ? data.url : "";
+}
