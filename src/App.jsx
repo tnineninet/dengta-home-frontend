@@ -10065,6 +10065,30 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               </button>
               <button
                 type="button"
+                className="early-music-remove"
+                aria-label="从队列移除当前歌曲"
+                onClick={() => {
+                  const current = Math.max(0, musicDockIndex);
+                  const nextQueue = musicDockQueue.filter((_, index) => index !== current);
+                  if (nextQueue.length === 0) {
+                    earlyMusicPlayingRef.current = false;
+                    setEarlyMusicCard(null);
+                    setMusicDockQueue([]);
+                    setMusicDockIndex(-1);
+                    return;
+                  }
+                  const nextIndex = Math.min(current, nextQueue.length - 1);
+                  earlyMusicPlayingRef.current = false;
+                  setMusicDockQueue(nextQueue);
+                  setMusicDockIndex(nextIndex);
+                  setEarlyMusicCard(nextQueue[nextIndex]);
+                }}
+              >
+                移除
+              </button>
+
+              <button
+                type="button"
                 className="early-music-dismiss"
                 aria-label="收起预听歌曲"
                 onClick={() => { earlyMusicPlayingRef.current = false; setEarlyMusicCard(null); setMusicDockQueue([]); setMusicDockIndex(-1); }}
