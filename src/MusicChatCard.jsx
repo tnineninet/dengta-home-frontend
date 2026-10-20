@@ -30,6 +30,8 @@ export default function MusicChatCard({ music, onPlaybackChange, onAudioRefresh 
   const canPlay = /^https:\/\//i.test(audioUrl);
   const positionKey = music?.id ? "dengta_music_position_v1:" + music.id : "";
   const lastPositionSaveRef = useRef(0);
+  const autoRefreshAttemptedRef = useRef(false);
+  const refreshAudioRef = useRef(null);
   const activeIndex = activeLyricIndex(lyrics, position);
 
   useEffect(() => {
@@ -56,6 +58,8 @@ export default function MusicChatCard({ music, onPlaybackChange, onAudioRefresh 
       setRefreshingAudio(false);
     }
   }
+
+  useEffect(() => { refreshAudioRef.current = refreshAudio; }, [refreshAudio]);
 
   async function openLyrics() {
     if (!canPlay) return;
@@ -120,7 +124,15 @@ export default function MusicChatCard({ music, onPlaybackChange, onAudioRefresh 
       }
       playbackChangeRef.current?.(false);
     };
-    const onError = () => { setPlaying(false); playbackChangeRef.current?.(false); setError("这首暂时无法在内置播放器加载，可能受版权或链接有效期限制。"); };
+    const onError = () => {
+      setPlaying(false);
+      playbackChangeRef.current?.(false);
+      setError("这首暂时无法在内置播放器加载，可能受版权或链接有效期限制。");
+      if (!autoRefreshAttemptedRef.current) {
+        autoRefreshAttemptedRef.current = true;
+        void refreshAudioRef.current?.();
+      }
+    };
     audio.addEventListener("timeupdate", onTime);
     audio.addEventListener("loadedmetadata", onDuration);
     audio.addEventListener("play", onPlay);
