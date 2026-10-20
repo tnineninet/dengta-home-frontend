@@ -3,15 +3,15 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 170,
-    "version": "2.12.12",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.12/DengTa-2.12.12-170.apk",
-    "sha256": "18779fc9c7ad2977851f46237f36875b0c9d5da67d2cb7058e56bf37a57a03f8",
-    "size_bytes": 41235614,
-    "published_at": "2026-10-20T05:12:10Z",
+    "version_code": 171,
+    "version": "2.12.13",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.13/DengTa-2.12.13-171.apk",
+    "sha256": "41262ced966f00870a6a080a3a907a7f48d4c011f5615da4e7aa87d79d80ae8f",
+    "size_bytes": 41235622,
+    "published_at": "2026-10-20T05:22:21Z",
     "notes": [
-      "中断回复保存后的 partial 消息显示“生成中断 · 已保留当时内容”，并提供复制片段。",
-      "地图/日记骨架、非聊天页 dock 安全区、日志导出继续保留。"
+      "地图骨架移到雷达图上方，慢网首屏即可看到。",
+      "partial 徽标/复制、日志导出、非聊天页 dock 安全区继续保留。"
     ]
   }
 }
