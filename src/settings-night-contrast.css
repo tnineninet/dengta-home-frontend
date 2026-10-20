@@ -146,3 +146,30 @@
 :root[data-dengta-appearance="day"] .content-import small {
   color: #5a5770;
 }
+
+/* 夜间聊天页与记忆页的次级文字：部分模块仍沿用浅色主题的深灰。 */
+:root[data-dengta-appearance="night"] .eyebrow {
+  color: #f0a9bd;
+}
+
+:root[data-dengta-appearance="night"] .visible-monologue-disclosure,
+:root[data-dengta-appearance="night"] .visible-monologue-status,
+:root[data-dengta-appearance="night"] .thinking-panel summary small,
+:root[data-dengta-appearance="night"] .thinking-panel-body ol {
+  color: #c7c7cc;
+}
+
+:root[data-dengta-appearance="night"] .message-reference-button,
+:root[data-dengta-appearance="night"] .text-impact-trigger {
+  color: #d9b8c6;
+}
+
+:root[data-dengta-appearance="night"] .companion-profile-loading {
+  border-color: rgb(255 255 255 / 0.12);
+  color: #c7c7cc;
+  background: rgb(44 44 46 / 0.62);
+}
+
+:root[data-dengta-appearance="night"] .connection-recovery-restart {
+  color: #ffe9c9;
+}
