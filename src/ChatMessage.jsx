@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import DeviceActionReceipts from "./DeviceActionReceipts";
 import CompanionActivityCards from "./CompanionActivityCards.jsx";
 import { MessageAttachments, ThinkingPanel } from "./ChatMessageExtras";
@@ -57,6 +57,7 @@ function ChatMessage({
   reduceMotion = false,
 }) {
   const rowRef = useRef(null);
+  const [partialCopyState, setPartialCopyState] = useState("");
   const isUser = item.role === "user";
   const displayName = isUser ? userName : aiName;
   const quotedMessage = messageReferenceFromMessage(item);
@@ -84,6 +85,26 @@ function ChatMessage({
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return String(value);
     return date.toLocaleString("zh-CN", { hour12: false });
+  }
+  async function copyPartialReply() {
+    const text = String(item.content || item.partialContent || "");
+    if (!text) return;
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+      else {
+        const area = document.createElement("textarea");
+        area.value = text;
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand("copy");
+        area.remove();
+      }
+      setPartialCopyState("已复制片段");
+    } catch {
+      setPartialCopyState("复制失败，请长按正文选择");
+    }
   }
   const avatarLetter = isUser
     ? Array.from(userName || "我")[0] || "我"
@@ -290,6 +311,14 @@ function ChatMessage({
             <div className="message-content" role="note">
               <small>回复中断 · 以下是本轮已经生成并保留的片段</small>
               <p>{item.partialContent}</p>
+            </div>
+          )}
+          {item.tool_calls?.partial_reply === true && (
+            <div className="partial-reply-note" role="note">
+              <span>生成中断 · 已保留当时内容</span>
+              <button type="button" onClick={() => void copyPartialReply()}>
+                {partialCopyState || "复制片段"}
+              </button>
             </div>
           )}
           {item.content && !(item.chatError && item.partialContent) && (

@@ -10622,3 +10622,6 @@ body,
     padding-bottom: calc(150px + env(safe-area-inset-bottom));
   }
 }
+
+.partial-reply-note { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0 8px; padding: 7px 10px; border-radius: 12px; background: rgba(196, 142, 126, .12); color: #8b5f55; font-size: 12px; }
+.partial-reply-note button { border: 0; background: transparent; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; padding: 2px 0; }
