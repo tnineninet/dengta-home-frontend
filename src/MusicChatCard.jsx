@@ -20,7 +20,13 @@ export default function MusicChatCard({ music, onPlaybackChange, onAudioRefresh 
   const [duration, setDuration] = useState(Number(music?.duration_seconds) || 0);
   const [error, setError] = useState("");
   const [lyricsOpen, setLyricsOpen] = useState(false);
-  const [playbackRate, setPlaybackRate] = useState(1);
+  const playbackRateKey = music?.id ? "dengta_music_rate_v1:" + music.id : "";
+  const [playbackRate, setPlaybackRate] = useState(() => {
+    try {
+      const saved = Number(globalThis.localStorage?.getItem(playbackRateKey));
+      return [0.8, 1, 1.25, 1.5].includes(saved) ? saved : 1;
+    } catch { return 1; }
+  });
   const [lyrics, setLyrics] = useState([]);
   const [lyricsLoading, setLyricsLoading] = useState(false);
   const [lyricsError, setLyricsError] = useState("");
@@ -228,7 +234,7 @@ export default function MusicChatCard({ music, onPlaybackChange, onAudioRefresh 
         <button type="button" className="chat-music-lyric-button" aria-label="查看歌词" onClick={() => void openLyrics()}>
           <FileText size={16} />
         </button>
-        <button type="button" className="chat-music-lyric-button chat-music-rate" aria-label={"播放速度，当前 " + playbackRate + " 倍"} onClick={() => setPlaybackRate(current => current === 1 ? 1.25 : current === 1.25 ? 1.5 : current === 1.5 ? 0.8 : 1)}>
+        <button type="button" className="chat-music-lyric-button chat-music-rate" aria-label={"播放速度，当前 " + playbackRate + " 倍"} onClick={() => setPlaybackRate(current => { const next = current === 1 ? 1.25 : current === 1.25 ? 1.5 : current === 1.5 ? 0.8 : 1; try { globalThis.localStorage?.setItem(playbackRateKey, String(next)); } catch { /* 忽略速度记忆失败 */ } return next; })}>
           {playbackRate}×
         </button>
       </>)}
