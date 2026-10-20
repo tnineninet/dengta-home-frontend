@@ -102,7 +102,7 @@ export default function AppUpdateCenter({ canPrompt = true }) {
     if (downloadPending.current || !release) return;
     downloadPending.current = true;
     setOpening(true);
-    try { await AppUpdates.openDownload({ url: release.apk_url }); }
+    try { await AppUpdates.openDownload({ url: release.apk_url }); if (mounted.current) setFeedback("更新包已开始下载，完成后会打开系统安装界面。"); }
     catch { if (mounted.current) setFeedback("未能打开下载页面，请稍后再试。错误码：app_update_download_failed"); }
     finally { downloadPending.current = false; if (mounted.current) setOpening(false); }
   }

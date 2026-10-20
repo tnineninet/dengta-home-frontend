@@ -93,8 +93,7 @@ const [appSource, componentSource, statusSource, cssSource] = await Promise.all(
   readFile(new URL("../src/CompanionStatus.jsx", import.meta.url), "utf8"),
   readFile(new URL("../src/apple-ui.css", import.meta.url), "utf8"),
 ]);
-assert.match(appSource, /const IntimateDuel = lazy\(/);
-assert.match(appSource, /\{ id: "duel", icon: "⚔", label: "Duel" \}/);
+assert.doesNotMatch(appSource, /IntimateDuel|label: "Duel"/);
 assert.match(componentSource, /\/api\/v2\/intimate-duel\/narrate/);
 assert.match(componentSource, /conversation_id: conversationId \|\| undefined/);
 assert.match(statusSource, /className="sun-glass-liquid-capsule-toggle"/);
