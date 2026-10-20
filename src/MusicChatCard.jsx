@@ -11,7 +11,7 @@ function formatTime(value) {
   return Math.floor(seconds / 60) + ":" + String(Math.floor(seconds % 60)).padStart(2, "0");
 }
 
-export default function MusicChatCard({ music, onPlaybackChange }) {
+export default function MusicChatCard({ music, onPlaybackChange, onAudioRefresh }) {
   const playbackChangeRef = useRef(onPlaybackChange);
   useEffect(() => { playbackChangeRef.current = onPlaybackChange; }, [onPlaybackChange]);
   const audioRef = useRef(null);
@@ -44,6 +44,7 @@ export default function MusicChatCard({ music, onPlaybackChange }) {
       if (url) {
         setResolvedAudioUrl(url);
         setError("");
+        onAudioRefresh?.({ id: music?.id, url });
       } else {
         setError("这首歌暂时没有可内播的音频。");
       }

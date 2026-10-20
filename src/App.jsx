@@ -10032,8 +10032,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         {earlyMusicCard && (
           <div className="early-music-dock" role="region" aria-label="正在播放的歌曲">
             <MusicChatCard
+              key={earlyMusicCard.id}
               music={earlyMusicCard}
               onPlaybackChange={(playing) => { earlyMusicPlayingRef.current = playing; }}
+              onAudioRefresh={({ id, url }) => {
+                setMusicDockQueue((current) => current.map((card) => (card.id === id ? { ...card, audio_url: url } : card)));
+                setEarlyMusicCard((current) => (current?.id === id ? { ...current, audio_url: url } : current));
+              }}
             />
             <div className="early-music-actions">
               <button
