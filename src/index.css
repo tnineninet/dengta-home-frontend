@@ -10625,3 +10625,5 @@ body,
 
 .partial-reply-note { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0 8px; padding: 7px 10px; border-radius: 12px; background: rgba(196, 142, 126, .12); color: #8b5f55; font-size: 12px; }
 .partial-reply-note button { border: 0; background: transparent; color: inherit; font: inherit; text-decoration: underline; cursor: pointer; padding: 2px 0; }
+
+.chat-music-rate { width: auto; min-width: 36px; padding: 0 6px; font-size: 11px; font-weight: 700; letter-spacing: -.02em; }

@@ -20,6 +20,7 @@ export default function MusicChatCard({ music, onPlaybackChange, onAudioRefresh 
   const [duration, setDuration] = useState(Number(music?.duration_seconds) || 0);
   const [error, setError] = useState("");
   const [lyricsOpen, setLyricsOpen] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
   const [lyrics, setLyrics] = useState([]);
   const [lyricsLoading, setLyricsLoading] = useState(false);
   const [lyricsError, setLyricsError] = useState("");
@@ -60,6 +61,7 @@ export default function MusicChatCard({ music, onPlaybackChange, onAudioRefresh 
   }
 
   useEffect(() => { refreshAudioRef.current = refreshAudio; }, [refreshAudio]);
+  useEffect(() => { if (audioRef.current) audioRef.current.playbackRate = playbackRate; }, [playbackRate, audioUrl]);
 
   async function openLyrics() {
     if (!canPlay) return;
@@ -222,11 +224,14 @@ export default function MusicChatCard({ music, onPlaybackChange, onAudioRefresh 
           </div>
         )}
       </div>
-      {canPlay && (
+      {canPlay && (<>
         <button type="button" className="chat-music-lyric-button" aria-label="查看歌词" onClick={() => void openLyrics()}>
           <FileText size={16} />
         </button>
-      )}
+        <button type="button" className="chat-music-lyric-button chat-music-rate" aria-label={"播放速度，当前 " + playbackRate + " 倍"} onClick={() => setPlaybackRate(current => current === 1 ? 1.25 : current === 1.25 ? 1.5 : current === 1.5 ? 0.8 : 1)}>
+          {playbackRate}×
+        </button>
+      </>)}
       <button type="button" className="chat-music-toggle" aria-label={playing ? "暂停" : "播放"} disabled={!canPlay} onClick={() => void toggle()}>
         {playing ? <Pause size={18} /> : <Play size={18} />}
       </button>
