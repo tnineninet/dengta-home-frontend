@@ -10633,6 +10633,6 @@ body,
   .main-panel.view-chat .notice {
     position: relative;
     z-index: 60;
-    margin-top: calc(max(8px, env(safe-area-inset-top)) + 78px);
+    margin-top: calc(max(8px, env(safe-area-inset-top)) + 110px);
   }
 }
