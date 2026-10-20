@@ -1649,6 +1649,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const pendingMomentCommentsRef = useRef({});
   const momentPostPendingRef = useRef(null);
   const momentsLoadTokenRef = useRef(0);
+  const momentsPrefetchScopeRef = useRef("");
   const draftSettingsRef = useRef(draftSettings);
   const hasLoadedSettingsRef = useRef(false);
   const confirmedSettingsRef = useRef(settings);
@@ -3390,7 +3391,19 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }, [activeView, loadMoments, privateMediaScope]);
 
   useEffect(() => {
-    if (activeView === "moments" && momentsAvailable !== null && moments.length > 0) {
+    if (!activeSessionId || activeView !== "chat") return undefined;
+    const key = privateMediaScope + ":" + activeSessionId;
+    if (momentsPrefetchScopeRef.current === key) return undefined;
+    const timer = window.setTimeout(() => {
+      if (momentsPrefetchScopeRef.current === key) return;
+      momentsPrefetchScopeRef.current = key;
+      void loadMoments({ silent: true });
+    }, 2500);
+    return () => window.clearTimeout(timer);
+  }, [activeSessionId, activeView, loadMoments, privateMediaScope]);
+
+  useEffect(() => {
+    if (momentsAvailable !== null && moments.length > 0) {
       writeMomentsCache(privateMediaScope, { available: momentsAvailable, entries: moments });
     }
   }, [activeView, moments, momentsAvailable, privateMediaScope]);
