@@ -120,6 +120,7 @@ assert.deepEqual(
     "settings-media-polish.css",
     "interaction-polish.css",
     "interface-polish.css",
+    "settings-night-contrast.css",
   ],
   "layout tests must use the same stylesheet order as the application entrypoint",
 );
@@ -145,6 +146,7 @@ assert.deepEqual(
     "settings-media-polish.css",
     "interaction-polish.css",
     "interface-polish.css",
+    "settings-night-contrast.css",
   ],
   "the 280px regression must use the complete application stylesheet cascade",
 );
