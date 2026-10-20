@@ -194,8 +194,18 @@
 }
 
 :root[data-dengta-appearance="night"] .fun-onboarding-button,
-:root[data-dengta-appearance="night"] .fun-labs-retry {
+:root[data-dengta-appearance="night"] .fun-labs-retry,
+:root[data-dengta-appearance="night"] .device-activity-actions button {
   color: #0a84ff;
+}
+
+:root[data-dengta-appearance="night"] .device-activity-heading span {
+  color: #a1a1a6;
+}
+
+:root[data-dengta-appearance="night"] .music-cookie-desktop-hint {
+  color: #d1b9a8;
+  background: rgb(255 255 255 / 0.06);
 }
 
 /* 夜间一起看：表单标签与提示仍用浅色主题的灰。 */
