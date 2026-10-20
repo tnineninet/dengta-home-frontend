@@ -3,16 +3,16 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 164,
-    "version": "2.12.6",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.6/DengTa-2.12.6-164.apk",
-    "sha256": "3860469135c2e56660311508af285a6e8144b6966bc1e6eaea81026826299ad2",
-    "size_bytes": 41233434,
-    "published_at": "2026-10-20T03:52:55Z",
+    "version_code": 165,
+    "version": "2.12.7",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.7/DengTa-2.12.7-165.apk",
+    "sha256": "dc11a5dada47fcb4ed982adbdefd07f40dc78923211f2c28ec861d6b9e7563a3",
+    "size_bytes": 41234038,
+    "published_at": "2026-10-20T04:10:20Z",
     "notes": [
-      "动态首次加载改为 3 张呼吸骨架卡片，不再空白等待。",
-      "缓存命中仍直接显示真实动态。",
-      "错误日志、自动刷新、续播、移动端间距继续保留。"
+      "错误日志新增“复制技术摘要”，只复制时间、方法、脱敏路径、错误码和业务位置。",
+      "动态首次加载使用 3 张呼吸骨架卡片。",
+      "外卖支付就绪新增预算上限校验；补齐生命周期测试。"
     ]
   }
 }
