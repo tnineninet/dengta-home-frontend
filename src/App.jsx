@@ -404,6 +404,7 @@ const PUSH_SEEN_IDS_KEY = "dengta_push_seen_ids";
 const PUSH_POLL_INTERVAL_MS = 30 * 1000;
 const MOMENTS_POLL_INTERVAL_MS = 15 * 1000;
 const EMOTION_UNDERSTANDING_KEY = "dengta_emotion_understanding_enabled";
+const VOICE_ANALYSIS_RETENTION_KEY = "dengta_voice_analysis_retention_enabled";
 const COMPANION_INTERACTION_DEBOUNCE_MS = 220;
 const COMPANION_INTERACTION_RATE_LIMIT = 6;
 const COMPANION_INTERACTION_RATE_WINDOW_MS = 60 * 1000;
@@ -893,6 +894,20 @@ function readEmotionUnderstandingSetting(accountScope = "") {
     const stored = readAccountStorage(
       localStorage,
       EMOTION_UNDERSTANDING_KEY,
+      accountScope,
+      { migrateLegacy: true },
+    );
+    return stored === null ? true : stored === "true";
+  } catch {
+    return true;
+  }
+}
+
+function readVoiceAnalysisRetentionSetting(accountScope = "") {
+  try {
+    const stored = readAccountStorage(
+      localStorage,
+      VOICE_ANALYSIS_RETENTION_KEY,
       accountScope,
       { migrateLegacy: true },
     );
@@ -1499,6 +1514,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   });
   const [emotionUnderstandingEnabled, setEmotionUnderstandingEnabled] =
     useState(() => readEmotionUnderstandingSetting(accountStorageScope));
+  const [voiceAnalysisRetentionEnabled, setVoiceAnalysisRetentionEnabled] =
+    useState(() => readVoiceAnalysisRetentionSetting(accountStorageScope));
   const [voiceState, setVoiceState] = useState(VOICE_STATES.idle);
   const [voiceElapsedMs, setVoiceElapsedMs] = useState(0);
   const [voiceError, setVoiceError] = useState("");
@@ -3815,6 +3832,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         timezone: SHANGHAI_TIME_ZONE,
         model: voiceModel,
         emotionUnderstandingEnabled,
+        voiceAnalysisRetentionEnabled,
         companionStatus: companionStatusForRequest(
           companionStatusRef.current,
         ),
@@ -5368,6 +5386,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           client_time: shanghaiClientTime(),
           timezone: SHANGHAI_TIME_ZONE,
           emotion_understanding_enabled: emotionUnderstandingEnabled,
+          voice_analysis_retention_enabled: voiceAnalysisRetentionEnabled,
           attachment_instruction_mode: attachmentInstructionMode,
           attachment_storage_mode: attachmentStorageMode,
           companion_status: companionStatusForRequest(companionStatus),
@@ -6908,6 +6927,26 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     storePromptReceipt(receipt, accountStorageScope);
   }
 
+  function updateVoiceAnalysisRetention(value) {
+    setVoiceAnalysisRetentionEnabled(value);
+    try {
+      writeAccountStorage(
+        localStorage,
+        VOICE_ANALYSIS_RETENTION_KEY,
+        accountStorageScope,
+        String(value),
+      );
+    } catch {
+      // WebView 禁止本地存储时，本次运行仍然保持开关状态。
+    }
+    if (!value) setLastVoiceAnalysis(null);
+    setNotice(
+      value
+        ? "语音情绪分析将保留最多 30 天；到期后历史消息只显示转写。"
+        : "已关闭语音情绪分析保留：新语音只存转写，历史数据按 30 天自然过期。",
+    );
+  }
+
   function updateEmotionUnderstanding(value) {
     setEmotionUnderstandingEnabled(value);
     try {
@@ -7303,6 +7342,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 userAvatar={userAvatar}
                 companionAvatar={companionAvatar}
                 privateMediaCatalog={privateMediaCatalog}
+                voiceAnalysisVisible={voiceAnalysisRetentionEnabled}
               />
           )}
           </div>
@@ -7712,16 +7752,20 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 <div className="voice-analysis-card" role="status">
                   <div>
                     <strong>刚才的语音转写</strong>
-                    <span>
-                      {lastVoiceAnalysis.emotion} ·{" "}
-                      {formatVoiceConfidence(lastVoiceAnalysis.confidence)}
-                    </span>
+                    {voiceAnalysisRetentionEnabled ? (
+                      <span>
+                        {lastVoiceAnalysis.emotion} ·{" "}
+                        {formatVoiceConfidence(lastVoiceAnalysis.confidence)}
+                      </span>
+                    ) : null}
                   </div>
                   <p>{lastVoiceAnalysis.text}</p>
-                  <small>
-                    {lastVoiceAnalysis.hint ||
-                      "情绪结果只是声音与文字线索，不是心理诊断；你的自述永远优先。"}
-                  </small>
+                  {voiceAnalysisRetentionEnabled ? (
+                    <small>
+                      {lastVoiceAnalysis.hint ||
+                        "情绪结果只是声音与文字线索，不是心理诊断；你的自述永远优先。"}
+                    </small>
+                  ) : null}
                 </div>
               )}
             </section>
@@ -9061,7 +9105,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             <h3>语音与情绪理解</h3>
             <p className="card-hint">
               文字聊天会参考本轮文字；按住说话时才会申请麦克风并分析转写、语气和声音线索。
-              结果不是心理诊断；如果理解不对，请直接告诉 AI，以你的自述为准。两个开关只保存在当前设备。
+              结果不是心理诊断；如果理解不对，请直接告诉 AI，以你的自述为准。开关只保存在当前设备。
             </p>
             <div className="settings-grid">
               <label>
@@ -9074,6 +9118,18 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 >
                   <option value="false">关闭</option>
                   <option value="true">开启</option>
+                </select>
+              </label>
+              <label>
+                保留语音情绪分析
+                <select
+                  value={String(voiceAnalysisRetentionEnabled)}
+                  onChange={(event) =>
+                    updateVoiceAnalysisRetention(event.target.value === "true")
+                  }
+                >
+                  <option value="true">开启（最多 30 天）</option>
+                  <option value="false">关闭（只存转写）</option>
                 </select>
               </label>
               <label>
@@ -9117,6 +9173,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 手机端不会把录音写入相册、本地文件或本地存储，但松开后会上传到 DengTa / HerVoice 服务。
                 语音文件会发送给服务器配置的语音转写服务（例如 Groq Whisper）；转写文字和声学特征会发送给情绪分类模型，再交给 AI 生成回复。
                 麦克风录音的原文件默认在本次处理结束后删除；通过“附件”选择的文件（包括音频）会随聊天记录私密保存。
+                语音情绪分析默认保留最多 30 天；关闭上面的“保留语音情绪分析”后，新语音只保存转写，历史数据按 30 天自然过期。
                 页面隐藏、切换离开聊天页或取消录音时会关闭麦克风轨道；尚未发送的录音会丢弃。摄像头不会被调用。
                 情绪理解流程基于 HerVoice 开源项目，由 DengTa home 接入并做了服务端安全加固。
               </p>

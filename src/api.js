@@ -226,6 +226,8 @@ export function buildStreamChatFormData(
     timezone: payload.timezone,
     emotion_understanding_enabled:
       payload.emotion_understanding_enabled === true ? "true" : "false",
+    voice_analysis_retention_enabled:
+      payload.voice_analysis_retention_enabled === false ? "false" : "true",
     attachment_instruction_mode:
       payload.attachment_instruction_mode === "system" ? "system" : "untrusted",
     attachment_storage_mode:

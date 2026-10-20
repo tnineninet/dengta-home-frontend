@@ -215,6 +215,7 @@ export function buildVoiceTurnFormData({
   timezone = "",
   model = "",
   emotionUnderstandingEnabled = true,
+  voiceAnalysisRetentionEnabled = true,
   companionStatus = {},
   environmentContext = {},
   turnContext = "",
@@ -239,6 +240,10 @@ export function buildVoiceTurnFormData({
   formData.append(
     "emotion_understanding_enabled",
     emotionUnderstandingEnabled ? "true" : "false",
+  );
+  formData.append(
+    "voice_analysis_retention_enabled",
+    voiceAnalysisRetentionEnabled ? "true" : "false",
   );
   formData.append(
     "companion_status",

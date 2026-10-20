@@ -55,6 +55,7 @@ function ChatMessage({
   privateMediaCatalog = null,
   textImpactScope = "",
   reduceMotion = false,
+  voiceAnalysisVisible = true,
 }) {
   const rowRef = useRef(null);
   const [partialCopyState, setPartialCopyState] = useState("");
@@ -409,7 +410,7 @@ function ChatMessage({
               <ChatErrorLog key={refusalLogId || "local"} logId={refusalLogId} diagnostic={item} />
             </div>
           )}
-          {item.voiceAnalysis && (
+          {item.voiceAnalysis && voiceAnalysisVisible && (
             <div className="voice-message-meta">
               <span>语音转写</span>
               <strong>

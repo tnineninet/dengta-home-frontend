@@ -146,6 +146,12 @@ assert.equal(formData.get("session_id"), "session-id");
 assert.equal(formData.get("timezone"), "Asia/Shanghai");
 assert.equal(formData.get("model"), "gpt-5.5");
 assert.equal(formData.get("emotion_understanding_enabled"), "true");
+assert.equal(formData.get("voice_analysis_retention_enabled"), "true");
+const noRetentionForm = buildVoiceTurnFormData({
+  blob: new Blob(["voice"], { type: "audio/webm" }),
+  voiceAnalysisRetentionEnabled: false,
+});
+assert.equal(noRetentionForm.get("voice_analysis_retention_enabled"), "false");
 assert.deepEqual(JSON.parse(formData.get("companion_status")), {
   mood: "安心",
 });
