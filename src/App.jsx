@@ -516,6 +516,24 @@ function ErrorLogsPanel({ accountScope, companionScope, onOpenSettings }) {
     return () => { window.clearTimeout(timer); revision.current++; pending.current?.abort(); pending.current = null; };
   }, [refresh]);
 
+  function downloadLogs() {
+    if (!logs.length) return;
+    const payload = logs.map((log) => ({
+      id: log.id, created_at: log.created_at, method: log.method, path: log.path,
+      error_code: log.error_code, error_location: log.error_location,
+      request_summary: log.request_summary,
+    }));
+    const blob = new Blob([JSON.stringify({ exported_at: new Date().toISOString(), logs: payload }, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "dengta-error-logs-" + new Date().toISOString().slice(0, 10) + ".json";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setCopyState("已导出 JSON");
+  }
   async function copyLogs() {
     const text = logs
       .map((log) => [log.created_at, log.method, log.path, log.error_code, log.error_location].filter(Boolean).join(" | "))
@@ -560,6 +578,9 @@ function ErrorLogsPanel({ accountScope, companionScope, onOpenSettings }) {
         </button>
         <button type="button" onClick={() => void copyLogs()} disabled={loading || logs.length === 0}>
           {copyState || "复制技术摘要"}
+        </button>
+        <button type="button" onClick={downloadLogs} disabled={loading || logs.length === 0}>
+          导出 JSON
         </button>
       </div>
       {loadError && <div className="error-logs-load-error" role="alert"><OperationErrorHelp diagnostic={loadError} onOpenSettings={onOpenSettings} /><small>读取错误代码：{describeOperationError(loadError).code}</small></div>}

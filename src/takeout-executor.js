@@ -194,7 +194,7 @@ export async function executeTakeoutCommand(
     receipt_synced: true,
     message: "本地点餐限制格式无效，已停止自动操作，请核对预算和备注后再试。",
   });
-  let constraints = null;
+  let constraints;
   try { constraints = getConstraints(); } catch { return invalidConstraints(); }
   if (constraints && (typeof constraints !== "object" || Array.isArray(constraints) || typeof constraints.then === "function")) return invalidConstraints();
   if (constraints?.budget_max !== undefined && constraints?.budget_max !== null) {
