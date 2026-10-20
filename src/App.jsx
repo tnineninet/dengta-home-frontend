@@ -1066,6 +1066,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     const saved = readMusicDockQueue(privateMediaScope);
     return saved.queue[saved.index] || null;
   });
+  const earlyMusicRestoredRef = useRef(Boolean(earlyMusicCard));
   const [messages, setMessages] = useState([]);
   const recentChatMusic = useMemo(() => {
     const seen = new Set();
@@ -1091,6 +1092,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     const saved = readMusicDockQueue(privateMediaScope);
     setMusicDockQueue(saved.queue);
     setMusicDockIndex(saved.index);
+    earlyMusicRestoredRef.current = Boolean(saved.queue[saved.index]);
     setEarlyMusicCard(saved.queue[saved.index] || null);
   }, [privateMediaScope]);
   const [historyLoadState, setHistoryLoadState] = useState(null);
@@ -4974,6 +4976,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         const nextQueue = existingIndex >= 0 ? base : [...base, card].slice(-10);
         setMusicDockQueue(nextQueue);
         setMusicDockIndex(existingIndex >= 0 ? existingIndex : nextQueue.length - 1);
+        earlyMusicRestoredRef.current = false;
         setEarlyMusicCard(card);
       }
     } catch {
@@ -5446,7 +5449,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             completedAssistantMessageId =
               event.assistant_message?.id || localAssistantId;
             const completedMusicCard = event.assistant_message?.tool_calls?.music_card;
-            if (completedMusicCard?.id && earlyMusicCardRef.current?.id === completedMusicCard.id && !earlyMusicPlayingRef.current) {
+            if (completedMusicCard?.id && earlyMusicCardRef.current?.id === completedMusicCard.id && !earlyMusicPlayingRef.current && !earlyMusicRestoredRef.current) {
               setEarlyMusicCard(null);
             }
             applyPromptReceipt(event.prompt_receipt);
