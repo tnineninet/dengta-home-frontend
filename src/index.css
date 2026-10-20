@@ -11871,3 +11871,21 @@ body,
     height: 40px;
   }
 }
+
+/* 聊天空状态叠在天空/海面图片上：给次级文字一层柔和纸面底，保证可读。 */
+.main-panel.view-chat .empty-state p {
+  padding: 5px 12px;
+  border: 1px solid rgb(255 255 255 / 0.45);
+  border-radius: 999px;
+  color: #4a3b40;
+  background: rgb(255 250 244 / 0.76);
+  box-shadow: 0 4px 14px rgb(63 42 50 / 0.08);
+  font-size: 12px;
+}
+
+:root[data-dengta-appearance="night"] .main-panel.view-chat .empty-state p {
+  border-color: rgb(255 255 255 / 0.14);
+  color: #f3e6d7;
+  background: rgb(32 27 24 / 0.72);
+  box-shadow: none;
+}
