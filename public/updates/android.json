@@ -3,15 +3,15 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 174,
-    "version": "2.12.16",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.16/DengTa-2.12.16-174.apk",
-    "sha256": "d627ad02e79213725f681a1b6f93237f6a3bf138b0834521741e8ad95160478d",
-    "size_bytes": 41235746,
-    "published_at": "2026-10-20T05:50:50Z",
+    "version_code": 175,
+    "version": "2.12.17",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.17/DengTa-2.12.17-175.apk",
+    "sha256": "a6094f0c22a3342649b247c378b312e05e0e5f213009a3fdcde389329bd2f7af",
+    "size_bytes": 41654625,
+    "published_at": "2026-10-20T06:04:26Z",
     "notes": [
-      "启动看门狗从 12 秒调到 20 秒，减少正常慢启动误报。",
-      "播放速度记忆、地图骨架、partial 徽标继续保留。"
+      "稳定性优化与体验修复。",
+      "应用内更新会直接下载安装包并打开系统安装界面。"
     ]
   }
 }
