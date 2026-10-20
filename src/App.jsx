@@ -1623,6 +1623,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }, []);
   const isSendingRef = useRef(false);
   const earlyMusicRequestRef = useRef(0);
+  const earlyMusicCardRef = useRef(null);
+  useEffect(() => { earlyMusicCardRef.current = earlyMusicCard; }, [earlyMusicCard]);
   const earlyMusicPlayingRef = useRef(false);
   const voiceStateRef = useRef(VOICE_STATES.idle);
   const voicePointerHeldRef = useRef(false);
@@ -5445,7 +5447,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             );
             completedAssistantMessageId =
               event.assistant_message?.id || localAssistantId;
-            if (event.assistant_message?.tool_calls?.music_card && !earlyMusicPlayingRef.current) {
+            const completedMusicCard = event.assistant_message?.tool_calls?.music_card;
+            if (completedMusicCard?.id && earlyMusicCardRef.current?.id === completedMusicCard.id && !earlyMusicPlayingRef.current) {
               setEarlyMusicCard(null);
             }
             applyPromptReceipt(event.prompt_receipt);
