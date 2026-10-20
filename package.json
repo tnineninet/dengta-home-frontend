@@ -74,7 +74,7 @@
     "test:public-auth-build": "node test/public-auth-build-verifier.test.js",
     "test:ombre-mcp-ui": "node test/ombre-mcp-ui.test.js && node test/external-memory-connections.test.js && node --test test/ombre-memory-lifecycle.test.js",
     "test:mcp-device-center": "node test/mcp-device-center.test.js",
-    "test:ai-provider-center": "node test/ai-provider-center.test.js && node --test test/ai-provider-lifecycle.test.js test/provider-model-picker.test.js",
+    "test:ai-provider-center": "node test/ai-provider-center.test.js && node --test test/ai-provider-lifecycle.test.js test/provider-model-picker.test.js test/provider-setup-hint.test.js",
     "test:cc-switch-bridge": "node test/cc-switch-bridge.test.js",
     "test:pwa-install": "node test/pwa-install.test.js",
     "test:content-import": "node --test --experimental-test-coverage --test-coverage-include=src/content-import-api.js test/content-import-api.test.js test/content-import.test.js test/content-import-paging.test.js && node --test test/import-recovery.test.js test/import-recovery-ui.test.js",

@@ -228,6 +228,7 @@ import { applyPersonaResetToLocalStorage } from "./persona-reset";
 import {
   reasoningEffortForProvider,
 } from "./provider-reasoning-effort";
+import { providerSetupHint } from "./provider-setup-hint";
 import { readReplySuggestions } from "./chat-reply-suggestions";
 import DlnaDiscoveryFeedback from "./DlnaDiscoveryFeedback.jsx";
 import {
@@ -1527,6 +1528,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     checkedAt: "",
   });
   const [providerStatus, setProviderStatus] = useState(null);
+  const [providerSetupDismissed, setProviderSetupDismissed] = useState(false);
   const [groqExpiryDate, setGroqExpiryDate] = useState(() =>
     readGroqExpiryDate(globalThis.localStorage, accountStorageScope),
   );
@@ -2469,6 +2471,39 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       }));
     }
   }, [privateMediaScope]);
+
+  useEffect(() => {
+    if (
+      !hasLoadedSettings ||
+      startupConnection.status !== "connected" ||
+      providerStatus
+    ) {
+      return undefined;
+    }
+    const controller = new AbortController();
+    apiRequest("/api/ai-providers/status", {
+      retry: false,
+      signal: controller.signal,
+      authSession: createScopedSettingsSession(
+        authSession,
+        privateMediaScope,
+        controller.signal,
+      ),
+    })
+      .then((data) => {
+        if (controller.signal.aborted || data?.available !== true) return;
+        setProviderStatus(data);
+      })
+      .catch(() => {
+        // 状态读取失败只影响引导提示，不阻塞聊天和设置。
+      });
+    return () => controller.abort();
+  }, [
+    hasLoadedSettings,
+    privateMediaScope,
+    providerStatus,
+    startupConnection.status,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -7280,6 +7315,35 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             onDismiss={() => setActivityReturn(null)}
           />
           <TakeoutTaskCard task={takeoutTask?.scope === privateMediaScope ? takeoutTask : null} onOpen={() => setIsTakeoutOpen(true)} />
+          {providerSetup && !providerSetupDismissed && (
+            <div
+              className={`provider-setup-banner provider-setup-${providerSetup.kind}`}
+              role="status"
+            >
+              <div className="provider-setup-copy">
+                <strong>{providerSetup.title}</strong>
+                <span>{providerSetup.text}</span>
+              </div>
+              <div className="provider-setup-actions">
+                <button
+                  type="button"
+                  className="provider-setup-open"
+                  onClick={openProviderRecovery}
+                >
+                  {providerSetup.actionLabel}
+                </button>
+                <button
+                  type="button"
+                  className="provider-setup-dismiss"
+                  aria-label="暂时关闭这个提示"
+                  title="暂时关闭"
+                  onClick={() => setProviderSetupDismissed(true)}
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          )}
           {sendPreparationStage && (
             <small role="status" aria-live="polite" className="composer-send-preparation">
               {CHAT_SEND_PREPARATION_LABELS[sendPreparationStage]}
@@ -9784,6 +9848,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const startupRetrySeconds = Math.ceil(
     Number(startupConnection.nextRetryDelayMs || 0) / 1_000,
   );
+  const providerSetup = providerSetupHint(providerStatus);
 
   return (
     <div

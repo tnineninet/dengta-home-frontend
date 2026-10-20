@@ -11777,3 +11777,91 @@ body,
     grid-template-columns: 1fr;
   }
 }
+
+/* 聊天页：没有可用模型接口时的引导条 */
+.provider-setup-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 18px 0;
+  padding: 10px 12px;
+  border: 1px solid #e7c9c1;
+  border-radius: 10px;
+  color: #6b4a42;
+  background: #fff7f3;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.provider-setup-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.provider-setup-copy strong {
+  color: #7f334a;
+  font-size: 12.5px;
+}
+
+.provider-setup-copy span {
+  overflow-wrap: anywhere;
+}
+
+.provider-setup-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.provider-setup-open {
+  min-height: 40px;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  background: #8f3d57;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.provider-setup-open:focus-visible,
+.provider-setup-dismiss:focus-visible {
+  outline: 2px solid rgba(143, 61, 87, 0.42);
+  outline-offset: 1px;
+}
+
+.provider-setup-dismiss {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  border: 1px solid #e2c8c0;
+  border-radius: 50%;
+  color: #7f5a51;
+  background: #fff;
+  font-size: 16px;
+  line-height: 1;
+}
+
+@media (max-width: 680px) {
+  .provider-setup-banner {
+    align-items: stretch;
+    flex-direction: column;
+    margin: 8px 12px 0;
+  }
+
+  .provider-setup-actions {
+    justify-content: stretch;
+  }
+
+  .provider-setup-open {
+    flex: 1 1 auto;
+  }
+
+  .provider-setup-dismiss {
+    width: 40px;
+    height: 40px;
+  }
+}
