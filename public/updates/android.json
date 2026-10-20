@@ -3,16 +3,16 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 158,
-    "version": "2.12.0",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.0/DengTa-2.12.0-158.apk",
-    "sha256": "0df31522d1029489e8f51909bd11243d51c2f6f5bc371cae4be576835c3fd9ac",
-    "size_bytes": 41232442,
-    "published_at": "2026-10-20T01:32:25Z",
+    "version_code": 159,
+    "version": "2.12.1",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.1/DengTa-2.12.1-159.apk",
+    "sha256": "89c4d6d438601ac597cbff6146035f7c72724365264e4d932a3b6e7a8d91ce39",
+    "size_bytes": 41232518,
+    "published_at": "2026-10-20T01:43:41Z",
     "notes": [
-      "修复：来自持久化的队列卡片不再被后台回复完成事件清除。",
-      "队列首次挂载直接读取本地存储。",
-      "续播位置、过期音频刷新、歌词点击继续保留。"
+      "动态页后台预取：聊天页空闲 2.5 秒后预取动态并写入本机缓存。",
+      "第一次点开动态也优先显示缓存内容，再后台刷新。",
+      "队列恢复、续播、过期音频刷新、歌词点击继续保留。"
     ]
   }
 }
