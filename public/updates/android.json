@@ -3,15 +3,15 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 169,
-    "version": "2.12.11",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.11/DengTa-2.12.11-169.apk",
-    "sha256": "11b52c48de225c34704078d7d3e17a540eade574fa56c985f97564e99ae53853",
-    "size_bytes": 41447743,
-    "published_at": "2026-10-20T05:03:05Z",
+    "version_code": 170,
+    "version": "2.12.12",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.12/DengTa-2.12.12-170.apk",
+    "sha256": "18779fc9c7ad2977851f46237f36875b0c9d5da67d2cb7058e56bf37a57a03f8",
+    "size_bytes": 41235614,
+    "published_at": "2026-10-20T05:12:10Z",
     "notes": [
-      "藏宝地图加载改为 3 张雷达/信封骨架卡片，附无障碍加载文案。",
-      "非聊天页 dock 底部安全区、日志 JSON 导出、partial 正文保留继续保留。"
+      "中断回复保存后的 partial 消息显示“生成中断 · 已保留当时内容”，并提供复制片段。",
+      "地图/日记骨架、非聊天页 dock 安全区、日志导出继续保留。"
     ]
   }
 }
