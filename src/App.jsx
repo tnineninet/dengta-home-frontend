@@ -7694,7 +7694,26 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         <div className="moment-list">
           {momentsLoadError && <div className="empty-card" role="alert">{momentsLoadError}</div>}
           {moments.length === 0 ? (
-            <div className="empty-card">{momentsLoading ? "正在读取动态…" : momentsLoadError ? "暂时无法确认动态列表，请刷新重试。" : momentsAvailable === null ? "动态列表尚未读取。" : "这里还没有动态。"}</div>
+            momentsLoading && !momentsLoadError ? (
+              <div className="moment-skeleton-list" aria-busy="true" aria-label="正在读取动态">
+                {[0, 1, 2].map((index) => (
+                  <article className="moment-card moment-skeleton" key={"moment-skeleton-" + index} aria-hidden="true">
+                    <header>
+                      <span className="moment-skeleton-avatar" />
+                      <div className="moment-skeleton-meta">
+                        <span className="moment-skeleton-line is-name" />
+                        <span className="moment-skeleton-line is-time" />
+                      </div>
+                    </header>
+                    <span className="moment-skeleton-line is-wide" />
+                    <span className="moment-skeleton-line is-short" />
+                    <span className="moment-skeleton-image" />
+                  </article>
+                ))}
+              </div>
+            ) : (
+              <div className="empty-card">{momentsLoadError ? "暂时无法确认动态列表，请刷新重试。" : momentsAvailable === null ? "动态列表尚未读取。" : "这里还没有动态。"}</div>
+            )
           ) : (
             moments.map((item) => (
               <article className="moment-card" key={item.id}>
