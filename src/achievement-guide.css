@@ -20,3 +20,24 @@
 .fun-achievements-grid .fun-achievement-card:not(.is-unlocked) { filter: none; opacity: 1; background: rgba(190,154,118,.06); }
 .fun-achievements-grid .fun-achievement-card > button { margin-top: 8px; min-height: 40px; padding: 8px; border: 1px solid rgba(173,137,106,.4); border-radius: 10px; background: transparent; color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
 .fun-achievements-grid .fun-achievement-card > button:focus-visible { outline: 2px solid #ac815b; outline-offset: 3px; }
+
+/* 引导卡在聊天页的浅色与夜间背景上都要清晰可读。 */
+.achievement-guide { color: #4a3b32; background: #fff7ec; border-color: #e3c8a8; }
+.achievement-guide-heading { flex-wrap: wrap; align-items: flex-start; }
+.achievement-guide-heading > div { flex: 1 1 200px; min-width: 0; }
+.achievement-guide-heading > button { flex: 0 0 auto; }
+.achievement-guide-body nav button { max-width: 100%; overflow-wrap: anywhere; }
+.achievement-guide small { color: #7a6455; opacity: 1; }
+.achievement-guide button { color: #5a3f2e; background: #fffdf9; border-color: #dcc0a3; }
+.achievement-guide-body nav button[aria-current="step"] { color: #fff; background: #8f5438; border-color: #8f5438; }
+.achievement-guide-progress { display: inline-block; margin: 0 0 2px; padding: 3px 8px; border-radius: 999px; background: #f1e2cf; color: #6b4f3b; font-size: 11px; font-weight: 700; }
+.achievement-guide .achievement-guide-primary { width: 100%; margin-top: 4px; color: #fff; background: #8f5438; border-color: #8f5438; font-weight: 700; }
+.achievement-guide .achievement-guide-primary:disabled { opacity: .55; }
+.achievement-guide-body > .achievement-guide-skip { margin-top: 8px; }
+:root[data-dengta-appearance="night"] .achievement-guide { color: #f3e6d7; background: #2a2420; border-color: #5a493b; }
+:root[data-dengta-appearance="night"] .achievement-guide small { color: #d3c2b3; }
+:root[data-dengta-appearance="night"] .achievement-guide button { color: #f3e6d7; background: #352d27; border-color: #6a5545; }
+:root[data-dengta-appearance="night"] .achievement-guide-body nav button[aria-current="step"] { color: #fff; background: #a86443; border-color: #a86443; }
+:root[data-dengta-appearance="night"] .achievement-guide-progress { background: #3a2f27; color: #e2cdb9; }
+:root[data-dengta-appearance="night"] .achievement-guide .achievement-guide-primary { color: #fff; background: #a86443; border-color: #a86443; }
+:root[data-dengta-appearance="night"] .achievement-notice button { color: #f3e6d7; background: #3a2f27; border-color: #6a5545; }

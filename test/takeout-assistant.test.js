@@ -289,6 +289,8 @@ test("real takeout assistant preserves drafts, task scope and payment truth whil
       try {
         await act(async () => { tree = TestRenderer.create(React.createElement(TakeoutTaskCard, { task, onOpen: () => { opens++; } })); });
         assert.ok(words(tree.toJSON()).includes("等你核对付款"));
+        assert.ok(words(tree.toJSON()).includes("¥28.50"), "a ready card shows the real total");
+        assert.ok(words(tree.toJSON()).includes("4/4 · 你来付款"), "a ready card shows the current stage");
         await act(async () => tree.root.findByType("button").props.onClick()); assert.equal(opens, 1);
         await act(async () => tree.update(React.createElement(TakeoutTaskCard, { task: null }))); assert.equal(tree.toJSON(), null);
       } finally { if (tree) await act(async () => tree.unmount()); }

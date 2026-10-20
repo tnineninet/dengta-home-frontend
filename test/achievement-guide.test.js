@@ -52,7 +52,10 @@ try {
   await act(async () => button("换一步看看").props.onClick());
   assert.equal(tree.root.findByType("h3").children.join(""), "挑一个喜欢的玩法");
   await act(async () => button("留一份小纪念").props.onClick());
-  assert.equal(button("收下入门纪念").props.disabled, true);
+  const goChatFirst = button("先去聊一句");
+  assert.ok(goChatFirst, "keepsake without a first chat offers a direct path to chat");
+  await act(async () => goChatFirst.props.onClick());
+  assert.equal(actions.filter(action => action === "hello").length, 2);
   await act(async () => tree.update(React.createElement(Guide, { ...props, achievements: [first] })));
   assert.equal(button("收下入门纪念").props.disabled, false);
   await act(async () => button("收下入门纪念").props.onClick());

@@ -26,11 +26,25 @@ function StatusChip({ task }) {
 export function TakeoutTaskCard({ task, onOpen }) {
   if (!task) return null;
   const stepIndex = takeoutStepIndex(task);
-  return <button type="button" className="takeout-task-card" onClick={onOpen} aria-label="查看外卖点餐进度">
-    <span className="takeout-task-icon"><ShoppingBag size={19} aria-hidden="true" /></span>
+  const step = TAKEOUT_STEPS[stepIndex] || null;
+  const price = formatTakeoutPrice(task.total);
+  const tone = task.status === "awaiting_payment" ? "is-ready"
+    : task.status === "manual_review" ? "is-attention"
+      : task.status === "error" ? "is-error" : "is-working";
+  const subtitle = [task.shop, task.product].filter(Boolean).join(" · ")
+    || (task.requirement ? `想点：${task.requirement}` : "点一下查看进度");
+  return <button type="button" className="takeout-task-card" onClick={onOpen} aria-label={`查看外卖点餐进度：${takeoutTaskLabel(task)}`}>
+    <span className={`takeout-task-icon ${tone}`}><ShoppingBag size={19} aria-hidden="true" /></span>
     <span className="takeout-task-copy">
-      <strong>{takeoutTaskLabel(task)}</strong>
-      <small>{task.shop || "外卖小助手"}{task.product ? ` · ${task.product}` : " · 可以继续聊天"}</small>
+      <span className="takeout-task-title-row">
+        <strong>{takeoutTaskLabel(task)}</strong>
+        {price && <em>{price}</em>}
+      </span>
+      <small>{subtitle}</small>
+      <span className="takeout-task-meta">
+        {step ? `${stepIndex + 1}/4 · ${step.label}` : "等待开始"}
+        {task.status === "manual_review" ? " · 需要你接手" : ""}
+      </span>
       <span className="takeout-task-track" aria-hidden="true">{[0, 1, 2, 3].map(index => <i key={index} className={index <= stepIndex ? "is-on" : ""} />)}</span>
     </span>
     <ChevronRight size={18} aria-hidden="true" />
