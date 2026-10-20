@@ -3,16 +3,16 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 160,
-    "version": "2.12.2",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.2/DengTa-2.12.2-160.apk",
-    "sha256": "1bb66cf6ebeb940c037f8ab728523e33cdd320b009379fe431e6a910b8f87e4c",
-    "size_bytes": 41232842,
-    "published_at": "2026-10-20T01:57:30Z",
+    "version_code": 161,
+    "version": "2.12.3",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.3/DengTa-2.12.3-161.apk",
+    "sha256": "8a97979ae20a0bc1b9ad2d38d01c67b684ea99073d00a9bee5ee7dad731d6010",
+    "size_bytes": 41232850,
+    "published_at": "2026-10-20T02:09:54Z",
     "notes": [
-      "启动加载超过 12 秒会出现急救按钮：重新载入、清理启动缓存并重载。",
-      "不自动清用户聊天/记忆/个性化数据；只清 Service Worker 与缓存。",
-      "其余听歌、续播、动态缓存继续保留。"
+      "过期音频首次加载失败会自动重新解析一次，不再每个页面挂着错误。",
+      "自动失败后才显示“重新获取音频”按钮。",
+      "启动看门狗、队列恢复、续播、歌词点击继续保留。"
     ]
   }
 }
