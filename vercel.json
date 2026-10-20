@@ -2,13 +2,58 @@
   "framework": "vite",
   "buildCommand": "npm run build:web",
   "outputDirectory": "dist",
-  "headers": [{
-    "source": "/updates/android.json",
-    "headers": [
-      { "key": "Access-Control-Allow-Origin", "value": "*" },
-      { "key": "Cache-Control", "value": "no-store, max-age=0" },
-      { "key": "X-Content-Type-Options", "value": "nosniff" }
-    ]
-  }],
-  "rewrites": [{ "source": "/receive", "destination": "/index.html" }]
+  "headers": [
+    {
+      "source": "/updates/android.json",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        }
+      ]
+    },
+    {
+      "source": "/downloads/DengTa-latest.apk",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/vnd.android.package-archive"
+        },
+        {
+          "key": "Content-Disposition",
+          "value": "attachment; filename=\"DengTa-2.12.17-175.apk\""
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=300"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/download",
+      "destination": "/download.html"
+    },
+    {
+      "source": "/install",
+      "destination": "/download.html"
+    },
+    {
+      "source": "/downloads/DengTa-latest.apk",
+      "destination": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.17/DengTa-2.12.17-175.apk"
+    },
+    {
+      "source": "/receive",
+      "destination": "/index.html"
+    }
+  ]
 }
