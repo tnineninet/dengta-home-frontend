@@ -3,16 +3,16 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 153,
-    "version": "2.11.5",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.11.5/DengTa-2.11.5-153.apk",
-    "sha256": "b69f9eb42f98cd2d1d0e682385f1ea5c7d2cd726d6be56a1f2df69fedceed58c",
-    "size_bytes": 41232186,
-    "published_at": "2026-10-20T00:31:35Z",
+    "version_code": 154,
+    "version": "2.11.6",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.11.6/DengTa-2.11.6-154.apk",
+    "sha256": "738743c1be4175e4aa61a4ef84bb4d1462cf9cf299c604d193551e968bcc1ef3",
+    "size_bytes": 41232318,
+    "published_at": "2026-10-20T00:42:33Z",
     "notes": [
-      "音频直链过期时，卡片提供“重新获取音频”按钮。",
-      "后端新增按 track_id 重新解析 HTTPS 音频地址。",
-      "队列持久化、歌词点击跳转、随机/下一首、动态缓存继续保留。"
+      "音频过期重新获取后，新的 URL 同步写回持久化队列。",
+      "下次重开不再显示过期地址，减少重复解析。",
+      "队列持久化、歌词点击、下一首、动态缓存继续保留。"
     ]
   }
 }
