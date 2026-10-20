@@ -377,7 +377,6 @@ const ExternalMemoryConnections = lazy(
 );
 const McpDeviceCenter = lazy(() => import("./McpDeviceCenter"));
 const Nursery = lazy(() => import("./Nursery"));
-const IntimateDuel = lazy(() => import("./IntimateDuel"));
 const OmbreMemories = lazy(() => import("./OmbreMemories"));
 const LocalMemorySummaries = lazy(() => import("./LocalMemorySummaries.jsx"));
 const Together = lazy(() => import("./Together.jsx"));
@@ -855,7 +854,6 @@ const navItems = [
   { id: "together", icon: "▻", label: "Together" },
   { id: "cast", icon: "▣", label: "放映厅" },
   { id: "music", icon: "🎵", label: "听歌" },
-  { id: "duel", icon: "⚔", label: "Duel" },
   { id: "memories", icon: "◇", label: "Memory" },
   { id: "treasure", icon: "✉", label: "藏宝地图" },
   { id: "takeout", icon: "🛵", label: "外卖" },
@@ -8323,20 +8321,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     );
   }
 
-  function renderIntimateDuel() {
-    return (
-      <Suspense fallback={<DeferredFeature label="正在打开双人对战…" />}>
-        <IntimateDuel
-          key={JSON.stringify([accountStorageScope, companionScope])}
-          aiName={effectiveAiName}
-          userName={effectiveUserName}
-          conversationId={activeSessionId}
-          accountScope={accountStorageScope}
-          companionScope={companionScope}
-        />
-      </Suspense>
-    );
-  }
 
   function openCompanionActivity(action) {
     const request = buildCompanionActivityRequest(action, accountStorageScope, companionScope);
@@ -10235,7 +10219,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           {activeView === "together" && renderTogether("together")}
           {activeView === "music" && renderTogether("music")}
           {activeView === "cast" && renderDlnaCastPlayer()}
-          {activeView === "duel" && renderIntimateDuel()}
           {activeView === "memories" && renderMemories()}
           {activeView === "treasure" && <Suspense fallback={<DeferredFeature label="正在寻找沿途来信…" />}><SurpriseMap key={privateMediaScope} scopeKey={privateMediaScope} aiName={effectiveAiName} /></Suspense>}
           {activeView === "takeout" && renderTakeout()}
