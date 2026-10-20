@@ -3,14 +3,15 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 150,
-    "version": "2.11.2",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.11.2/DengTa-2.11.2-150.apk",
-    "sha256": "e7a58aeaaabb75bfbe9d235cfc4d480462dcad029c48edc381df718acf708d06",
-    "size_bytes": 41231398,
-    "published_at": "2026-10-19T23:59:59Z",
+    "version_code": 151,
+    "version": "2.11.3",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.11.3/DengTa-2.11.3-151.apk",
+    "sha256": "c3d5a61fa9c478521414cc0a347381be833239885fb59b08701a2249e02ba635",
+    "size_bytes": 41231522,
+    "published_at": "2026-10-20T00:10:29Z",
     "notes": [
-      "最近播放队列改为稳定数组：上一首/下一首后长度不再变化。",
+      "最近播放队列新增“移除”：移除当前歌曲并自动切到相邻歌曲。",
+      "队列清空才关闭迷你播放器。",
       "歌词点击跳转、翻译、随机/下一首、动态缓存继续保留。"
     ]
   }
