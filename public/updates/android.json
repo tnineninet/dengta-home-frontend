@@ -3,15 +3,15 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 173,
-    "version": "2.12.15",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.15/DengTa-2.12.15-173.apk",
-    "sha256": "6065d9801e4f0d6924c9f62f0db02400a478c9f0b1309af2ab186c69d1c1b6f2",
-    "size_bytes": 41235734,
-    "published_at": "2026-10-20T05:40:48Z",
+    "version_code": 174,
+    "version": "2.12.16",
+    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.16/DengTa-2.12.16-174.apk",
+    "sha256": "d627ad02e79213725f681a1b6f93237f6a3bf138b0834521741e8ad95160478d",
+    "size_bytes": 41235746,
+    "published_at": "2026-10-20T05:50:50Z",
     "notes": [
-      "播放速度按歌曲记住：刷新/切回不再回到 1×。",
-      "地图骨架、partial 徽标/复制、日志导出继续保留。"
+      "启动看门狗从 12 秒调到 20 秒，减少正常慢启动误报。",
+      "播放速度记忆、地图骨架、partial 徽标继续保留。"
     ]
   }
 }
