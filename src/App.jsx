@@ -10093,9 +10093,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   ? "服务休眠后的首次连接可能需要约一分钟，完成后会自动恢复设置和会话。"
                   : startupConnection.status === "waiting" &&
                       startupRetrySeconds
-                  ? `将在 ${startupRetrySeconds} 秒后自动重试。`
-                  : startupConnection.lastError?.message ||
-                    "正在恢复设置和会话。"}
+                  ? `将在 ${startupRetrySeconds} 秒后自动重试。如果连续失败，可能是当前网络无法访问境外后端，请开启网络加速后重试。`
+                  : startupConnection.lastError?.message
+                    ? `${startupConnection.lastError.message} 如果持续失败，请检查网络或开启网络加速。`
+                    : "正在恢复设置和会话。"}
               </span>
             </div>
             <div className="connection-recovery-actions">

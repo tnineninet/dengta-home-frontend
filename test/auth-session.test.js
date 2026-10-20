@@ -36,7 +36,7 @@ function sessionFor(userId, token) {
   };
 }
 
-function createFakeSupabase(initialSession = null) {
+function createFakeSupabase(initialSession = null, { signUpIdentities } = {}) {
   let session = initialSession;
   let listener = null;
   const calls = {
@@ -70,7 +70,11 @@ function createFakeSupabase(initialSession = null) {
       calls.signUp.push(payload);
       return {
         data: {
-          user: { id: USER_A, email: payload.email },
+          user: {
+            id: USER_A,
+            email: payload.email,
+            ...(signUpIdentities === undefined ? {} : { identities: signUpIdentities }),
+          },
           session: null,
         },
         error: null,
@@ -421,6 +425,77 @@ function createFakeSupabase(initialSession = null) {
     globalThis.fetch = originalFetch;
     if (originalWindow === undefined) delete globalThis.window;
     else globalThis.window = originalWindow;
+  }
+}
+
+{
+  const fake = createFakeSupabase(null, { signUpIdentities: [] });
+  const manager = createAuthSessionManager({
+    supabaseUrl: "https://example.supabase.co",
+    supabaseAnonKey: "public-anon-key",
+    storage: createStorage(),
+    createClientFn: () => fake.client,
+  });
+  const registration = await manager.signUp({
+    email: "already-registered@example.com",
+    password: "not-a-real-password",
+  });
+  assert.equal(
+    registration.existingAccount,
+    true,
+    "Supabase returns an obfuscated user with empty identities when the email already exists",
+  );
+  assert.equal(registration.emailVerificationRequired, false);
+  assert.equal(manager.getSnapshot().status, AUTH_STATUS.anonymous);
+  manager.destroy();
+}
+
+{
+  const fake = createFakeSupabase(null, { signUpIdentities: [{ id: "identity-a" }] });
+  const manager = createAuthSessionManager({
+    supabaseUrl: "https://example.supabase.co",
+    supabaseAnonKey: "public-anon-key",
+    storage: createStorage(),
+    createClientFn: () => fake.client,
+  });
+  const registration = await manager.signUp({
+    email: "fresh@example.com",
+    password: "not-a-real-password",
+  });
+  assert.equal(registration.existingAccount, false);
+  assert.equal(registration.emailVerificationRequired, true);
+  manager.destroy();
+}
+
+{
+  const originalFetch = globalThis.fetch;
+  const fake = createFakeSupabase();
+  try {
+    globalThis.fetch = async (url, options) => {
+      assert.equal(url, "https://example.supabase.co/auth/v1/settings");
+      assert.equal(options.headers.apikey, "public-anon-key");
+      return new Response("{}", { status: 200, headers: { "Content-Type": "application/json" } });
+    };
+    const manager = createAuthSessionManager({
+      supabaseUrl: "https://example.supabase.co/",
+      supabaseAnonKey: "public-anon-key",
+      storage: createStorage(),
+      createClientFn: () => fake.client,
+    });
+    const reachable = await manager.checkConnectivity();
+    assert.equal(reachable.ok, true);
+    assert.equal(reachable.status, 200);
+    assert.equal(typeof reachable.ms, "number");
+
+    globalThis.fetch = async () => {
+      throw new TypeError("fetch failed");
+    };
+    const blocked = await manager.checkConnectivity();
+    assert.equal(blocked.ok, false);
+    assert.equal(blocked.reason, "network");
+    manager.destroy();
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 }
 

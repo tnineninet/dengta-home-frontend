@@ -98,21 +98,24 @@ function authFailure(error, fallbackMessage) {
   const rateLimited = status === 429 || rawCode === "over_request_rate_limit" || rawCode === "over_email_send_rate_limit";
   const code = networkFailure ? "auth_network_unavailable"
     : status >= 500 ? "auth_service_unavailable"
-      : rateLimited ? "auth_rate_limited"
-        : rawCode || "auth_error";
+      : rawCode === "over_email_send_rate_limit" ? "over_email_send_rate_limit"
+        : rateLimited ? "auth_rate_limited"
+          : rawCode || "auth_error";
   const messages = {
     invalid_credentials: "邮箱或密码不正确。",
-    auth_network_unavailable: "暂时连不上登录服务（不是密码错误）。请切换 Wi-Fi/移动网络或稍后再试。",
+    auth_network_unavailable: "暂时连不上登录服务（不是密码错误）。请先切换 Wi-Fi/移动网络再试；在中国大陆网络下登录服务常被阻断，需要开启网络加速。",
     auth_service_unavailable: "登录服务暂时不可用（不是密码错误），请稍后再试。",
     auth_rate_limited: "尝试太频繁（不是密码错误），请等几分钟再试。",
+    over_email_send_rate_limit: "验证邮件发送太频繁（服务商每小时限制少量邮件）。请不要再连续点重发，等一段时间后再试；也可以先用已收到的旧邮件完成验证。",
     email_not_confirmed: "邮箱尚未验证。请打开最新的验证邮件；链接失效时可在这里重新发送，不需要重新注册。",
+    email_not_verified: "邮箱尚未验证。请打开最新的验证邮件；链接失效时可在这里重新发送，不需要重新注册。",
     otp_expired: "邮箱验证链接已过期或已使用。若已完成验证，请用注册时的邮箱和密码登录；否则重新发送验证邮件并打开最新一封。",
     access_denied: "邮箱验证未完成，请重新发送验证邮件并打开最新链接。",
     user_already_exists: "这个邮箱已经注册，请直接登录。",
     user_already_registered: "这个邮箱已经注册，请直接登录。",
-    over_email_send_rate_limit: "验证邮件发送得太频繁，请稍后再试。",
     weak_password: "密码强度不足，请换一个更长、更难猜的密码。",
     validation_failed: "邮箱或密码格式不正确。",
+    signup_disabled: "登录服务当前关闭了自助注册，请稍后再试或联系管理员。",
   };
   return new AuthSessionError(
     `${messages[code] || fallbackMessage || "账号操作失败，请稍后再试。"}（错误代码：${/^[a-z0-9_]{1,80}$/i.test(code) ? code : "auth_error"}）`,
@@ -317,10 +320,17 @@ export function createAuthSessionManager({
       throw failure;
     }
     applySession(data?.session || null);
+    // Supabase 在邮箱已注册时不会报错，而是返回一个 identities 为空的占位用户，
+    // 也不会真正发送新的验证邮件。必须区分出来，不能提示"验证邮件已发出"。
+    const existingAccount =
+      !data?.session &&
+      Array.isArray(data?.user?.identities) &&
+      data.user.identities.length === 0;
     return {
       user: data?.user || null,
       session: data?.session || null,
-      emailVerificationRequired: !data?.session,
+      emailVerificationRequired: !data?.session && !existingAccount,
+      existingAccount,
     };
   }
 
@@ -579,6 +589,37 @@ export function createAuthSessionManager({
     }
   }
 
+  async function checkConnectivity({ timeoutMs = 8000 } = {}) {
+    if (!configured(normalizedUrl, normalizedKey)) {
+      return { ok: false, status: 0, ms: 0, reason: "auth_not_configured" };
+    }
+    const started = Date.now();
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), Math.max(2000, Number(timeoutMs) || 8000));
+    try {
+      const response = await fetch(`${normalizedUrl}/auth/v1/settings`, {
+        headers: { apikey: normalizedKey, Accept: "application/json" },
+        cache: "no-store",
+        signal: controller.signal,
+      });
+      return {
+        ok: response.ok,
+        status: response.status,
+        ms: Date.now() - started,
+        reason: response.ok ? "" : `http_${response.status}`,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        status: 0,
+        ms: Date.now() - started,
+        reason: error?.name === "AbortError" ? "timeout" : "network",
+      };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   return Object.freeze({
     initialize,
     signUp,
@@ -589,6 +630,7 @@ export function createAuthSessionManager({
     requestPasswordReset,
     updatePassword,
     handleAuthCallbackUrl,
+    checkConnectivity,
     getRequestContext,
     setActiveCompanionId,
     captureCompanionFromResponse,

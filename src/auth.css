@@ -595,3 +595,86 @@
   .auth-scene { min-height: 16dvh; }
   .auth-panel { min-height: 0; margin-top: 16dvh; }
 }
+
+.auth-verification-hint {
+  margin: 0;
+  color: #7a666c;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.auth-verification .auth-primary-button:disabled,
+.auth-inline-action:disabled {
+  opacity: 0.62;
+}
+
+.auth-inline-action {
+  justify-self: start;
+  min-height: 38px;
+  padding: 7px 12px;
+  border: 1px solid #ddbfc6;
+  border-radius: 7px;
+  color: #7f334a;
+  background: #fff8f6;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.auth-inline-action:hover {
+  background: #fff1ee;
+}
+
+.auth-inline-action:focus-visible {
+  outline: 2px solid rgba(168, 91, 116, 0.45);
+  outline-offset: 1px;
+}
+
+.auth-network-help {
+  color: #7a666c;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.auth-network-help summary {
+  color: #8a4960;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.auth-network-help ol {
+  display: grid;
+  gap: 6px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.auth-network-help li {
+  overflow-wrap: anywhere;
+}
+
+.auth-loading-hint {
+  max-width: 320px;
+  color: #9a838b;
+  font-size: 11px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.auth-network-help .auth-inline-action {
+  margin-top: 10px;
+}
+
+.auth-check-result {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+
+.auth-check-ok {
+  color: #2f6b4f;
+}
+
+.auth-check-error {
+  color: #8a3a3a;
+}

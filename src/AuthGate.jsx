@@ -13,6 +13,18 @@ function browserEmailRedirectUrl() {
   });
 }
 
+const RESEND_COOLDOWN_SECONDS = 60;
+const EMAIL_VERIFICATION_CODES = new Set([
+  "email_not_confirmed",
+  "email_not_verified",
+  "otp_expired",
+  "access_denied",
+]);
+
+function deviceHasNoNetwork() {
+  return globalThis.navigator?.onLine === false;
+}
+
 function ConfigurationScreen() {
   return (
     <main className="auth-page auth-configuration-page">
@@ -57,6 +69,9 @@ function LoadingScreen() {
       </div>
       <strong>正在找回你的家</strong>
       <span>恢复登录与伴侣空间...</span>
+      <small className="auth-loading-hint">
+        网络较慢时可能需要几秒；若长时间停在这里，请检查网络后重新打开灯塔。
+      </small>
     </main>
   );
 }
@@ -76,21 +91,69 @@ export function AuthScreen({
   const [showPassword, setShowPassword] = useState(false);
   const [verificationEmail, setVerificationEmail] = useState("");
   const [verificationLink, setVerificationLink] = useState("");
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [lastErrorCode, setLastErrorCode] = useState("");
+  const [existingAccount, setExistingAccount] = useState(false);
+  const [authCheck, setAuthCheck] = useState({ status: "idle", message: "" });
+  const submittingRef = useRef(false);
+  const emailInputRef = useRef(null);
+  const passwordInputRef = useRef(null);
+  const coolingDown = resendCooldown > 0;
+
+  useEffect(() => {
+    if (!coolingDown) return undefined;
+    const timer = globalThis.setInterval(() => {
+      setResendCooldown((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+    return () => globalThis.clearInterval(timer);
+  }, [coolingDown]);
 
   function changeMode(nextMode, preserveEmail) {
     setMode(nextMode);
     setPassword("");
     setPasswordConfirmation("");
     setFeedback("");
+    setLastErrorCode("");
+    setExistingAccount(false);
     setVerificationEmail("");
     setVerificationLink("");
     if (preserveEmail) setEmail(preserveEmail);
   }
 
+  function openVerificationPanel(nextEmail = email, message = "") {
+    const normalized = String(nextEmail || "").trim().toLowerCase();
+    if (!normalized) {
+      setFeedback("请先填写注册时使用的邮箱。");
+      return;
+    }
+    setVerificationEmail(normalized);
+    setLastErrorCode("");
+    setFeedback(
+      message ||
+        "邮箱尚未验证时，在此重新发送验证邮件；已经验证的账号可直接返回登录。",
+    );
+  }
+
   async function submit(event) {
     event.preventDefault();
+    if (submittingRef.current) return;
+    if (deviceHasNoNetwork()) {
+      setFeedback("当前设备没有网络连接（不是密码错误）。请先连接 Wi-Fi 或移动网络，再登录或注册。");
+      return;
+    }
+    if (mode === "register" && password.length < 8) {
+      setFeedback("密码至少需要 8 个字符。");
+      return;
+    }
+    if (mode !== "forgot" && mode !== "reset" && !String(email).trim()) {
+      setFeedback("请先填写邮箱。");
+      return;
+    }
+    submittingRef.current = true;
     setBusy(mode);
     setFeedback("");
+    setLastErrorCode("");
+    setExistingAccount(false);
     try {
       if (mode === "forgot") {
         await sessionManager.requestPasswordReset({
@@ -109,29 +172,42 @@ export function AuthScreen({
         }
         await sessionManager.updatePassword({ password });
       } else if (mode === "register") {
+        if (password !== passwordConfirmation) {
+          throw new Error("两次输入的密码不一致，请重新确认。");
+        }
         const result = await sessionManager.signUp({
           email,
           password,
           displayName,
           emailRedirectTo: browserEmailRedirectUrl(),
         });
-        if (result.emailVerificationRequired) {
+        if (result.existingAccount) {
+          setExistingAccount(true);
+          setPassword("");
+          setPasswordConfirmation("");
+          setMode("login");
+          setFeedback("这个邮箱已经注册过。请直接登录；如果还没收到验证邮件，点下面的按钮重发。");
+        } else if (result.emailVerificationRequired) {
           setVerificationEmail(email.trim().toLowerCase());
           setPassword("");
+          setPasswordConfirmation("");
+          setResendCooldown(RESEND_COOLDOWN_SECONDS);
           setFeedback("验证邮件已经发出。完成邮箱验证后，请回到这里登录。");
         }
       } else {
         await sessionManager.signIn({ email, password });
       }
     } catch (error) {
+      setLastErrorCode(String(error?.code || ""));
       setFeedback(error?.message || "账号操作失败，请稍后再试。");
     } finally {
+      submittingRef.current = false;
       setBusy("");
     }
   }
 
   async function resendVerification() {
-    if (!verificationEmail) return;
+    if (!verificationEmail || busy || coolingDown) return;
     setBusy("resend");
     setFeedback("");
     try {
@@ -139,11 +215,46 @@ export function AuthScreen({
         email: verificationEmail,
         emailRedirectTo: browserEmailRedirectUrl(),
       });
-      setFeedback("新的验证邮件已经发出，请检查收件箱和垃圾邮件。");
+      setResendCooldown(RESEND_COOLDOWN_SECONDS);
+      setFeedback("新的验证邮件已经发出，请检查收件箱和垃圾邮件；一封邮件可能需要几分钟才到。");
     } catch (error) {
+      setLastErrorCode(String(error?.code || ""));
+      if (error?.code === "over_email_send_rate_limit" || error?.status === 429) {
+        setResendCooldown(RESEND_COOLDOWN_SECONDS);
+      }
       setFeedback(error?.message || "验证邮件发送失败，请稍后再试。");
     } finally {
       setBusy("");
+    }
+  }
+
+  async function checkAuthService() {
+    if (authCheck.status === "checking") return;
+    setAuthCheck({ status: "checking", message: "正在检测登录服务…" });
+    try {
+      const result = await sessionManager.checkConnectivity?.();
+      if (!result) {
+        setAuthCheck({ status: "error", message: "当前版本没有提供登录服务自检，请更新 App 后再试。" });
+        return;
+      }
+      if (result.ok) {
+        setAuthCheck({
+          status: "ok",
+          message: `登录服务可访问（${result.ms} ms）。如果仍登录失败，通常是邮箱/密码不匹配或邮箱尚未验证。`,
+        });
+      } else if (result.reason === "timeout") {
+        setAuthCheck({
+          status: "error",
+          message: "检测超时：登录服务在当前网络下无法访问。请开启网络加速或更换网络后重试。",
+        });
+      } else {
+        setAuthCheck({
+          status: "error",
+          message: `登录服务不可访问（${result.reason || "network"}）。中国大陆网络下通常需要开启网络加速。`,
+        });
+      }
+    } catch {
+      setAuthCheck({ status: "error", message: "检测失败，请稍后重试。" });
     }
   }
 
@@ -231,11 +342,21 @@ export function AuthScreen({
             <button
               type="button"
               className="auth-primary-button"
-              disabled={Boolean(busy)}
+              disabled={Boolean(busy) || coolingDown}
               onClick={resendVerification}
             >
-              {busy === "resend" ? "正在发送..." : "重新发送验证邮件"}
+              {busy === "resend"
+                ? "正在发送..."
+                : coolingDown
+                  ? `${resendCooldown} 秒后可重新发送`
+                  : "重新发送验证邮件"}
             </button>
+            <p className="auth-verification-hint">
+              邮件可能需要几分钟；请同时检查垃圾邮件。连续重发会触发服务商频率限制（免费额度每小时只允许少量邮件），建议等待后再试。
+            </p>
+            <p className="auth-verification-hint">
+              点邮件里的链接会先在浏览器里完成验证，不会自动让 App 登录；验证完成后回到这里，用邮箱和密码登录即可。
+            </p>
             <button
               type="button"
               className="auth-text-button"
@@ -278,6 +399,7 @@ export function AuthScreen({
               <label>
                 <span>邮箱</span>
                 <input
+                  ref={emailInputRef}
                   required
                   type="email"
                   inputMode="email"
@@ -289,6 +411,11 @@ export function AuthScreen({
                   spellCheck={false}
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" || mode === "forgot" || !passwordInputRef.current) return;
+                    event.preventDefault();
+                    passwordInputRef.current.focus();
+                  }}
                   placeholder="name@example.com"
                 />
               </label>
@@ -298,6 +425,7 @@ export function AuthScreen({
                 <span>{mode === "reset" ? "新密码" : "密码"}</span>
                 <div className="auth-password-control">
                   <input
+                    ref={passwordInputRef}
                     required
                     type={showPassword ? "text" : "password"}
                     name="password"
@@ -328,9 +456,9 @@ export function AuthScreen({
                 </div>
               </label>
             )}
-            {mode === "reset" && (
+            {["register", "reset"].includes(mode) && (
               <label>
-                <span>再次输入新密码</span>
+                <span>{mode === "reset" ? "再次输入新密码" : "再次输入密码"}</span>
                 <input
                   required
                   type="password"
@@ -341,7 +469,7 @@ export function AuthScreen({
                   onChange={(event) =>
                     setPasswordConfirmation(event.target.value)
                   }
-                  placeholder="再输入一次新密码"
+                  placeholder={mode === "reset" ? "再输入一次新密码" : "再输入一次密码，避免手误"}
                 />
               </label>
             )}
@@ -351,6 +479,18 @@ export function AuthScreen({
                 {feedback}
               </p>
             )}
+
+            {mode === "login" &&
+              (existingAccount || EMAIL_VERIFICATION_CODES.has(lastErrorCode)) && (
+                <button
+                  type="button"
+                  className="auth-inline-action"
+                  disabled={Boolean(busy)}
+                  onClick={() => openVerificationPanel(email)}
+                >
+                  这个邮箱还没验证？去发送验证邮件
+                </button>
+              )}
 
             <button
               className="auth-primary-button"
@@ -379,8 +519,7 @@ export function AuthScreen({
                 disabled={Boolean(busy)}
                 onClick={(event) => {
                   if (!event.currentTarget.form?.querySelector('input[type="email"]')?.reportValidity()) return;
-                  setVerificationEmail(email.trim().toLowerCase());
-                  setFeedback("邮箱尚未验证时，在此重新发送验证邮件；已经验证的账号可直接返回登录。");
+                  openVerificationPanel(email);
                 }}
               >
                 没收到邮箱验证邮件／验证链接失效？
@@ -410,6 +549,31 @@ export function AuthScreen({
         <p className="auth-footnote">
           登录状态只保存在当前设备；退出账号后，其他用户无法通过本设备读取你的私人空间。
         </p>
+        <details className="auth-network-help">
+          <summary>登录或注册一直失败？先看这里</summary>
+          <ol>
+            <li>先切换 Wi-Fi / 移动网络，再试一次。登录服务、验证邮件和聊天后端都在境外，中国大陆网络下常被阻断。</li>
+            <li>如果页面能打开但一直提示“连不上登录服务”，请开启网络加速（VPN / 代理）后刷新本页再登录。</li>
+            <li>注册后收不到验证邮件：先查收件箱和垃圾邮件并等几分钟；不要连续点重发，服务商每小时只允许少量邮件。</li>
+            <li>密码正确却提示邮箱未验证：点“没收到邮箱验证邮件”重发，或用最新验证邮件里的链接完成验证。</li>
+          </ol>
+          <button
+            type="button"
+            className="auth-inline-action"
+            disabled={authCheck.status === "checking"}
+            onClick={checkAuthService}
+          >
+            {authCheck.status === "checking" ? "正在检测登录服务…" : "检测登录服务是否可达"}
+          </button>
+          {authCheck.status !== "idle" && authCheck.status !== "checking" && (
+            <p
+              className={`auth-check-result auth-check-${authCheck.status}`}
+              role="status"
+            >
+              {authCheck.message}
+            </p>
+          )}
+        </details>
         {!Capacitor.isNativePlatform() && <WebInstallButton />}
       </section>
     </main>

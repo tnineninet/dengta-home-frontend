@@ -24,6 +24,7 @@ function createSessionManager({
   requestPasswordReset = async () => {
     throw new Error("not used");
   },
+  checkConnectivity = async () => ({ ok: true, status: 200, ms: 42, reason: "" }),
 }) {
   let snapshot = {
     status: "anonymous",
@@ -55,6 +56,7 @@ function createSessionManager({
     verifyRegistrationLink,
     requestPasswordReset: (payload) =>
       requestPasswordReset({ payload, publish }),
+    checkConnectivity: (options) => checkConnectivity(options),
   };
 }
 
@@ -180,11 +182,13 @@ try {
     const inputs = renderer.root.findAll((node) => node.type === "input");
     const nameInput = inputs.find((node) => node.props.type === "text");
     const emailInput = inputs.find((node) => node.props.type === "email");
-    const passwordInput = inputs.find((node) => node.props.type === "password");
+    const passwordInputs = inputs.filter((node) => node.props.type === "password");
+    assert.equal(passwordInputs.length, 2, "registration must ask for the password twice");
     await act(async () => {
       nameInput.props.onChange({ target: { value: "桃桃" } });
       emailInput.props.onChange({ target: { value: "taotao@example.test" } });
-      passwordInput.props.onChange({ target: { value: "example-password" } });
+      passwordInputs[0].props.onChange({ target: { value: "example-password" } });
+      passwordInputs[1].props.onChange({ target: { value: "example-password" } });
     });
 
     const form = renderer.root.findByType("form");
@@ -226,13 +230,111 @@ try {
     const resendButton = renderer.root.find(
       (node) =>
         node.type === "button" &&
-        textContent(node) === "重新发送验证邮件",
+        /秒后可重新发送/.test(textContent(node)),
     );
+    assert.equal(
+      resendButton.props.disabled,
+      true,
+      "the email just sent by signup must not be re-sent immediately",
+    );
+    assert.match(textContent(resendButton), /^60 秒后可重新发送$/);
     await act(async () => resendButton.props.onClick());
     assert.equal(
-      resendPayload.emailRedirectTo,
-      "https://www.dengtahome.com/",
-      "verification resend must use the same resolved callback",
+      resendPayload,
+      undefined,
+      "a cooled-down resend must not reach the auth service",
+    );
+    await act(async () => renderer.unmount());
+  }
+
+  {
+    let signInCalls = 0;
+    const pendingSignIn = deferred();
+    const manager = createSessionManager({
+      async signIn({ publish }) {
+        signInCalls += 1;
+        publish({ status: "authenticating", error: null });
+        await pendingSignIn.promise;
+      },
+    });
+    const renderer = await renderGate(AuthGate, manager);
+    const inputs = renderer.root.findAll((node) => node.type === "input");
+    await act(async () => {
+      inputs.find((node) => node.props.type === "email").props.onChange({ target: { value: "double@example.test" } });
+      inputs.find((node) => node.props.type === "password").props.onChange({ target: { value: "example-password" } });
+    });
+    const form = renderer.root.findByType("form");
+    await act(async () => {
+      form.props.onSubmit({ preventDefault() {} });
+      form.props.onSubmit({ preventDefault() {} });
+      await Promise.resolve();
+    });
+    assert.equal(signInCalls, 1, "one form submit must produce one sign-in request");
+    pendingSignIn.resolve();
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => renderer.unmount());
+  }
+
+  {
+    const offlineDescriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+    let signInCalls = 0;
+    Object.defineProperty(globalThis, "navigator", {
+      configurable: true,
+      value: { onLine: false },
+    });
+    try {
+      const manager = createSessionManager({
+        async signIn() { signInCalls += 1; },
+      });
+      const renderer = await renderGate(AuthGate, manager);
+      const inputs = renderer.root.findAll((node) => node.type === "input");
+      await act(async () => {
+        inputs.find((node) => node.props.type === "email").props.onChange({ target: { value: "offline@example.test" } });
+        inputs.find((node) => node.props.type === "password").props.onChange({ target: { value: "example-password" } });
+      });
+      await act(async () => {
+        await renderer.root.findByType("form").props.onSubmit({ preventDefault() {} });
+      });
+      assert.equal(signInCalls, 0, "an offline device must not call the auth service");
+      assert.match(textContent(renderer.toJSON()), /没有网络连接/);
+      await act(async () => renderer.unmount());
+    } finally {
+      if (offlineDescriptor) Object.defineProperty(globalThis, "navigator", offlineDescriptor);
+      else delete globalThis.navigator;
+    }
+  }
+
+  {
+    let resendCalls = 0;
+    const manager = createSessionManager({
+      async signIn() {
+        const error = new Error("邮箱尚未验证。请打开最新的验证邮件。");
+        error.code = "email_not_confirmed";
+        throw error;
+      },
+      async resendVerification() { resendCalls += 1; },
+    });
+    const renderer = await renderGate(AuthGate, manager);
+    const inputs = renderer.root.findAll((node) => node.type === "input");
+    await act(async () => {
+      inputs.find((node) => node.props.type === "email").props.onChange({ target: { value: "unverified@example.test" } });
+      inputs.find((node) => node.props.type === "password").props.onChange({ target: { value: "example-password" } });
+    });
+    await act(async () => {
+      await renderer.root.findByType("form").props.onSubmit({ preventDefault() {} });
+    });
+    const action = renderer.root.find(
+      (node) => node.type === "button" && textContent(node).includes("去发送验证邮件"),
+    );
+    await act(async () => action.props.onClick());
+    assert.match(textContent(renderer.toJSON()), /unverified@example\.test/);
+    assert.equal(
+      resendCalls,
+      0,
+      "opening the verification panel must not send an email by itself",
     );
     await act(async () => renderer.unmount());
   }
@@ -305,6 +407,106 @@ try {
       new RegExp(expectedError),
       "a failed sign-in must keep a visible error instead of silently clearing the form",
     );
+    await act(async () => renderer.unmount());
+  }
+
+  {
+    const manager = createSessionManager({
+      async signUp() {
+        return { emailVerificationRequired: false, existingAccount: true, user: null, session: null };
+      },
+    });
+    const renderer = await renderGate(AuthGate, manager);
+    await act(async () => {
+      renderer.root.findAll((node) => node.type === "button" && node.props.role === "tab")[1].props.onClick();
+    });
+    const inputs = renderer.root.findAll((node) => node.type === "input");
+    await act(async () => {
+      inputs.find((node) => node.props.type === "email").props.onChange({ target: { value: "existing@example.test" } });
+      inputs.filter((node) => node.props.type === "password")[0].props.onChange({ target: { value: "example-password" } });
+      inputs.filter((node) => node.props.type === "password")[1].props.onChange({ target: { value: "example-password" } });
+    });
+    await act(async () => {
+      await renderer.root.findByType("form").props.onSubmit({ preventDefault() {} });
+    });
+    const body = textContent(renderer.toJSON());
+    assert.match(body, /这个邮箱已经注册过/, "an obfuscated existing account must be reported honestly");
+    assert.doesNotMatch(body, /验证邮件已经发出/, "an existing account must not claim a new email was sent");
+    assert.equal(
+      renderer.root.find((node) => node.type === "input" && node.props.type === "email").props.value,
+      "existing@example.test",
+      "the email must stay filled for the login step",
+    );
+    assert.equal(
+      renderer.root.findAll((node) => node.props.className === "auth-verification").length,
+      0,
+      "existing accounts belong on the login form, not the verification panel",
+    );
+    const action = renderer.root.find(
+      (node) => node.type === "button" && textContent(node).includes("去发送验证邮件"),
+    );
+    await act(async () => action.props.onClick());
+    assert.match(textContent(renderer.toJSON()), /existing@example\.test/);
+    await act(async () => renderer.unmount());
+  }
+
+  {
+    let connectivityCalls = 0;
+    const manager = createSessionManager({
+      async checkConnectivity() {
+        connectivityCalls += 1;
+        return { ok: true, status: 200, ms: 128, reason: "" };
+      },
+    });
+    const renderer = await renderGate(AuthGate, manager);
+    const check = renderer.root.find(
+      (node) => node.type === "button" && textContent(node).includes("检测登录服务是否可达"),
+    );
+    await act(async () => check.props.onClick());
+    assert.equal(connectivityCalls, 1);
+    assert.match(textContent(renderer.toJSON()), /登录服务可访问（128 ms）/);
+    await act(async () => renderer.unmount());
+  }
+
+  {
+    const manager = createSessionManager({
+      async checkConnectivity() {
+        return { ok: false, status: 0, ms: 8001, reason: "timeout" };
+      },
+    });
+    const renderer = await renderGate(AuthGate, manager);
+    const check = renderer.root.find(
+      (node) => node.type === "button" && textContent(node).includes("检测登录服务是否可达"),
+    );
+    await act(async () => check.props.onClick());
+    assert.match(textContent(renderer.toJSON()), /检测超时/);
+    assert.match(textContent(renderer.toJSON()), /网络加速/);
+    await act(async () => renderer.unmount());
+  }
+
+  {
+    const manager = createSessionManager({
+      async signUp() {
+        return { emailVerificationRequired: true, existingAccount: false, user: null, session: null };
+      },
+    });
+    const renderer = await renderGate(AuthGate, manager);
+    await act(async () => {
+      renderer.root.findAll((node) => node.type === "button" && node.props.role === "tab")[1].props.onClick();
+    });
+    const inputs = renderer.root.findAll((node) => node.type === "input");
+    await act(async () => {
+      inputs.find((node) => node.props.type === "email").props.onChange({ target: { value: "mismatch@example.test" } });
+      inputs.filter((node) => node.props.type === "password")[0].props.onChange({ target: { value: "example-password" } });
+      inputs.filter((node) => node.props.type === "password")[1].props.onChange({ target: { value: "different-password" } });
+    });
+    let signUpCalls = 0;
+    manager.signUp = async () => { signUpCalls += 1; return { emailVerificationRequired: true }; };
+    await act(async () => {
+      await renderer.root.findByType("form").props.onSubmit({ preventDefault() {} });
+    });
+    assert.equal(signUpCalls, 0, "mismatched passwords must not reach the auth service");
+    assert.match(textContent(renderer.toJSON()), /两次输入的密码不一致/);
     await act(async () => renderer.unmount());
   }
 } finally {
