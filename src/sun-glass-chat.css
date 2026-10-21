@@ -3076,3 +3076,78 @@
     padding-bottom: calc(166px + env(safe-area-inset-bottom));
   }
 }
+
+/* Desktop status capsule: keep the rainbow capsule in normal flow so it cannot
+   float over chat messages, and give it the same pill dimensions as mobile. */
+@media (min-width: 821px) {
+  .main-panel.view-chat .chat-presence-stack {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    align-items: center;
+    padding: 8px 10px 0;
+    pointer-events: none;
+  }
+
+  .main-panel.view-chat
+    .companion-status.sun-glass-floating-status-shell:not(.expanded) {
+    position: relative;
+    inset: auto;
+    top: auto;
+    left: auto;
+    display: block;
+    width: min(440px, calc(100vw - 20px));
+    height: 146px;
+    min-height: 146px;
+    margin: 0 auto;
+    transform: none;
+    pointer-events: auto;
+  }
+
+  .main-panel.view-chat .sun-glass-liquid-action-stage {
+    width: 246px;
+    height: 72px;
+    margin: 0 auto;
+    place-items: center;
+  }
+
+  .main-panel.view-chat .sun-glass-liquid-capsule-toggle {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    width: 236px;
+    height: 62px;
+    padding: 3px 8px;
+    place-items: center;
+    overflow: hidden;
+    border: 1px solid rgb(255 255 255 / 0.72);
+    border-radius: 34px;
+    color: var(--theme-ink);
+    background: rgb(var(--theme-card-rgb) / var(--dengta-glass-control-alpha));
+    box-shadow:
+      inset 0 1px 1px rgb(255 255 255 / 0.88),
+      inset 0 -1px 1px rgb(71 91 127 / 0.2),
+      0 12px 28px rgb(29 42 66 / 0.14);
+    backdrop-filter: blur(var(--dengta-glass-panel-blur)) saturate(1.42)
+      contrast(1.03);
+    -webkit-backdrop-filter: blur(var(--dengta-glass-panel-blur)) saturate(1.42)
+      contrast(1.03);
+  }
+
+  .main-panel.view-chat .sun-glass-capsule-decoration {
+    position: relative;
+    z-index: 3;
+    display: grid;
+    width: 100%;
+    grid-template-columns: repeat(3, 1fr);
+    align-items: center;
+    justify-items: center;
+    pointer-events: none;
+  }
+
+  .main-panel.view-chat .sun-glass-capsule-decoration svg {
+    width: 26px;
+    height: 26px;
+    stroke-width: 1.8;
+  }
+}
