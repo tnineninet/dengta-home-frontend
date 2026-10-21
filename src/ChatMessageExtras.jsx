@@ -181,6 +181,7 @@ export function ThinkingPanel({
   innerMonologueError = "",
   onRequestInnerMonologue,
   onCancelInnerMonologue,
+  dialogOnly = false,
 }) {
   const completed = thinkingPanelCompleted(message);
   const synchronizedMonologue =
@@ -243,6 +244,99 @@ export function ThinkingPanel({
     setMonologueDialogOpen(true);
     onRequestInnerMonologue?.(message);
   };
+
+  const monologueDialog = monologueDialogOpen ? (
+    <div
+      className="inner-monologue-dialog-backdrop"
+      role="presentation"
+      onClick={() => setMonologueDialogOpen(false)}
+    >
+      <section
+        className="inner-monologue-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${displayName}的 AI 生成可见心声`}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header>
+          <span>
+            <small>{displayName} · AI 生成的可见心声</small>
+            <strong>{mood || "静静想着你"}</strong>
+          </span>
+          <button
+            type="button"
+            aria-label="关闭心声"
+            onClick={() => setMonologueDialogOpen(false)}
+          >
+            <X aria-hidden="true" />
+          </button>
+        </header>
+        <div className="inner-monologue-dialog-body">
+          {monologueText && (
+            <>
+              <p>{monologueText}</p>
+              {supplementedMonologue && <small>{supplementLabel}</small>}
+              {monologueState === "truncated" && (
+                <small>心声格式未闭合或超过显示长度，以上仅为收到的片段。</small>
+              )}
+              {monologueState === "failed" && (
+                <small>本轮回复未完成，以上片段仅临时显示，尚未确认保存到聊天记录。</small>
+              )}
+            </>
+          )}
+          {innerMonologuePending ? (
+            <div className="inner-monologue-dialog-pending" role="status">
+              <span aria-hidden="true" />
+              <p>{aiPronoun}正在把没有说出口的念头慢慢写下来…</p>
+              {typeof onCancelInnerMonologue === "function" && <button type="button" onClick={() => onCancelInnerMonologue(message)}>取消等待</button>}
+            </div>
+          ) : innerMonologueError ? (
+            <div className="inner-monologue-dialog-error" role="alert">
+              <p>{innerMonologueError}</p>
+              {canRequestInnerMonologue && (
+                <button type="button" onClick={requestMonologue}>
+                  再试一次
+                </button>
+              )}
+            </div>
+          ) : !monologueText && synchronizedMonologue ? (
+            <p>{synchronizedSummary}</p>
+          ) : !monologueText ? (
+            <p>这一次暂时没有收到可显示的心声。</p>
+          ) : null}
+        </div>
+      </section>
+    </div>
+  ) : null;
+
+  if (dialogOnly) {
+    return (
+      <>
+        {storageWarning && (
+          <small className="inner-monologue-error" role="alert">
+            {innerMonologueError}
+          </small>
+        )}
+        <button
+          type="button"
+          className="thinking-panel-trigger"
+          aria-label="查看这条回复的心声"
+          title="查看心声"
+          onClick={() => {
+            setMonologueDialogOpen(true);
+            if (!monologueText && canRequestInnerMonologue && !innerMonologuePending) {
+              requestMonologue();
+            }
+          }}
+        >
+          <span aria-hidden="true">💭</span>
+          <span>{innerMonologuePending ? "心声生成中…" : "心声"}</span>
+          {monologueText ? <span className="thinking-panel-trigger-dot" aria-hidden="true" /> : null}
+        </button>
+        {monologueDialog}
+      </>
+    );
+  }
 
   // 心声默认折叠成一个小图标；数据仍保存在消息/本地心声存储里。
   if (!open) {
@@ -438,69 +532,7 @@ export function ThinkingPanel({
         </div>
       </details>
 
-      {monologueDialogOpen && (
-        <div
-          className="inner-monologue-dialog-backdrop"
-          role="presentation"
-          onClick={() => setMonologueDialogOpen(false)}
-        >
-          <section
-            className="inner-monologue-dialog"
-            role="dialog"
-            aria-modal="true"
-            aria-label={`${displayName}的 AI 生成可见心声`}
-            onClick={(event) => event.stopPropagation()}
-          >
-            <header>
-              <span>
-                <small>{displayName} · AI 生成的可见心声</small>
-                <strong>{mood || "静静想着你"}</strong>
-              </span>
-              <button
-                type="button"
-                aria-label="关闭心声"
-                onClick={() => setMonologueDialogOpen(false)}
-              >
-                <X aria-hidden="true" />
-              </button>
-            </header>
-            <div className="inner-monologue-dialog-body">
-              {monologueText && (
-                <>
-                  <p>{monologueText}</p>
-                  {supplementedMonologue && <small>{supplementLabel}</small>}
-                  {monologueState === "truncated" && (
-                    <small>心声格式未闭合或超过显示长度，以上仅为收到的片段。</small>
-                  )}
-                  {monologueState === "failed" && (
-                    <small>本轮回复未完成，以上片段仅临时显示，尚未确认保存到聊天记录。</small>
-                  )}
-                </>
-              )}
-              {innerMonologuePending ? (
-                <div className="inner-monologue-dialog-pending" role="status">
-                  <span aria-hidden="true" />
-                  <p>{aiPronoun}正在把没有说出口的念头慢慢写下来…</p>
-                  {typeof onCancelInnerMonologue === "function" && <button type="button" onClick={() => onCancelInnerMonologue(message)}>取消等待</button>}
-                </div>
-              ) : innerMonologueError ? (
-                <div className="inner-monologue-dialog-error" role="alert">
-                  <p>{innerMonologueError}</p>
-                  {canRequestInnerMonologue && (
-                    <button type="button" onClick={requestMonologue}>
-                      再试一次
-                    </button>
-                  )}
-                </div>
-              ) : !monologueText && synchronizedMonologue ? (
-                <p>{synchronizedSummary}</p>
-              ) : !monologueText ? (
-                <p>这一次暂时没有收到可显示的心声。</p>
-              ) : null}
-            </div>
-          </section>
-        </div>
-      )}
+      {monologueDialog}
     </>
   );
 }

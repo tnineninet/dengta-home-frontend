@@ -10534,6 +10534,7 @@ body,
 }
 .thinking-panel-trigger:hover { background: rgba(255, 255, 255, .68); }
 .thinking-panel-trigger:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.message-footer .thinking-panel-trigger { margin: 0; }
 .thinking-panel-trigger-dot {
   width: 5px;
   height: 5px;

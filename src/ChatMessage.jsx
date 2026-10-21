@@ -306,19 +306,6 @@ function ChatMessage({
               </span>
             </div>
           )}
-          {!isUser && (
-            <ThinkingPanel
-              message={item}
-              aiName={aiName}
-              aiPronoun={aiPronoun}
-              companionMood={companionMood}
-              innerMonologue={innerMonologue}
-              innerMonologuePending={innerMonologuePending}
-              innerMonologueError={innerMonologueError}
-              onRequestInnerMonologue={onRequestInnerMonologue}
-              onCancelInnerMonologue={onCancelInnerMonologue}
-            />
-          )}
           {item.chatError && item.partialContent && (
             <div className="message-content" role="note">
               <small>回复中断 · 以下是本轮已经生成并保留的片段</small>
@@ -436,6 +423,20 @@ function ChatMessage({
             </span>
           )}
           <div className="message-footer">
+            {!isUser && (
+              <ThinkingPanel
+                dialogOnly
+                message={item}
+                aiName={aiName}
+                aiPronoun={aiPronoun}
+                companionMood={companionMood}
+                innerMonologue={innerMonologue}
+                innerMonologuePending={innerMonologuePending}
+                innerMonologueError={innerMonologueError}
+                onRequestInnerMonologue={onRequestInnerMonologue}
+                onCancelInnerMonologue={onCancelInnerMonologue}
+              />
+            )}
             {!item.chatError && !item.tool_calls?.refusal_detected && String(item.content || "").trim() && (
               <ChatTextImpact rowRef={rowRef} scopeKey={textImpactScope} messageId={item.id}
                 recent={!isUser && item.monologueAutoOpen === true} generating={isGenerating} reducedMotion={reduceMotion} />
