@@ -198,7 +198,7 @@ export function ThinkingPanel({
     Boolean(innerMonologue?.text) ||
     synchronizedMonologue ||
     canRequestInnerMonologue;
-  const [open, setOpen] = useState(!completed || message.monologueAutoOpen === true);
+  const [open, setOpen] = useState(message.monologueAutoOpen === true);
   const [monologueDialogOpen, setMonologueDialogOpen] = useState(false);
   useBackLayer(monologueDialogOpen, () => setMonologueDialogOpen(false), 300);
 
@@ -243,6 +243,35 @@ export function ThinkingPanel({
     setMonologueDialogOpen(true);
     onRequestInnerMonologue?.(message);
   };
+
+  // 心声默认折叠成一个小图标；数据仍保存在消息/本地心声存储里。
+  if (!open) {
+    return (
+      <>
+        {storageWarning && (
+          <small className="inner-monologue-error" role="alert">
+            {innerMonologueError}
+          </small>
+        )}
+        <button
+          type="button"
+          className="thinking-panel-trigger"
+          aria-label="查看这条回复的心声"
+          title="查看心声"
+          onClick={() => {
+            setOpen(true);
+            if (!monologueText && canRequestInnerMonologue && !innerMonologuePending) {
+              requestMonologue();
+            }
+          }}
+        >
+          <span aria-hidden="true">💭</span>
+          <span>{innerMonologuePending ? "心声生成中…" : "心声"}</span>
+          {monologueText ? <span className="thinking-panel-trigger-dot" aria-hidden="true" /> : null}
+        </button>
+      </>
+    );
+  }
 
   return (
     <>

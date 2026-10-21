@@ -5493,20 +5493,23 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           }
 
           if (event.type === "text") {
-            // 每个到达的正文分片立即提交，避免被后续状态更新或长时间渲染合批到结尾。
+            // 每个到达的正文分片立即提交；bubble_index 分句直接 push 成独立气泡。
             flushNow(() => {
               setMessages((current) =>
-                current.map((item) =>
-                  item.id === localAssistantId
-                    ? {
-                        ...item,
-                        content: item.content + event.content,
-                        ...(Number.isInteger(event.bubble_index)
-                          ? { bubbleMode: true }
-                          : {}),
-                      }
-                    : item,
-                ),
+                current.map((item) => {
+                  if (item.id !== localAssistantId) return item;
+                  const nextContent = item.content + event.content;
+                  if (!Number.isInteger(event.bubble_index)) {
+                    return { ...item, content: nextContent };
+                  }
+                  const bubbles = Array.isArray(item.bubbles)
+                    ? [...item.bubbles]
+                    : [];
+                  const index = Math.max(0, event.bubble_index);
+                  while (bubbles.length <= index) bubbles.push("");
+                  bubbles[index] = (bubbles[index] || "") + event.content;
+                  return { ...item, content: nextContent, bubbles, bubbleMode: true };
+                }),
               );
             });
           }
@@ -5589,11 +5592,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             setMessages((current) =>
               current.map((item) =>
                 item.id === localAssistantId
-                  ? { ...mergeStreamedAssistantMessage(
+                  ? mergeStreamedAssistantMessage(
                       item,
                       event.assistant_message,
                       streamThinkingRef.current,
-                    ), monologueAutoOpen: true }
+                    )
                   : item,
               ),
             );

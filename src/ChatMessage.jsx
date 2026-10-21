@@ -117,7 +117,18 @@ function ChatMessage({
     item.tool_calls?.artwork_alt || `${aiName}创作的图片`;
   const isGenerating = item.isStreaming === true || item.generationInProgress === true;
   const displayContent = useMemo(() => readChatDisplayContent(item), [item]);
-  const chatSegments = useMemo(() => isUser ? [] : splitChatSegments(displayContent.content, item.tool_calls?.reply_bubbles), [isUser, displayContent.content, item.tool_calls?.reply_bubbles]);
+  const chatSegments = useMemo(() => {
+    if (isUser) return [];
+    if (Array.isArray(item.bubbles) && item.bubbles.length > 0) {
+      return item.bubbles.filter((segment) => String(segment || "").length > 0);
+    }
+    return splitChatSegments(displayContent.content, item.tool_calls?.reply_bubbles);
+  }, [isUser, displayContent.content, item.bubbles, item.tool_calls?.reply_bubbles]);
+  const independentBubbles =
+    !isUser &&
+    item.chatError !== true &&
+    chatSegments.length > 0 &&
+    (item.bubbleMode === true || Boolean(item.tool_calls?.reply_bubbles));
   const formattedTime = useMemo(() =>
     typeof item.formattedTime === "string" && item.formattedTime
       ? item.formattedTime : formatMessageTime(item.created_at),
@@ -268,7 +279,7 @@ function ChatMessage({
       </span>}
       <div className="message-column">
         <div className="message-role">{displayName}</div>
-        <div className={`message-bubble${!isUser && chatSegments.length > 1 && (item.bubbleMode === true || item.tool_calls?.reply_bubbles) ? " message-bubble--multi" : ""}`}>
+        <div className={`message-bubble${independentBubbles ? " message-bubble--multi" : ""}`}>
           {skin === "taotao-cream" && skinPresentation?.showOrnament && (
             <ChatSkinOrnament
               role={item.role}
