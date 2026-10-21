@@ -10524,15 +10524,17 @@ body,
   box-shadow: none;
 }
 .message-bubble--multi .message-content.chat-sentences { gap: 8px; }
-.app-shell[data-chat-skin="taotao-cream"]
-  .chat-skin-cream-message.assistant
-  .message-bubble.message-bubble--multi {
-  padding: 0;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  overflow: visible;
+@media (min-width: 821px) {
+  .app-shell[data-chat-skin="taotao-cream"]
+    .chat-skin-cream-message.assistant
+    .message-bubble.message-bubble--multi {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+  }
 }
 .message-bubble--multi .chat-sentence {
   max-width: min(710px, 84%);
