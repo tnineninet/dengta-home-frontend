@@ -10514,6 +10514,26 @@ body,
 @keyframes chat-sentence-in { from { opacity: .55; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { .chat-sentence { animation: none; } }
 
+/* 多气泡模式：外层气泡透明，每个完整句子自己成为一个小气泡。 */
+.message-row.assistant .message-bubble--multi {
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.message-bubble--multi .message-content.chat-sentences { gap: 8px; }
+.message-bubble--multi .chat-sentence {
+  max-width: min(710px, 84%);
+  padding: 13px 16px 9px;
+  border: 1px solid rgba(231, 222, 218, .78);
+  border-radius: 18px;
+  border-bottom-left-radius: 5px;
+  background: rgba(255, 255, 255, .92);
+  box-shadow: 0 5px 18px rgba(76, 54, 63, .07);
+}
+
 .creative-provider-form .provider-section-title { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .creative-provider-reuse { flex: 0 0 auto; padding: 8px 12px; border: 1px solid rgba(126, 92, 72, .28); border-radius: 10px; background: rgba(255, 250, 241, .8); color: #6f4e43; font-size: 12px; font-weight: 600; }
 .creative-provider-reuse:disabled { opacity: .6; }

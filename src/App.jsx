@@ -5498,7 +5498,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               setMessages((current) =>
                 current.map((item) =>
                   item.id === localAssistantId
-                    ? { ...item, content: item.content + event.content }
+                    ? {
+                        ...item,
+                        content: item.content + event.content,
+                        ...(Number.isInteger(event.bubble_index)
+                          ? { bubbleMode: true }
+                          : {}),
+                      }
                     : item,
                 ),
               );

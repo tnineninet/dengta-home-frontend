@@ -9,7 +9,39 @@ function splitParagraph(value) {
     return matches.map(part => part.trim()).filter(Boolean);
 }
 
-export function splitChatSegments(value) {
+export function splitChatSegments(value, replyBubbles = null) {
+    const text = String(value || "");
+    const boundaries = Array.isArray(replyBubbles?.boundaries)
+        ? replyBubbles.boundaries
+        : [];
+    if (
+        replyBubbles?.version === 1 &&
+        Number(replyBubbles.count) === boundaries.length &&
+        boundaries.length > 0
+    ) {
+        const segments = [];
+        let start = 0;
+        let valid = true;
+        for (const raw of boundaries) {
+            const end = Number(raw);
+            if (!Number.isInteger(end) || end <= start || end > text.length) {
+                valid = false;
+                break;
+            }
+            segments.push(text.slice(start, end));
+            start = end;
+        }
+        if (valid) {
+            if (start < text.length) segments.push(text.slice(start));
+            if (segments.some((segment) => segment.trim())) {
+                return segments;
+            }
+        }
+    }
+    return splitChatFallback(text);
+}
+
+function splitChatFallback(value) {
     const text = String(value || "");
     if (!text.trim()) return [];
     // 代码块/表格/列表不强行按句号拆，避免破坏格式。
