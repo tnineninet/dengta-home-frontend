@@ -43,12 +43,18 @@ try {
   execFileSync(process.execPath, command, { stdio: "inherit", cwd: root });
   const manifest = JSON.parse(fs.readFileSync(temp, "utf8"));
   fs.writeFileSync(target, JSON.stringify(manifest, null, 2) + "\n");
+  const downloadTarget = path.join(root, "public", "updates", "download.json");
+  fs.writeFileSync(downloadTarget, JSON.stringify({
+    schema_version: 1,
+    latest: manifest.latest,
+  }, null, 2) + "\n");
   console.log(JSON.stringify({
     updated: target,
+    downloadManifest: downloadTarget,
     version: manifest.latest?.version,
     versionCode: manifest.latest?.version_code,
     apkUrl: manifest.latest?.apk_url,
-    next: "commit public/updates/android.json and deploy the website",
+    next: "commit public/updates/android.json and public/updates/download.json, then deploy the website",
   }, null, 2));
 } finally {
   fs.rmSync(temp, { force: true });
