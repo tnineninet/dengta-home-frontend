@@ -1,4 +1,4 @@
-﻿const CACHE_NAME = "dengta-home-v29-local-music-upload";
+﻿const CACHE_NAME = "dengta-home-v30-download-entry";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",

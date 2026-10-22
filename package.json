@@ -4,6 +4,7 @@
   "version": "2.12.19",
   "type": "module",
   "scripts": {
+    "publish:app-update": "node scripts/publish-app-update.mjs",
     "test:xhs": "node --test test/xhs-login-panel.test.js test/xhs-sticker-import.test.js test/xhs-sticker-import.component.test.js test/backend-test-root.test.js",
     "test:xhs-integration": "node --test test/xhs-account-session.test.js",
     "test:app-icons": "node --test test/app-icon-assets.test.js",

@@ -22,6 +22,7 @@ import DengTaPrelude from "./DengTaPrelude.jsx";
 import { prewarmBackend } from "./backend-prewarm.js";
 import { pwaInstallController } from "./pwa-install.js";
 import ReceiverApp from "./ReceiverApp.jsx";
+import DownloadAppChip from "./DownloadAppChip.jsx";
 import {
   AppLoadingScreen,
   AppStartupBoundary,
@@ -84,6 +85,7 @@ createRoot(document.getElementById("root")).render(
           </AppStartupBoundary>
         )}
       </AuthGate>
+      <DownloadAppChip />
     </>}
   </StrictMode>,
 );

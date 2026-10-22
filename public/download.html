@@ -9,7 +9,7 @@
   :root { color-scheme: light; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; }
   * { box-sizing: border-box; }
   body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 28px 18px; background: radial-gradient(120% 90% at 20% 0%, #dff3ee 0%, #f7f2e8 48%, #f6e4e0 100%); color: #2f3b3b; }
-  main { width: min(520px, 100%); background: rgba(255,255,255,.86); border: 1px solid rgba(74,96,95,.12); border-radius: 28px; padding: 28px 24px 24px; box-shadow: 0 24px 70px rgba(74,96,95,.16); backdrop-filter: blur(18px); }
+  main { width: min(520px, 100%); background: rgba(255,255,255,.88); border: 1px solid rgba(74,96,95,.12); border-radius: 28px; padding: 28px 24px 24px; box-shadow: 0 24px 70px rgba(74,96,95,.16); backdrop-filter: blur(18px); }
   .mark { width: 54px; height: 54px; border-radius: 17px; display: grid; place-items: center; background: linear-gradient(145deg,#7fb8b3,#d9b29b); color: #fff; font-size: 24px; font-weight: 800; box-shadow: 0 10px 24px rgba(96,145,141,.28); }
   h1 { margin: 18px 0 6px; font-size: 28px; letter-spacing: -.03em; }
   .sub { margin: 0 0 20px; color: #667675; font-size: 14px; line-height: 1.7; }
@@ -19,6 +19,7 @@
   .note { border-radius: 18px; background: #f2f7f5; border: 1px solid rgba(84,112,109,.12); padding: 14px 16px; margin-top: 14px; }
   .note strong { display: block; margin-bottom: 6px; font-size: 14px; color: #38514f; }
   .note p, .note li { margin: 4px 0; color: #62716f; font-size: 13px; line-height: 1.65; }
+  .notes { margin: 0; padding-left: 18px; }
   ol { margin: 6px 0 0; padding-left: 20px; }
   .status { min-height: 20px; margin: 0 2px 10px; color: #2f6f6a; font-size: 13px; }
   .copy { width: 100%; min-height: 44px; margin: 0 0 8px; border: 1px solid rgba(74,96,95,.18); border-radius: 15px; background: rgba(255,255,255,.6); color: #3f5351; font-size: 14px; font-weight: 600; }
@@ -33,19 +34,27 @@
   <div class="mark">D</div>
   <h1>下载 DengTa</h1>
   <p class="sub">Android 安装包，直接下载后按系统提示安装。不需要 GitHub，也不需要电脑。</p>
-  <a class="download" href="/downloads/DengTa-latest.apk" download="DengTa-2.12.18-176.apk">下载 Android 安装包</a>
+  <a id="download-link" class="download" href="/downloads/DengTa-latest.apk" download>下载 Android 安装包</a>
   <button class="copy" id="copy-link" type="button">复制下载页链接</button>
-  <div class="meta"><span>版本 2.12.18 · 176</span><span>约 41 MB</span></div>
+  <div class="meta">
+    <span id="version-text">版本读取中…</span>
+    <span id="size-text">安装包大小读取中…</span>
+  </div>
   <p id="download-status" class="status" role="status"></p>
 
   <div class="note">
     <strong>安装步骤</strong>
     <ol>
       <li>点上面的下载按钮，等下载完成；</li>
-      <li>在通知栏或“文件/下载”里点开 APK；</li>
+      <li>在通知栏或“文件 / 下载”里点开 APK；</li>
       <li>如果系统提示“未知来源”，允许本次安装；</li>
       <li>安装完成后回到桌面打开 DengTa。</li>
     </ol>
+  </div>
+
+  <div class="note" id="release-notes" hidden>
+    <strong>本次更新</strong>
+    <ul class="notes" id="release-notes-list"></ul>
   </div>
 
   <div class="note wechat">
@@ -56,16 +65,69 @@
   <p class="foot">DengTa home · 仅供 Android 使用</p>
 </main>
 <script>
-  document.querySelector("a.download").addEventListener("click", () => {
-    document.getElementById("download-status").textContent = "已开始下载，请在通知栏或“文件/下载”里查看进度。";
-  });
-  document.getElementById("copy-link").addEventListener("click", async () => {
-    const link = "https://www.dengtahome.com/download";
+  const link = document.getElementById("download-link");
+  const versionText = document.getElementById("version-text");
+  const sizeText = document.getElementById("size-text");
+  const status = document.getElementById("download-status");
+  const notesBox = document.getElementById("release-notes");
+  const notesList = document.getElementById("release-notes-list");
+  const latestFallback = {
+    version: "2.12.18",
+    version_code: 176,
+    apk_url: "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.18/DengTa-2.12.18-176.apk",
+    size_bytes: 41447569,
+    notes: []
+  };
+
+  function formatSize(bytes) {
+    const value = Number(bytes) || 0;
+    if (!value) return "大小未知";
+    if (value >= 1024 * 1024) return "约 " + Math.round(value / (1024 * 1024)) + " MB";
+    return "约 " + Math.round(value / 1024) + " KB";
+  }
+
+  function fileNameFromUrl(url, fallback) {
     try {
-      await navigator.clipboard.writeText(link);
-      document.getElementById("download-status").textContent = "下载页链接已复制。";
+      const name = decodeURIComponent(new URL(url).pathname.split("/").pop() || "");
+      return /\.apk$/i.test(name) ? name : fallback;
     } catch {
-      document.getElementById("download-status").textContent = "复制失败，请长按地址栏复制：" + link;
+      return fallback;
+    }
+  }
+
+  function applyRelease(release) {
+    if (!release || typeof release !== "object" || !release.apk_url) return;
+    link.href = release.apk_url;
+    link.download = fileNameFromUrl(release.apk_url, "DengTa-latest.apk");
+    versionText.textContent = "版本 " + release.version + " · " + release.version_code;
+    sizeText.textContent = formatSize(release.size_bytes);
+    if (Array.isArray(release.notes) && release.notes.length) {
+      notesList.replaceChildren();
+      for (const note of release.notes.slice(0, 8)) {
+        const item = document.createElement("li");
+        item.textContent = note;
+        notesList.appendChild(item);
+      }
+      notesBox.hidden = false;
+    }
+  }
+
+  fetch("/updates/android.json", { cache: "no-store", credentials: "omit" })
+    .then((response) => response.ok ? response.json() : Promise.reject(new Error("HTTP " + response.status)))
+    .then((payload) => applyRelease(payload?.latest || latestFallback))
+    .catch(() => applyRelease(latestFallback));
+
+  link.addEventListener("click", () => {
+    status.textContent = "已开始下载，请在通知栏或“文件 / 下载”里查看进度。";
+  });
+
+  document.getElementById("copy-link").addEventListener("click", async () => {
+    const url = "https://www.dengtahome.com/download";
+    try {
+      await navigator.clipboard.writeText(url);
+      status.textContent = "下载页链接已复制。";
+    } catch {
+      status.textContent = "复制失败，请长按地址栏复制：" + url;
     }
   });
 </script>
