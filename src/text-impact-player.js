@@ -79,9 +79,8 @@ export async function playTextImpact(source, { mode = "scatter", target = "compo
   const height = Math.min(view.innerHeight, viewport?.height || view.innerHeight);
   const glyphs = measureTextImpactGlyphs(source, { width, height });
   if (!glyphs.length) return { started: false, reason: "empty" };
-  const role = source.closest(".message-row")?.classList.contains("user") ? "assistant" : "user";
   const candidates = target === "avatar"
-    ? [...source.ownerDocument.querySelectorAll(`.message-row.${role} .message-avatar`)].reverse()
+    ? [...source.ownerDocument.querySelectorAll(".message-row.assistant .message-avatar")].reverse()
     : [...source.ownerDocument.querySelectorAll(".composer textarea")];
   const destination = candidates.find(element => {
     const owner = element.closest?.("[data-text-impact-scope]");

@@ -1142,8 +1142,9 @@ button:active:not(:disabled) {
   margin-top: -7px;
 }
 
-.app-shell[data-chat-skin="taotao-cream"] .chat-skin-cream-message .message-avatar,
-.app-shell[data-chat-skin="taotao-cream"] .chat-skin-cream-message .message-role {
+.app-shell[data-chat-skin="taotao-cream"]
+  .chat-skin-cream-message
+  .message-role {
   display: none;
 }
 

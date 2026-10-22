@@ -73,7 +73,7 @@ after(async () => { await vite.close(); for (const [key, descriptor] of original
 test("real controls default to manual playback and expose accessible, bounded options", async () => {
   await mount({ recent: true }); assert.equal(state.calls.length, 0);
   assert.equal(button("文字弹弹乐").props["aria-expanded"], false);
-  assert.deepEqual(preference.readTextImpactPreference(props.scopeKey), { auto: false, mode: "scatter", target: "composer" });
+  assert.deepEqual(preference.readTextImpactPreference(props.scopeKey), { auto: false, mode: "scatter", target: "avatar" });
   await open(); assert.equal(button("文字弹弹乐").props["aria-expanded"], true);
   const menu = tree.root.findByProps({ "aria-label": "文字弹弹乐选项" });
   assert.equal(menu.props.style.width, 252); assert.ok(menu.props.style.left >= 16); assert.ok(menu.props.style.top >= 16);
@@ -126,9 +126,9 @@ test("automatic preferences stay within account, companion and conversation scop
   assert.equal(preference.readTextImpactPreference(firstScope).auto, true);
   await click("关闭文字弹弹乐");
   await update({ scopeKey: `fixture-account-${serial}:companion-b:conversation-a`, messageId: "other-message" });
-  assert.deepEqual(preference.readTextImpactPreference(props.scopeKey), { auto: false, mode: "scatter", target: "composer" });
+  assert.deepEqual(preference.readTextImpactPreference(props.scopeKey), { auto: false, mode: "scatter", target: "avatar" });
   await update({ scopeKey: "" }); await open(); assert.equal(tree.root.findByType("input").props.disabled, true);
-  assert.deepEqual(preference.saveTextImpactPreference("", { auto: true }), { auto: false, mode: "scatter", target: "composer" });
+  assert.deepEqual(preference.saveTextImpactPreference("", { auto: true }), { auto: false, mode: "scatter", target: "avatar" });
 });
 
 test("unmounting or switching scope stops only the animation owned by this component", async () => {

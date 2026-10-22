@@ -1,5 +1,5 @@
 const KEY = "dengta_text_impact_v1:";
-const defaults = Object.freeze({ auto: false, mode: "scatter", target: "composer" });
+const defaults = Object.freeze({ auto: false, mode: "scatter", target: "avatar" });
 const records = new Map();
 const listeners = new Set();
 
@@ -13,7 +13,10 @@ export function readTextImpactPreference(scope = "") {
   if (!scope) return defaults;
   if (records.has(scope)) return records.get(scope);
   let value = defaults;
-  try { value = normalize(JSON.parse(globalThis.localStorage?.getItem(KEY + scope) || "{}")); } catch { /* optional preference */ }
+  try {
+    const stored = JSON.parse(globalThis.localStorage?.getItem(KEY + scope) || "{}");
+    value = normalize({ ...defaults, ...(stored && typeof stored === "object" ? stored : {}) });
+  } catch { /* optional preference */ }
   records.set(scope, value);
   return value;
 }

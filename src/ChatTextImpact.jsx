@@ -43,9 +43,12 @@ export default function ChatTextImpact({ rowRef, scopeKey = "", messageId, recen
   }
 
   function playManually(mode) {
-    saveTextImpactPreference(scopeKey, { mode });
+    // “文字弹跳”必须是子弹打在 TA 的头像上；不能因为旧的默认落点或
+    // 用户之前选过输入框就退化成普通抛物线。
+    const target = mode === "burst" ? "avatar" : preference.target;
+    saveTextImpactPreference(scopeKey, { mode, ...(target !== preference.target ? { target } : {}) });
     setOpen(false);
-    const pending = play(mode, preference.target);
+    const pending = play(mode, target);
     const request = playRequest.current;
     void pending.then(result => {
       if (request !== playRequest.current) return;
