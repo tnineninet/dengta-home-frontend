@@ -1,4 +1,4 @@
-﻿const CACHE_NAME = "dengta-home-v27-xinchao-details";
+﻿const CACHE_NAME = "dengta-home-v28-reply-options-trigger";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",

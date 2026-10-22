@@ -72,6 +72,7 @@ import {
 import CompanionStatus from "./CompanionStatus";
 import CompanionGenderFields from "./CompanionGenderFields";
 import ReplyOptionsSheet from "./ReplyOptionsSheet.jsx";
+import { shouldAutoOpenReplyOptions } from "./reply-options-trigger.js";
 import ChatContextSettings from "./ChatContextSettings.jsx";
 import ChatErrorLog from "./ChatErrorLog.jsx";
 import { requestErrorLogs } from "./error-log-request.js";
@@ -1580,7 +1581,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       return undefined;
     }
     const text = String(latest.content || "").trim();
-    if (!/[?？]\s*$/.test(text)) return undefined;
+    if (!text || !shouldAutoOpenReplyOptions(latest)) return undefined;
     const messageId = String(latest.id || "");
     if (!messageId || replyOptionsAutoRef.current === messageId) {
       return undefined;
