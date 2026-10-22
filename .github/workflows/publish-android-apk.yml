@@ -129,3 +129,14 @@ jobs:
           fi
           git commit -m "release: publish Android ${VERSION_NAME} (${VERSION_CODE})" -m "sha: ${COMMIT_SHA}"
           git push
+
+      - name: Trigger website deployment
+        env:
+          VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+        run: |
+          if [ -n "$VERCEL_DEPLOY_HOOK" ]; then
+            curl -fsS -X POST "$VERCEL_DEPLOY_HOOK" >/dev/null
+            echo "Triggered Vercel deployment"
+          else
+            echo "VERCEL_DEPLOY_HOOK is not configured; the repository push still deploys normally"
+          fi
