@@ -1,4 +1,4 @@
-﻿const CACHE_NAME = "dengta-home-v34-natural-reply-options";
+﻿const CACHE_NAME = "dengta-home-v35-art-clipboard";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",

@@ -496,9 +496,7 @@ export function CompanionArtworkLibrary({
     }
   }
 
-  async function uploadArtwork(event) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
+  async function uploadArtworkFile(file) {
     if (!file) return;
     const operation = scope.begin();
     if (!operation) return;
@@ -529,8 +527,40 @@ export function CompanionArtworkLibrary({
     }
   }
 
+  async function uploadArtwork(event) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    await uploadArtworkFile(file);
+  }
+
+  async function importArtworkFromClipboard() {
+    try {
+      if (!navigator.clipboard?.read) throw new Error("clipboard_unsupported");
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const imageType = item.types.find((type) => type.startsWith("image/"));
+        if (!imageType) continue;
+        const blob = await item.getType(imageType);
+        const extension = imageType === "image/png" ? "png" : imageType === "image/webp" ? "webp" : "jpg";
+        const file = new File([blob], `剪贴板图片-${Date.now()}.${extension}`, { type: imageType });
+        await uploadArtworkFile(file);
+        return;
+      }
+      setFeedback("剪贴板里没有找到图片。先复制一张图，再点“从剪贴板导入”。");
+    } catch {
+      setFeedback("当前浏览器不允许直接读取剪贴板。可以先复制图片，在画室页面按 Ctrl+V，或使用“手动上传”。");
+    }
+  }
+
+  async function handleArtworkPaste(event) {
+    const file = Array.from(event.clipboardData?.files || []).find((item) => item.type.startsWith("image/"));
+    if (!file) return;
+    event.preventDefault();
+    await uploadArtworkFile(file);
+  }
+
   return (
-    <section className="companion-artwork-library" aria-labelledby="creative-library-title">
+    <section className="companion-artwork-library" aria-labelledby="creative-library-title" onPaste={handleArtworkPaste}>
       <div className="profile-section-heading">
         <div>
           <span className="eyebrow">只属于你们的私人画册</span>
@@ -595,6 +625,13 @@ export function CompanionArtworkLibrary({
             />
             <span>{busy === "upload" ? "处理中…" : "手动上传"}</span>
           </label>
+          <button
+            type="button"
+            disabled={Boolean(busy)}
+            onClick={() => void importArtworkFromClipboard()}
+          >
+            从剪贴板导入
+          </button>
         </div>
       </div>
 
