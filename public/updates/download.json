@@ -1,17 +1,15 @@
 {
   "schema_version": 1,
   "latest": {
-    "version": "2.12.19",
-    "version_code": 177,
-    "apk_url": "/downloads/DengTa-latest.apk",
-    "sha256": "518e39819f099bfef064391df8e76c4c8b8f4f0bc092fa42028f4bfa8893257a",
-    "size_bytes": 41992286,
-    "published_at": "2026-10-22T15:50:49Z",
+    "version_code": 178,
+    "version": "2.12.20",
+    "apk_url": "https://www.dengtahome.com/downloads/DengTa-latest.apk",
+    "sha256": "219da6a327600b3bc2c5b6c7155123cd62f2bd518710426eab6ee5c7b1749cc8",
+    "size_bytes": 71092856,
+    "published_at": "2026-10-22T16:07:33.474Z",
     "notes": [
-      "屏幕截图更快、更清晰：默认 30 秒，最短 15 秒。",
-      "投屏接收端口冲突时自动切换端口。",
-      "设备活动显示最近打开的应用。",
-      "包含本轮聊天与界面修复。"
+      "自动构建 2.12.20（178） · 6489214a5f8f",
+      "包含最新的聊天、界面和 Android 修复。"
     ]
   }
 }
