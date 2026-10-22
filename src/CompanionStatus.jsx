@@ -412,17 +412,13 @@ function CompanionStatus({
           <button
             type="button"
             className="sun-glass-liquid-capsule-toggle"
-            aria-label={xinchaoState ? "查看心潮状态" : expanded ? "收起动态状态" : `展开${displayName}的动态状态`}
-            aria-expanded={xinchaoState ? false : expanded}
+            aria-label="心潮状态"
+            aria-expanded={false}
             onClick={(event) => {
-              // The Xinchao capsule is a read-only visual. Do not open the
-              // legacy full status sheet from here; that sheet covers the chat
-              // on desktop and is what made the page look cleared.
-              if (xinchaoState) {
-                event.preventDefault();
-                return;
-              }
-              togglePanel();
+              // The capsule is a read-only visualization. The legacy full
+              // status sheet is intentionally not opened from it: on desktop
+              // it could cover the whole chat and look like the page cleared.
+              event.preventDefault();
             }}
           >
             {xinchaoState ? (

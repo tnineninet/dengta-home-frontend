@@ -1,4 +1,4 @@
-const CACHE_NAME = "dengta-home-v22-xinchao-capsule-readonly";
+const CACHE_NAME = "dengta-home-v23-xinchao-capsule-static";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",
