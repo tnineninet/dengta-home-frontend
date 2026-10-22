@@ -10568,12 +10568,14 @@ body,
 .message-bubble--multi .chat-sentence {
   max-width: min(710px, 84%);
   padding: 13px 16px 9px;
-  border: 1px solid rgba(231, 222, 218, .78);
+  border: 1px solid rgba(57, 50, 53, .9);
   border-radius: 18px;
   border-bottom-left-radius: 5px;
-  color: #3f3036;
-  background: rgba(255, 255, 255, .92);
-  box-shadow: 0 5px 18px rgba(76, 54, 63, .07);
+  color: var(--ink, #ece6e8);
+  background: rgba(24, 22, 24, .58);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .14);
+  backdrop-filter: blur(14px) saturate(1.12);
+  -webkit-backdrop-filter: blur(14px) saturate(1.12);
 }
 .message-bubble--multi .chat-sentence-inner {
   color: #fff;
@@ -10581,8 +10583,13 @@ body,
 }
 @supports not (mix-blend-mode: difference) {
   .message-bubble--multi .chat-sentence-inner {
-    color: #3f3036;
+    color: var(--ink, #ece6e8);
   }
+}
+.app-shell[data-chat-skin="taotao-cream"] .message-bubble--multi .chat-sentence {
+  border-color: rgba(126, 92, 72, .28);
+  background: rgba(255, 250, 241, .82);
+  box-shadow: 0 5px 18px rgba(76, 54, 63, .07);
 }
 
 .creative-provider-form .provider-section-title { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
