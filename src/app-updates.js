@@ -6,9 +6,17 @@ export const MAX_ANDROID_BUILD = 2_147_483_647;
 export function validUpdateDownload(value) {
   if (typeof value !== "string") return false;
   try {
-    const url = new URL(value);
-    return url.protocol === "https:" && url.hostname === "github.com" && !url.username && !url.password &&
-      !url.port && !url.search && !url.hash && /^\/DengTaHome\/dengta-home(?:-frontend)?\/releases\/download\/v[\d.]+\/[-\w.]+\.apk$/.test(url.pathname);
+    const url = new URL(value, "https://www.dengtahome.com/");
+    const clean = !url.username && !url.password && !url.port && !url.search && !url.hash;
+    const siteApk =
+      url.protocol === "https:" &&
+      ["www.dengtahome.com", "dengtahome.com"].includes(url.hostname) &&
+      /^\/downloads\/[-\w.]+\.apk$/.test(url.pathname);
+    const githubApk =
+      url.protocol === "https:" &&
+      url.hostname === "github.com" &&
+      /^\/DengTaHome\/dengta-home(?:-frontend)?\/releases\/download\/v[\d.]+\/[-\w.]+\.apk$/.test(url.pathname);
+    return clean && (siteApk || githubApk);
   } catch { return false; }
 }
 

@@ -3,15 +3,17 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 176,
-    "version": "2.12.18",
-    "apk_url": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.18/DengTa-2.12.18-176.apk",
-    "sha256": "d08f7faef7f8acd1263023f82df33e5b7a9c45d62ccd3dc71b665fd6f87fc9d5",
-    "size_bytes": 41447569,
-    "published_at": "2026-10-20T06:40:25Z",
+    "version_code": 177,
+    "version": "2.12.19",
+    "apk_url": "https://www.dengtahome.com/downloads/DengTa-latest.apk",
+    "sha256": "518e39819f099bfef064391df8e76c4c8b8f4f0bc092fa42028f4bfa8893257a",
+    "size_bytes": 41992286,
+    "published_at": "2026-10-22T15:50:49Z",
     "notes": [
-      "稳定性优化与体验修复。",
-      "应用内更新会显示下载进度，并在下载完成后打开系统安装界面。"
+      "屏幕截图更快、更清晰：默认 30 秒，最短 15 秒。",
+      "投屏接收端口冲突时自动切换端口。",
+      "设备活动显示最近打开的应用。",
+      "包含本轮聊天与界面修复。"
     ]
   }
 }
