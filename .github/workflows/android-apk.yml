@@ -82,7 +82,7 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
       - name: Remove old APK from Android web assets
-        run: rm -rf public/downloads
+        run: rm -rf public/downloads dist/downloads
 
       - name: Sync Android project
         run: |
