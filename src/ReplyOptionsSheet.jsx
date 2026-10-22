@@ -19,12 +19,6 @@ export default function ReplyOptionsSheet({
   );
 
   useEffect(() => {
-    if (!open) return;
-    setSelected("");
-    setCustom("");
-  }, [open]);
-
-  useEffect(() => {
     if (!open) return undefined;
     const onKey = (event) => {
       if (event.key === "Escape") onClose?.();

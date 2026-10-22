@@ -1590,8 +1590,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       void openReplyOptions();
     }, 900);
     return () => window.clearTimeout(timer);
-    // openReplyOptions is stable enough for this one-shot question trigger.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages, isSending, isCompanionResponding, activeSessionId]);
   const messageListRef = useRef(null);
   const chatScrollControllerRef = useRef(null);
@@ -10447,6 +10445,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       </main>
 
       <ReplyOptionsSheet
+        key={replyOptionsOpen ? "reply-options-open" : "reply-options-closed"}
         open={replyOptionsOpen}
         options={replyOptions}
         loading={replyOptionsLoading}
