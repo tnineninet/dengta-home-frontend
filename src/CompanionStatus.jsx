@@ -409,7 +409,22 @@ function CompanionStatus({
         {nowPlaying ? (
           <NowPlayingCard song={nowPlaying} busy={nowPlayingBusy} expanded={expanded} onToggle={togglePanel} onPlayPause={onNowPlayingPlayPause} onNext={onNowPlayingNext} onDismiss={onDismissNowPlaying} />
         ) : (
-          <button type="button" className="sun-glass-liquid-capsule-toggle" aria-label={expanded ? "收起动态状态" : `展开${displayName}的动态状态`} aria-expanded={expanded} onClick={togglePanel}>
+          <button
+            type="button"
+            className="sun-glass-liquid-capsule-toggle"
+            aria-label={xinchaoState ? "查看心潮状态" : expanded ? "收起动态状态" : `展开${displayName}的动态状态`}
+            aria-expanded={xinchaoState ? false : expanded}
+            onClick={(event) => {
+              // The Xinchao capsule is a read-only visual. Do not open the
+              // legacy full status sheet from here; that sheet covers the chat
+              // on desktop and is what made the page look cleared.
+              if (xinchaoState) {
+                event.preventDefault();
+                return;
+              }
+              togglePanel();
+            }}
+          >
             {xinchaoState ? (
               <XinchaoCapsule state={xinchaoState} />
             ) : (
