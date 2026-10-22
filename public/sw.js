@@ -1,4 +1,4 @@
-const CACHE_NAME = "dengta-home-v20-text-impact-os-motion";
+const CACHE_NAME = "dengta-home-v21-xinchao-capsule";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",

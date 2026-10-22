@@ -35,6 +35,8 @@ import {
 } from "./companion-status";
 import StatusFlowField from "./StatusFlowField";
 import NowPlayingCard from "./NowPlayingCard.jsx";
+import XinchaoCapsule from "./XinchaoCapsule.jsx";
+import { apiRequest } from "./api";
 import "./companion-live-status.css";
 
 const DESIRE_ACTIONS = [
@@ -115,6 +117,7 @@ function CompanionStatus({
   const resetBlank = normalized.resetBlank === true;
   const [expanded, setExpanded] = useState(false);
   const [clockNow, setClockNow] = useState(() => Date.now());
+  const [xinchaoState, setXinchaoState] = useState(null);
   const rootRef = useRef(null);
   const panelRef = useRef(null);
   const lastCloseRequestRef = useRef(closeRequest);
@@ -149,6 +152,30 @@ function CompanionStatus({
     if (expanded) closePanel();
     else openPanel();
   }, [closePanel, expanded, openPanel]);
+
+  useEffect(() => {
+    if (!active) return undefined;
+    let cancelled = false;
+    let timer = null;
+    const load = async () => {
+      try {
+        const data = await apiRequest("/api/v2/xinchao/state");
+        if (!cancelled) {
+          setXinchaoState(
+            data?.configured === true && data?.state ? data.state : null
+          );
+        }
+      } catch {
+        if (!cancelled) setXinchaoState(null);
+      }
+    };
+    void load();
+    timer = window.setInterval(load, 60 * 1000);
+    return () => {
+      cancelled = true;
+      if (timer) window.clearInterval(timer);
+    };
+  }, [active]);
 
   useEffect(() => {
     if (!normalized.countdown.isRunning) return undefined;
@@ -383,7 +410,11 @@ function CompanionStatus({
           <NowPlayingCard song={nowPlaying} busy={nowPlayingBusy} expanded={expanded} onToggle={togglePanel} onPlayPause={onNowPlayingPlayPause} onNext={onNowPlayingNext} onDismiss={onDismissNowPlaying} />
         ) : (
           <button type="button" className="sun-glass-liquid-capsule-toggle" aria-label={expanded ? "收起动态状态" : `展开${displayName}的动态状态`} aria-expanded={expanded} onClick={togglePanel}>
-            <span className="sun-glass-capsule-decoration" aria-hidden="true"><Heart /><MessageCircle /><Sparkles /></span>
+            {xinchaoState ? (
+              <XinchaoCapsule state={xinchaoState} />
+            ) : (
+              <span className="sun-glass-capsule-decoration" aria-hidden="true"><Heart /><MessageCircle /><Sparkles /></span>
+            )}
           </button>
         )}
       </section>
