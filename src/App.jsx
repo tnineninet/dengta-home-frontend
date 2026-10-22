@@ -22,7 +22,7 @@ import { createScreenGlanceLifecycle } from "./screen-glance-lifecycle.js";
 import { createMusicPlaybackSync } from "./music-playback-sync.js";
 import { runNowPlayingControl, sameNowPlaying } from "./now-playing-controls.js";
 import { createNowPlayingSync } from "./music-now-playing-sync.js";
-import { getMusicPlaylist, listAiMusicPlayRequests, claimAiMusicPlayRequest, commitAiMusicPlayRequest, reportAiMusicPlayResult } from "./music-listening.js";
+import { getMusicPlaylist, listAiMusicPlayRequests, claimAiMusicPlayRequest, commitAiMusicPlayRequest, reportAiMusicPlayResult, uploadLocalMusicFile } from "./music-listening.js";
 import { useMusicScope } from "./use-music-scope.js";
 import { useBuiltInNowPlaying } from "./useBuiltInNowPlaying.js";
 import { chooseNowPlayingCard } from "./built-in-now-playing.js";
@@ -1145,6 +1145,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }, [messages]);
   const [musicDockQueue, setMusicDockQueue] = useState(() => readMusicDockQueue(privateMediaScope).queue);
   const [musicDockIndex, setMusicDockIndex] = useState(() => readMusicDockQueue(privateMediaScope).index);
+  const [localMusicUploading, setLocalMusicUploading] = useState(false);
   const musicQueueScopeRef = useRef(privateMediaScope);
   useEffect(() => {
     if (musicQueueScopeRef.current !== privateMediaScope) return;
@@ -1630,6 +1631,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const chatFileInputRef = useRef(null);
   const chatImageInputRef = useRef(null);
   const chatVideoInputRef = useRef(null);
+  const localMusicFileInputRef = useRef(null);
   const chatAttachmentsRef = useRef([]);
   const streamThinkingRef = useRef({
     statuses: [],
@@ -5130,6 +5132,35 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
   }
 
+  async function uploadLocalMusic(event) {
+    const file = event?.target?.files?.[0];
+    if (!file) return;
+    setLocalMusicUploading(true);
+    try {
+      const audio = await uploadLocalMusicFile(file);
+      const card = {
+        id: `local-${Date.now()}-${file.name}`,
+        title: audio.title || file.name.replace(/\.[^.]+$/, ""),
+        artist: "本地音频",
+        album: "DengTa",
+        cover_url: "",
+        audio_url: audio.url,
+        duration_seconds: 0,
+        provider: "local",
+      };
+      const nextQueue = [...musicDockQueue, card].slice(-10);
+      setMusicDockQueue(nextQueue);
+      setMusicDockIndex(nextQueue.length - 1);
+      setEarlyMusicCard(card);
+      setNotice("本地音频已加入播放器，可以拖动进度、切歌和看歌词。");
+    } catch (error) {
+      setNotice(error?.message || "本地音频上传失败，请换一个文件重试。");
+    } finally {
+      setLocalMusicUploading(false);
+      event.target.value = "";
+    }
+  }
+
   async function openReplyOptions() {
     const sessionId = activeSessionIdRef.current;
     if (!sessionId) return;
@@ -7624,6 +7655,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 }}
                 tabIndex="-1"
               />
+              <input
+                ref={localMusicFileInputRef}
+                className="visually-hidden-file-input"
+                type="file"
+                accept="audio/mpeg,audio/mp4,audio/aac,audio/wav,audio/ogg,audio/flac,.mp3,.m4a,.aac,.wav,.ogg,.opus,.flac"
+                onChange={(event) => {
+                  setIsComposerMenuOpen(false);
+                  void uploadLocalMusic(event);
+                }}
+                tabIndex="-1"
+              />
               <button
                 ref={composerMenuTriggerRef}
                 className={`chat-attach-button${isComposerMenuOpen ? " active" : ""}`}
@@ -7726,6 +7768,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   <span aria-hidden="true">💬</span>
                   <strong>回复选项</strong>
                   <small>让 AI 帮你想几句</small>
+                </button>
+                <button
+                  type="button"
+                  disabled={localMusicUploading}
+                  onClick={() => localMusicFileInputRef.current?.click()}
+                >
+                  <span aria-hidden="true">🎵</span>
+                  <strong>{localMusicUploading ? "正在上传…" : "本地音乐"}</strong>
+                  <small>上传音频并直接播放</small>
                 </button>
               </div>
               <ChatActivities key={JSON.stringify([accountStorageScope, companionScope, activeSessionId])} disabled={isVoiceInputBusy}
