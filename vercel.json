@@ -48,10 +48,6 @@
       "destination": "/download.html"
     },
     {
-      "source": "/downloads/DengTa-latest.apk",
-      "destination": "https://github.com/DengTaHome/dengta-home/releases/download/v2.12.18/DengTa-2.12.18-176.apk"
-    },
-    {
       "source": "/receive",
       "destination": "/index.html"
     }

@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "latest": {
+    "version": "2.12.19",
+    "version_code": 177,
+    "apk_url": "/downloads/DengTa-latest.apk",
+    "sha256": "518e39819f099bfef064391df8e76c4c8b8f4f0bc092fa42028f4bfa8893257a",
+    "size_bytes": 41992286,
+    "published_at": "2026-10-22T15:50:49Z",
+    "notes": [
+      "屏幕截图更快、更清晰：默认 30 秒，最短 15 秒。",
+      "投屏接收端口冲突时自动切换端口。",
+      "设备活动显示最近打开的应用。",
+      "包含本轮聊天与界面修复。"
+    ]
+  }
+}
