@@ -90,7 +90,7 @@ export async function playTextImpact(source, { mode = "scatter", target = "compo
   canvas.height = Math.ceil(height * ratio);
   canvas.className = "text-impact-canvas";
   canvas.setAttribute("aria-hidden", "true");
-  canvas.style.cssText = `position:fixed;left:0;top:0;width:${width}px;height:${height}px;pointer-events:none;z-index:70;`;
+  canvas.style.cssText = `position:fixed;left:0;top:0;width:${width}px;height:${height}px;pointer-events:none;z-index:2147483000;`;
   const context = canvas.getContext("2d");
   if (!context) return { started: false, reason: "canvas_unavailable" };
   context.scale(ratio, ratio);

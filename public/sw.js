@@ -1,4 +1,4 @@
-const CACHE_NAME = "dengta-home-v17-glass-bubbles";
+const CACHE_NAME = "dengta-home-v18-text-impact";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",

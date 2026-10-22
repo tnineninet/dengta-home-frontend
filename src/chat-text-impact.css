@@ -17,3 +17,20 @@
 @keyframes text-impact-target-nudge { 0%,100% { transform: translateY(0) rotate(0); } 30% { transform: translateY(2px) rotate(-3deg); } 65% { transform: translateY(-1px) rotate(1deg); } }
 @keyframes text-impact-hit-ring { 0% { box-shadow: 0 0 0 0 #d189ad99; } 100% { box-shadow: 0 0 0 12px #d189ad00; } }
 @media (prefers-reduced-motion: reduce) { .text-impact-canvas { display: none; } .text-impact-source-playing { opacity: 1; } .text-impact-target-hit { animation: none; } }
+@media (max-width: 640px) {
+  .text-impact-trigger { min-height: 32px; min-width: 48px; padding: 4px 8px; touch-action: manipulation; }
+  .text-impact-menu {
+    right: 12px !important;
+    bottom: max(12px, env(safe-area-inset-bottom)) !important;
+    left: 12px !important;
+    top: auto !important;
+    width: auto !important;
+    max-height: min(60dvh, 420px);
+    overflow: auto;
+    z-index: 400;
+    touch-action: manipulation;
+  }
+  .text-impact-targets button,
+  .text-impact-modes button { min-height: 44px; font-size: 14px; }
+  .text-impact-feedback { max-width: 120px; }
+}

@@ -24,7 +24,8 @@ export default function ChatTextImpact({ rowRef, scopeKey = "", messageId, recen
   }, [scopeKey, messageId]);
 
   async function play(mode, target) {
-    const source = rowRef.current?.querySelector(".message-content");
+    const row = rowRef.current || triggerRef.current?.closest?.(".message-row");
+    const source = row?.querySelector(".message-content");
     if (!source || reducedMotion) return;
     const request = ++playRequest.current;
     try {
