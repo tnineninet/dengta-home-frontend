@@ -1607,6 +1607,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   });
   const settingsScrollIdleTimerRef = useRef(null);
   const messageInputRef = useRef(null);
+  useEffect(() => {
+    if (!replyOptionsOpen) return undefined;
+    const input = messageInputRef.current;
+    if (!input) return undefined;
+    const closeOnType = () => setReplyOptionsOpen(false);
+    input.addEventListener("input", closeOnType);
+    return () => input.removeEventListener("input", closeOnType);
+  }, [replyOptionsOpen]);
   useLayoutEffect(() => {
     resizeComposerInput(messageInputRef.current);
   }, [message, activeView]);
@@ -5190,16 +5198,19 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
   }
 
-  function submitReplyOption(text) {
+  function pickReplyOption(text) {
     const answer = String(text || "").trim();
     if (!answer) return;
     setReplyOptionsOpen(false);
     setReplyOptionsError("");
     setMessage(answer);
-    void sendMessage({ text: answer });
+    window.requestAnimationFrame(() => {
+      messageInputRef.current?.focus();
+    });
   }
 
   async function sendMessage() {
+    setReplyOptionsOpen(false);
     const publicReasoningSummaryAtRequest = publicReasoningSummaryEnabled && settings.provider === "openai-responses";
     const options =
       arguments[0] && typeof arguments[0] === "object" ? arguments[0] : {};
@@ -7589,6 +7600,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               </span>
             </label>
           )}
+          <ReplyOptionsSheet
+            open={replyOptionsOpen}
+            options={replyOptions}
+            loading={replyOptionsLoading}
+            error={replyOptionsError}
+            onClose={() => setReplyOptionsOpen(false)}
+            onPick={pickReplyOption}
+            onRetry={() => void openReplyOptions()}
+          />
           <div className="composer" data-text-impact-scope={privateMediaScope}>
             <textarea
               ref={messageInputRef}
@@ -10495,17 +10515,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           {activeView === "discover" && renderDiscover()}
         </div>
       </main>
-
-      <ReplyOptionsSheet
-        key={replyOptionsOpen ? "reply-options-open" : "reply-options-closed"}
-        open={replyOptionsOpen}
-        options={replyOptions}
-        loading={replyOptionsLoading}
-        error={replyOptionsError}
-        onClose={() => setReplyOptionsOpen(false)}
-        onSubmit={submitReplyOption}
-        onRetry={() => void openReplyOptions()}
-      />
 
       <div
         className={`mobile-edge-navigation${isMobileNavOpen ? " is-open" : ""}`}
