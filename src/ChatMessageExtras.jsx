@@ -241,7 +241,7 @@ export function ThinkingPanel({
 
   const requestMonologue = () => {
     setOpen(true);
-    setMonologueDialogOpen(true);
+    if (!dialogOnly) setMonologueDialogOpen(true);
     onRequestInnerMonologue?.(message);
   };
 
@@ -310,30 +310,86 @@ export function ThinkingPanel({
   ) : null;
 
   if (dialogOnly) {
+    const toggleInlineMonologue = () => {
+      if (open) {
+        setOpen(false);
+        return;
+      }
+      setOpen(true);
+      if (!monologueText && canRequestInnerMonologue && !innerMonologuePending) {
+        requestMonologue();
+      }
+    };
     return (
       <>
-        {storageWarning && (
-          <small className="inner-monologue-error" role="alert">
-            {innerMonologueError}
-          </small>
-        )}
         <button
           type="button"
           className="thinking-panel-trigger"
-          aria-label="查看这条回复的心声"
-          title="查看心声"
-          onClick={() => {
-            setMonologueDialogOpen(true);
-            if (!monologueText && canRequestInnerMonologue && !innerMonologuePending) {
-              requestMonologue();
-            }
-          }}
+          aria-label={open ? "收起这条回复的心声" : "查看这条回复的心声"}
+          aria-expanded={open}
+          title={open ? "收起心声" : "查看心声"}
+          onClick={toggleInlineMonologue}
         >
           <span aria-hidden="true">💭</span>
           <span>{innerMonologuePending ? "心声生成中…" : "心声"}</span>
           {monologueText ? <span className="thinking-panel-trigger-dot" aria-hidden="true" /> : null}
         </button>
-        {monologueDialog}
+        {open && (
+          <section
+            className="inner-monologue-inline"
+            role="region"
+            aria-label={`${displayName}的 AI 生成可见心声`}
+          >
+            <header>
+              <span>
+                <small>{displayName} · AI 生成的可见心声</small>
+                <strong>{mood || "静静想着你"}</strong>
+              </span>
+              <button
+                type="button"
+                className="inner-monologue-inline-close"
+                aria-label="收起心声"
+                onClick={() => setOpen(false)}
+              >
+                <X aria-hidden="true" />
+              </button>
+            </header>
+            <div className="inner-monologue-inline-body">
+              {monologueText ? (
+                <p className="inner-monologue-inline-text">{monologueText}</p>
+              ) : null}
+              {innerMonologuePending ? (
+                <div className="inner-monologue-inline-pending" role="status">
+                  <span aria-hidden="true" />
+                  <p>{aiPronoun}正在把没有说出口的念头慢慢写下来…</p>
+                  {typeof onCancelInnerMonologue === "function" && (
+                    <button type="button" onClick={() => onCancelInnerMonologue(message)}>
+                      取消等待
+                    </button>
+                  )}
+                </div>
+              ) : innerMonologueError ? (
+                <div className="inner-monologue-inline-error" role="alert">
+                  <p>{innerMonologueError}</p>
+                  {canRequestInnerMonologue && (
+                    <button type="button" onClick={requestMonologue}>
+                      再试一次
+                    </button>
+                  )}
+                </div>
+              ) : !monologueText && synchronizedMonologue ? (
+                <p className="inner-monologue-inline-status">{synchronizedSummary}</p>
+              ) : !monologueText ? (
+                <p className="inner-monologue-inline-status">
+                  这一次暂时没有收到可显示的心声。
+                </p>
+              ) : null}
+              {monologueText && supplementedMonologue ? (
+                <small className="inner-monologue-inline-footnote">{supplementLabel}</small>
+              ) : null}
+            </div>
+          </section>
+        )}
       </>
     );
   }

@@ -1791,10 +1791,114 @@ button:disabled {
 .message-footer {
   display: flex;
   min-height: 22px;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 9px;
   margin-top: 5px;
+}
+
+.inner-monologue-inline {
+  flex: 1 0 100%;
+  order: 10;
+  width: 100%;
+  max-width: min(540px, 100%);
+  max-height: 260px;
+  overflow: auto;
+  margin-top: 2px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, .16);
+  border-radius: 12px;
+  color: var(--ink, #ece6e8);
+  background: rgba(18, 16, 18, .58);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, .16);
+  backdrop-filter: blur(14px) saturate(1.1);
+  -webkit-backdrop-filter: blur(14px) saturate(1.1);
+  text-align: left;
+}
+.inner-monologue-inline > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.inner-monologue-inline > header > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+.inner-monologue-inline > header small {
+  color: var(--muted, #a79ca0);
+  font-size: 11px;
+}
+.inner-monologue-inline > header strong {
+  font-size: 13px;
+  font-weight: 700;
+}
+.inner-monologue-inline-close {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  color: inherit;
+  background: rgba(255, 255, 255, .08);
+}
+.inner-monologue-inline-close:hover {
+  background: rgba(255, 255, 255, .16);
+}
+.inner-monologue-inline-body {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.inner-monologue-inline-text {
+  margin: 0;
+  white-space: pre-wrap;
+}
+.inner-monologue-inline-status,
+.inner-monologue-inline-footnote {
+  margin: 0;
+  color: var(--muted, #a79ca0);
+  font-size: 12px;
+}
+.inner-monologue-inline-pending,
+.inner-monologue-inline-error {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.inner-monologue-inline-pending p,
+.inner-monologue-inline-error p {
+  margin: 0;
+}
+.inner-monologue-inline-pending > span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: .6;
+  animation: inner-monologue-inline-pulse 1.2s ease-in-out infinite;
+}
+.inner-monologue-inline-pending button,
+.inner-monologue-inline-error button {
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, .18);
+  border-radius: 8px;
+  color: inherit;
+  background: rgba(255, 255, 255, .08);
+  font-size: 12px;
+}
+@keyframes inner-monologue-inline-pulse {
+  0%, 100% { opacity: .35; transform: scale(.85); }
+  50% { opacity: .9; transform: scale(1); }
 }
 
 .message-footer time {
