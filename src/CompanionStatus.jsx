@@ -36,7 +36,9 @@ import {
 import StatusFlowField from "./StatusFlowField";
 import NowPlayingCard from "./NowPlayingCard.jsx";
 import XinchaoCapsule from "./XinchaoCapsule.jsx";
+import XinchaoDetails from "./XinchaoDetails.jsx";
 import { apiRequest } from "./api";
+import { createPortal } from "react-dom";
 import "./companion-live-status.css";
 
 const DESIRE_ACTIONS = [
@@ -118,6 +120,10 @@ function CompanionStatus({
   const [expanded, setExpanded] = useState(false);
   const [clockNow, setClockNow] = useState(() => Date.now());
   const [xinchaoState, setXinchaoState] = useState(null);
+  const [xinchaoDetailsOpen, setXinchaoDetailsOpen] = useState(false);
+  const [xinchaoAnchor, setXinchaoAnchor] = useState({ left: 16, top: 90 });
+  const xinchaoButtonRef = useRef(null);
+  const xinchaoDetailsRef = useRef(null);
   const rootRef = useRef(null);
   const panelRef = useRef(null);
   const lastCloseRequestRef = useRef(closeRequest);
@@ -176,6 +182,28 @@ function CompanionStatus({
       if (timer) window.clearInterval(timer);
     };
   }, [active]);
+
+  useEffect(() => {
+    if (!xinchaoDetailsOpen) return undefined;
+    const closeFromOutside = (event) => {
+      if (
+        xinchaoDetailsRef.current?.contains(event.target) ||
+        xinchaoButtonRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      setXinchaoDetailsOpen(false);
+    };
+    const closeFromEscape = (event) => {
+      if (event.key === "Escape") setXinchaoDetailsOpen(false);
+    };
+    document.addEventListener("pointerdown", closeFromOutside);
+    document.addEventListener("keydown", closeFromEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeFromOutside);
+      document.removeEventListener("keydown", closeFromEscape);
+    };
+  }, [xinchaoDetailsOpen]);
 
   useEffect(() => {
     if (!normalized.countdown.isRunning) return undefined;
@@ -410,15 +438,29 @@ function CompanionStatus({
           <NowPlayingCard song={nowPlaying} busy={nowPlayingBusy} expanded={expanded} onToggle={togglePanel} onPlayPause={onNowPlayingPlayPause} onNext={onNowPlayingNext} onDismiss={onDismissNowPlaying} />
         ) : (
           <button
+            ref={xinchaoButtonRef}
             type="button"
             className="sun-glass-liquid-capsule-toggle"
-            aria-label="心潮状态"
-            aria-expanded={false}
+            aria-label="查看心潮状态"
+            aria-expanded={xinchaoDetailsOpen}
             onClick={(event) => {
-              // The capsule is a read-only visualization. The legacy full
-              // status sheet is intentionally not opened from it: on desktop
-              // it could cover the whole chat and look like the page cleared.
               event.preventDefault();
+              if (!xinchaoState) return;
+              const rect = event.currentTarget.getBoundingClientRect();
+              const width = Math.min(338, window.innerWidth - 24);
+              const left = Math.max(
+                12,
+                Math.min(
+                  window.innerWidth - width - 12,
+                  rect.left + rect.width / 2 - width / 2
+                )
+              );
+              const top = Math.max(
+                12,
+                Math.min(window.innerHeight - 300, rect.bottom + 10)
+              );
+              setXinchaoAnchor({ left, top });
+              setXinchaoDetailsOpen((open) => !open);
             }}
           >
             {xinchaoState ? (
@@ -668,6 +710,18 @@ function CompanionStatus({
             </section>
           </div>
       </div>
+      {xinchaoDetailsOpen && xinchaoState
+        ? createPortal(
+            <XinchaoDetails
+              state={xinchaoState}
+              aiName={displayName}
+              style={xinchaoAnchor}
+              rootRef={xinchaoDetailsRef}
+              onClose={() => setXinchaoDetailsOpen(false)}
+            />,
+            document.body
+          )
+        : null}
     </section>
   );
 }
