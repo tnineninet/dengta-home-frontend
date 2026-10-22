@@ -13,6 +13,36 @@ import {
 import { canRequestVisibleMonologue, isSynchronizedVisibleMonologue } from "./inner-monologue";
 import { usePrivateMediaSource } from "./use-private-media";
 
+function friendlyInnerMonologueError(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (
+    raw.includes("[inner_monologue_storage_unavailable]") ||
+    raw.includes("[inner_monologue_recovery_storage_unavailable]")
+  ) {
+    return "这次心声只临时保存在当前页面，刷新后会重新生成。";
+  }
+  if (raw.includes("provider_timeout") || /timed out|超时/i.test(raw)) {
+    return "这次心声连接超时了，点“再试一次”让我重新想想。";
+  }
+  if (raw.includes("provider_empty_response") || /empty response|空白/i.test(raw)) {
+    return "这次心声没有收到内容，点“再试一次”就好。";
+  }
+  if (raw.includes("chat_stream_interrupted") || /stream_interrupted|回复连接提前结束/i.test(raw)) {
+    return "这次心声没有完整接上，点“再试一次”就好。";
+  }
+  if (raw.includes("inner_monologue_cancelled")) {
+    return "这次心声已取消。";
+  }
+  if (
+    raw.includes("inner_monologue_receipt_invalid") ||
+    raw.includes("inner_monologue_timeout")
+  ) {
+    return "这次心声没有对上这条消息，请点“再试一次”。";
+  }
+  return "这次心声没有生成成功，请点“再试一次”。";
+}
+
 function attachmentIcon(kind) {
   if (kind === "image") return "图";
   if (kind === "audio") return "声";
@@ -226,6 +256,7 @@ export function ThinkingPanel({
   const supplementedMonologue = innerMonologue?.generated_with_reply === false ||
     (!synchronizedMonologue && Boolean(monologueText));
   const storageWarning = String(innerMonologueError).startsWith("[inner_monologue_storage_unavailable]");
+  const displayMonologueError = friendlyInnerMonologueError(innerMonologueError);
   const supplementLabel = storageWarning ? "补充生成 · 暂存在本次打开期间" : "补充生成 · 仅保存在这台设备";
   const previewParagraph = monologueText.split(/\n\s*\n/)[0];
   const previewCharacters = Array.from(previewParagraph);
@@ -292,7 +323,7 @@ export function ThinkingPanel({
             </div>
           ) : innerMonologueError ? (
             <div className="inner-monologue-dialog-error" role="alert">
-              <p>{innerMonologueError}</p>
+              <p>{displayMonologueError}</p>
               {canRequestInnerMonologue && (
                 <button type="button" onClick={requestMonologue}>
                   再试一次
@@ -370,7 +401,7 @@ export function ThinkingPanel({
                 </div>
               ) : innerMonologueError ? (
                 <div className="inner-monologue-inline-error" role="alert">
-                  <p>{innerMonologueError}</p>
+                  <p>{displayMonologueError}</p>
                   {canRequestInnerMonologue && (
                     <button type="button" onClick={requestMonologue}>
                       再试一次
@@ -400,7 +431,7 @@ export function ThinkingPanel({
       <>
         {storageWarning && (
           <small className="inner-monologue-error" role="alert">
-            {innerMonologueError}
+            {displayMonologueError}
           </small>
         )}
         <button
@@ -425,7 +456,7 @@ export function ThinkingPanel({
 
   return (
     <>
-      {storageWarning && <small className="inner-monologue-error" role="alert">{innerMonologueError}</small>}
+      {storageWarning && <small className="inner-monologue-error" role="alert">{displayMonologueError}</small>}
       {innerMonologuePending && typeof onCancelInnerMonologue === "function" && (
         <div className="inner-monologue-request"><button type="button" onClick={() => onCancelInnerMonologue(message)}>取消心声等待</button></div>
       )}
@@ -451,7 +482,7 @@ export function ThinkingPanel({
           <button type="button" disabled={innerMonologuePending} onClick={requestMonologue}>
             {innerMonologuePending ? "正在补充心声…" : "补充这次心声"}
           </button>
-          {innerMonologueError && <small className="inner-monologue-error" role="alert">{innerMonologueError}</small>}
+          {innerMonologueError && <small className="inner-monologue-error" role="alert">{displayMonologueError}</small>}
         </div>
       )}
       <details
@@ -539,7 +570,7 @@ export function ThinkingPanel({
                 <button type="button" disabled={innerMonologuePending} onClick={requestMonologue}>
                   {innerMonologuePending ? "正在补充心声…" : "补充这次心声"}
                 </button>
-                {innerMonologueError && <small role="alert">{innerMonologueError}</small>}
+                {innerMonologueError && <small role="alert">{displayMonologueError}</small>}
               </>
             )}
             {completed && monologueText && (
@@ -571,12 +602,7 @@ export function ThinkingPanel({
             </button>
             {innerMonologueError && (
               <small className="inner-monologue-error">
-                {String(innerMonologueError).split("\n").map((line, index) => (
-                  <span key={index}>
-                    {line}
-                    {index < String(innerMonologueError).split("\n").length - 1 && <br />}
-                  </span>
-                ))}
+                {displayMonologueError}
               </small>
             )}
           </div>
