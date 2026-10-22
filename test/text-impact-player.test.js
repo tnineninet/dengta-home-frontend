@@ -160,10 +160,9 @@ test("concurrent lazy starts retain only the newest animation", async () => {
   assert.equal(fixture.canvases.length, 1); assert.equal(fixture.frames.size, 1);
 });
 
-for (const setting of ["app", "os", "hidden", "disconnected", "foreign-scope", "empty"]) {
+for (const setting of ["app", "hidden", "disconnected", "foreign-scope", "empty"]) {
   test(`${setting} source cannot allocate a canvas or animation frame`, async () => {
     if (setting === "app") fixture.doc.documentElement.dataset.dengtaReducedMotion = "true";
-    if (setting === "os") fixture.media.matches = true;
     if (setting === "hidden") fixture.doc.visibilityState = "hidden";
     if (setting === "disconnected") fixture.source.isConnected = false;
     if (setting === "foreign-scope") fixture.scope.dataset.textImpactScope = "another-account";
@@ -172,6 +171,14 @@ for (const setting of ["app", "os", "hidden", "disconnected", "foreign-scope", "
     assertStopped();
   });
 }
+
+test("OS reduced-motion preference alone does not block an explicit text-impact trigger", async () => {
+  fixture.media.matches = true;
+  assert.equal((await play({ scopeKey: "account-a:companion-a:conversation-a" })).started, true);
+  fixture.media.matches = false;
+  fixture.media.emit("change");
+  assertStopped();
+});
 
 for (const [owner, event] of [["view", "resize"], ["view", "scroll"], ["viewport", "resize"], ["viewport", "scroll"], ["doc", "visibilitychange"], ["media", "change"]]) {
   test(`${owner} ${event} promptly removes canvas, RAF and every lifecycle listener`, async () => {

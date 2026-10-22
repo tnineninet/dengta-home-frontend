@@ -2,8 +2,9 @@ let activePlayback = null;
 let requestVersion = 0;
 
 function reducedMotion() {
-  return globalThis.document?.documentElement?.dataset.dengtaReducedMotion === "true" ||
-    globalThis.window?.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
+  // 弹字是用户主动触发的一次性动效，只跟随 DengTa 自己的“减少动效”
+  // 设置；系统级 prefers-reduced-motion 不应让按钮存在却永远触发失败。
+  return globalThis.document?.documentElement?.dataset.dengtaReducedMotion === "true";
 }
 
 export function stopTextImpact() {
@@ -57,12 +58,21 @@ function visibleSource(source, scopeKey) {
   return Boolean(owner && owner.dataset.textImpactScope === scopeKey);
 }
 
+function unavailableReason(source, scopeKey) {
+  if (reducedMotion()) return "reduced_motion";
+  if (!visibleSource(source, scopeKey)) return "source_not_visible";
+  if (source.ownerDocument.visibilityState === "hidden") return "document_hidden";
+  return "";
+}
+
 export async function playTextImpact(source, { mode = "scatter", target = "composer", scopeKey = "" } = {}) {
   stopTextImpact();
   const version = requestVersion;
-  if (reducedMotion() || !visibleSource(source, scopeKey) || source.ownerDocument.visibilityState === "hidden") return { started: false, reason: "unavailable" };
+  const initialReason = unavailableReason(source, scopeKey);
+  if (initialReason) return { started: false, reason: initialReason };
   const { createTextImpactSimulation } = await import("./text-impact-physics.js");
-  if (version !== requestVersion || reducedMotion() || !visibleSource(source, scopeKey) || source.ownerDocument.visibilityState === "hidden") return { started: false, reason: "cancelled" };
+  const laterReason = unavailableReason(source, scopeKey);
+  if (version !== requestVersion || laterReason) return { started: false, reason: laterReason || "cancelled" };
   const view = source.ownerDocument.defaultView;
   const viewport = view.visualViewport;
   const width = Math.min(view.innerWidth, viewport?.width || view.innerWidth);
