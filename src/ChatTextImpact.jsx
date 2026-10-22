@@ -36,7 +36,9 @@ export default function ChatTextImpact({ rowRef, scopeKey = "", messageId, recen
       activeStop.current = result.stop || null;
       return result;
     } catch {
-      return request === playRequest.current ? { started: false } : null;
+      return request === playRequest.current
+        ? { started: false, reason: "exception" }
+        : null;
     }
   }
 
@@ -46,8 +48,16 @@ export default function ChatTextImpact({ rowRef, scopeKey = "", messageId, recen
     const pending = play(mode, preference.target);
     const request = playRequest.current;
     void pending.then(result => {
-      if (request !== playRequest.current || !result) return;
-      setFeedback(result.started ? "原消息已保留" : "动效暂时没有加载成功，可以再试一次");
+      if (request !== playRequest.current) return;
+      if (!result) {
+        setFeedback("没有找到可播放的消息内容");
+        return;
+      }
+      setFeedback(
+        result.started
+          ? "原消息已保留"
+          : `动效未启动：${result.reason || "unavailable"}`
+      );
     });
   }
 
