@@ -112,7 +112,7 @@ public final class ScreenGlancePlugin extends Plugin {
             call.getBoolean("watchTogetherEnabled", false)
         );
         int watchIntervalSeconds = boundedSeconds(
-            call.getInt("watchIntervalSeconds", 90)
+            call.getInt("watchIntervalSeconds", 30)
         );
         String coWatchSessionId = String.valueOf(
             call.getString("coWatchSessionId", "")
@@ -228,7 +228,7 @@ public final class ScreenGlancePlugin extends Plugin {
     }
 
     private static int boundedSeconds(Integer value) {
-        int requested = value == null ? 90 : value;
-        return Math.min(10_800, Math.max(60, requested));
+        int requested = value == null ? 30 : value;
+        return Math.min(10_800, Math.max(15, requested));
     }
 }

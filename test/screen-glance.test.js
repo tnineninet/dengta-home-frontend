@@ -57,7 +57,7 @@ assert.deepEqual(
     wifiOnly: false,
     chargingOnly: true,
     watchTogetherEnabled: true,
-    watchIntervalSeconds: 60,
+    watchIntervalSeconds: 15,
     coWatchSessionId: "",
   },
 );
@@ -68,7 +68,7 @@ assert.deepEqual(normalizeScreenGlanceConfig({}), {
   wifiOnly: true,
   chargingOnly: false,
   watchTogetherEnabled: false,
-  watchIntervalSeconds: 90,
+  watchIntervalSeconds: 30,
   coWatchSessionId: "",
 });
 

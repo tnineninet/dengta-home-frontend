@@ -41,6 +41,7 @@ assert.deepEqual(summary, {
     { name: "微信", launchCount: 3, foregroundMinutes: 12 },
     { name: "哔哩哔哩", launchCount: 1, foregroundMinutes: 8 },
   ],
+  recentApps: [],
 });
 assert.deepEqual(
   mergeDeviceActivityContext({ weather: { temperatureC: 28 } }, summary),
@@ -53,6 +54,19 @@ assert.deepEqual(
   mergeDeviceActivityContext({ weather: { temperatureC: 28 } }, null),
   { weather: { temperatureC: 28 } },
 );
+const recentSummary = normalizeDeviceActivitySummary({
+  capturedAt: "2026-07-29T02:30:00.000Z",
+  windowMinutes: 30,
+  apps: [{ name: "微信", launchCount: 2, foregroundSeconds: 120 }],
+  recentApps: [
+    { name: "微信", lastUsedAt: "2026-07-29T02:29:00.000Z", launchCount: 2 },
+    { name: "哔哩哔哩", lastUsedAt: "2026-07-29T02:20:00.000Z", launchCount: 1 },
+  ],
+});
+assert.deepEqual(recentSummary.recentApps, [
+  { name: "微信", lastUsedAt: "2026-07-29T02:29:00.000Z", launchCount: 2 },
+  { name: "哔哩哔哩", lastUsedAt: "2026-07-29T02:20:00.000Z", launchCount: 1 },
+]);
 
 const manifest = fs.readFileSync(
   new URL("../android/app/src/main/AndroidManifest.xml", import.meta.url),

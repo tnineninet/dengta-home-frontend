@@ -1,4 +1,4 @@
-﻿const CACHE_NAME = "dengta-home-v30-download-entry";
+﻿const CACHE_NAME = "dengta-home-v31-screen-device-refresh";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",

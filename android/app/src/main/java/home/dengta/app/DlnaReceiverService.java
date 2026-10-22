@@ -77,6 +77,8 @@ public final class DlnaReceiverService extends Service {
     private static final String SSDP_ADDR = "239.255.255.250";
     private static final int SSDP_PORT = 1900;
     private static final int HTTP_PORT = 48620;
+    private static final int HTTP_PORT_CANDIDATES = 12;
+    private static volatile int httpPort = HTTP_PORT;
     private static final String DEVICE_TYPE = "urn:schemas-upnp-org:device:MediaRenderer:1";
     private static final String AV_TRANSPORT_TYPE = "urn:schemas-upnp-org:service:AVTransport:1";
     private static final String CONNECTION_MANAGER_TYPE = "urn:schemas-upnp-org:service:ConnectionManager:1";
@@ -125,7 +127,7 @@ public final class DlnaReceiverService extends Service {
             state.put("discoveryStatus", status.status);
             state.put("errorCode", status.errorCode);
             state.put("enabled", running);
-            state.put("port", HTTP_PORT);
+            state.put("port", httpPort);
             state.put("ip", lastAdvertisedAddress);
             state.put("transportState", transportState);
             state.put("currentUri", currentUri);
@@ -147,7 +149,7 @@ public final class DlnaReceiverService extends Service {
             state.put("errorCode", status.errorCode);
             boolean enabled = prefs(context).getBoolean(ENABLED_KEY, false);
             state.put("enabled", enabled);
-            state.put("port", HTTP_PORT);
+            state.put("port", httpPort);
             state.put("transportState", transportState);
             state.put("currentUri", currentUri);
             state.put("wifiAware", wifiAware);
@@ -273,6 +275,7 @@ public final class DlnaReceiverService extends Service {
 
     private void startReceiver() {
         running = true;
+        httpPort = HTTP_PORT;
         long generation = discovery.begin(this::sendSsdpAlive);
         deviceId = readOrCreateDeviceId();
         installForegroundNotification();
@@ -409,7 +412,7 @@ public final class DlnaReceiverService extends Service {
         boolean matchAll = target.contains("ssdp:all") || request.toLowerCase(Locale.US).contains("ssdp:all");
         String localIp = localIpAddress();
         if (localIp.isEmpty()) return;
-        String location = "http://" + localIp + ":" + HTTP_PORT + "/description.xml";
+        String location = "http://" + localIp + ":" + httpPort + "/description.xml";
         String uuidPrefix = "uuid:" + deviceId;
 
         // 有些电视/视频 App 不搜 MediaRenderer，而是直接搜 AVTransport 服务。
@@ -456,7 +459,7 @@ public final class DlnaReceiverService extends Service {
         if (ssdpSocket == null || ssdpSocket.isClosed()) return;
         String localIp = localIpAddress();
         if (localIp.isEmpty()) return;
-        String location = "http://" + localIp + ":" + HTTP_PORT + "/description.xml";
+        String location = "http://" + localIp + ":" + httpPort + "/description.xml";
         String uuidPrefix = "uuid:" + deviceId;
 
         // 发送三条 NOTIFY（rootdevice / deviceType / UUID），满足 UPnP 规范对 ssdp:all 的发现要求
@@ -498,7 +501,7 @@ public final class DlnaReceiverService extends Service {
         if (ssdpSocket == null || ssdpSocket.isClosed()) return;
         String localIp = localIpAddress();
         if (localIp.isEmpty()) return;
-        String location = "http://" + localIp + ":" + HTTP_PORT + "/description.xml";
+        String location = "http://" + localIp + ":" + httpPort + "/description.xml";
         String usn = "uuid:" + deviceId + "::" + DEVICE_TYPE;
         String nt = DEVICE_TYPE;
         String byebye =
@@ -528,9 +531,22 @@ public final class DlnaReceiverService extends Service {
             ServerSocket server = null;
             String errorCode = "dlna_http_bind_failed";
             try {
-                server = new ServerSocket();
-                server.setReuseAddress(true);
-                server.bind(new InetSocketAddress(HTTP_PORT));
+                for (int offset = 0; offset < HTTP_PORT_CANDIDATES; offset += 1) {
+                    int candidatePort = HTTP_PORT + offset;
+                    ServerSocket candidate = new ServerSocket();
+                    try {
+                        candidate.setReuseAddress(true);
+                        candidate.bind(new InetSocketAddress(candidatePort));
+                        server = candidate;
+                        httpPort = candidatePort;
+                        break;
+                    } catch (Exception bindError) {
+                        closeQuietly(candidate);
+                    }
+                }
+                if (server == null) {
+                    throw new IOException("no free dlna http port in " + HTTP_PORT_CANDIDATES + " candidates");
+                }
                 synchronized (discovery) {
                     if (!running || !discovery.isCurrent(generation)) return;
                     httpServer = server;
@@ -906,7 +922,7 @@ public final class DlnaReceiverService extends Service {
             + "<UDN>uuid:" + uuidDevice() + "</UDN>"
             + "<dlna:X_DLNADOC xmlns:dlna=\"urn:schemas-dlna-org:device-1-0\">DMR-1.50</dlna:X_DLNADOC>"
             + "<dlna:X_DLNACAP xmlns:dlna=\"urn:schemas-dlna-org:device-1-0\">av-upload</dlna:X_DLNACAP>"
-            + "<presentationURL>http://" + host + ":" + HTTP_PORT + "/</presentationURL>"
+            + "<presentationURL>http://" + host + ":" + httpPort + "/</presentationURL>"
             + "<iconList>"
             + "<icon>"
             + "<mimetype>image/png</mimetype>"

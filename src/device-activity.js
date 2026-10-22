@@ -69,10 +69,26 @@ export function normalizeDeviceActivitySummary(value) {
     .filter(Boolean);
 
   if (apps.length === 0) return null;
+  const recentApps = Array.isArray(value?.recentApps)
+    ? value.recentApps
+        .slice(0, 8)
+        .map((item) => {
+          const name = safeAppName(item?.name);
+          const lastUsed = Date.parse(item?.lastUsedAt);
+          if (!name || !Number.isFinite(lastUsed)) return null;
+          return Object.freeze({
+            name,
+            lastUsedAt: new Date(lastUsed).toISOString(),
+            launchCount: boundedInteger(item?.launchCount, 0, 100),
+          });
+        })
+        .filter(Boolean)
+    : [];
   return Object.freeze({
     capturedAt: new Date(capturedTime).toISOString(),
     windowMinutes,
     apps: Object.freeze(apps),
+    recentApps: Object.freeze(recentApps),
   });
 }
 

@@ -136,6 +136,7 @@ public final class DeviceActivityPlugin extends Plugin {
                         record.activeSince = eventTime;
                         record.launchCount += 1;
                     }
+                    record.lastUsedAt = Math.max(record.lastUsedAt, eventTime);
                 } else if (
                     eventType == UsageEvents.Event.ACTIVITY_PAUSED ||
                     eventType == UsageEvents.Event.ACTIVITY_STOPPED
@@ -207,10 +208,27 @@ public final class DeviceActivityPlugin extends Plugin {
                 apps.put(app);
             }
 
+            List<ActivityRecord> recent = new ArrayList<>();
+            for (ActivityRecord record : records.values()) {
+                if (record.lastUsedAt <= 0L || isPrivateApp(record.packageName, record.name)) continue;
+                recent.add(record);
+            }
+            recent.sort(Comparator.comparingLong((ActivityRecord item) -> item.lastUsedAt).reversed());
+            JSArray recentApps = new JSArray();
+            for (int index = 0; index < Math.min(8, recent.size()); index += 1) {
+                ActivityRecord record = recent.get(index);
+                JSObject app = new JSObject();
+                app.put("name", record.name);
+                app.put("lastUsedAt", isoTimestamp(record.lastUsedAt));
+                app.put("launchCount", Math.min(100, Math.max(0, record.launchCount)));
+                recentApps.put(app);
+            }
+
             JSObject result = new JSObject();
             result.put("capturedAt", isoTimestamp(endTime));
             result.put("windowMinutes", windowMinutes);
             result.put("apps", apps);
+            result.put("recentApps", recentApps);
             call.resolve(result);
         } catch (SecurityException error) {
             call.reject("使用情况访问权限已经失效，请重新授权。");
@@ -698,6 +716,7 @@ public final class DeviceActivityPlugin extends Plugin {
         String name = "其他应用";
         long activeSince = -1L;
         long foregroundMillis = 0L;
+        long lastUsedAt = 0L;
         int launchCount = 0;
 
         ActivityRecord(String packageName) {

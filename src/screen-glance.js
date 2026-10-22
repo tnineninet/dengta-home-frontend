@@ -8,7 +8,7 @@ export const SCREEN_GLANCE_DEFAULT_CONFIG = Object.freeze({
   wifiOnly: true,
   chargingOnly: false,
   watchTogetherEnabled: false,
-  watchIntervalSeconds: 90,
+  watchIntervalSeconds: 30,
   coWatchSessionId: "",
 });
 
@@ -51,7 +51,7 @@ export function normalizeScreenGlanceConfig(value = {}) {
     watchTogetherEnabled: value.watchTogetherEnabled === true,
     watchIntervalSeconds: boundedInteger(
       value.watchIntervalSeconds,
-      60,
+      15,
       10_800,
       SCREEN_GLANCE_DEFAULT_CONFIG.watchIntervalSeconds,
     ),

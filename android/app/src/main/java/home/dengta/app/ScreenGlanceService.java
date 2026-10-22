@@ -114,8 +114,8 @@ public final class ScreenGlanceService extends Service {
     private static final long RETRY_DELAY_MS = 5L * 60L * 1000L;
     private static final long FOREGROUND_EVENT_LOOKBACK_MS =
         24L * 60L * 60L * 1000L;
-    private static final int MAX_CAPTURE_EDGE = 720;
-    private static final int MAX_CAPTURE_BYTES = 1_000_000;
+    private static final int MAX_CAPTURE_EDGE = 960;
+    private static final int MAX_CAPTURE_BYTES = 1_500_000;
     private static final long WATCH_FORCE_UPLOAD_MS = 8L * 60L * 1000L;
     private static final int WATCH_HASH_DIFFERENCE = 5;
     private static final int GLANCE_HASH_DIFFERENCE = 5;
@@ -1098,7 +1098,7 @@ public final class ScreenGlanceService extends Service {
         scheduleWatchCapture(overrideDelayMs > 0L
             ? overrideDelayMs
             : boundedSeconds(
-                preferences(this).getInt(WATCH_INTERVAL_SECONDS_KEY, 90)
+                preferences(this).getInt(WATCH_INTERVAL_SECONDS_KEY, 30)
             ) * 1000L);
     }
 
@@ -1151,7 +1151,7 @@ public final class ScreenGlanceService extends Service {
         if (idleMs < ACTIVE_USER_THRESHOLD_MS && lastActive > 0L) {
             // 活跃：缩短到 ~70%，让 AI 更快看到你在干什么
             long shortened = Math.round(requestedMs * 0.7D);
-            return Math.max(60_000L, shortened);
+            return Math.max(15_000L, shortened);
         }
         return requestedMs;
     }
@@ -1551,7 +1551,7 @@ public final class ScreenGlanceService extends Service {
     }
 
     private static int boundedSeconds(int value) {
-        return Math.min(10_800, Math.max(60, value));
+        return Math.min(10_800, Math.max(15, value));
     }
 
     private static String cleanText(String value, int limit) {
