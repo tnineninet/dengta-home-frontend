@@ -7992,28 +7992,26 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   </div>
                 ))}
 
-                {item.author === "assistant" && (
-                  <div className="comment-box">
-                    <input
-                      value={commentDrafts[item.id] || ""}
-                      onChange={(event) =>
-                        setCommentDrafts((current) => ({
-                          ...current,
-                          [item.id]: event.target.value,
-                        }))
+                <div className="comment-box">
+                  <input
+                    value={commentDrafts[item.id] || ""}
+                    onChange={(event) =>
+                      setCommentDrafts((current) => ({
+                        ...current,
+                        [item.id]: event.target.value,
+                      }))
+                    }
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        postComment(item.id);
                       }
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          postComment(item.id);
-                        }
-                      }}
-                      placeholder="写一条评论"
-                    />
-                    <button disabled={Boolean(pendingMomentComments[item.id])} aria-busy={Boolean(pendingMomentComments[item.id])}
-                      onClick={() => postComment(item.id)}>{pendingMomentComments[item.id] ? "保存中" : "发送"}</button>
-                  </div>
-                )}
+                    }}
+                    placeholder="写一条评论"
+                  />
+                  <button disabled={Boolean(pendingMomentComments[item.id])} aria-busy={Boolean(pendingMomentComments[item.id])}
+                    onClick={() => postComment(item.id)}>{pendingMomentComments[item.id] ? "保存中" : "发送"}</button>
+                </div>
               </article>
             ))
           )}
