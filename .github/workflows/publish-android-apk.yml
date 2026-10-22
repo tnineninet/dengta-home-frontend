@@ -124,5 +124,5 @@ jobs:
             echo "No APK changes to publish"
             exit 0
           fi
-          git commit -m "release: publish Android ${VERSION_NAME} (${VERSION_CODE}) [skip ci]" -m "sha: ${COMMIT_SHA}"
+          git commit -m "release: publish Android ${VERSION_NAME} (${VERSION_CODE})" -m "sha: ${COMMIT_SHA}"
           git push
