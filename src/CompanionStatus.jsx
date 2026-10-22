@@ -441,11 +441,16 @@ function CompanionStatus({
             ref={xinchaoButtonRef}
             type="button"
             className="sun-glass-liquid-capsule-toggle"
-            aria-label="查看心潮状态"
-            aria-expanded={xinchaoDetailsOpen}
+            aria-label="查看状态"
+            aria-expanded={xinchaoDetailsOpen || expanded}
             onClick={(event) => {
               event.preventDefault();
-              if (!xinchaoState) return;
+              const mobile = window.matchMedia?.("(max-width: 820px)")?.matches === true;
+              if (mobile || !xinchaoState) {
+                setXinchaoDetailsOpen(false);
+                togglePanel();
+                return;
+              }
               const rect = event.currentTarget.getBoundingClientRect();
               const width = Math.min(338, window.innerWidth - 24);
               const left = Math.max(
@@ -472,7 +477,23 @@ function CompanionStatus({
         )}
       </section>
 
-      <div className="sun-glass-status-ribbon">
+      <div
+        className="sun-glass-status-ribbon"
+        role="button"
+        tabIndex={0}
+        aria-label={expanded ? "收起状态栏" : "打开状态栏"}
+        onClick={() => {
+          setXinchaoDetailsOpen(false);
+          togglePanel();
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            setXinchaoDetailsOpen(false);
+            togglePanel();
+          }
+        }}
+      >
         <span className="sun-glass-status-ribbon-icon" aria-hidden="true">
           <Sparkles />
         </span>
@@ -541,6 +562,16 @@ function CompanionStatus({
                 ? "等你写下新的此刻。"
                 : personalized(normalized.note)}
             </p>
+
+            {xinchaoState && (
+              <section className="sun-glass-status-section sun-glass-xinchao-section" aria-label="心潮状态">
+                <XinchaoDetails
+                  state={xinchaoState}
+                  aiName={displayName}
+                  inline
+                />
+              </section>
+            )}
 
             <section className="companion-live-state" aria-label="此刻的心理与感受" aria-busy={isResponding || interactionFeedback.state === "queued"}>
               <div className="companion-live-state-heading">

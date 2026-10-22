@@ -23,7 +23,7 @@ function percent(value) {
   return Math.round(Math.max(0, Math.min(1, Number(value) || 0)) * 100);
 }
 
-export default function XinchaoDetails({ state, aiName = "TA", onClose, style, rootRef }) {
+export default function XinchaoDetails({ state, aiName = "TA", onClose, style, rootRef, inline = false }) {
   const drives = useMemo(
     () =>
       Object.entries(state?.drives || {})
@@ -47,15 +47,17 @@ export default function XinchaoDetails({ state, aiName = "TA", onClose, style, r
     : "";
 
   return (
-    <div ref={rootRef} className="xinchao-details" style={style} role="dialog" aria-modal="false" aria-label={`${aiName}的心潮状态`}>
+    <div ref={rootRef} className={`xinchao-details${inline ? " is-inline" : ""}`} style={style} role={inline ? "region" : "dialog"} aria-modal={inline ? undefined : false} aria-label={`${aiName}的心潮状态`}>
       <header className="xinchao-details-header">
         <div>
           <small>{aiName} · 心潮</small>
           <strong>{emotion}</strong>
         </div>
-        <button type="button" aria-label="关闭心潮详情" onClick={onClose}>
-          <X aria-hidden="true" />
-        </button>
+        {typeof onClose === "function" && (
+          <button type="button" aria-label="关闭心潮详情" onClick={onClose}>
+            <X aria-hidden="true" />
+          </button>
+        )}
       </header>
       <div className="xinchao-details-drives">
         {drives.map((drive) => (
