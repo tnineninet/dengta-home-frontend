@@ -56,9 +56,12 @@ export default function SunGlassTimeDeck({
   const commitTimerRef = useRef(0);
   const lastCommitAtRef = useRef(0);
   const pendingMinuteRef = useRef(null);
+  const fallbackMinute = Number.isFinite(Number(snapshot?.minute))
+    ? Number(snapshot.minute)
+    : 0;
   const externalMinute = Number.isFinite(previewMinute)
     ? previewMinute
-    : snapshot.minute;
+    : fallbackMinute;
   const [scrubMinute, setScrubMinute] = useState(null);
   const displayedMinute = Number.isFinite(scrubMinute)
     ? scrubMinute
