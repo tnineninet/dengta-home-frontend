@@ -152,7 +152,7 @@ test("a disconnected own source does not reach the player after its lazy load", 
 
 test("failure is actionable and a subsequent manual retry succeeds", async () => {
   await mount(); state.result = { started: false }; await open(); await click("文字弹弹");
-  assert.match(output(), /没有加载成功.*再试一次/);
+  assert.match(output(), /动效未启动/);
   state.result = null; await open(); await click("文字弹弹"); assert.equal(state.calls.length, 2); assert.match(output(), /原消息已保留/);
 });
 
