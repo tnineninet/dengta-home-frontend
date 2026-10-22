@@ -57,17 +57,16 @@
 .reply-options-popover-list button {
   display: flex;
   min-height: 38px;
-  align-items: center;
+  align-items: flex-start;
   gap: 8px;
   padding: 8px 10px;
-  overflow: hidden;
   border: 1px solid rgb(22 28 40 / 0.08);
   border-radius: 12px;
   color: #30323a;
   background: #fff;
   font: inherit;
   font-size: 13px;
-  line-height: 1.4;
+  line-height: 1.5;
   text-align: left;
   cursor: pointer;
   transition: border-color 120ms ease, background 120ms ease;
@@ -92,10 +91,10 @@
 }
 
 .reply-options-popover-list button > strong {
-  overflow: hidden;
+  min-width: 0;
+  overflow-wrap: anywhere;
   font-weight: 560;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: pre-wrap;
 }
 
 .reply-options-popover-hint {
