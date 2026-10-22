@@ -10575,6 +10575,15 @@ body,
   background: rgba(255, 255, 255, .92);
   box-shadow: 0 5px 18px rgba(76, 54, 63, .07);
 }
+.message-bubble--multi .chat-sentence-inner {
+  color: #fff;
+  mix-blend-mode: difference;
+}
+@supports not (mix-blend-mode: difference) {
+  .message-bubble--multi .chat-sentence-inner {
+    color: #3f3036;
+  }
+}
 
 .creative-provider-form .provider-section-title { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
 .creative-provider-reuse { flex: 0 0 auto; padding: 8px 12px; border: 1px solid rgba(126, 92, 72, .28); border-radius: 10px; background: rgba(255, 250, 241, .8); color: #6f4e43; font-size: 12px; font-weight: 600; }

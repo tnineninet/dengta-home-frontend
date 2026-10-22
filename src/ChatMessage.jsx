@@ -325,7 +325,9 @@ function ChatMessage({
               {isUser
                 ? renderChatMarkdown(displayContent.content)
                 : chatSegments.map((segment, index) => (
-                    <span className="chat-sentence" key={index}>{renderChatMarkdown(segment)}</span>
+                    <span className="chat-sentence" key={index}>
+                      <span className="chat-sentence-inner">{renderChatMarkdown(segment)}</span>
+                    </span>
                   ))}
             </div>
           )}
