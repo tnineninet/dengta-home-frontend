@@ -1,4 +1,4 @@
-const CACHE_NAME = "dengta-home-v25-friendly-monologue-error";
+﻿const CACHE_NAME = "dengta-home-v26-reply-options";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",

@@ -71,6 +71,7 @@ import {
 } from "./account-storage";
 import CompanionStatus from "./CompanionStatus";
 import CompanionGenderFields from "./CompanionGenderFields";
+import ReplyOptionsSheet from "./ReplyOptionsSheet.jsx";
 import ChatContextSettings from "./ChatContextSettings.jsx";
 import ChatErrorLog from "./ChatErrorLog.jsx";
 import { requestErrorLogs } from "./error-log-request.js";
@@ -1560,6 +1561,38 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   );
   const [innerMonologuePending, setInnerMonologuePending] = useState({});
   const [innerMonologueErrors, setInnerMonologueErrors] = useState({});
+  const [replyOptionsOpen, setReplyOptionsOpen] = useState(false);
+  const [replyOptions, setReplyOptions] = useState([]);
+  const [replyOptionsLoading, setReplyOptionsLoading] = useState(false);
+  const [replyOptionsError, setReplyOptionsError] = useState("");
+  const replyOptionsRequestRef = useRef(0);
+  const replyOptionsAutoRef = useRef("");
+  useEffect(() => {
+    const latest = messages[messages.length - 1];
+    if (
+      !activeSessionId ||
+      isSending ||
+      isCompanionResponding ||
+      !latest ||
+      latest.role !== "assistant" ||
+      latest.isStreaming
+    ) {
+      return undefined;
+    }
+    const text = String(latest.content || "").trim();
+    if (!/[?？]\s*$/.test(text)) return undefined;
+    const messageId = String(latest.id || "");
+    if (!messageId || replyOptionsAutoRef.current === messageId) {
+      return undefined;
+    }
+    const timer = window.setTimeout(() => {
+      replyOptionsAutoRef.current = messageId;
+      void openReplyOptions();
+    }, 900);
+    return () => window.clearTimeout(timer);
+    // openReplyOptions is stable enough for this one-shot question trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages, isSending, isCompanionResponding, activeSessionId]);
   const messageListRef = useRef(null);
   const chatScrollControllerRef = useRef(null);
   const settingsScrollRef = useRef(null);
@@ -5098,6 +5131,44 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
   }
 
+  async function openReplyOptions() {
+    const sessionId = activeSessionIdRef.current;
+    if (!sessionId) return;
+    const request = ++replyOptionsRequestRef.current;
+    setReplyOptionsOpen(true);
+    setReplyOptionsLoading(true);
+    setReplyOptionsError("");
+    try {
+      const data = await apiRequest("/api/v2/reply-options", {
+        method: "POST",
+        body: JSON.stringify({ conversation_id: sessionId }),
+      });
+      if (request !== replyOptionsRequestRef.current) return;
+      const next = Array.isArray(data?.options) ? data.options : [];
+      setReplyOptions(next);
+      if (!next.length) {
+        setReplyOptionsError("这次没想出合适的选项，点“再试一次”。");
+      }
+    } catch {
+      if (request !== replyOptionsRequestRef.current) return;
+      setReplyOptions([]);
+      setReplyOptionsError("回复选项暂时没有接上，点“再试一次”。");
+    } finally {
+      if (request === replyOptionsRequestRef.current) {
+        setReplyOptionsLoading(false);
+      }
+    }
+  }
+
+  function submitReplyOption(text) {
+    const answer = String(text || "").trim();
+    if (!answer) return;
+    setReplyOptionsOpen(false);
+    setReplyOptionsError("");
+    setMessage(answer);
+    void sendMessage({ text: answer });
+  }
+
   async function sendMessage() {
     const publicReasoningSummaryAtRequest = publicReasoningSummaryEnabled && settings.provider === "openai-responses";
     const options =
@@ -7645,6 +7716,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   <span aria-hidden="true">▤</span>
                   <strong>文件</strong>
                   <small>PDF、文档与文本</small>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsComposerMenuOpen(false);
+                    void openReplyOptions();
+                  }}
+                >
+                  <span aria-hidden="true">💬</span>
+                  <strong>回复选项</strong>
+                  <small>让 AI 帮你想几句</small>
                 </button>
               </div>
               <ChatActivities key={JSON.stringify([accountStorageScope, companionScope, activeSessionId])} disabled={isVoiceInputBusy}
@@ -10363,6 +10445,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           {activeView === "discover" && renderDiscover()}
         </div>
       </main>
+
+      <ReplyOptionsSheet
+        open={replyOptionsOpen}
+        options={replyOptions}
+        loading={replyOptionsLoading}
+        error={replyOptionsError}
+        onClose={() => setReplyOptionsOpen(false)}
+        onSubmit={submitReplyOption}
+        onRetry={() => void openReplyOptions()}
+      />
 
       <div
         className={`mobile-edge-navigation${isMobileNavOpen ? " is-open" : ""}`}
