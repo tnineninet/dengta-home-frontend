@@ -81,6 +81,9 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
+      - name: Remove old APK from Android web assets
+        run: rm -rf public/downloads
+
       - name: Sync Android project
         run: |
           npx cap sync android

@@ -72,6 +72,9 @@ jobs:
           npm run build
           npm run verify:public-auth-build
 
+      - name: Remove old APK from Android web assets
+        run: rm -rf public/downloads
+
       - name: Sync Android project
         run: npx cap sync android
 
