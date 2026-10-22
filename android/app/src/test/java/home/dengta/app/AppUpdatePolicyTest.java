@@ -6,6 +6,9 @@ public class AppUpdatePolicyTest {
     @Test public void acceptsOnlyOwnedHttpsReleaseAssets() {
         String good = "https://github.com/DengTaHome/dengta-home-frontend/releases/download/v2.10.74/DengTa-2.10.74-122.apk";
         assertTrue(AppUpdatePolicy.validDownload(good));
+        assertTrue(AppUpdatePolicy.validDownload("https://www.dengtahome.com/downloads/DengTa-latest.apk"));
+        assertFalse(AppUpdatePolicy.validDownload("https://evil.test/downloads/DengTa-latest.apk"));
+        assertFalse(AppUpdatePolicy.validDownload("https://www.dengtahome.com/downloads/DengTa-latest.apk?x=1"));
         for (String bad : new String[] {good.replace("https:", "http:"), good.replace("github.com", "github.com.evil.test"), good.replace("DengTaHome", "other"), good + "?token=x", good + "#x", good.replace("github.com", "user@github.com"), good.replace("DengTa-", "%2f")}) assertFalse(AppUpdatePolicy.validDownload(bad));
     }
     @Test public void installedAndDowngradeVersionsNeverNotify() {

@@ -9,9 +9,16 @@ final class AppUpdatePolicy {
     static boolean validDownload(String value) {
         try {
             URI uri = new URI(value);
-            return "https".equals(uri.getScheme()) && "github.com".equals(uri.getHost()) &&
-                uri.getUserInfo() == null && uri.getPort() == -1 && uri.getRawQuery() == null && uri.getRawFragment() == null &&
-                uri.getRawPath().matches("/DengTaHome/dengta-home(?:-frontend)?/releases/download/v[0-9.]+/[-A-Za-z0-9_.]+\\.apk");
+            if (!"https".equals(uri.getScheme()) ||
+                uri.getUserInfo() != null || uri.getPort() != -1 ||
+                uri.getRawQuery() != null || uri.getRawFragment() != null) return false;
+            String host = uri.getHost();
+            String path = uri.getRawPath();
+            boolean siteApk = ("www.dengtahome.com".equals(host) || "dengtahome.com".equals(host)) &&
+                path.matches("/downloads/[-A-Za-z0-9_.]+\\.apk");
+            boolean githubApk = "github.com".equals(host) &&
+                path.matches("/DengTaHome/dengta-home(?:-frontend)?/releases/download/v[0-9.]+/[-A-Za-z0-9_.]+\\.apk");
+            return siteApk || githubApk;
         } catch (Exception error) { return false; }
     }
     static boolean newer(long installed, long candidate) { return installed > 0 && candidate > installed && candidate <= Integer.MAX_VALUE; }
