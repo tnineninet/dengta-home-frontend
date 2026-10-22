@@ -120,8 +120,8 @@ jobs:
           VERSION_CODE: ${{ steps.version.outputs.code }}
           VERSION_NAME: ${{ steps.version.outputs.name }}
         run: |
-          git config user.name "DengTa release bot"
-          git config user.email "dengta-release@users.noreply.github.com"
+          git config user.name "DengTa Home"
+          git config user.email "2458077782@qq.com"
           git add public/downloads/DengTa-latest.apk public/updates/android.json public/updates/download.json
           if git diff --cached --quiet; then
             echo "No APK changes to publish"
