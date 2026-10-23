@@ -61,6 +61,8 @@ test("chat skin preferences keep only supported user-facing choices", () => {
       ornamentActivity: "lively",
       dynamicComposerHint: false,
       reduceMotion: true,
+      hideGenerationProcess: true,
+      showErrorDetails: false,
     },
   );
 
@@ -88,6 +90,8 @@ test("chat skin preferences convert between API and React field names", () => {
       ornamentActivity: "quiet",
       dynamicComposerHint: false,
       reduceMotion: true,
+      hideGenerationProcess: true,
+      showErrorDetails: false,
     },
   );
   assert.deepEqual(
@@ -102,6 +106,8 @@ test("chat skin preferences convert between API and React field names", () => {
       ornament_activity: "lively",
       dynamic_composer_hint: true,
       reduce_motion: false,
+      hide_generation_process: true,
+      show_error_details: false,
     },
   );
 });
