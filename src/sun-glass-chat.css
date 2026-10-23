@@ -3216,3 +3216,39 @@
   animation: sun-glass-rainbow-shimmer 4s ease-in-out infinite !important;
   animation-play-state: running !important;
 }
+
+/* The global reduced-motion rule in index.css forces animation-duration to
+   0.01ms. Restore a deliberately slow decorative drift for the status rainbow. */
+@media (prefers-reduced-motion: reduce) {
+  .main-panel.view-chat .sun-glass-liquid-color-flow,
+  .main-panel.view-chat .sun-glass-popover-color-flow {
+    animation-name: sun-glass-liquid-color-crossing, sun-glass-rainbow-breathe !important;
+    animation-duration: 18s, 18s !important;
+    animation-iteration-count: infinite, infinite !important;
+    animation-play-state: running, running !important;
+  }
+
+  .main-panel.view-chat .sun-glass-liquid-color-flow::after,
+  .main-panel.view-chat .sun-glass-popover-color-flow::after {
+    animation-name: sun-glass-rainbow-shimmer !important;
+    animation-duration: 18s !important;
+    animation-iteration-count: infinite !important;
+    animation-play-state: running !important;
+  }
+}
+
+:root[data-dengta-reduced-motion="true"] .main-panel.view-chat .sun-glass-liquid-color-flow,
+:root[data-dengta-reduced-motion="true"] .main-panel.view-chat .sun-glass-popover-color-flow {
+  animation-name: sun-glass-liquid-color-crossing, sun-glass-rainbow-breathe !important;
+  animation-duration: 8s, 4s !important;
+  animation-iteration-count: infinite, infinite !important;
+  animation-play-state: running, running !important;
+}
+
+:root[data-dengta-reduced-motion="true"] .main-panel.view-chat .sun-glass-liquid-color-flow::after,
+:root[data-dengta-reduced-motion="true"] .main-panel.view-chat .sun-glass-popover-color-flow::after {
+  animation-name: sun-glass-rainbow-shimmer !important;
+  animation-duration: 4s !important;
+  animation-iteration-count: infinite !important;
+  animation-play-state: running !important;
+}
