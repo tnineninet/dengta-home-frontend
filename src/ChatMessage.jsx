@@ -55,6 +55,8 @@ function ChatMessage({
   privateMediaCatalog = null,
   textImpactScope = "",
   onTextImpactAvatarHit,
+  hideProcess = false,
+  showErrorDetails = false,
   reduceMotion = false,
   voiceAnalysisVisible = true,
 }) {
@@ -80,7 +82,9 @@ function ChatMessage({
     : null;
   const avatar = isUser ? userAvatar : companionAvatar;
 
-  const refusalLogId = item.tool_calls?.refusal_detected?.error_log_id || item.error_log_id;
+  const refusalLogId = item.tool_calls?.refusal_detected?.error_log_id || item.error_log_id || item.tool_calls?.error_log_id;
+  const storedFailure = item.chatError === true ||
+    Boolean(item.tool_calls?.partial_reply === true && item.tool_calls?.error_code);
 
   function formatErrorTime(value) {
     if (!value) return "";
@@ -287,14 +291,21 @@ function ChatMessage({
               mood={companionMood}
             />
           )}
-          {!isUser && item.tool_calls?.refusal_detected && (
+          {!isUser && item.tool_calls?.refusal_detected && showErrorDetails && (
             <div className="chat-refusal-banner" role="alert">
               <span className="chat-refusal-badge">⚠ 拒绝回答</span>
               <span className="chat-refusal-source">
                 来源: {item.tool_calls.refusal_detected.source === "upstream" ? "上游模型（DengTa 提示词已允许成人内容，为模型自身/中转站审核拦截）" : "DengTa 自身过滤"}
               </span>
               <span className="chat-refusal-code">错误码: {item.tool_calls.refusal_detected.code || "provider_boundary_residue"}</span>
-              <ChatErrorLog key={refusalLogId || "local"} logId={refusalLogId} diagnostic={item} />
+              <ChatErrorLog key={refusalLogId || "local"} logId={refusalLogId} diagnostic={{
+                ...item,
+                error_code: item.error_code || item.tool_calls?.error_code || "",
+                error_source: item.error_source || item.tool_calls?.error_source || "",
+                provider_phase: item.provider_phase || item.tool_calls?.provider_phase || "",
+                provider_code: item.provider_code || item.tool_calls?.provider_code || "",
+                upstream_status: item.upstream_status ?? item.tool_calls?.upstream_status
+              }} />
             </div>
           )}
           {quotedMessage && (
@@ -313,7 +324,7 @@ function ChatMessage({
               <p>{item.partialContent}</p>
             </div>
           )}
-          {item.tool_calls?.partial_reply === true && (
+          {item.tool_calls?.partial_reply === true && !hideProcess && (
             <div className="partial-reply-note" role="note">
               <span>生成中断 · 已保留当时内容</span>
               <button type="button" onClick={() => void copyPartialReply()}>
@@ -333,7 +344,7 @@ function ChatMessage({
             </div>
           )}
           {displayContent.nextActions.length > 0 && <aside className="message-next-actions" aria-label="伴侣的小提议"><strong>接下来可以…</strong><ul>{displayContent.nextActions.map((action, index) => <li key={index}>{action}</li>)}</ul></aside>}
-          {!isUser && streamProgress && (
+          {!isUser && streamProgress && !hideProcess && (
             <div className="stream-progress-bar" aria-label="回复进度">
               <i className="stream-progress-track"><b style={{ width: `${streamProgress.pct}%` }} /></i>
               <span className="stream-progress-phase">{streamProgress.phase}</span>
@@ -392,23 +403,30 @@ function ChatMessage({
               <CompanionActivityCards actions={item.tool_calls?.activity_actions} onOpen={onOpenActivity} />
             </>
           )}
-          {item.chatError === true && (
+          {storedFailure && showErrorDetails && (
             <div className="chat-error-panel">
               <div className="chat-error-meta-row">
                 <span className="chat-error-code-badge">
-                  ⚠ {item.error_code || 'ERROR'}{' '}
-                  {item.error_source ? `· ${item.error_source}` : ''}
+                  ⚠ {item.error_code || item.tool_calls?.error_code || "ERROR"}{" "}
+                  {item.error_source || item.tool_calls?.error_source ? `· ${item.error_source || item.tool_calls?.error_source}` : ""}
                 </span>
-                {item.error_location && (
-                  <span className="chat-error-location" title={item.error_location}>
-                    位置: {item.error_location}
+                {(item.error_location || item.tool_calls?.error_location) && (
+                  <span className="chat-error-location" title={item.error_location || item.tool_calls?.error_location}>
+                    位置: {item.error_location || item.tool_calls?.error_location}
                   </span>
                 )}
                 <time className="chat-error-time">
                   {formatErrorTime(item.error_time || item.created_at)}
                 </time>
               </div>
-              <ChatErrorLog key={refusalLogId || "local"} logId={refusalLogId} diagnostic={item} />
+              <ChatErrorLog key={refusalLogId || "local"} logId={refusalLogId} diagnostic={{
+                ...item,
+                error_code: item.error_code || item.tool_calls?.error_code || "",
+                error_source: item.error_source || item.tool_calls?.error_source || "",
+                provider_phase: item.provider_phase || item.tool_calls?.provider_phase || "",
+                provider_code: item.provider_code || item.tool_calls?.provider_code || "",
+                upstream_status: item.upstream_status ?? item.tool_calls?.upstream_status
+              }} />
             </div>
           )}
           {item.voiceAnalysis && voiceAnalysisVisible && (
@@ -420,13 +438,13 @@ function ChatMessage({
               </strong>
             </div>
           )}
-          {item.isStreaming && (
+          {item.isStreaming && !hideProcess && (
             <span className="stream-caret" aria-label="正在回复">
               ♥
             </span>
           )}
           <div className="message-footer">
-            {!isUser && (
+            {!isUser && !hideProcess && (
               <ThinkingPanel
                 dialogOnly
                 message={item}
