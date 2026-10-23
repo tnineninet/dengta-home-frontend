@@ -1710,6 +1710,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const textImpactReactionQueueRef = useRef([]);
   const textImpactReactionTimerRef = useRef(null);
   const lastProactiveTextImpactMessageRef = useRef("");
+  const lastProactiveTextImpactAtRef = useRef(0);
   const textImpactReplyAnimationPendingRef = useRef(false);
   const companionInteractionScopeRef = useRef(privateMediaScope);
   companionInteractionScopeRef.current = privateMediaScope;
@@ -1733,6 +1734,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     textImpactReactionTimerRef.current = null;
     textImpactReactionQueueRef.current = [];
     textImpactReplyAnimationPendingRef.current = false;
+    lastProactiveTextImpactMessageRef.current = "";
+    lastProactiveTextImpactAtRef.current = 0;
     setIsCompanionResponding(false);
     setInteractionFeedback({ state: "idle", message: "" });
   }, [privateMediaScope, activeSessionId]);
@@ -2812,8 +2815,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     if (!last || last.role !== "assistant" || last.isStreaming || last.chatError || !String(last.content || "").trim()) {
       return undefined;
     }
+    const completedAt = Date.parse(last.created_at);
+    if (!Number.isFinite(completedAt) || Date.now() - completedAt > 5 * 60 * 1000) return undefined;
     if (lastProactiveTextImpactMessageRef.current === last.id) return undefined;
     lastProactiveTextImpactMessageRef.current = last.id;
+    if (Date.now() - lastProactiveTextImpactAtRef.current < TEXT_IMPACT_REACTION_MIN_MS) return undefined;
     const preference = readTextImpactPreference(privateMediaScope);
     if (preference.enabled === false) return undefined;
     const pendingHitReply = textImpactReplyAnimationPendingRef.current;
@@ -2821,6 +2827,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     const mood = String(companionStatus.mood || "");
     const moodTriggered = /开心|高兴|愉悦|兴奋|得意|笑|温柔|生气|恼|怒|不爽/.test(mood);
     if (!pendingHitReply && !moodTriggered && Math.random() > 0.14) return undefined;
+    lastProactiveTextImpactAtRef.current = Date.now();
     const delay = pendingHitReply
       ? 1200 + Math.floor(Math.random() * 1800)
       : 3000 + Math.floor(Math.random() * 5000);
