@@ -1461,12 +1461,19 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .sun-glass-liquid-color-flow,
-  .sun-glass-popover-color-flow,
   .sun-glass-liquid-action-module button,
   .sun-glass-jelly-popover.is-open,
   .main-panel.view-chat .companion-status.expanded .status-panel {
     animation: none;
+  }
+
+  /* The capsule rainbow is decorative. Keep a slow drift instead of freezing
+     it for users whose OS requests reduced motion. */
+  .sun-glass-liquid-color-flow,
+  .sun-glass-popover-color-flow,
+  .sun-glass-liquid-color-flow::after,
+  .sun-glass-popover-color-flow::after {
+    animation-duration: 18s;
   }
 }
 
