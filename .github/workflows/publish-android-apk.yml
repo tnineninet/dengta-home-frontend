@@ -1,18 +1,9 @@
 name: Publish Android APK
 
 on:
+  # Do not publish from every src push. Publish is an explicit manual action
+  # after tests and real-device verification.
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "android/**"
-      - "src/**"
-      - "index.html"
-      - "capacitor.config.json"
-      - "package.json"
-      - "package-lock.json"
-      - ".github/workflows/publish-android-apk.yml"
 
 permissions:
   contents: write
