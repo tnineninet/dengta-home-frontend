@@ -87,6 +87,7 @@ function harness() {
     applyPromptReceipt(receipt) { receipts.push(receipt); },
     normalizeCompanionActivities: () => [], openCompanionActivity: () => {},
     mergeCompanionStatus: (value, next) => ({ ...value, ...next }), setCompanionStatus: () => {},
+    setRecentAssistantMessageId: () => {}, refreshCompanionStatusAfterReply: () => {},
     playAssistantReply(...args) { played.push(args); },
   };
   const emit = new Function("env", `with (env) { return (${callbackSource}); }`)(env);

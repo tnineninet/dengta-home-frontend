@@ -18,7 +18,7 @@ test("mobile chat uses one decorative rainbow capsule as the status toggle", () 
   assert.match(status, /nowPlaying \? \([\s\S]*?<NowPlayingCard/);
   assert.match(
     status,
-    /sun-glass-liquid-capsule-toggle[\s\S]*?aria-expanded=\{expanded\}[\s\S]*?onClick=\{togglePanel\}/,
+    /sun-glass-liquid-capsule-toggle[\s\S]*?aria-expanded=\{xinchaoDetailsOpen \|\| expanded\}[\s\S]*?togglePanel\(\)/,
   );
   assert.match(
     status,

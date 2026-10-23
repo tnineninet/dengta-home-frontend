@@ -37,7 +37,7 @@ function hasVisibleAssistantContent(item) {
 }
 
 export default function ChatTranscript({ messages, preferences, innerMonologues, innerMonologuePending,
-  innerMonologueErrors, onPreview, onReference, onDismissError, onOpenActivity, onRequestInnerMonologue, onCancelInnerMonologue, hideProcess = false, ...props }) {
+  innerMonologueErrors, onPreview, onReference, onDismissError, onOpenActivity, onRequestInnerMonologue, onCancelInnerMonologue, hideProcess = false, recentAssistantMessageId = "", ...props }) {
   const preview = useLatestCallback(onPreview), reference = useLatestCallback(onReference);
   const dismiss = useLatestCallback(onDismissError), activity = useLatestCallback(onOpenActivity);
   const requestMonologue = useLatestCallback(onRequestInnerMonologue);
@@ -47,6 +47,7 @@ export default function ChatTranscript({ messages, preferences, innerMonologues,
     : (Array.isArray(messages) ? messages : []);
   return visibleMessages.map((item,index)=><Entry key={item.renderKey ?? item.id} {...props} item={item}
     hideProcess={hideProcess} showErrorDetails={props.showErrorDetails === true}
+    textImpactRecent={item.id === recentAssistantMessageId}
     previousRole={visibleMessages[index-1]?.role} nextRole={visibleMessages[index+1]?.role} preferences={preferences}
     monologueRecord={innerMonologues?.[item.id]} innerMonologuePending={innerMonologuePending?.[item.id]===true}
     innerMonologueError={innerMonologueErrors?.[item.id] || ""} onPreview={preview} onReference={reference}

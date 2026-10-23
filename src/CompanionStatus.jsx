@@ -41,6 +41,10 @@ import { apiRequest } from "./api";
 import { createPortal } from "react-dom";
 import "./companion-live-status.css";
 
+function renderStatusPortal(children, target) {
+  return target ? createPortal(children, target) : children;
+}
+
 const DESIRE_ACTIONS = [
   {
     id: "music",
@@ -510,7 +514,7 @@ function CompanionStatus({
         </span>
       </div>
 
-      {createPortal(
+      {renderStatusPortal(
         <div
           className={`status-panel sun-glass-floating-status-panel${
             expanded ? " is-open" : ""
@@ -745,10 +749,10 @@ function CompanionStatus({
             </section>
           </div>
       </div>,
-        document.querySelector(".main-panel") || document.body
+        document.querySelector?.(".main-panel") || document.body
       )}
       {xinchaoDetailsOpen && xinchaoState
-        ? createPortal(
+        ? renderStatusPortal(
             <XinchaoDetails
               state={xinchaoState}
               aiName={displayName}

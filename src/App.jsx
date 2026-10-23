@@ -235,7 +235,7 @@ import {
   reasoningEffortForProvider,
 } from "./provider-reasoning-effort";
 import { providerSetupHint } from "./provider-setup-hint";
-import { readReplySuggestions } from "./chat-reply-suggestions";
+import { readReplySuggestions, resolveReplyOptionSeed } from "./chat-reply-suggestions";
 import DlnaDiscoveryFeedback from "./DlnaDiscoveryFeedback.jsx";
 import {
   readEnabledAmbientCache,
@@ -1579,8 +1579,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [replyOptions, setReplyOptions] = useState([]);
   const [replyOptionsLoading, setReplyOptionsLoading] = useState(false);
   const [replyOptionsError, setReplyOptionsError] = useState("");
+  const [recentAssistantMessageId, setRecentAssistantMessageId] = useState("");
   const replyOptionsRequestRef = useRef(0);
   const replyOptionsAutoRef = useRef("");
+  useEffect(() => {
+    setRecentAssistantMessageId("");
+  }, [activeSessionId]);
   useEffect(() => {
     const latest = messages[messages.length - 1];
     if (
@@ -3453,6 +3457,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     let cancelled = false;
 
     async function loadMessages() {
+      setRecentAssistantMessageId("");
       if (!activeSessionId) {
         messagesSessionIdRef.current = null;
         messageLoadTokenRef.current += 1;
@@ -5259,9 +5264,19 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
   }
 
-  async function openReplyOptions() {
+  async function openReplyOptions({ fresh = false } = {}) {
     const sessionId = activeSessionIdRef.current;
     if (!sessionId) return;
+    const latestAssistant = [...messages].reverse().find((item) => item?.role === "assistant" && !item.isStreaming);
+    const seeded = resolveReplyOptionSeed(latestAssistant, { fresh });
+    if (seeded.length >= 2) {
+      replyOptionsRequestRef.current += 1;
+      setReplyOptions(seeded);
+      setReplyOptionsLoading(false);
+      setReplyOptionsError("");
+      setReplyOptionsOpen(true);
+      return;
+    }
     const request = ++replyOptionsRequestRef.current;
     setReplyOptionsOpen(true);
     setReplyOptionsLoading(true);
@@ -5811,6 +5826,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             );
             completedAssistantMessageId =
               event.assistant_message?.id || localAssistantId;
+            setRecentAssistantMessageId(String(completedAssistantMessageId || ""));
             const completedMusicCard = event.assistant_message?.tool_calls?.music_card;
             if (completedMusicCard?.id && earlyMusicCardRef.current?.id === completedMusicCard.id && !earlyMusicPlayingRef.current && !earlyMusicRestoredRef.current) {
               setEarlyMusicCard(null);
@@ -5834,7 +5850,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             );
             const activity = normalizeCompanionActivities(event.assistant_message?.tool_calls?.activity_actions).find(action => action.kind !== "bilibili");
             if (activity) openCompanionActivity(activity);
-            void refreshCompanionStatusAfterReply(sessionId);
+            if (event.companion_status_updated !== true) {
+              void refreshCompanionStatusAfterReply(sessionId);
+            }
             if (
               voiceAutoSpeakEnabled &&
               event.assistant_message?.content
@@ -7569,6 +7587,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 showErrorDetails={chatSkinPreferences.showErrorDetails === true}
                 textImpactScope={privateMediaScope}
                 onTextImpactAvatarHit={handleTextImpactAvatarHit}
+                recentAssistantMessageId={recentAssistantMessageId}
                 messages={messages}
                 preferences={chatSkinPreferences}
                 aiName={effectiveAiName}
@@ -7733,7 +7752,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               error={replyOptionsError}
               onClose={() => setReplyOptionsOpen(false)}
               onPick={pickReplyOption}
-              onRetry={() => void openReplyOptions()}
+              onRetry={() => void openReplyOptions({ fresh: true })}
             />
             <textarea
               ref={messageInputRef}
@@ -7838,7 +7857,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 disabled={isSending || isCompanionResponding || isVoiceInputBusy || !activeSessionId}
                 onClick={() => {
                   setIsComposerMenuOpen(false);
-                  void openReplyOptions();
+                  void openReplyOptions({ fresh: true });
                 }}
               >
                 <Sparkles size={13} aria-hidden="true" />
@@ -7921,7 +7940,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   type="button"
                   onClick={() => {
                     setIsComposerMenuOpen(false);
-                    void openReplyOptions();
+                    void openReplyOptions({ fresh: true });
                   }}
                 >
                   <span aria-hidden="true">💬</span>

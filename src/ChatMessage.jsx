@@ -55,6 +55,7 @@ function ChatMessage({
   privateMediaCatalog = null,
   textImpactScope = "",
   onTextImpactAvatarHit,
+  textImpactRecent = false,
   hideProcess = false,
   showErrorDetails = false,
   reduceMotion = false,
@@ -458,9 +459,9 @@ function ChatMessage({
                 onCancelInnerMonologue={onCancelInnerMonologue}
               />
             )}
-            {!item.chatError && !item.tool_calls?.refusal_detected && String(item.content || "").trim() && (
+            {!isUser && !item.chatError && !item.tool_calls?.refusal_detected && String(item.content || "").trim() && (
               <ChatTextImpact rowRef={rowRef} scopeKey={textImpactScope} messageId={item.id}
-                recent={!isUser && item.monologueAutoOpen === true} generating={isGenerating}
+                recent={!isGenerating && textImpactRecent} generating={isGenerating}
                 reducedMotion={reduceMotion} onAvatarHit={onTextImpactAvatarHit} />
             )}
             {item.chatError === true &&

@@ -189,6 +189,7 @@ assert.deepEqual(interactionQueue[1].batchCounts, {
   confide: 0,
   embrace: 0,
   wish: 0,
+  text_impact: 0,
 });
 assert.equal(interactionQueue[1].interactionCounts.hand, 101);
 assert.equal(interactionQueue[1].interactionCounts.heart, 1);
@@ -377,6 +378,7 @@ assert.deepEqual(normalized.counts, {
   confide: 0,
   embrace: 0,
   wish: 0,
+  text_impact: 0,
 });
 assert.equal(normalized.lastZoneId, null);
 assert.equal(normalized.streakCount, 0);

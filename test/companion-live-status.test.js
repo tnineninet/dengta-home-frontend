@@ -41,9 +41,23 @@ test("generated state survives storage and revision merge without fabricating mi
 test("capsule retains generated feelings through touch, renders pending/failure and then actual new state", async () => {
   const previous = { window: globalThis.window, document: globalThis.document, act: globalThis.IS_REACT_ACT_ENVIRONMENT };
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-  globalThis.window = { matchMedia: () => ({ matches: true, addEventListener() {}, removeEventListener() {} }), requestAnimationFrame: () => 1, cancelAnimationFrame() {}, clearTimeout() {} };
+  globalThis.window = { matchMedia: () => ({ matches: true, addEventListener() {}, removeEventListener() {} }), requestAnimationFrame: () => 1, cancelAnimationFrame() {}, setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout, setInterval: () => 1, clearInterval() {} };
   globalThis.document = { addEventListener() {}, removeEventListener() {} };
-  const vite = await createServer({ root: fileURLToPath(new URL("..", import.meta.url)), appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  const vite = await createServer({
+    root: fileURLToPath(new URL("..", import.meta.url)),
+    appType: "custom",
+    logLevel: "silent",
+    server: { middlewareMode: true },
+    plugins: [{
+      name: "live-status-portal-stub",
+      enforce: "pre",
+      transform(code, id) {
+        if (id.replaceAll("\\", "/").endsWith("/src/CompanionStatus.jsx")) {
+          return code.replace('import { createPortal } from "react-dom";', "const createPortal = children => children;");
+        }
+      },
+    }],
+  });
   let tree;
   const text = node => typeof node === "string" ? node : (node?.children || []).map(text).join("");
   try {

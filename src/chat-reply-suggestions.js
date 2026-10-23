@@ -37,3 +37,7 @@ export function normalizeReplySuggestions(value) {
 export function readReplySuggestions(message = {}) {
   return normalizeReplySuggestions(message?.tool_calls?.reply_suggestions);
 }
+
+export function resolveReplyOptionSeed(message = {}, { fresh = false } = {}) {
+  return fresh ? [] : readReplySuggestions(message);
+}

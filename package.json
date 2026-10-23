@@ -25,7 +25,7 @@
     "android:sync": "cap sync android",
     "lint": "eslint .",
     "typecheck": "node scripts/typecheck.mjs",
-    "test:companion-interaction": "node test/companion-interaction.test.js && node --test test/companion-live-status.test.js test/companion-interaction-lifecycle.test.js",
+    "test:companion-interaction": "node test/companion-interaction.test.js && node --test --test-force-exit test/companion-live-status.test.js test/companion-interaction-lifecycle.test.js",
     "test:companion-gender": "node test/companion-gender.test.js",
     "test:intimate-duel": "node test/intimate-duel.test.js && node --test test/duel-lifecycle.test.js",
     "test:reply-suggestions": "node test/chat-reply-suggestions.test.js",

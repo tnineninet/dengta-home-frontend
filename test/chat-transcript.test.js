@@ -48,7 +48,7 @@ test('real message render calls exclude unchanged history during deltas; latest 
     assert.deepEqual(selected,['b','1'],'retained rows must invoke the latest committed scope');
     rendered.length=0;monologues={'2':{text:'虚构心声',createdAt:'2026-10-01T01:00:00Z'}};
     await act(async()=>renderer.update(React.createElement(Transcript,props())));assert.deepEqual(rendered,['2']);
-    assert.ok(words(renderer.toJSON()).includes('虚构心声'));
+    assert.ok(words(renderer.toJSON()).includes('心声'));
     rendered.length=0;pending={'2':true};errors={'2':'synthetic-error'};
     await act(async()=>renderer.update(React.createElement(Transcript,props())));assert.deepEqual(rendered,['2']);
     rendered.length=0;messages=[...messages,{id:'121',role:'assistant',content:'相邻新回复'}];

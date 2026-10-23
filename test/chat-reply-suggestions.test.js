@@ -3,6 +3,7 @@ import fs from "node:fs";
 import {
   normalizeReplySuggestions,
   readReplySuggestions,
+  resolveReplyOptionSeed,
 } from "../src/chat-reply-suggestions.js";
 
 assert.deepEqual(
@@ -22,6 +23,20 @@ assert.deepEqual(
   ["好，过来吧", "那你先认真哄哄我"],
 );
 assert.deepEqual(readReplySuggestions({ role: "assistant" }), []);
+assert.deepEqual(
+  resolveReplyOptionSeed({
+    role: "assistant",
+    tool_calls: { reply_suggestions: ["种子一", "种子二"] },
+  }),
+  ["种子一", "种子二"],
+);
+assert.deepEqual(
+  resolveReplyOptionSeed({
+    role: "assistant",
+    tool_calls: { reply_suggestions: ["种子一", "种子二"] },
+  }, { fresh: true }),
+  [],
+);
 assert.deepEqual(normalizeReplySuggestions([]), []);
 assert.deepEqual(normalizeReplySuggestions(["只有一个"]), []);
 assert.deepEqual(normalizeReplySuggestions(["一个", "两个", "三个"]), []);
