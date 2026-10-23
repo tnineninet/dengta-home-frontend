@@ -247,7 +247,10 @@ function CompanionStatus({
     if (!expanded) return undefined;
     panelRef.current?.scrollTo({ top: 0 });
     function closeFromOutside(event) {
-      if (!rootRef.current?.contains(event.target)) {
+      if (
+        !rootRef.current?.contains(event.target) &&
+        !panelRef.current?.contains(event.target)
+      ) {
         closePanel();
       }
     }
@@ -507,15 +510,16 @@ function CompanionStatus({
         </span>
       </div>
 
-      <div
-        className={`status-panel sun-glass-floating-status-panel${
-          expanded ? " is-open" : ""
-        }`}
-        role="dialog"
-        aria-label={`${displayName}状态`}
-        aria-hidden={!expanded}
-        inert={expanded ? undefined : true}
-      >
+      {createPortal(
+        <div
+          className={`status-panel sun-glass-floating-status-panel${
+            expanded ? " is-open" : ""
+          }`}
+          role="dialog"
+          aria-label={`${displayName}状态`}
+          aria-hidden={!expanded}
+          inert={expanded ? undefined : true}
+        >
         <StatusFlowField active={expanded} />
         <header className="sun-glass-floating-status-header">
             <div className="sun-glass-status-drag-title">
@@ -740,7 +744,9 @@ function CompanionStatus({
               )}
             </section>
           </div>
-      </div>
+      </div>,
+        document.querySelector(".main-panel") || document.body
+      )}
       {xinchaoDetailsOpen && xinchaoState
         ? createPortal(
             <XinchaoDetails
