@@ -210,6 +210,7 @@ import {
   companionStatusForRequest,
   createDefaultCompanionInteractionStats,
   createResetCompanionStatus,
+  decayCompanionEnergy,
   mergeCompanionStatus,
   normalizeCompanionInteractionStats,
   normalizeCompanionStatus,
@@ -1716,6 +1717,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     companionStatusRef.current = companionStatus;
     companionInteractionStatsRef.current = companionInteractionStats;
   }, [privateMediaScope, companionStatus, companionInteractionStats]);
+  useEffect(() => {
+    if (!activeSessionId) return undefined;
+    setCompanionStatus((current) => decayCompanionEnergy(current));
+    const timer = window.setInterval(() => {
+      setCompanionStatus((current) => decayCompanionEnergy(current));
+    }, 30_000);
+    return () => window.clearInterval(timer);
+  }, [activeSessionId]);
   const companionInteractionHandlerRef = useRef(null);
   const companionInteractionQueueRef = useRef([]);
   const companionInteractionTimerRef = useRef(null);

@@ -1,5 +1,7 @@
 const STORAGE_KEY = "dengta_companion_status_v1";
 const INTERACTION_STORAGE_KEY = "dengta_companion_interactions_v1";
+export const ENERGY_DECAY_INTERVAL_MS = 2 * 60 * 1000;
+const MAX_ENERGY_DECAY_PER_TICK = 10;
 
 function accountStorageKey(baseKey, accountScope = "") {
   const scope = String(accountScope || "").trim();
@@ -946,4 +948,22 @@ export function formatUpdatedAt(value, now = Date.now()) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(timestamp));
+}
+
+export function decayCompanionEnergy(value, now = Date.now()) {
+  const status = normalizeCompanionStatus(value);
+  if (status.resetBlank) return value;
+  const updated = Date.parse(status.updatedAt);
+  if (!Number.isFinite(updated)) return value;
+  const points = Math.min(
+    MAX_ENERGY_DECAY_PER_TICK,
+    Math.floor(Math.max(0, now - updated) / ENERGY_DECAY_INTERVAL_MS),
+  );
+  if (points <= 0 || status.energyLevel <= 0) return value;
+  return normalizeCompanionStatus({
+    ...status,
+    energyLevel: Math.max(0, status.energyLevel - points),
+    revision: status.revision + 1,
+    updatedAt: new Date(now).toISOString(),
+  });
 }
