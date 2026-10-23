@@ -108,6 +108,14 @@ function CompanionStatus({
     () => normalizeCompanionStatus(status),
     [status],
   );
+  const duplicateVisibleState = useMemo(
+    () => Boolean(
+      normalized.psychology &&
+      normalized.feeling &&
+      normalized.psychology === normalized.feeling
+    ),
+    [normalized.psychology, normalized.feeling],
+  );
   const normalizedInteractionStats = useMemo(
     () => normalizeCompanionInteractionStats(interactionStats),
     [interactionStats],
@@ -588,7 +596,7 @@ function CompanionStatus({
               </div>
               <dl>
                 <div><dt>心理</dt><dd>{normalized.psychology ? personalized(normalized.psychology) : "互动后，会在这里写下此刻的想法。"}</dd></div>
-                <div><dt>感受</dt><dd>{normalized.feeling ? personalized(normalized.feeling) : "还没有收到新生成的感受。"}</dd></div>
+                <div><dt>感受</dt><dd>{duplicateVisibleState ? "这次模型把心理和感受写成了同一句，下一条回复后会重新生成。" : normalized.feeling ? personalized(normalized.feeling) : "还没有收到新生成的感受。"}</dd></div>
               </dl>
               <div className="companion-live-meters">
                 {[["心情", normalized.moodLevel], ["耐心", normalized.patienceLevel]].map(([label, value]) => (
