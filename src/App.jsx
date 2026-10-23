@@ -46,6 +46,7 @@ import {
   Palette,
   ScrollText,
   ServerCog,
+  Sparkles,
   Trophy,
 } from "lucide-react";
 import {
@@ -7828,6 +7829,20 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 onClick={toggleComposerMenu}
               >
                 <RainbowAgentMark />
+              </button>
+              <button
+                className="composer-reply-options-button"
+                type="button"
+                aria-label="让 TA 帮你想更多回复"
+                title="让 TA 帮你想更多回复"
+                disabled={isSending || isCompanionResponding || isVoiceInputBusy || !activeSessionId}
+                onClick={() => {
+                  setIsComposerMenuOpen(false);
+                  void openReplyOptions();
+                }}
+              >
+                <Sparkles size={13} aria-hidden="true" />
+                <span>更多回复</span>
               </button>
               <button
                 className="send-button"

@@ -1,6 +1,44 @@
 .composer-wrap { position: relative; }
 .composer { position: relative; }
 
+.composer-reply-options-button {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  border: 1px solid rgb(22 28 40 / 0.1);
+  border-radius: 999px;
+  color: #6b625e;
+  background: rgb(255 255 255 / 0.58);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.composer-reply-options-button:hover {
+  color: #302a28;
+  background: rgb(255 255 255 / 0.9);
+}
+
+.composer-reply-options-button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+@media (max-width: 480px) {
+  .composer-reply-options-button span {
+    display: none;
+  }
+
+  .composer-reply-options-button {
+    width: 32px;
+    justify-content: center;
+    padding: 0;
+  }
+}
+
 .reply-options-popover {
   position: absolute;
   z-index: 46;
