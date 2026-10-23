@@ -1684,6 +1684,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const messageLoadTokenRef = useRef(0);
   const streamingSessionIdRef = useRef(null);
   const companionStatusRef = useRef(companionStatus);
+  const statusRefreshAbortRef = useRef(null);
   const ambientContextRef = useRef({});
   const deviceActivitySummaryRef = useRef(null);
   const deviceActivityRefreshRunRef = useRef(null);
@@ -5298,9 +5299,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   async function refreshCompanionStatusAfterReply(sessionId) {
     if (!sessionId || activeSessionIdRef.current !== sessionId) return;
+    statusRefreshAbortRef.current?.abort();
+    const controller = new AbortController();
+    statusRefreshAbortRef.current = controller;
     try {
       const data = await apiRequest("/companion/status/refresh", {
         method: "POST",
+        signal: controller.signal,
         body: JSON.stringify({
           session_id: sessionId,
           companion_status: companionStatusForRequest(companionStatusRef.current),
@@ -5310,10 +5315,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       setCompanionStatus((current) => mergeCompanionStatus(current, data.companion_status));
     } catch {
       // Status refresh is supplementary; the chat reply remains authoritative.
+    } finally {
+      if (statusRefreshAbortRef.current === controller) statusRefreshAbortRef.current = null;
     }
   }
 
   async function sendMessage() {
+    statusRefreshAbortRef.current?.abort();
     setReplyOptionsOpen(false);
     const publicReasoningSummaryAtRequest = publicReasoningSummaryEnabled && settings.provider === "openai-responses";
     const options =
