@@ -7496,7 +7496,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     const sendButtonLabel = isSending
       ? "停止等待"
       : isCompanionResponding
-        ? "互动回应中"
+        ? hideProcess ? "互动" : "互动回应中"
         : chatRetryReady
           ? chatRetryIsProcessing
             ? "检查进度"
