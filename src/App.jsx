@@ -5296,6 +5296,23 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     });
   }
 
+  async function refreshCompanionStatusAfterReply(sessionId) {
+    if (!sessionId || activeSessionIdRef.current !== sessionId) return;
+    try {
+      const data = await apiRequest("/companion/status/refresh", {
+        method: "POST",
+        body: JSON.stringify({
+          session_id: sessionId,
+          companion_status: companionStatusForRequest(companionStatusRef.current),
+        }),
+      });
+      if (activeSessionIdRef.current !== sessionId || !data?.companion_status) return;
+      setCompanionStatus((current) => mergeCompanionStatus(current, data.companion_status));
+    } catch {
+      // Status refresh is supplementary; the chat reply remains authoritative.
+    }
+  }
+
   async function sendMessage() {
     setReplyOptionsOpen(false);
     const publicReasoningSummaryAtRequest = publicReasoningSummaryEnabled && settings.provider === "openai-responses";
@@ -5808,6 +5825,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             );
             const activity = normalizeCompanionActivities(event.assistant_message?.tool_calls?.activity_actions).find(action => action.kind !== "bilibili");
             if (activity) openCompanionActivity(activity);
+            void refreshCompanionStatusAfterReply(sessionId);
             if (
               voiceAutoSpeakEnabled &&
               event.assistant_message?.content
