@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import "./reply-options-sheet.css";
 
 export default function ReplyOptionsPopover({
@@ -23,7 +23,7 @@ export default function ReplyOptionsPopover({
       <header className="reply-options-popover-header">
         <span>帮你选</span>
         <button type="button" aria-label="收起回复选项" onClick={onClose}>
-          <X aria-hidden="true" />
+          <ChevronDown aria-hidden="true" />
         </button>
       </header>
 

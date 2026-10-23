@@ -5281,7 +5281,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   function pickReplyOption(text) {
     const answer = String(text || "").trim();
     if (!answer) return;
-    setReplyOptionsOpen(false);
     setReplyOptionsError("");
     setMessage(answer);
     window.requestAnimationFrame(() => {
@@ -5736,6 +5735,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                       errorMessage: eventErrorMessage,
                       isStreaming: false,
                       chatError: true,
+                      error_code: event.code || event.error_code || "CHAT_STREAM_FAILED",
+                      error_log_id: event.error_log_id || event.log_id || "",
+                      error_location: event.error_location || "",
+                      error_source: event.error_source || "",
+                      provider_code: event.provider_code || "",
+                      provider_phase: event.provider_phase || "",
+                      upstream_status: event.upstream_status,
                       monologueUserMessageId: completedUserMessageId,
                       generationInProgress: eventGenerationInProgress,
                       retryAvailable: true,
@@ -7469,6 +7475,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   ));
 
   function renderChat() {
+    const hideProcess = chatSkinPreferences.hideGenerationProcess !== false;
     const chatBackgroundAsset = selectedPrivateMedia(
       privateMediaCatalog,
       "chat_background",
@@ -7523,6 +7530,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             </div>
           ) : (
               <ChatTranscript
+                hideProcess={chatSkinPreferences.hideGenerationProcess !== false}
+                showErrorDetails={chatSkinPreferences.showErrorDetails === true}
                 textImpactScope={privateMediaScope}
                 onTextImpactAvatarHit={handleTextImpactAvatarHit}
                 messages={messages}
@@ -7681,16 +7690,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               </span>
             </label>
           )}
-          <ReplyOptionsSheet
-            open={replyOptionsOpen}
-            options={replyOptions}
-            loading={replyOptionsLoading}
-            error={replyOptionsError}
-            onClose={() => setReplyOptionsOpen(false)}
-            onPick={pickReplyOption}
-            onRetry={() => void openReplyOptions()}
-          />
           <div className="composer" data-text-impact-scope={privateMediaScope}>
+            <ReplyOptionsSheet
+              open={replyOptionsOpen}
+              options={replyOptions}
+              loading={replyOptionsLoading}
+              error={replyOptionsError}
+              onClose={() => setReplyOptionsOpen(false)}
+              onPick={pickReplyOption}
+              onRetry={() => void openReplyOptions()}
+            />
             <textarea
               ref={messageInputRef}
               value={message}
@@ -8012,13 +8021,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               )}
             </section>
           )}
-          {modelsLoadMessage && (
+          {modelsLoadMessage && !hideProcess && (
             <div className="chat-model-note" role="status">
               {modelsLoadMessage}
             </div>
           )}
           <small>
-            {isCompanionResponding
+            {isCompanionResponding && !hideProcess
               ? `${effectiveAiName}正在回应刚才的互动`
               : isOnline
                 ? "已连接"
@@ -9922,7 +9931,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           </div>
           )}
             {settingsCategory === "logs" && (
-              <ErrorLogsPanel key={JSON.stringify([accountStorageScope, companionScope])} accountScope={accountStorageScope} companionScope={companionScope} onOpenSettings={setSettingsCategory} />
+              chatSkinPreferences.showErrorDetails ? (
+                <ErrorLogsPanel key={JSON.stringify([accountStorageScope, companionScope])} accountScope={accountStorageScope} companionScope={companionScope} onOpenSettings={setSettingsCategory} />
+              ) : (
+                <div className="settings-card">
+                  <h3>错误日志已隐藏</h3>
+                  <p className="card-hint">技术错误码和日志仍在后台保留。打开“外观 → 显示错误码与日志”后即可查看，包括旧会话的记录。</p>
+                  <button type="button" onClick={() => setSettingsCategory("appearance")}>前往打开</button>
+                </div>
+              )
             )}
 
             {settingsCategory === "fun" && (

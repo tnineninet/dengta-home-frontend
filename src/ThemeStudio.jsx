@@ -208,6 +208,32 @@ export default function ThemeStudio({
             }
           />
         </label>
+        <label className="chat-skin-toggle">
+          <span>
+            <strong>沉浸聊天模式</strong>
+            <small>隐藏处理阶段、生成中提示、心声和空的 AI 气泡，只显示最终回复与附件</small>
+          </span>
+          <input
+            type="checkbox"
+            checked={chatSkinPreferences?.hideGenerationProcess !== false}
+            onChange={(event) =>
+              updateChatSkin?.({ hideGenerationProcess: event.target.checked })
+            }
+          />
+        </label>
+        <label className="chat-skin-toggle">
+          <span>
+            <strong>显示错误码与日志</strong>
+            <small>失败时显示技术细节；关闭后仍会保存，打开后旧错误也会重新显示</small>
+          </span>
+          <input
+            type="checkbox"
+            checked={chatSkinPreferences?.showErrorDetails === true}
+            onChange={(event) =>
+              updateChatSkin?.({ showErrorDetails: event.target.checked })
+            }
+          />
+        </label>
       </section>
     </section>
   );

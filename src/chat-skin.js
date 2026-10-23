@@ -5,6 +5,8 @@ export const DEFAULT_CHAT_SKIN_PREFERENCES = Object.freeze({
   ornamentActivity: "natural",
   dynamicComposerHint: true,
   reduceMotion: false,
+  hideGenerationProcess: true,
+  showErrorDetails: false,
 });
 
 export const CHAT_SKIN_STORAGE_KEY = "dengta.chat-skin.v1";
@@ -19,6 +21,10 @@ export function normalizeChatSkinPreferences(value = {}) {
   const dynamicComposerHint =
     source.dynamicComposerHint ?? source.dynamic_composer_hint;
   const reduceMotion = source.reduceMotion ?? source.reduce_motion;
+  const hideGenerationProcess =
+    source.hideGenerationProcess ?? source.hide_generation_process;
+  const showErrorDetails =
+    source.showErrorDetails ?? source.show_error_details;
   return {
     skin: CHAT_SKINS.has(source.skin)
       ? source.skin
@@ -34,6 +40,14 @@ export function normalizeChatSkinPreferences(value = {}) {
       typeof reduceMotion === "boolean"
         ? reduceMotion
         : DEFAULT_CHAT_SKIN_PREFERENCES.reduceMotion,
+    hideGenerationProcess:
+      typeof hideGenerationProcess === "boolean"
+        ? hideGenerationProcess
+        : DEFAULT_CHAT_SKIN_PREFERENCES.hideGenerationProcess,
+    showErrorDetails:
+      typeof showErrorDetails === "boolean"
+        ? showErrorDetails
+        : DEFAULT_CHAT_SKIN_PREFERENCES.showErrorDetails,
   };
 }
 
@@ -44,6 +58,8 @@ export function chatSkinPreferencesApiPayload(value) {
     ornament_activity: normalized.ornamentActivity,
     dynamic_composer_hint: normalized.dynamicComposerHint,
     reduce_motion: normalized.reduceMotion,
+    hide_generation_process: normalized.hideGenerationProcess,
+    show_error_details: normalized.showErrorDetails,
   };
 }
 
