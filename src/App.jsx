@@ -38,6 +38,7 @@ import {
   ArrowLeft,
   BrainCircuit,
   DatabaseZap,
+  Eye,
   FileDown,
   Mic2,
   MonitorSmartphone,
@@ -74,6 +75,7 @@ import CompanionGenderFields from "./CompanionGenderFields";
 import ReplyOptionsSheet from "./ReplyOptionsSheet.jsx";
 import { shouldAutoOpenReplyOptions } from "./reply-options-trigger.js";
 import ChatContextSettings from "./ChatContextSettings.jsx";
+import VisionSettings from "./VisionSettings.jsx";
 import ChatErrorLog from "./ChatErrorLog.jsx";
 import { requestErrorLogs } from "./error-log-request.js";
 import { requestDistill, distillDiagnostic, DISTILL_ERROR_FEEDBACK } from "./style-distill.js";
@@ -436,6 +438,12 @@ const SETTINGS_CATEGORIES = [
     label: "模型与服务",
     description: "接口、模型、服务状态与创作",
     Icon: ServerCog,
+  },
+  {
+    id: "vision",
+    label: "视觉接口",
+    description: "为纯文本模型配置看图能力",
+    Icon: Eye,
   },
   {
     id: "voice",
@@ -8972,7 +8980,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               </Suspense>
             )}
 
-            {settingsCategory !== "data-import" && settingsCategory !== "music-import" && settingsCategory !== "data-export" && (
+            {settingsCategory === "vision" && (
+              <VisionSettings key={JSON.stringify([accountStorageScope, companionScope])} />
+            )}
+
+            {settingsCategory !== "data-import" && settingsCategory !== "music-import" && settingsCategory !== "data-export" && settingsCategory !== "vision" && (
             <form className="settings-form" onSubmit={saveSettings}>
           {settingsCategory === "services" && (
             <div className="settings-card service-manager-card">
