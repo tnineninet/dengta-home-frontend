@@ -23,20 +23,98 @@ export default function ChatTextImpact({ rowRef, scopeKey = "", messageId, recen
     };
   }, [scopeKey, messageId]);
 
-  async function play(mode, target) {
+  function composerGlyphs() {
+    const textarea = document.querySelector(".composer textarea");
+    const value = String(textarea?.value || "");
+    if (!textarea || !value.trim()) return { textarea, glyphs: [] };
+    const rect = textarea.getBoundingClientRect();
+    if (!rect.width || !rect.height) return { textarea, glyphs: [] };
+    const style = getComputedStyle(textarea);
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    if (!context) return { textarea, glyphs: [] };
+    const fontSize = parseFloat(style.fontSize) || 16;
+    const font = `${style.fontStyle || "normal"} ${style.fontWeight || "400"} ${fontSize}px ${style.fontFamily || "sans-serif"}`;
+    context.font = font;
+    const lineHeight = parseFloat(style.lineHeight) || fontSize * 1.45;
+    const left = rect.left + (parseFloat(style.paddingLeft) || 0);
+    const top = rect.top + (parseFloat(style.paddingTop) || 0);
+    const right = rect.right - (parseFloat(style.paddingRight) || 0);
+    const glyphs = [];
+    let x = left;
+    let y = top;
+    for (const character of Array.from(value).slice(0, 360)) {
+      if (character === "\n") {
+        x = left;
+        y += lineHeight;
+        continue;
+      }
+      const width = Math.max(1, context.measureText(character).width);
+      if (x + width > right) {
+        x = left;
+        y += lineHeight;
+      }
+      if (y + lineHeight > rect.bottom) break;
+      glyphs.push({
+        text: character,
+        x,
+        y,
+        width,
+        height: lineHeight,
+        font,
+        color: style.color || "#444"
+      });
+      x += width;
+      if (glyphs.length >= 96) break;
+    }
+    return { textarea, glyphs };
+  }
+
+  async function playComposerImpact(mode) {
+    const { textarea, glyphs } = composerGlyphs();
+    if (!textarea) return { started: false, reason: "composer_not_found" };
+    if (!glyphs.length) return { started: false, reason: "empty_input" };
+    const { playTextImpact } = await import("./text-impact-player.js");
+    return playTextImpact(textarea, {
+      mode,
+      target: mode === "burst" ? "none" : "floor",
+      glyphs,
+      scopeKey
+    });
+  }
+
+  function playAvatarImpact(mode) {
     const row = rowRef.current || triggerRef.current?.closest?.(".message-row");
-    const source = row?.querySelector(".message-content");
-    if (!source || reducedMotion) return;
+    const avatar = row?.querySelector(".message-avatar");
+    if (!avatar) return { started: false, reason: "avatar_not_found" };
+    const className = mode === "burst" ? "text-impact-avatar-burst" : "text-impact-avatar-fall";
+    avatar.classList.remove("text-impact-avatar-burst", "text-impact-avatar-fall");
+    void avatar.offsetWidth;
+    avatar.classList.add(className);
+    const cleanup = () => avatar.classList.remove(className);
+    const timer = window.setTimeout(cleanup, mode === "burst" ? 620 : 1050);
+    activeStop.current = () => {
+      window.clearTimeout(timer);
+      cleanup();
+    };
+    if (mode === "burst") {
+      try { onAvatarHit?.({ messageId, mode, target: "avatar" }); } catch { /* interaction is optional */ }
+    }
+    return { started: true, stop: activeStop.current };
+  }
+
+  async function play(mode, target) {
+    if (reducedMotion) return { started: false, reason: "reduced_motion" };
     const request = ++playRequest.current;
     try {
-      const { playTextImpact } = await import("./text-impact-player.js");
-      if (request !== playRequest.current || !source.isConnected) return;
-      const result = await playTextImpact(source, { mode, target, scopeKey, onTargetHit: () => {
-        if (mode !== "burst" || target !== "avatar") return;
-        try { onAvatarHit?.({ messageId, mode, target }); } catch { /* interaction is optional */ }
-      } });
-      if (request !== playRequest.current) { result.stop?.(); return; }
-      activeStop.current = result.stop || null;
+      const result = target === "composer"
+        ? await playComposerImpact(mode)
+        : playAvatarImpact(mode);
+      if (request !== playRequest.current) {
+        result?.stop?.();
+        return null;
+      }
+      activeStop.current = result?.stop || activeStop.current;
       return result;
     } catch {
       return request === playRequest.current
@@ -46,24 +124,26 @@ export default function ChatTextImpact({ rowRef, scopeKey = "", messageId, recen
   }
 
   function playManually(mode) {
-    // “文字弹跳”必须是子弹打在 TA 的头像上；不能因为旧的默认落点或
-    // 用户之前选过输入框就退化成普通抛物线。
-    const target = mode === "burst" ? "avatar" : preference.target;
-    saveTextImpactPreference(scopeKey, { mode, ...(target !== preference.target ? { target } : {}) });
+    const target = preference.target === "composer" ? "composer" : "avatar";
+    saveTextImpactPreference(scopeKey, { mode, target });
     setOpen(false);
     const pending = play(mode, target);
     const request = playRequest.current;
     void pending.then(result => {
       if (request !== playRequest.current) return;
       if (!result) {
-        setFeedback("没有找到可播放的消息内容");
+        setFeedback("没有找到可播放的内容");
         return;
       }
-      setFeedback(
-        result.started
-          ? "原消息已保留"
-          : `动效未启动：${result.reason || "unavailable"}`
-      );
+      if (result.started) {
+        setFeedback(target === "avatar"
+          ? mode === "burst" ? "TA 的头像被弹了一下" : "TA 的头像掉下来了"
+          : mode === "burst" ? "输入框里的字弹起来了" : "输入框里的字掉下来了");
+        return;
+      }
+      setFeedback(result.reason === "empty_input"
+        ? "输入框里还没有内容"
+        : `动效未启动：${result.reason || "unavailable"}`);
     });
   }
 

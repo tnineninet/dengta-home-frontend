@@ -65,7 +65,7 @@ function unavailableReason(source, scopeKey) {
   return "";
 }
 
-export async function playTextImpact(source, { mode = "scatter", target = "composer", scopeKey = "", onTargetHit = null } = {}) {
+export async function playTextImpact(source, { mode = "scatter", target = "composer", scopeKey = "", onTargetHit = null, glyphs: suppliedGlyphs = null } = {}) {
   stopTextImpact();
   const version = requestVersion;
   const initialReason = unavailableReason(source, scopeKey);
@@ -77,13 +77,17 @@ export async function playTextImpact(source, { mode = "scatter", target = "compo
   const viewport = view.visualViewport;
   const width = Math.min(view.innerWidth, viewport?.width || view.innerWidth);
   const height = Math.min(view.innerHeight, viewport?.height || view.innerHeight);
-  const glyphs = measureTextImpactGlyphs(source, { width, height });
+  const glyphs = Array.isArray(suppliedGlyphs)
+    ? suppliedGlyphs
+    : measureTextImpactGlyphs(source, { width, height });
   if (!glyphs.length) return { started: false, reason: "empty" };
-  const candidates = target === "avatar"
-    ? [...source.ownerDocument.querySelectorAll(".message-row.assistant .message-avatar")].reverse()
-    : target === "user-avatar"
-      ? [...source.ownerDocument.querySelectorAll(".message-row.user .message-avatar")].reverse()
-      : [...source.ownerDocument.querySelectorAll(".composer textarea")];
+  const candidates = target === "floor" || target === "none"
+    ? []
+    : target === "avatar"
+      ? [...source.ownerDocument.querySelectorAll(".message-row.assistant .message-avatar")].reverse()
+      : target === "user-avatar"
+        ? [...source.ownerDocument.querySelectorAll(".message-row.user .message-avatar")].reverse()
+        : [...source.ownerDocument.querySelectorAll(".composer textarea")];
   const destination = candidates.find(element => {
     const owner = element.closest?.("[data-text-impact-scope]");
     if (!owner || owner.dataset.textImpactScope !== scopeKey) return false;
@@ -92,8 +96,11 @@ export async function playTextImpact(source, { mode = "scatter", target = "compo
   });
   const rect = destination?.getBoundingClientRect();
   const bounds = { width, height };
-  const targetRect = rect ? { x: rect.left, y: rect.top, width: rect.width, height: rect.height, kind: target }
-    : { x: width * 0.15, y: height - 72, width: width * 0.7, height: 36, kind: "composer" };
+  const targetRect = target === "none"
+    ? null
+    : rect
+      ? { x: rect.left, y: rect.top, width: rect.width, height: rect.height, kind: target }
+      : { x: width * 0.15, y: height - 72, width: width * 0.7, height: 36, kind: target === "floor" ? "floor" : "composer" };
   const simulation = createTextImpactSimulation({ glyphs, mode, target: targetRect, bounds, seed: Date.now() % 2147483647 });
   const canvas = source.ownerDocument.createElement("canvas");
   const ratio = Math.min(view.devicePixelRatio || 1, 2);
