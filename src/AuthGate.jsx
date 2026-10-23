@@ -187,6 +187,11 @@ export function AuthScreen({
           setPasswordConfirmation("");
           setMode("login");
           setFeedback("这个邮箱已经注册过。请直接登录；如果还没收到验证邮件，点下面的按钮重发。");
+        } else if (result.emailConfirmed && !result.session) {
+          setPassword("");
+          setPasswordConfirmation("");
+          setMode("login");
+          setFeedback("注册成功，邮箱已验证。请直接用邮箱和密码登录。");
         } else if (result.emailVerificationRequired) {
           setVerificationEmail(email.trim().toLowerCase());
           setPassword("");

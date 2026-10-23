@@ -317,6 +317,19 @@ export function createAuthSessionManager({
     if (error) {
       const failure = authFailure(error, "注册失败，请稍后再试。");
       publish({ status: AUTH_STATUS.anonymous, error: failure });
+      const alreadyRegistered =
+        failure.code === "user_already_exists" ||
+        failure.code === "user_already_registered" ||
+        /already registered|already exists/i.test(String(error?.message || ""));
+      if (alreadyRegistered) {
+        return {
+          user: null,
+          session: null,
+          existingAccount: true,
+          emailConfirmed: false,
+          emailVerificationRequired: false,
+        };
+      }
       throw failure;
     }
     applySession(data?.session || null);
@@ -326,10 +339,15 @@ export function createAuthSessionManager({
       !data?.session &&
       Array.isArray(data?.user?.identities) &&
       data.user.identities.length === 0;
+    const emailConfirmed = Boolean(
+      data?.user?.email_confirmed_at || data?.user?.confirmed_at
+    );
     return {
       user: data?.user || null,
       session: data?.session || null,
-      emailVerificationRequired: !data?.session && !existingAccount,
+      emailConfirmed,
+      emailVerificationRequired:
+        !data?.session && !existingAccount && !emailConfirmed,
       existingAccount,
     };
   }

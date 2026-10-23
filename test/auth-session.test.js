@@ -36,7 +36,7 @@ function sessionFor(userId, token) {
   };
 }
 
-function createFakeSupabase(initialSession = null, { signUpIdentities } = {}) {
+function createFakeSupabase(initialSession = null, { signUpIdentities, signUpConfirmed = false, signUpError = null } = {}) {
   let session = initialSession;
   let listener = null;
   const calls = {
@@ -68,11 +68,13 @@ function createFakeSupabase(initialSession = null, { signUpIdentities } = {}) {
     },
     async signUp(payload) {
       calls.signUp.push(payload);
+      if (signUpError) return { data: { user: null, session: null }, error: signUpError };
       return {
         data: {
           user: {
             id: USER_A,
             email: payload.email,
+            ...(signUpConfirmed ? { email_confirmed_at: "2026-10-23T00:00:00.000Z" } : {}),
             ...(signUpIdentities === undefined ? {} : { identities: signUpIdentities }),
           },
           session: null,
@@ -497,6 +499,44 @@ function createFakeSupabase(initialSession = null, { signUpIdentities } = {}) {
   } finally {
     globalThis.fetch = originalFetch;
   }
+}
+
+{
+  const fake = createFakeSupabase(null, { signUpConfirmed: true });
+  const manager = createAuthSessionManager({
+    supabaseUrl: "https://example.supabase.co",
+    supabaseAnonKey: "public-anon-key",
+    storage: createStorage(),
+    createClientFn: () => fake.client,
+  });
+  const registration = await manager.signUp({
+    email: "confirmed@example.com",
+    password: "not-a-real-password",
+  });
+  assert.equal(registration.emailConfirmed, true);
+  assert.equal(registration.emailVerificationRequired, false);
+  assert.equal(registration.existingAccount, false);
+  manager.destroy();
+}
+
+{
+  const fake = createFakeSupabase(null, {
+    signUpError: { code: "user_already_exists", status: 422, message: "User already registered" },
+  });
+  const manager = createAuthSessionManager({
+    supabaseUrl: "https://example.supabase.co",
+    supabaseAnonKey: "public-anon-key",
+    storage: createStorage(),
+    createClientFn: () => fake.client,
+  });
+  const registration = await manager.signUp({
+    email: "duplicate@example.com",
+    password: "not-a-real-password",
+  });
+  assert.equal(registration.existingAccount, true);
+  assert.equal(registration.emailVerificationRequired, false);
+  assert.equal(manager.getSnapshot().status, AUTH_STATUS.anonymous);
+  manager.destroy();
 }
 
 console.log("Supabase 认证会话与统一 API 请求头测试通过。");

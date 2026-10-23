@@ -451,6 +451,37 @@ try {
   }
 
   {
+    const manager = createSessionManager({
+      async signUp() {
+        return { emailVerificationRequired: false, emailConfirmed: true, existingAccount: false, user: null, session: null };
+      },
+    });
+    const renderer = await renderGate(AuthGate, manager);
+    await act(async () => {
+      renderer.root.findAll((node) => node.type === "button" && node.props.role === "tab")[1].props.onClick();
+    });
+    const inputs = renderer.root.findAll((node) => node.type === "input");
+    await act(async () => {
+      inputs.find((node) => node.props.type === "email").props.onChange({ target: { value: "confirmed@example.test" } });
+      inputs.filter((node) => node.props.type === "password")[0].props.onChange({ target: { value: "example-password" } });
+      inputs.filter((node) => node.props.type === "password")[1].props.onChange({ target: { value: "example-password" } });
+    });
+    await act(async () => {
+      await renderer.root.findByType("form").props.onSubmit({ preventDefault() {} });
+    });
+    const body = textContent(renderer.toJSON());
+    assert.match(body, /注册成功，邮箱已验证/, "auto-confirmed signup must not pretend a verification email was sent");
+    assert.doesNotMatch(body, /验证邮件已经发出/, "auto-confirmed signup has no verification mail");
+    assert.equal(renderer.root.findAll((node) => node.props.className === "auth-verification").length, 0);
+    assert.equal(
+      renderer.root.find((node) => node.type === "input" && node.props.type === "email").props.value,
+      "confirmed@example.test",
+      "the confirmed email must stay filled for the login step",
+    );
+    await act(async () => renderer.unmount());
+  }
+
+  {
     let connectivityCalls = 0;
     const manager = createSessionManager({
       async checkConnectivity() {
