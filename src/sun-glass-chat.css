@@ -3199,3 +3199,20 @@
     overflow: auto;
   }
 }
+
+/* The capsule rainbow is the signature status indicator. Keep it moving even
+   when the OS or the app's reduce-motion preference freezes other effects. */
+:root[data-dengta-reduced-motion="true"] .sun-glass-liquid-color-flow,
+:root[data-dengta-reduced-motion="true"] .sun-glass-popover-color-flow {
+  animation:
+    sun-glass-liquid-color-crossing 8s
+      cubic-bezier(0.48, 0.08, 0.44, 0.98) infinite alternate,
+    sun-glass-rainbow-breathe 4s ease-in-out infinite !important;
+  animation-play-state: running !important;
+}
+
+:root[data-dengta-reduced-motion="true"] .sun-glass-liquid-color-flow::after,
+:root[data-dengta-reduced-motion="true"] .sun-glass-popover-color-flow::after {
+  animation: sun-glass-rainbow-shimmer 4s ease-in-out infinite !important;
+  animation-play-state: running !important;
+}
