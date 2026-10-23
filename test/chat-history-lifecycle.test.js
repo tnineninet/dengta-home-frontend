@@ -25,7 +25,7 @@ const actionsEnd = source.indexOf("\n  function openSessionDialog(", actionsStar
 const hydrateStart = source.indexOf("function hydrateSessionChatHistory(");
 const hydrateEnd = source.indexOf("\nfunction App(", hydrateStart);
 assert.ok(effectStart >= 0 && effectEnd > effectStart && actionsStart >= 0 && actionsEnd > actionsStart && hydrateStart >= 0 && hydrateEnd > hydrateStart);
-const bindings = ["useEffect", "activeSessionId", "historyRetryRevision", "historyLoadState", "setHistoryLoadState", "setHistoryRetryRevision", "historyLoadPendingRef", "setMessages", "messagesSessionIdRef", "messageLoadTokenRef", "streamingSessionIdRef", "activeSessionIdRef", "requestSessionHistory", "isHistoryScopeCurrent", "privateMediaScope", "recordOperationFailure", "describeOperationError", "hydrateChatHistory", "applyStoredMessageReferences", "canLeaveWorkspace", "chatScrollControllerRef", "abortChatRequest", "chatRequestRef", "closeComposerMenu", "requestStatusPanelClose", "setActiveSessionId", "setActiveView", "setIsSidebarOpen", "isSendingRef"];
+const bindings = ["useEffect", "activeSessionId", "historyRetryRevision", "historyLoadState", "setHistoryLoadState", "setHistoryRetryRevision", "historyLoadPendingRef", "setMessages", "setRecentAssistantMessageId", "messagesSessionIdRef", "messageLoadTokenRef", "streamingSessionIdRef", "activeSessionIdRef", "requestSessionHistory", "isHistoryScopeCurrent", "privateMediaScope", "recordOperationFailure", "describeOperationError", "hydrateChatHistory", "applyStoredMessageReferences", "canLeaveWorkspace", "chatScrollControllerRef", "abortChatRequest", "chatRequestRef", "closeComposerMenu", "requestStatusPanelClose", "setActiveSessionId", "setActiveView", "setIsSidebarOpen", "isSendingRef"];
 const runActualAppHistory = new Function(...bindings, source.slice(hydrateStart, hydrateEnd) + "\n" + source.slice(effectStart, effectEnd) + "\n" + source.slice(actionsStart, actionsEnd) + "\nreturn { retrySessionHistory, chooseSession };");
 
 async function harness({ initialSession = SESSION_A, streaming = false } = {}) {
@@ -56,7 +56,7 @@ async function harness({ initialSession = SESSION_A, streaming = false } = {}) {
     });
     // Deliberately ignore transport abort: the real API and scope guard must reject stale work.
   }) });
-  const vite = await createServer({ configFile: false, root: fileURLToPath(new URL("..", import.meta.url)), envDir: false, appType: "custom", logLevel: "silent", server: { middlewareMode: true },
+  const vite = await createServer({ configFile: false, root: fileURLToPath(new URL("..", import.meta.url)), envDir: false, appType: "custom", logLevel: "silent", server: { middlewareMode: true, hmr: false },
     define: { "import.meta.env.VITE_API_URL": JSON.stringify("http://chathistory.example.test"), "import.meta.env.VITE_SUPABASE_URL": JSON.stringify(""), "import.meta.env.VITE_SUPABASE_ANON_KEY": JSON.stringify("") },
     plugins: [{ name: "history-fictional-auth", enforce: "pre", transform(code, id) {
       if (id.replaceAll("\\", "/").split("?")[0].endsWith("/src/auth-session.js")) return code.replace("export const authSession = createAuthSessionManager();", "export const authSession = globalThis.__chatHistoryFixture.manager;");
@@ -78,7 +78,7 @@ async function harness({ initialSession = SESSION_A, streaming = false } = {}) {
     const activeSessionIdRef = React.useRef(activeSessionId), isSendingRef = React.useRef(false);
     const chatScrollControllerRef = React.useRef({ open() {} }), chatRequestRef = React.useRef(null);
     const { request: requestSessionHistory, isCurrent: isHistoryScopeCurrent } = useMemoryUiRequest(privateMediaScope);
-    const actions = runActualAppHistory(React.useEffect, activeSessionId, historyRetryRevision, historyLoadState, setHistoryLoadState, setHistoryRetryRevision, historyLoadPendingRef, setMessages, messagesSessionIdRef, messageLoadTokenRef, streamingSessionIdRef, activeSessionIdRef, requestSessionHistory, isHistoryScopeCurrent, privateMediaScope, diagnostics.recordOperationFailure, describeOperationError, hydrateChatHistory, applyStoredMessageReferences, () => true, chatScrollControllerRef, () => {}, chatRequestRef, () => {}, () => {}, setActiveSessionId, setActiveView, setIsSidebarOpen, isSendingRef);
+    const actions = runActualAppHistory(React.useEffect, activeSessionId, historyRetryRevision, historyLoadState, setHistoryLoadState, setHistoryRetryRevision, historyLoadPendingRef, setMessages, () => {}, messagesSessionIdRef, messageLoadTokenRef, streamingSessionIdRef, activeSessionIdRef, requestSessionHistory, isHistoryScopeCurrent, privateMediaScope, diagnostics.recordOperationFailure, describeOperationError, hydrateChatHistory, applyStoredMessageReferences, () => true, chatScrollControllerRef, () => {}, chatRequestRef, () => {}, () => {}, setActiveSessionId, setActiveView, setIsSidebarOpen, isSendingRef);
     controls = { ...actions, setMessages, historyLoadPendingRef, messageLoadTokenRef, streamingSessionIdRef, isSendingRef };
     React.useLayoutEffect(() => { snapshot = { activeSessionId, messages, historyLoadState, historyRetryRevision }; });
     return null;

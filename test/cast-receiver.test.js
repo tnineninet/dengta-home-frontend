@@ -163,5 +163,14 @@ test("receiver route, SW bypass, Vercel rewrite and controller contract are wire
   assert.match(sw, /url\.pathname\.startsWith\("\/api\/v2\/cast\/"\)/);
   assert.deepEqual(vercel.rewrites.find(item => item.source === "/receive"), { source: "/receive", destination: "/index.html" });
   assert.deepEqual(vercel.rewrites.find(item => item.source === "/download"), { source: "/download", destination: "/download.html" });
-  assert.match(vercel.rewrites.find(item => item.source === "/downloads/DengTa-latest.apk")?.destination || "", /^https:\/\/github\.com\/DengTaHome\/dengta-home\/releases\/download\//);
+  assert.equal(
+    vercel.rewrites.some((item) => item.source === "/downloads/DengTa-latest.apk"),
+    false,
+    "the APK is served from the local public directory, not a GitHub release rewrite",
+  );
+  assert.match(
+    JSON.stringify(vercel.headers.find((item) => item.source === "/downloads/DengTa-latest.apk")),
+    /application\/vnd\.android\.package-archive/,
+  );
+  assert.ok(fs.statSync(new URL("../public/downloads/DengTa-latest.apk", import.meta.url)).size > 1_000_000);
 });

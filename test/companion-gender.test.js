@@ -36,9 +36,10 @@ try {
   assert.equal(renderer.root.findByType("select").props.disabled, true);
   assert.match(JSON.stringify(renderer.toJSON()), /其他设置可正常自动保存/);
   await act(async () => renderer.unmount());
+  const text = node => typeof node === "string" ? node : Array.isArray(node) ? node.map(text).join("") : (node?.children || []).map(text).join("");
   for (const pronoun of ["他", "她", "TA"]) {
-    await act(async () => { renderer = TestRenderer.create(React.createElement(ThinkingPanel, { message: { role: "assistant", content: "fixture", isStreaming: false }, aiPronoun: pronoun, onRequestInnerMonologue: () => {} })); });
-    assert.ok(JSON.stringify(renderer.toJSON()).includes(`听听${pronoun}此刻的心声`));
+    await act(async () => { renderer = TestRenderer.create(React.createElement(ThinkingPanel, { message: { role: "assistant", content: "fixture", isStreaming: false, monologueAutoOpen: true }, dialogOnly: true, innerMonologuePending: true, aiPronoun: pronoun, onRequestInnerMonologue: () => {} })); });
+    assert.ok(text(renderer.toJSON()).includes(`${pronoun}正在把`));
     await act(async () => renderer.unmount());
   }
   console.log("Gender selection, custom pronouns, legacy preservation and rendered monologue labels passed");

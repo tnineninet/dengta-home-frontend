@@ -272,6 +272,8 @@ test("the real transcript renders early body before monologue or done, then inde
     assert.ok(!words(tree.toJSON()).includes("Delayed visible thought"));
     assert.ok(tree.root.findAllByType("button").every(button => !words(button).includes("补充这次心声")));
     h.emit(mono("Delayed visible thought.")); await commit();
+    const trigger = tree.root.findByProps({ className: "thinking-panel-trigger" });
+    await act(async () => trigger.props.onClick());
     assert.ok(words(tree.toJSON()).includes("Delayed visible thought."));
     assert.equal(contentText(), "Synthetic first body token ~🙂");
     h.emit(endMono("truncated"));

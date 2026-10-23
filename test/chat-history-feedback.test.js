@@ -13,7 +13,7 @@ const text = value => typeof value === "string" ? value : (value?.children || []
 before(async () => {
   descriptor = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
   Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", { configurable: true, value: true });
-  vite = await createServer({ configFile: false, root: fileURLToPath(new URL("..", import.meta.url)), envDir: false, appType: "custom", logLevel: "silent", server: { middlewareMode: true } });
+  vite = await createServer({ configFile: false, root: fileURLToPath(new URL("..", import.meta.url)), envDir: false, appType: "custom", logLevel: "silent", server: { middlewareMode: true, hmr: false } });
   ({ default: Feedback } = await vite.ssrLoadModule("/src/ChatHistoryFeedback.jsx"));
 });
 after(async () => { await vite?.close(); if (descriptor) Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", descriptor); else delete globalThis.IS_REACT_ACT_ENVIRONMENT; });

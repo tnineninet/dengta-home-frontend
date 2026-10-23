@@ -55,14 +55,16 @@ after(async () => {
   globalThis.IS_REACT_ACT_ENVIRONMENT = previousAct;
 });
 
-test("real live message shows every received public monologue character before the reply body", async () => {
+test("real live message shows every received public monologue character after the reply body", async () => {
   let view;
   let monologue = beginVisibleMonologueStream();
   let item = { ...saved, id: "local-assistant-fixture", content: "", isStreaming: true };
   const props = () => ({ item, innerMonologue: monologue, aiName: "虚构伙伴" });
   try {
     await act(async () => { view = TestRenderer.create(React.createElement(ChatMessage, props())); });
-    assert.equal(view.root.findByType("details").props.open, true);
+    const trigger = view.root.findByProps({ className: "thinking-panel-trigger" });
+    await act(async () => trigger.props.onClick());
+    assert.equal(view.root.findByProps({ className: "thinking-panel-trigger" }).props["aria-expanded"], true);
     assert.equal(view.root.findAllByProps({ className: "thinking-panel-minimal" }).length, 0);
     for (const [offset, content] of ["想", "🙂", "你"].entries()) {
       monologue = reduceVisibleMonologueEvent(monologue, { type: "monologue", phase: "delta", source, offset, content });
@@ -72,7 +74,9 @@ test("real live message shows every received public monologue character before t
     item = { ...item, content: "虚构正文首字" };
     await act(async () => view.update(React.createElement(ChatMessage, props())));
     const visible = visibleText(view.toJSON());
-    assert.ok(visible.indexOf("想🙂你") < visible.indexOf(item.content));
+    assert.ok(visible.includes("想🙂你"));
+    assert.ok(visible.includes(item.content));
+    assert.ok(visible.indexOf(item.content) < visible.indexOf("想🙂你"));
     assert.equal(item.content, "虚构正文首字");
   } finally {
     if (view) await act(async () => view.unmount());
@@ -82,31 +86,31 @@ test("real live message shows every received public monologue character before t
 test("recent completed monologue stays open when the transcript replaces a local ID with its server ID", async () => {
   let view;
   const publicText = "虚构的同步心声。";
-  let item = { ...saved, id: "local-assistant-fixture", isStreaming: true, visibleMonologue: snapshot("streaming", publicText) };
+  let item = { ...saved, id: "local-assistant-fixture", isStreaming: true, monologueAutoOpen: true, visibleMonologue: snapshot("streaming", publicText) };
   const props = () => ({ messages: [item], preferences: { skin: "classic-glass" }, onRequestInnerMonologue: () => {} });
   try {
     await act(async () => { view = TestRenderer.create(React.createElement(Transcript, props())); });
     assert.ok(visibleText(view.toJSON()).includes(publicText));
     item = { ...saved, monologueAutoOpen: true, tool_calls: { visible_monologue: snapshot("complete", publicText) } };
     await act(async () => view.update(React.createElement(Transcript, props())));
-    assert.equal(view.root.findByType("details").props.open, true);
+    assert.equal(view.root.findByProps({ className: "thinking-panel-trigger" }).props["aria-expanded"], true);
     assert.ok(visibleText(view.toJSON()).includes(publicText));
   } finally {
     if (view) await act(async () => view.unmount());
   }
 });
 
-test("historical completed monologue has a visible first-paragraph preview while full text remains collapsible", async () => {
+test("historical completed monologue stays collapsed until its trigger is opened", async () => {
   let view;
   const fullText = `${"🙂".repeat(170)}\n\n第二段完整虚构心声。`;
   const item = Object.freeze({ ...saved });
   const monologue = Object.freeze(snapshot("complete", fullText));
   try {
     await act(async () => { view = TestRenderer.create(React.createElement(ChatMessage, { item, innerMonologue: monologue })); });
-    assert.equal(view.root.findByType("details").props.open, false);
-    assert.ok(visibleText(view.toJSON()).includes(`${"🙂".repeat(160)}…`));
-    assert.ok(!visibleText(view.toJSON()).includes("第二段完整虚构心声。"));
-    await act(async () => view.root.findByType("details").props.onToggle({ currentTarget: { open: true } }));
+    const trigger = view.root.findByProps({ className: "thinking-panel-trigger" });
+    assert.equal(trigger.props["aria-expanded"], false);
+    assert.ok(!visibleText(view.toJSON()).includes(fullText));
+    await act(async () => trigger.props.onClick());
     assert.ok(visibleText(view.toJSON()).includes(fullText));
     assert.equal(monologue.text, fullText);
   } finally {
@@ -146,7 +150,7 @@ test("real transcript shows a successful supplement over incomplete server snaps
   try {
     for (const state of ["missing", "failed", "truncated", "complete"]) {
       const serverText = state === "missing" ? "" : "服务器原有虚构片段";
-      const item = { ...saved, tool_calls: { visible_monologue: snapshot(state, serverText) } };
+      const item = { ...saved, monologueAutoOpen: true, tool_calls: { visible_monologue: snapshot(state, serverText) } };
       await act(async () => {
         const element = React.createElement(Transcript, { messages: [item], preferences: { skin: "classic-glass" }, innerMonologues: { [messageId]: supplement }, onRequestInnerMonologue: () => {} });
         if (view) view.update(element);
@@ -169,22 +173,28 @@ test("real transcript shows a successful supplement over incomplete server snaps
 
 test("real partial-monologue dialog retains the partial during pending/error and exposes deliberate retry", async () => {
   let view, requested = 0;
-  const item = Object.freeze({ ...saved, content: "", chatError: true, monologueUserMessageId: userMessageId, partialContent: "虚构正文片段" });
-  let props = { message: item, innerMonologue: snapshot("failed", "虚构心声片段"), onRequestInnerMonologue: received => { assert.equal(received, item); requested++; } };
+  const item = Object.freeze({ ...saved, content: "", chatError: true, monologueUserMessageId: userMessageId, partialContent: "虚构正文片段", monologueAutoOpen: true });
+  let props = { message: item, dialogOnly: true, innerMonologue: snapshot("failed", "虚构心声片段"), onRequestInnerMonologue: received => { assert.equal(received, item); requested++; } };
   try {
     await act(async () => { view = TestRenderer.create(React.createElement(ThinkingPanel, props)); });
+    const openInline = async () => {
+      if (view.root.findAllByProps({ className: "inner-monologue-inline" }).length) return;
+      await act(async () => view.root.findByProps({ className: "thinking-panel-trigger" }).props.onClick());
+    };
     assert.ok(visibleText(view.toJSON()).includes("补充这次心声"));
     await act(async () => button(view, "补充这次心声").props.onClick());
     assert.equal(requested, 1);
     props = { ...props, innerMonologuePending: true };
     await act(async () => view.update(React.createElement(ThinkingPanel, props)));
-    assert.ok(text(view.root.findByProps({ role: "dialog" })).includes("虚构心声片段"));
-    assert.equal(button(view, "正在补充心声").props.disabled, true);
+    await openInline();
+    assert.ok(text(view.root.findByProps({ className: "inner-monologue-inline" })).includes("虚构心声片段"));
+    assert.equal(button(view, "正在补充心声…").props.disabled, true);
     props = { ...props, innerMonologuePending: false, innerMonologueError: "[fixture_failure] 虚构补充失败" };
     await act(async () => view.update(React.createElement(ThinkingPanel, props)));
-    const dialog = view.root.findByProps({ role: "dialog" });
+    await openInline();
+    const dialog = view.root.findByProps({ className: "inner-monologue-inline" });
     assert.ok(text(dialog).includes("虚构心声片段"));
-    assert.ok(text(dialog.findByProps({ role: "alert" })).includes("fixture_failure"));
+    assert.ok(dialog.findByProps({ role: "alert" }));
     await act(async () => dialog.findAllByType("button").find(node => text(node.children) === "再试一次").props.onClick());
     assert.equal(requested, 2);
     assert.equal(item.content, "");
@@ -196,7 +206,7 @@ test("real partial-monologue dialog retains the partial during pending/error and
 
 test("real failed message with no reply body exposes supplement using its persisted user anchor", async () => {
   let view, requested;
-  const item = Object.freeze({ ...saved, id: "local-failed-assistant", content: "", chatError: true, monologueUserMessageId: "9223372036854775807" });
+  const item = Object.freeze({ ...saved, id: "local-failed-assistant", content: "", chatError: true, monologueUserMessageId: "9223372036854775807", monologueAutoOpen: true });
   try {
     await act(async () => {
       view = TestRenderer.create(React.createElement(ChatMessage, {
@@ -227,7 +237,7 @@ test("supplement cache preserves its explicit source metadata and historical cac
   assert.equal(records[messageId].state, "complete");
   assert.deepEqual(readInnerMonologues(storage, "other-account"), {});
   try {
-    await act(async () => { view = TestRenderer.create(React.createElement(ThinkingPanel, { message: saved, innerMonologue: records[messageId] })); });
+    await act(async () => { view = TestRenderer.create(React.createElement(ThinkingPanel, { message: { ...saved, monologueAutoOpen: true }, dialogOnly: true, innerMonologue: records[messageId] })); });
     const visible = visibleText(view.toJSON());
     assert.ok(visible.includes("补充生成"));
     assert.ok(visible.includes("后来补充的虚构心声"));

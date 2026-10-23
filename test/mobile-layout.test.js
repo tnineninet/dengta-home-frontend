@@ -453,7 +453,7 @@ assert.match(
 );
 assert.match(
   status,
-  /if \(!rootRef\.current\?\.contains\(event\.target\)\) \{\s*closePanel\(\)/,
+  /if \(\s*!rootRef\.current\?\.contains\(event\.target\) &&\s*!panelRef\.current\?\.contains\(event\.target\)\s*\) \{\s*closePanel\(\)/,
   "using anything outside the status panel must collapse it",
 );
 assert.match(
@@ -463,7 +463,7 @@ assert.match(
 );
 assert.match(
   status,
-  /aria-expanded=\{expanded\}[\s\S]*?onClick=\{togglePanel\}/,
+  /aria-expanded=\{xinchaoDetailsOpen \|\| expanded\}[\s\S]*?togglePanel\(\)/,
   "the rainbow capsule must explicitly toggle open and closed",
 );
 assert.match(

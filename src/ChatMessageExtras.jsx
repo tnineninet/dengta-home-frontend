@@ -389,6 +389,9 @@ export function ThinkingPanel({
               {monologueText ? (
                 <p className="inner-monologue-inline-text">{monologueText}</p>
               ) : null}
+              {message.chatError === true && monologueText ? (
+                <small className="inner-monologue-inline-footnote">这次回复尚未确认保存，心声片段仅临时显示。</small>
+              ) : null}
               {innerMonologuePending ? (
                 <div className="inner-monologue-inline-pending" role="status">
                   <span aria-hidden="true" />
@@ -418,7 +421,21 @@ export function ThinkingPanel({
               {monologueText && supplementedMonologue ? (
                 <small className="inner-monologue-inline-footnote">{supplementLabel}</small>
               ) : null}
+              {canRequestInnerMonologue && !innerMonologueError ? (
+                <div className="inner-monologue-request">
+                  <button type="button" disabled={innerMonologuePending} onClick={requestMonologue}>
+                    {innerMonologuePending ? "正在补充心声…" : "补充这次心声"}
+                  </button>
+                </div>
+              ) : null}
             </div>
+            {providerSummary && (
+              <section className="provider-summary-panel" aria-label="接口提供的公开推理摘要">
+                <small>接口提供的公开推理摘要</small>
+                <p className="thinking-summary-text" aria-live={!completed ? "polite" : undefined}>{providerSummary}</p>
+                <small>不是隐藏的原始思考链，也不是角色心声</small>
+              </section>
+            )}
           </section>
         )}
       </>

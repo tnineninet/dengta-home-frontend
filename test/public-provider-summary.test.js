@@ -84,17 +84,18 @@ test("real panel displays provider public summary in a separate area from author
   try {
     const { ThinkingPanel } = await vite.ssrLoadModule("/src/ChatMessageExtras.jsx");
     const props = {
-      message: { role: "assistant", isStreaming: true, thinkingSummary: "  虚构接口公开摘要\n", thinkingSummarySource: "provider_summary" },
+      message: { role: "assistant", isStreaming: true, monologueAutoOpen: true, thinkingSummary: "  虚构接口公开摘要\n", thinkingSummarySource: "provider_summary" },
+      dialogOnly: true,
       innerMonologue: { state: "streaming", source: VISIBLE_MONOLOGUE_SOURCE, text: "虚构角色心声" },
     };
     await act(async () => { view = TestRenderer.create(React.createElement(ThinkingPanel, props)); });
-    const summary = view.root.findByProps({ "aria-label": "接口提供的公开推理摘要" });
+    const inline = view.root.findByProps({ className: "inner-monologue-inline" });
+    const summary = inline.findByProps({ "aria-label": "接口提供的公开推理摘要" });
     assert.ok(text(summary).includes("不是隐藏的原始思考链，也不是角色心声"));
     assert.equal(text(summary.findByType("p")), "  虚构接口公开摘要\n");
     assert.ok(!text(summary).includes("虚构角色心声"));
-    const details = view.root.findByType("details");
-    assert.ok(text(details).includes("虚构角色心声"));
-    assert.ok(!text(details).includes("虚构接口公开摘要"));
+    assert.ok(text(inline).includes("虚构角色心声"));
+    assert.ok(!text(summary).includes("虚构角色心声"));
     await act(async () => view.update(React.createElement(ThinkingPanel, { ...props, message: { ...props.message, thinkingSummarySource: "raw_reasoning" } })));
     assert.equal(view.root.findAllByProps({ "aria-label": "接口提供的公开推理摘要" }).length, 0);
     assert.ok(!text(view.toJSON()).includes("虚构接口公开摘要"));
