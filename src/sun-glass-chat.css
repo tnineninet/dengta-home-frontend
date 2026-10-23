@@ -3161,6 +3161,13 @@
 /* Desktop floating status panel: never leave the chat area blank or clip it
    to the compact capsule height. */
 @media (min-width: 821px) {
+  .main-panel.view-chat.status-panel-open .message-list,
+  .main-panel.view-chat.status-panel-open .composer-wrap {
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+  }
+
   .main-panel.view-chat.status-panel-open .sun-glass-floating-status-panel {
     visibility: visible !important;
     opacity: 1 !important;
