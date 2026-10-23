@@ -166,7 +166,7 @@ export function clamp(value, minimum, maximum) {
 }
 
 function interactionZoneIds() {
-  return [...HOT_ZONES, ...RECOVERY_ACTIONS].map((zone) => zone.id);
+  return [...HOT_ZONES, ...RECOVERY_ACTIONS, { id: "text_impact" }].map((zone) => zone.id);
 }
 
 function withoutUnsafeControlCharacters(value) {

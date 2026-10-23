@@ -3,6 +3,7 @@ import { HOT_ZONES, RECOVERY_ACTIONS } from "./companion-status.js";
 export const COMPANION_INTERACTION_TYPES = [
   ...HOT_ZONES,
   ...RECOVERY_ACTIONS,
+  { id: "text_impact" },
 ].map((item) => item.id);
 
 export function emptyCompanionInteractionCounts() {

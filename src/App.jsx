@@ -202,6 +202,7 @@ import {
   COMPANION_INTERACTION_TYPES,
   enqueueCompanionInteraction,
 } from "./companion-interaction";
+import { readTextImpactPreference } from "./text-impact-preferences.js";
 import {
   companionStatusForRequest,
   createDefaultCompanionInteractionStats,
@@ -410,6 +411,8 @@ const VOICE_ANALYSIS_RETENTION_KEY = "dengta_voice_analysis_retention_enabled";
 const COMPANION_INTERACTION_DEBOUNCE_MS = 220;
 const COMPANION_INTERACTION_RATE_LIMIT = 6;
 const COMPANION_INTERACTION_RATE_WINDOW_MS = 60 * 1000;
+const TEXT_IMPACT_REACTION_MIN_MS = 10 * 1000;
+const TEXT_IMPACT_REACTION_MAX_MS = 30 * 1000;
 const LOCAL_NOTIFICATION_CHANNEL_ID = "dengta-home-reminders-v2";
 const PROMPT_RECEIPT_STORAGE_KEY = "dengta_prompt_receipt_v1";
 const VOICE_PLAYBACK_MODE_KEY = "dengta_voice_playback_mode";
@@ -1704,6 +1707,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const companionInteractionTimerRef = useRef(null);
   const companionInteractionInFlightRef = useRef(false);
   const companionReplyTimesRef = useRef([]);
+  const textImpactReactionQueueRef = useRef([]);
+  const textImpactReactionTimerRef = useRef(null);
+  const lastProactiveTextImpactMessageRef = useRef("");
+  const textImpactReplyAnimationPendingRef = useRef(false);
   const companionInteractionScopeRef = useRef(privateMediaScope);
   companionInteractionScopeRef.current = privateMediaScope;
   const companionInteractionLifecycleRef = useRef(null);
@@ -1722,13 +1729,19 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     companionInteractionQueueRef.current = [];
     companionInteractionInFlightRef.current = false;
     companionReplyTimesRef.current = [];
+    window.clearTimeout(textImpactReactionTimerRef.current);
+    textImpactReactionTimerRef.current = null;
+    textImpactReactionQueueRef.current = [];
+    textImpactReplyAnimationPendingRef.current = false;
     setIsCompanionResponding(false);
     setInteractionFeedback({ state: "idle", message: "" });
   }, [privateMediaScope, activeSessionId]);
   useLayoutEffect(() => () => {
     companionInteractionLifecycleRef.current.dispose();
     window.clearTimeout(companionInteractionTimerRef.current);
+    window.clearTimeout(textImpactReactionTimerRef.current);
     companionInteractionQueueRef.current = [];
+    textImpactReactionQueueRef.current = [];
   }, []);
   const isSendingRef = useRef(false);
   const earlyMusicRequestRef = useRef(0);
@@ -2792,6 +2805,39 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     setMessageReference(null);
     void loadComposerHint(activeSessionId);
   }, [activeSessionId, loadComposerHint]);
+
+  useEffect(() => {
+    if (visualPreview) return undefined;
+    const last = messages[messages.length - 1];
+    if (!last || last.role !== "assistant" || last.isStreaming || last.chatError || !String(last.content || "").trim()) {
+      return undefined;
+    }
+    if (lastProactiveTextImpactMessageRef.current === last.id) return undefined;
+    lastProactiveTextImpactMessageRef.current = last.id;
+    const preference = readTextImpactPreference(privateMediaScope);
+    if (preference.enabled === false) return undefined;
+    const pendingHitReply = textImpactReplyAnimationPendingRef.current;
+    textImpactReplyAnimationPendingRef.current = false;
+    const mood = String(companionStatus.mood || "");
+    const moodTriggered = /开心|高兴|愉悦|兴奋|得意|笑|温柔|生气|恼|怒|不爽/.test(mood);
+    if (!pendingHitReply && !moodTriggered && Math.random() > 0.14) return undefined;
+    const delay = pendingHitReply
+      ? 1200 + Math.floor(Math.random() * 1800)
+      : 3000 + Math.floor(Math.random() * 5000);
+    const timer = window.setTimeout(() => {
+      const rows = document.querySelectorAll(".message-list .message-row.assistant");
+      const source = rows[rows.length - 1]?.querySelector(".message-content");
+      if (!source) return;
+      void import("./text-impact-player.js")
+        .then(({ playTextImpact }) => playTextImpact(source, {
+          mode: "burst",
+          target: "user-avatar",
+          scopeKey: privateMediaScope,
+        }))
+        .catch(() => {});
+    }, delay);
+    return () => window.clearTimeout(timer);
+  }, [messages, companionStatus.mood, privateMediaScope, visualPreview]);
 
   useEffect(() => {
     if (!hasLoadedSettingsRef.current) return;
@@ -4538,6 +4584,33 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   companionInteractionHandlerRef.current = registerCompanionInteraction;
+
+  function textImpactReactionDelay() {
+    return TEXT_IMPACT_REACTION_MIN_MS
+      + Math.floor(Math.random() * (TEXT_IMPACT_REACTION_MAX_MS - TEXT_IMPACT_REACTION_MIN_MS + 1));
+  }
+
+  function scheduleTextImpactReaction(delay = textImpactReactionDelay()) {
+    if (textImpactReactionTimerRef.current) return;
+    textImpactReactionTimerRef.current = window.setTimeout(() => {
+      textImpactReactionTimerRef.current = null;
+      const queued = textImpactReactionQueueRef.current.shift();
+      if (!queued) return;
+      if (readTextImpactPreference(privateMediaScope).enabled === false) {
+        textImpactReactionQueueRef.current = [];
+        return;
+      }
+      textImpactReplyAnimationPendingRef.current = true;
+      registerCompanionInteraction("text_impact");
+      if (textImpactReactionQueueRef.current.length) scheduleTextImpactReaction();
+    }, delay);
+  }
+
+  function handleTextImpactAvatarHit({ messageId } = {}) {
+    if (readTextImpactPreference(privateMediaScope).enabled === false) return;
+    textImpactReactionQueueRef.current.push({ messageId: String(messageId || ""), at: Date.now() });
+    scheduleTextImpactReaction();
+  }
 
   async function requestVisibleInnerMonologue(item) {
     if (!item || !canRequestVisibleMonologue(item)) return;
@@ -7444,6 +7517,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           ) : (
               <ChatTranscript
                 textImpactScope={privateMediaScope}
+                onTextImpactAvatarHit={handleTextImpactAvatarHit}
                 messages={messages}
                 preferences={chatSkinPreferences}
                 aiName={effectiveAiName}

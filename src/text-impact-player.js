@@ -65,7 +65,7 @@ function unavailableReason(source, scopeKey) {
   return "";
 }
 
-export async function playTextImpact(source, { mode = "scatter", target = "composer", scopeKey = "" } = {}) {
+export async function playTextImpact(source, { mode = "scatter", target = "composer", scopeKey = "", onTargetHit = null } = {}) {
   stopTextImpact();
   const version = requestVersion;
   const initialReason = unavailableReason(source, scopeKey);
@@ -81,7 +81,9 @@ export async function playTextImpact(source, { mode = "scatter", target = "compo
   if (!glyphs.length) return { started: false, reason: "empty" };
   const candidates = target === "avatar"
     ? [...source.ownerDocument.querySelectorAll(".message-row.assistant .message-avatar")].reverse()
-    : [...source.ownerDocument.querySelectorAll(".composer textarea")];
+    : target === "user-avatar"
+      ? [...source.ownerDocument.querySelectorAll(".message-row.user .message-avatar")].reverse()
+      : [...source.ownerDocument.querySelectorAll(".composer textarea")];
   const destination = candidates.find(element => {
     const owner = element.closest?.("[data-text-impact-scope]");
     if (!owner || owner.dataset.textImpactScope !== scopeKey) return false;
@@ -144,6 +146,7 @@ export async function playTextImpact(source, { mode = "scatter", target = "compo
     if (!hitShown && simulation.particles.some(particle => particle.targetImpacts > 0)) {
       hitShown = true;
       destination?.classList?.add("text-impact-target-hit");
+      try { if (destination) onTargetHit?.(); } catch { /* the animation must keep running */ }
     }
     context.clearRect(0, 0, width, height);
     for (const particle of simulation.particles) {

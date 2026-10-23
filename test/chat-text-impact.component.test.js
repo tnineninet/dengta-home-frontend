@@ -73,11 +73,11 @@ after(async () => { await vite.close(); for (const [key, descriptor] of original
 test("real controls default to manual playback and expose accessible, bounded options", async () => {
   await mount({ recent: true }); assert.equal(state.calls.length, 0);
   assert.equal(button("文字弹弹乐").props["aria-expanded"], false);
-  assert.deepEqual(preference.readTextImpactPreference(props.scopeKey), { auto: false, mode: "scatter", target: "avatar" });
+  assert.deepEqual(preference.readTextImpactPreference(props.scopeKey), { auto: false, mode: "scatter", target: "avatar", enabled: true });
   await open(); assert.equal(button("文字弹弹乐").props["aria-expanded"], true);
   const menu = tree.root.findByProps({ "aria-label": "文字弹弹乐选项" });
   assert.equal(menu.props.style.width, 252); assert.ok(menu.props.style.left >= 16); assert.ok(menu.props.style.top >= 16);
-  assert.equal(tree.root.findByType("input").props.checked, false);
+  assert.equal(tree.root.findAllByType("input")[0].props.checked, false);
   assert.match(output(), /原消息和输入内容都会保留/);
   assert.ok(button("对方头像")); assert.ok(button("输入框")); assert.ok(button("文字弹弹")); assert.ok(button("重力散落"));
 });
@@ -85,7 +85,11 @@ test("real controls default to manual playback and expose accessible, bounded op
 test("manual mode uses only its own message, chosen destination and scope without editing original content", async () => {
   await mount(); await open(); await click("对方头像"); await click("文字弹弹");
   assert.equal(state.calls.length, 1);
-  assert.deepEqual(state.calls[0], { source: state.source, mode: "burst", target: "avatar", scopeKey: props.scopeKey });
+  assert.equal(state.calls[0].source, state.source);
+  assert.equal(state.calls[0].mode, "burst");
+  assert.equal(state.calls[0].target, "avatar");
+  assert.equal(state.calls[0].scopeKey, props.scopeKey);
+  assert.equal(typeof state.calls[0].onTargetHit, "function");
   assert.equal(state.source.textContent, "Keep this real message ～🙂");
   assert.match(output(), /原消息已保留/); assert.equal(button("文字弹弹乐").props["aria-expanded"], false);
 });
@@ -121,14 +125,14 @@ test("enabling automatic playback does not replay an already completed message o
 
 test("automatic preferences stay within account, companion and conversation scope and anonymous rows cannot save", async () => {
   await mount(); const firstScope = props.scopeKey;
-  await open(); await act(async () => tree.root.findByType("input").props.onChange({ target: { checked: true } }));
+  await open(); await act(async () => tree.root.findAllByType("input")[0].props.onChange({ target: { checked: true } }));
   await click("对方头像");
   assert.equal(preference.readTextImpactPreference(firstScope).auto, true);
   await click("关闭文字弹弹乐");
   await update({ scopeKey: `fixture-account-${serial}:companion-b:conversation-a`, messageId: "other-message" });
-  assert.deepEqual(preference.readTextImpactPreference(props.scopeKey), { auto: false, mode: "scatter", target: "avatar" });
-  await update({ scopeKey: "" }); await open(); assert.equal(tree.root.findByType("input").props.disabled, true);
-  assert.deepEqual(preference.saveTextImpactPreference("", { auto: true }), { auto: false, mode: "scatter", target: "avatar" });
+  assert.deepEqual(preference.readTextImpactPreference(props.scopeKey), { auto: false, mode: "scatter", target: "avatar", enabled: true });
+  await update({ scopeKey: "" }); await open(); assert.equal(tree.root.findAllByType("input")[0].props.disabled, true);
+  assert.deepEqual(preference.saveTextImpactPreference("", { auto: true }), { auto: false, mode: "scatter", target: "avatar", enabled: true });
 });
 
 test("unmounting or switching scope stops only the animation owned by this component", async () => {

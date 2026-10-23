@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { readTextImpactPreference, saveTextImpactPreference, subscribeTextImpactPreference } from "./text-impact-preferences.js";
 import "./chat-text-impact.css";
 
-export default function ChatTextImpact({ rowRef, scopeKey = "", messageId, recent = false, generating = false, reducedMotion = false }) {
+export default function ChatTextImpact({ rowRef, scopeKey = "", messageId, recent = false, generating = false, reducedMotion = false, onAvatarHit }) {
   const [open, setOpen] = useState(false);
   const [feedback, setFeedback] = useState("");
   const [position, setPosition] = useState({ left: 16, top: 16, width: 252 });
@@ -31,7 +31,10 @@ export default function ChatTextImpact({ rowRef, scopeKey = "", messageId, recen
     try {
       const { playTextImpact } = await import("./text-impact-player.js");
       if (request !== playRequest.current || !source.isConnected) return;
-      const result = await playTextImpact(source, { mode, target, scopeKey });
+      const result = await playTextImpact(source, { mode, target, scopeKey, onTargetHit: () => {
+        if (mode !== "burst" || target !== "avatar") return;
+        try { onAvatarHit?.({ messageId, mode, target }); } catch { /* interaction is optional */ }
+      } });
       if (request !== playRequest.current) { result.stop?.(); return; }
       activeStop.current = result.stop || null;
       return result;
@@ -125,6 +128,8 @@ export default function ChatTextImpact({ rowRef, scopeKey = "", messageId, recen
       </span>
       <label className="text-impact-auto"><input type="checkbox" checked={preference.auto} disabled={!scopeKey}
         onChange={event => saveTextImpactPreference(scopeKey, { auto: event.target.checked })} />新回复自动播放</label>
+      <label className="text-impact-auto"><input type="checkbox" checked={preference.enabled !== false} disabled={!scopeKey}
+        onChange={event => saveTextImpactPreference(scopeKey, { enabled: event.target.checked })} />让 TA 感受到弹字</label>
       <small>仅播放动效，原消息和输入内容都会保留。</small>
     </span>, document.body)}
     <span className="text-impact-feedback" role="status">{feedback}</span>

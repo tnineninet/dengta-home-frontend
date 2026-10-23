@@ -1,12 +1,13 @@
 const KEY = "dengta_text_impact_v1:";
-const defaults = Object.freeze({ auto: false, mode: "scatter", target: "avatar" });
+const defaults = Object.freeze({ auto: false, mode: "scatter", target: "avatar", enabled: true });
 const records = new Map();
 const listeners = new Set();
 
 function normalize(value = {}) {
   return Object.freeze({ auto: value.auto === true,
     mode: value.mode === "burst" ? "burst" : "scatter",
-    target: value.target === "avatar" ? "avatar" : "composer" });
+    target: value.target === "avatar" ? "avatar" : "composer",
+    enabled: value.enabled !== false });
 }
 
 export function readTextImpactPreference(scope = "") {

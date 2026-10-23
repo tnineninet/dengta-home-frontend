@@ -54,6 +54,7 @@ function ChatMessage({
   companionAvatar = "",
   privateMediaCatalog = null,
   textImpactScope = "",
+  onTextImpactAvatarHit,
   reduceMotion = false,
   voiceAnalysisVisible = true,
 }) {
@@ -441,7 +442,8 @@ function ChatMessage({
             )}
             {!item.chatError && !item.tool_calls?.refusal_detected && String(item.content || "").trim() && (
               <ChatTextImpact rowRef={rowRef} scopeKey={textImpactScope} messageId={item.id}
-                recent={!isUser && item.monologueAutoOpen === true} generating={isGenerating} reducedMotion={reduceMotion} />
+                recent={!isUser && item.monologueAutoOpen === true} generating={isGenerating}
+                reducedMotion={reduceMotion} onAvatarHit={onTextImpactAvatarHit} />
             )}
             {item.chatError === true &&
               typeof onDismissError === "function" && (
