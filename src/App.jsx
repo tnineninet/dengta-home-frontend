@@ -211,6 +211,7 @@ import {
   createDefaultCompanionInteractionStats,
   createResetCompanionStatus,
   decayCompanionEnergy,
+  ENERGY_DECAY_INTERVAL_MS,
   mergeCompanionStatus,
   normalizeCompanionInteractionStats,
   normalizeCompanionStatus,
@@ -1717,12 +1718,20 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     companionStatusRef.current = companionStatus;
     companionInteractionStatsRef.current = companionInteractionStats;
   }, [privateMediaScope, companionStatus, companionInteractionStats]);
+  const energyDecayAnchorRef = useRef(Date.now());
   useEffect(() => {
     if (!activeSessionId) return undefined;
-    setCompanionStatus((current) => decayCompanionEnergy(current));
+    energyDecayAnchorRef.current = Date.now();
     const timer = window.setInterval(() => {
-      setCompanionStatus((current) => decayCompanionEnergy(current));
-    }, 30_000);
+      const now = Date.now();
+      const elapsed = now - energyDecayAnchorRef.current;
+      const points = Math.floor(elapsed / ENERGY_DECAY_INTERVAL_MS);
+      if (points < 1) return;
+      energyDecayAnchorRef.current += points * ENERGY_DECAY_INTERVAL_MS;
+      setCompanionStatus((current) =>
+        decayCompanionEnergy(current, now, { points }),
+      );
+    }, 15_000);
     return () => window.clearInterval(timer);
   }, [activeSessionId]);
   const companionInteractionHandlerRef = useRef(null);

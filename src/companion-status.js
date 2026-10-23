@@ -1,6 +1,6 @@
 const STORAGE_KEY = "dengta_companion_status_v1";
 const INTERACTION_STORAGE_KEY = "dengta_companion_interactions_v1";
-export const ENERGY_DECAY_INTERVAL_MS = 2 * 60 * 1000;
+export const ENERGY_DECAY_INTERVAL_MS = 60 * 1000;
 const MAX_ENERGY_DECAY_PER_TICK = 10;
 
 function accountStorageKey(baseKey, accountScope = "") {
@@ -950,19 +950,22 @@ export function formatUpdatedAt(value, now = Date.now()) {
   }).format(new Date(timestamp));
 }
 
-export function decayCompanionEnergy(value, now = Date.now()) {
+export function decayCompanionEnergy(value, now = Date.now(), { points } = {}) {
   const status = normalizeCompanionStatus(value);
   if (status.resetBlank) return value;
   const updated = Date.parse(status.updatedAt);
-  if (!Number.isFinite(updated)) return value;
-  const points = Math.min(
+  const elapsedPoints = Number.isFinite(updated)
+    ? Math.floor(Math.max(0, now - updated) / ENERGY_DECAY_INTERVAL_MS)
+    : 0;
+  const requestedPoints = Number.isFinite(points) ? Number(points) : elapsedPoints;
+  const pointsToApply = Math.min(
     MAX_ENERGY_DECAY_PER_TICK,
-    Math.floor(Math.max(0, now - updated) / ENERGY_DECAY_INTERVAL_MS),
+    Math.max(0, Math.floor(requestedPoints)),
   );
-  if (points <= 0 || status.energyLevel <= 0) return value;
+  if (pointsToApply <= 0 || status.energyLevel <= 0) return value;
   return normalizeCompanionStatus({
     ...status,
-    energyLevel: Math.max(0, status.energyLevel - points),
+    energyLevel: Math.max(0, status.energyLevel - pointsToApply),
     revision: status.revision + 1,
     updatedAt: new Date(now).toISOString(),
   });

@@ -15,7 +15,7 @@ test("companion energy decays with elapsed time and stops at zero", () => {
     updatedAt: new Date(now - 10 * 60 * 1000).toISOString(),
   };
   const decayed = decayCompanionEnergy(status, now);
-  assert.equal(decayed.energyLevel, 55);
+  assert.equal(decayed.energyLevel, 50);
   assert.equal(decayed.revision, 5);
   assert.equal(decayed.updatedAt, new Date(now).toISOString());
   assert.equal(decayCompanionEnergy(decayed, now + ENERGY_DECAY_INTERVAL_MS - 1), decayed);
