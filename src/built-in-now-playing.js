@@ -7,6 +7,11 @@ export function chooseNowPlayingCard(current, external) {
   return current?.source === "dengta" && (external?.isPlaying !== true || external?.playbackStateKnown === false) ? current : external;
 }
 
+export function compactPlaybackFeedback(backendMessage, fallback) {
+  const text = String(backendMessage || "").trim();
+  return text && text.length <= 80 ? text : String(fallback || "");
+}
+
 export function createBuiltInNowPlaying({ scope, request, createAudio = url => new Audio(url), onSong, onBusy, onFeedback, onStartupFeedback }) {
   let alive = true, current = null, candidate = null, sequence = 0, localPlayback = null;
   const closedOwners = new WeakSet();
@@ -20,15 +25,19 @@ export function createBuiltInNowPlaying({ scope, request, createAudio = url => n
     entry.audio.removeAttribute("src");
     entry.audio.load();
   };
+  let currentPublished = null;
   const update = entry => {
     if (!alive || current !== entry || !scope.current(entry.owner)) return;
-    if (localPlayback?.phase !== "playing") onSong({ ...entry.song, isPlaying: !entry.audio.paused && !entry.audio.ended });
+    if (localPlayback?.phase !== "playing") {
+      currentPublished = { ...entry.song, isPlaying: !entry.audio.paused && !entry.audio.ended };
+      onSong(currentPublished);
+    }
   };
   const makeEntry = (song, owner) => {
     const url = validateDirectMediaUrl(song?.url);
     if (!url.ok || !song?.title) throw new Error("music_random_unavailable");
     const entry = { audio: createAudio(url.url), owner, listeners: [], wantsPlayback: false, song: {
-      title: song.title, artist: song.artist || "", cover: song.cover || "", source: "dengta",
+      title: song.title, artist: song.artist || "", cover: song.cover || song.cover_url || "", source: "dengta",
       playbackId: `dengta-${++sequence}`, playbackStateKnown: true,
     } };
     for (const name of ["play", "pause"]) {
@@ -74,16 +83,34 @@ export function createBuiltInNowPlaying({ scope, request, createAudio = url => n
     }, error => finish(reject, error)); }
     catch (error) { finish(reject, error); }
   });
+  function neteaseUrlFresh(url) {
+    const match = String(url || "").match(/\/(20\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})\//);
+    if (!match) return true;
+    const issued = Date.UTC(
+      Number(match[1]), Number(match[2]) - 1, Number(match[3]),
+      Number(match[4]), Number(match[5]), Number(match[6]),
+    );
+    return Number.isFinite(issued) && Date.now() - issued < 12 * 60 * 60 * 1000;
+  }
   async function select(token) {
     const data = await request("/api/v2/music/providers/netease/random-playable", { ...token.options, timeoutMs: 15000 }).catch(() => null);
     if (!owned(token)) throw CANCELLED;
-    if (data?.playable === true && data.song?.url) return data.song;
-    const fetched = await request("/api/v2/music/providers/netease/random-fetch", {
-      ...token.options, method: "POST", timeoutMs: 90000, body: JSON.stringify({}),
-    });
-    if (!owned(token)) throw CANCELLED;
-    if (!fetched?.ok || !fetched.song?.url) throw new Error("music_random_unavailable");
-    return fetched.song;
+    if (data?.playable === true && data.song?.url && neteaseUrlFresh(data.song.url)) return data.song;
+    // Stored NetEase CDN URLs are signed and often expired; download a durable
+    // copy. The endpoint picks one random song and can hit a VIP/encrypted
+    // track, so retry a few times before giving up.
+    let lastMessage = "";
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const fetched = await request("/api/v2/music/providers/netease/random-fetch", {
+        ...token.options, method: "POST", timeoutMs: 45000, body: JSON.stringify({}),
+      });
+      if (!owned(token)) throw CANCELLED;
+      if (fetched?.ok && fetched.song?.url) return fetched.song;
+      lastMessage = String(fetched?.message || "").trim();
+    }
+    const unavailable = new Error(lastMessage || "music_random_unavailable");
+    unavailable.userMessage = lastMessage;
+    throw unavailable;
   }
   async function run(action, expectedSong, { startup = false } = {}) {
     if (!alive || (action !== "next" && !["play", "pause"].includes(action))) return;
@@ -122,11 +149,15 @@ export function createBuiltInNowPlaying({ scope, request, createAudio = url => n
     } catch (error) {
       release(attemptCandidate); if (candidate === attemptCandidate) candidate = null;
       if (owned(token) && error !== CANCELLED) {
+        const backendMessage = String(error?.userMessage || "").trim();
         const message = error?.name === "NotAllowedError" ? "自动播放被浏览器拦截，请手动开始播放。"
           : error?.message === "music_audio_timeout" ? startup ? "播放器响应超时，未开始播放。请在一起听中手动选歌。"
             : action === "next" && previous ? "下一首等待播放超时，已保留当前歌曲。你可以重试下一首。" : "播放器响应超时，已保持暂停。点播放重试。"
           : action === "next" && previous ? "下一首暂时无法播放，已保留当前歌曲。" : "歌曲暂时无法播放，请稍后重试。";
-        if (startup) onStartupFeedback({ status: "error", message }); else onFeedback(message);
+        // Backend music errors can be long multi-line setup guidance. Keep the
+        // compact player toast actionable instead of pasting the whole message.
+        const visibleMessage = compactPlaybackFeedback(backendMessage, message);
+        if (startup) onStartupFeedback({ status: "error", message: visibleMessage }); else onFeedback(visibleMessage);
       }
     } finally {
       scope.finish(token);
