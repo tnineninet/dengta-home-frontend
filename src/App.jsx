@@ -5307,8 +5307,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     try {
       await stopVoiceSpeech();
       await stopDeviceText();
-      await speakDeviceText(text);
-      setNotice("正在用设备语音朗读最后一条回复。");
+      const receipt = await speakDeviceText(text);
+      setNotice(
+        receipt?.mediaVolume === 0
+          ? "正在用设备语音朗读；媒体音量为 0，请调高音量。"
+          : "正在用设备语音朗读最后一条回复。"
+      );
     } catch (error) {
       setNotice(`设备语音播放失败：${error?.message || "请稍后重试"}`);
     }
