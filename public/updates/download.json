@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "latest": {
-    "version_code": 264,
-    "version": "2.13.6",
+    "version_code": 265,
+    "version": "2.13.7",
     "apk_url": "https://www.dengtahome.com/downloads/DengTa-latest.apk",
-    "sha256": "d3c32a37cb3da94511579a40fc89b9ff373f02fed86b1988f0d8b78bf80413f9",
-    "size_bytes": 41293125,
-    "published_at": "2026-10-24T19:52:53.080Z",
+    "sha256": "f345d84fa89f8bb7274f78956f52e223f49fa5f890f3b2c6a6092edb6eaf953b",
+    "size_bytes": 41293245,
+    "published_at": "2026-10-24T20:16:42.966Z",
     "notes": [
-      "2.13.6：自动播放启动失败时自动重试两次，降低冷却启动静默不播概率",
-      "保留简洁失败提示、邀请二维码与供应商恢复入口。"
+      "2.13.7：模型接入页在仍用旧版接口时显示明确提示，引导新增兼容接口",
+      "保留自动播放修复、简洁失败提示、邀请二维码与供应商恢复入口。"
     ]
   }
 }
