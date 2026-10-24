@@ -3,15 +3,15 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 246,
-    "version": "2.12.88",
+    "version_code": 247,
+    "version": "2.12.89",
     "apk_url": "https://www.dengtahome.com/downloads/DengTa-latest.apk",
-    "sha256": "e336a974b361b54086dc14e6ec12dae3b9ec90b7662e068926edfb3ba0468f7a",
-    "size_bytes": 41286729,
-    "published_at": "2026-10-24T16:45:36.940Z",
+    "sha256": "a2463c3aac5c1820eaa619df2368410a4cf658220d83ee917f05bc3544ddb175",
+    "size_bytes": 41286793,
+    "published_at": "2026-10-24T17:07:02.102Z",
     "notes": [
-      "2.12.88：放映厅分享落地页与邀请兜底；一起听音乐显示在彩虹胶囊；搜索历史逐字匹配；设置中文化",
-      "保留 2.12.87 工具标记/拒答清理；安装包约 41MB。"
+      "2.12.89：胶囊媒体只在真正播放中显示，暂停时恢复状态胶囊",
+      "保留 2.12.88 放映厅/搜索历史/设置中文化；安装包约 41MB。"
     ]
   }
 }
