@@ -342,6 +342,11 @@ import {
   voiceRecordingSupported,
 } from "./voice";
 import {
+  deviceTtsSupported,
+  speakDeviceText,
+  stopDeviceText,
+} from "./device-tts";
+import {
   getVoiceOutput,
   shouldRequestVoiceOutputForText,
   voiceOutputServiceState,
@@ -5282,6 +5287,33 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
   }
 
+  async function readLatestReplyAloud() {
+    if (!deviceTtsSupported()) {
+      setNotice("设备语音只在 Android App 中可用。");
+      return;
+    }
+    const latest = [...messages]
+      .reverse()
+      .find((item) =>
+        item?.role === "assistant" &&
+        !item.isStreaming &&
+        String(item.content || "").trim()
+      );
+    const text = String(latest?.content || "").trim();
+    if (!text) {
+      setNotice("还没有可朗读的回复。");
+      return;
+    }
+    try {
+      await stopVoiceSpeech();
+      await stopDeviceText();
+      await speakDeviceText(text);
+      setNotice("正在用设备语音朗读最后一条回复。");
+    } catch (error) {
+      setNotice(`设备语音播放失败：${error?.message || "请稍后重试"}`);
+    }
+  }
+
   async function openReplyOptions({ fresh = false } = {}) {
     const sessionId = activeSessionIdRef.current;
     if (!sessionId) return;
@@ -7964,6 +7996,18 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   <span aria-hidden="true">💬</span>
                   <strong>回复选项</strong>
                   <small>让 AI 帮你想几句</small>
+                </button>
+                <button
+                  type="button"
+                  disabled={isSending || isCompanionResponding}
+                  onClick={() => {
+                    setIsComposerMenuOpen(false);
+                    void readLatestReplyAloud();
+                  }}
+                >
+                  <span aria-hidden="true">🔊</span>
+                  <strong>朗读回复</strong>
+                  <small>用设备语音读最后一条</small>
                 </button>
                 <button
                   type="button"
