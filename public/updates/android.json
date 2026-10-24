@@ -3,14 +3,14 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 267,
-    "version": "2.13.9",
+    "version_code": 268,
+    "version": "2.13.10",
     "apk_url": "https://www.dengtahome.com/downloads/DengTa-latest.apk",
-    "sha256": "15b2e9be7b8802a78be3c5b3db9a2f1eff7eb5f0f3bf634f21cdc4cf801bdddb",
-    "size_bytes": 41293261,
-    "published_at": "2026-10-24T20:20:59.430Z",
+    "sha256": "498895567c26665e4ba1ac40e168ed3d5fde6ac51c89d2c864505337293fa78e",
+    "size_bytes": 41293357,
+    "published_at": "2026-10-24T20:29:56.168Z",
     "notes": [
-      "2.13.9：无保存接口时始终显示旧版接口说明，不再受“检查中”状态影响",
+      "2.13.10：手机端设置页/侧栏 backdrop blur 降低，减少前台 CPU 占用",
       "保留自动播放修复、简洁失败提示、邀请二维码与供应商恢复入口。"
     ]
   }
