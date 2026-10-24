@@ -1850,7 +1850,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     current: (stamp) => coWatchLifecycleRef.current.current(stamp),
     readPlaylist: getMusicPlaylist,
     submit: (snapshot) => musicPlaybackSyncRef.current.submit(snapshot),
-    onUnmatched: () => setScreenGlanceFeedback({ status: "idle", message: "当前歌单没有唯一匹配的曲目，请在一起听中选择已导入的歌曲。（music_now_playing_unmatched）" }),
+    onUnmatched: () => setScreenGlanceFeedback({ status: "idle", message: "这首歌不在本场已导入的歌单里。先播放歌单里的同一首歌，或把这首加进歌单后再同步。" }),
   });
   const startupReconnectRef = useRef(null);
   const sessionModelSaveQueueRef = useRef(Promise.resolve());
