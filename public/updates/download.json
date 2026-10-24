@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "latest": {
-    "version_code": 255,
-    "version": "2.12.97",
+    "version_code": 256,
+    "version": "2.12.98",
     "apk_url": "https://www.dengtahome.com/downloads/DengTa-latest.apk",
-    "sha256": "e7719e2b779502db76821da19dfd89659c6ad39e2b1bd46e56b6b6eea87c7ca7",
-    "size_bytes": 41292005,
-    "published_at": "2026-10-24T18:43:16.680Z",
+    "sha256": "502b2fd6c8bb5e4aa6946143fbf35ad00a18b1a520f51e3cb67da478cefd5f07",
+    "size_bytes": 41292197,
+    "published_at": "2026-10-24T18:45:50.449Z",
     "notes": [
-      "2.12.97：放映厅新增复制邀请链接，分享失败时也能直接发链接",
-      "保留深链邀请弹窗、网页播放状态卡、设备语音与侧栏吸顶搜索。"
+      "2.12.98：邀请复制增加 WebView 兜底，复制失败时仍显示完整邀请链接",
+      "保留深链邀请弹窗、网页播放状态卡、设备语音、侧栏吸顶与视频附件。"
     ]
   }
 }
