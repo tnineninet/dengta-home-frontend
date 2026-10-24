@@ -3,15 +3,15 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 244,
-    "version": "2.12.86",
+    "version_code": 245,
+    "version": "2.12.87",
     "apk_url": "https://www.dengtahome.com/downloads/DengTa-latest.apk",
-    "sha256": "f57657b424c12ea4d8d879a15f8b93076cd273c97869e1fa4b57628a1d29c635",
-    "size_bytes": 41282165,
-    "published_at": "2026-10-24T10:30:30.851Z",
+    "sha256": "1a886794e5c57105b266a776a160f2e51a17015d5aae0ac25ad4c9cfcf05ae0f",
+    "size_bytes": 41282725,
+    "published_at": "2026-10-24T11:39:59.423Z",
     "notes": [
-      "2.12.86：修复手机端状态栏彩虹胶囊静止不动，恢复低开销渐变流动",
-      "保留藏宝图与更新流程修复；安装包约 41MB。"
+      "2.12.87：清理供应商工具标记、过滤更多回复中的拒答选项",
+      "保留 2.12.86 彩虹动画、藏宝图与更新流程修复；安装包约 41MB。"
     ]
   }
 }
