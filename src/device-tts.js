@@ -28,8 +28,12 @@ export async function speakDeviceText(value) {
   if (!nativeAndroid()) throw new Error("设备语音只在 Android App 中可用");
   const text = Array.from(String(value || "").trim()).slice(0, 2000).join("");
   if (!text) throw new Error("没有可朗读的内容");
-  await DeviceTts.speak({ text });
-  return { provider: "android-tts", chars: text.length };
+  const receipt = await DeviceTts.speak({ text });
+  return {
+    provider: "android-tts",
+    chars: text.length,
+    mediaVolume: Number(receipt?.media_volume ?? -1),
+  };
 }
 
 export async function stopDeviceText() {

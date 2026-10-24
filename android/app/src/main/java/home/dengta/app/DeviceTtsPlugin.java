@@ -1,5 +1,7 @@
 package home.dengta.app;
 
+import android.content.Context;
+import android.media.AudioManager;
 import android.speech.tts.TextToSpeech;
 
 import com.getcapacitor.JSObject;
@@ -116,6 +118,15 @@ public class DeviceTtsPlugin extends Plugin {
             }
             JSObject response = new JSObject();
             response.put("started", true);
+            try {
+                AudioManager audio = (AudioManager) getContext().getSystemService(Context.AUDIO_SERVICE);
+                response.put(
+                    "media_volume",
+                    audio == null ? -1 : audio.getStreamVolume(AudioManager.STREAM_MUSIC)
+                );
+            } catch (Exception ignored) {
+                response.put("media_volume", -1);
+            }
             call.resolve(response);
         });
     }
