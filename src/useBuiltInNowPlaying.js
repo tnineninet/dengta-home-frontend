@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { apiRequest } from "./api.js";
 import { authSession } from "./auth-session.js";
 import { coWatchRequestOptions } from "./co-watch-request-scope.js";
-import { createBuiltInNowPlaying } from "./built-in-now-playing.js";
+import { createBuiltInNowPlaying, shouldYieldStartupToExternal } from "./built-in-now-playing.js";
 
 export function useBuiltInNowPlaying({ scope, accountScope, companionScope, enabled, externalAvailable, readExternal, onSong, onBusy, onFeedback, onStartupFeedback }) {
   const callbacks = useRef({});
@@ -23,13 +23,13 @@ export function useBuiltInNowPlaying({ scope, accountScope, companionScope, enab
     let active = true;
     const instance = player.current, token = scope.capture();
     let randomEnabled = false;
-    try { randomEnabled = window.localStorage.getItem("dengta_random_play_enabled") === "1"; } catch { /* Storage may be unavailable. */ }
+    try { randomEnabled = window.localStorage.getItem(`dengta_random_play_enabled:${accountScope || "guest"}`) === "1" || window.localStorage.getItem("dengta_random_play_enabled") === "1"; } catch { /* Storage may be unavailable. */ }
     if (!randomEnabled) return;
     const timer = window.setTimeout(async () => {
       if (!active || !scope.current(token)) return;
       if (callbacks.current.externalAvailable()) {
         const song = await callbacks.current.readExternal().catch(() => null);
-        if (!active || !scope.current(token) || (song?.title && song.isPlaying !== false)) return;
+        if (!active || !scope.current(token) || shouldYieldStartupToExternal(song)) return;
       }
       await instance?.start();
     }, 2500);

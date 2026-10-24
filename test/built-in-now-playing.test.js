@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { chooseNowPlayingCard, compactPlaybackFeedback, createBuiltInNowPlaying } from "../src/built-in-now-playing.js";
+import { chooseNowPlayingCard, compactPlaybackFeedback, createBuiltInNowPlaying, shouldYieldStartupToExternal } from "../src/built-in-now-playing.js";
 import { createMusicRequestScope } from "../src/music-request-scope.js";
 
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; };
@@ -211,4 +211,11 @@ test("long backend guidance is replaced by a compact player fallback", () => {
   const long = "网易云 VIP/版权歌曲在本机是加密格式，读不出来。".repeat(4);
   assert.equal(compactPlaybackFeedback(long, "下一首暂时无法播放，已保留当前歌曲。"), "下一首暂时无法播放，已保留当前歌曲。");
   assert.equal(compactPlaybackFeedback("", "fallback"), "fallback");
+});
+
+test("startup only yields to an external song that is actually playing", () => {
+  assert.equal(shouldYieldStartupToExternal({ title: "歌", isPlaying: true }), true);
+  assert.equal(shouldYieldStartupToExternal({ title: "歌", isPlaying: false }), false);
+  assert.equal(shouldYieldStartupToExternal({ title: "歌" }), false);
+  assert.equal(shouldYieldStartupToExternal(null), false);
 });

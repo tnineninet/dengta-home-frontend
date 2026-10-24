@@ -7,6 +7,10 @@ export function chooseNowPlayingCard(current, external) {
   return current?.source === "dengta" && (external?.isPlaying !== true || external?.playbackStateKnown === false) ? current : external;
 }
 
+export function shouldYieldStartupToExternal(song) {
+  return Boolean(song?.title && song.isPlaying === true);
+}
+
 export function compactPlaybackFeedback(backendMessage, fallback) {
   const text = String(backendMessage || "").trim();
   return text && text.length <= 80 ? text : String(fallback || "");
