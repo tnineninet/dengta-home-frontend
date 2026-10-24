@@ -3,15 +3,15 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 248,
-    "version": "2.12.90",
+    "version_code": 249,
+    "version": "2.12.91",
     "apk_url": "https://www.dengtahome.com/downloads/DengTa-latest.apk",
-    "sha256": "7f696eb242c1dfeccd7a43f34574eff24ba074cf1630c4d9dc50dd3c68f2737a",
-    "size_bytes": 41286721,
-    "published_at": "2026-10-24T17:37:41.767Z",
+    "sha256": "54d4cb2ed8715609d80190e25ca78c8f02fb954e185c63c30e7ea8ef30f60ef8",
+    "size_bytes": 41286849,
+    "published_at": "2026-10-24T17:47:18.420Z",
     "notes": [
-      "2.12.90：彩虹胶囊改为合成层位移动画，修复移动端持续占用一个 CPU 核的渲染问题",
-      "一起听未匹配提示去掉技术错误码；保留外部音乐胶囊显示/暂停/下一首。"
+      "2.12.91：彩虹胶囊改为 24 步低频合成位移动画，CPU 从约 100–140% 降至约 25%",
+      "保留外部音乐胶囊显示/暂停/下一首、搜索历史、放映厅邀请页与中文化设置。"
     ]
   }
 }
