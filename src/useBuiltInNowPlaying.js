@@ -7,12 +7,13 @@ import { createBuiltInNowPlaying, shouldYieldStartupToExternal } from "./built-i
 export function useBuiltInNowPlaying({ scope, accountScope, companionScope, enabled, externalAvailable, readExternal, onSong, onBusy, onFeedback, onStartupFeedback }) {
   const callbacks = useRef({});
   const player = useRef(null);
+  const lastSongRef = useRef(null);
   useLayoutEffect(() => { callbacks.current = { onSong, onBusy, onFeedback, onStartupFeedback, externalAvailable, readExternal }; });
   useLayoutEffect(() => {
     const instance = createBuiltInNowPlaying({
       scope,
       request: (path, options) => apiRequest(path, { ...options, retry: false, ...coWatchRequestOptions(options, authSession) }),
-      onSong: song => callbacks.current.onSong(song), onBusy: value => callbacks.current.onBusy(value),
+      onSong: song => { lastSongRef.current = song; callbacks.current.onSong(song); }, onBusy: value => callbacks.current.onBusy(value),
       onFeedback: message => callbacks.current.onFeedback(message), onStartupFeedback: value => callbacks.current.onStartupFeedback(value),
     });
     player.current = instance;
@@ -22,6 +23,7 @@ export function useBuiltInNowPlaying({ scope, accountScope, companionScope, enab
     if (!enabled) return;
     let active = true;
     let retryTimer = null;
+    let startRetries = 2;
     const instance = player.current;
     let randomEnabled = false;
     try { randomEnabled = window.localStorage.getItem(`dengta_random_play_enabled:${accountScope || "guest"}`) === "1" || window.localStorage.getItem("dengta_random_play_enabled") === "1"; } catch { /* Storage may be unavailable. */ }
@@ -41,6 +43,12 @@ export function useBuiltInNowPlaying({ scope, accountScope, companionScope, enab
         if (!active || !scope.current(token) || shouldYieldStartupToExternal(song)) return;
       }
       await instance?.start();
+      if (!active) return;
+      if (lastSongRef.current?.source === "dengta") return;
+      if (startRetries > 0) {
+        startRetries--;
+        retryTimer = window.setTimeout(() => { void attemptStart(0); }, 3000);
+      }
     };
     const timer = window.setTimeout(() => { void attemptStart(6); }, 2500);
     return () => {
