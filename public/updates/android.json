@@ -3,15 +3,15 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 268,
-    "version": "2.13.10",
+    "version_code": 269,
+    "version": "2.13.11",
     "apk_url": "https://www.dengtahome.com/downloads/DengTa-latest.apk",
-    "sha256": "498895567c26665e4ba1ac40e168ed3d5fde6ac51c89d2c864505337293fa78e",
-    "size_bytes": 41293357,
-    "published_at": "2026-10-24T20:29:56.168Z",
+    "sha256": "c313fdc053044f135952db65e296a519045ebabba4f80b034c1883134b5bac46",
+    "size_bytes": 41293341,
+    "published_at": "2026-10-24T20:32:40.818Z",
     "notes": [
-      "2.13.10：手机端设置页/侧栏 backdrop blur 降低，减少前台 CPU 占用",
-      "保留自动播放修复、简洁失败提示、邀请二维码与供应商恢复入口。"
+      "2.13.11：手机端聊天常驻顶栏/输入框/保存条 blur 进一步降成本",
+      "保留设置页 blur 优化、自动播放修复、邀请二维码与供应商恢复入口。"
     ]
   }
 }
