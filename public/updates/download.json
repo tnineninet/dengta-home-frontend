@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "latest": {
-    "version_code": 258,
-    "version": "2.13.0",
+    "version_code": 259,
+    "version": "2.13.1",
     "apk_url": "https://www.dengtahome.com/downloads/DengTa-latest.apk",
-    "sha256": "cb56ffecf6305c72e883f36ad62d9522861a8c6bd402c5148d48be4e98c8bcb5",
-    "size_bytes": 41292889,
-    "published_at": "2026-10-24T19:09:32.971Z",
+    "sha256": "3cb8125d24e448fb6a2ff0572e66ff1ceec8b0546751d320444a4d33dc147841",
+    "size_bytes": 41292949,
+    "published_at": "2026-10-24T19:12:02.426Z",
     "notes": [
-      "2.13.0：外部供应商错误的聊天面板新增“检查/切换模型接口”入口",
-      "保留邀请二维码、复制链接、设备语音、侧栏吸顶和视频附件。"
+      "2.13.1：供应商错误在普通消息样式下也显示“检查/切换模型接口”按钮",
+      "不改供应商配置；保留邀请二维码、设备语音、视频附件与侧栏吸顶。"
     ]
   }
 }
