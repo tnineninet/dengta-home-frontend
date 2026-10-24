@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "latest": {
-    "version_code": 250,
-    "version": "2.12.92",
+    "version_code": 251,
+    "version": "2.12.93",
     "apk_url": "https://www.dengtahome.com/downloads/DengTa-latest.apk",
-    "sha256": "0bb4edc2f15e1e65afd26d118cbee0ed477a447944ac152907c93fecb0339550",
-    "size_bytes": 41286821,
-    "published_at": "2026-10-24T18:02:20.248Z",
+    "sha256": "6faf35f44839d17bed3436b3a1fbcff22940b5383d37d73bc27a799704c4cbfe",
+    "size_bytes": 41286841,
+    "published_at": "2026-10-24T18:05:23.125Z",
     "notes": [
-      "2.12.92：链接提取后保留媒体地址，创建放映厅/分享邀请可用",
-      "彩虹胶囊 24 步合成动画；外部音乐胶囊显示/控制；搜索历史与设置中文化。"
+      "2.12.93：B站网页播放也可在放映厅创建房间/分享邀请",
+      "链接提取保留标题与媒体地址；彩虹胶囊 24 步合成动画。"
     ]
   }
 }
