@@ -3,15 +3,15 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 259,
-    "version": "2.13.1",
+    "version_code": 260,
+    "version": "2.13.2",
     "apk_url": "https://www.dengtahome.com/downloads/DengTa-latest.apk",
-    "sha256": "3cb8125d24e448fb6a2ff0572e66ff1ceec8b0546751d320444a4d33dc147841",
-    "size_bytes": 41292949,
-    "published_at": "2026-10-24T19:12:02.426Z",
+    "sha256": "dbc344256ee9db454653e6573e1d4b31cd1eb119d9800965d555f6e4d2bb5ca0",
+    "size_bytes": 41293013,
+    "published_at": "2026-10-24T19:31:45.892Z",
     "notes": [
-      "2.13.1：供应商错误在普通消息样式下也显示“检查/切换模型接口”按钮",
-      "不改供应商配置；保留邀请二维码、设备语音、视频附件与侧栏吸顶。"
+      "2.13.2：内置播放失败时用简洁提示，不再把超长后端配置说明塞进胶囊 toast",
+      "保留自动播放、胶囊控制、邀请二维码和供应商恢复入口。"
     ]
   }
 }
