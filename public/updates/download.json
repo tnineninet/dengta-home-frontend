@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "latest": {
-    "version_code": 257,
-    "version": "2.12.99",
+    "version_code": 258,
+    "version": "2.13.0",
     "apk_url": "https://www.dengtahome.com/downloads/DengTa-latest.apk",
-    "sha256": "f48a39e64d4add0e6546926224404585428384caeb7cdfe4c46a7b22fc939131",
-    "size_bytes": 41292737,
-    "published_at": "2026-10-24T18:57:09.956Z",
+    "sha256": "cb56ffecf6305c72e883f36ad62d9522861a8c6bd402c5148d48be4e98c8bcb5",
+    "size_bytes": 41292889,
+    "published_at": "2026-10-24T19:09:32.971Z",
     "notes": [
-      "2.12.99：放映厅房间新增邀请二维码，扫码直达 /room/join",
-      "保留复制链接、深链邀请、网页播放状态卡、设备语音与视频附件。"
+      "2.13.0：外部供应商错误的聊天面板新增“检查/切换模型接口”入口",
+      "保留邀请二维码、复制链接、设备语音、侧栏吸顶和视频附件。"
     ]
   }
 }
