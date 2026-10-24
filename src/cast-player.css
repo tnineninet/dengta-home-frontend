@@ -1166,3 +1166,28 @@
 .cast-web-player-fallback .cast-retry-button {
   margin: 0 auto;
 }
+
+/* Invite QR for the cast room (promotion/shareability helper). */
+.cast-invite-qr-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin: 12px auto 4px;
+  padding: 10px;
+  width: fit-content;
+  border-radius: 14px;
+  background: #f7f8fc;
+  color: #3a4258;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .22);
+}
+.cast-invite-qr {
+  display: block;
+  width: 132px;
+  height: 132px;
+  max-width: 100%;
+}
+.cast-invite-qr-wrap small {
+  font-size: 11px;
+  color: #5c6578;
+}

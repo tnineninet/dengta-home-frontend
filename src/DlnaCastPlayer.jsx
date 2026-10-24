@@ -1,4 +1,5 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import CastInviteQr from "./CastInviteQr.jsx";
 import { DlnaReceiver } from "./dlna-receiver";
 import { awaitCastReceipt } from "./cast-receipt";
 import { apiFetch, API_BASE_URL } from "./api.js";
@@ -227,6 +228,9 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
   );
   const cover = info?.cover || info?.thumb || "";
   const sourceApp = info?.sourceApp || (manualMedia ? "链接提取" : "DLNA 投屏");
+  const inviteLink = room?.joinCode
+    ? `https://dengtahome.com/room/join?room_code=${encodeURIComponent(room.joinCode)}`
+    : "";
 
   /* ─── 异步会话 ─── */
   const ensureSession = async () => {
@@ -808,6 +812,10 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
                 <div className="cast-room-code">{room.joinCode}</div>
                 <button type="button" className="cast-room-share-btn" onClick={shareRoomInvite}>📤 分享邀请</button>
                 <button type="button" className="cast-room-share-btn" onClick={copyRoomInviteLink}>🔗 复制邀请链接</button>
+                <div className="cast-invite-qr-wrap">
+                  <CastInviteQr value={inviteLink} size={132} />
+                  <small>扫码加入放映厅</small>
+                </div>
                 <p style={{ color: "#666", fontSize: 12, textAlign: "center" }}>最多 {room.maxParticipants || 50} 人</p>
                 <button type="button" className="cast-room-leave-btn" disabled={roomBusy} onClick={handleLeaveRoom}>{roomBusy ? "退出中…" : "退出放映厅"}</button>
               </div>
@@ -993,6 +1001,10 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
             </div>
             {roomError && <p role="alert" className="cast-room-error">{roomError}</p>}
             {roomNotice && <p role="status" className="cast-sync-label">{roomNotice}</p>}
+            <div className="cast-invite-qr-wrap">
+              <CastInviteQr value={inviteLink} size={104} />
+              <small>扫码加入放映厅</small>
+            </div>
           </div>
         )}
 
