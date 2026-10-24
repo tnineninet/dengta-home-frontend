@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "latest": {
-    "version_code": 253,
-    "version": "2.12.95",
+    "version_code": 254,
+    "version": "2.12.96",
     "apk_url": "https://www.dengtahome.com/downloads/DengTa-latest.apk",
-    "sha256": "f4e730bf9721a475d20e44d0c21465dea7493f2ea6238f48b2a6a5038a2f6237",
-    "size_bytes": 41291497,
-    "published_at": "2026-10-24T18:24:37.337Z",
+    "sha256": "661479dd5bf534e7de9f265c626919903fe8a19f9c69a61d5da85a7cc8d48495",
+    "size_bytes": 41291985,
+    "published_at": "2026-10-24T18:32:16.372Z",
     "notes": [
-      "2.12.95：新增 Android 设备语音朗读（免费、无需 API Key）",
-      "聊天输入框「+」菜单 → 朗读回复；保留外部音乐胶囊、放映厅状态卡与彩虹性能优化。"
+      "2.12.96：侧栏搜索栏吸顶，滚动时仍可直接搜索",
+      "朗读回复会提示媒体音量为 0；保留设备语音/放映厅/胶囊功能。"
     ]
   }
 }
