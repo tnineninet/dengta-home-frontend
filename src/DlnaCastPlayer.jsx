@@ -24,6 +24,32 @@ import "./cast-player.css";
  * B站放映厅风格 — 投屏/一起看播放器。
  * 窄屏（手机）→ 播放确认页；宽屏（桌面/平板）→ 完整播放器+聊天+AI分析。
  */
+async function writeClipboardText(value) {
+  const text = String(value || "");
+  if (!text) return false;
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Android WebView can reject the async Clipboard API without a user
+    // activation receipt; fall back to the legacy selection copy.
+  }
+  try {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    const copied = document.execCommand("copy");
+    area.remove();
+    return copied === true;
+  } catch {
+    return false;
+  }
+}
+
 export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴侣", onClose }) {
   const [launchResult, setLaunchResult] = useState(null);
   const [launchAttempt, setLaunchAttempt] = useState(0);
@@ -111,17 +137,22 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
       if (error?.name === "AbortError") return;
     }
     if (!shared) {
-      try {
-        await navigator.clipboard.writeText(text);
-        if (!lifetime.active) return;
-        setRoomNotice("已复制邀请链接");
-      } catch {
-        if (!lifetime.active) return;
-        setRoomNotice(`邀请码：${code}（可截图发给朋友）`);
-      }
+      const copied = await writeClipboardText(text);
+      if (!lifetime.active) return;
+      setRoomNotice(copied ? "已复制邀请链接" : `邀请码：${code}（可截图发给朋友）`);
       clearTimeout(shareTimerRef.current);
       shareTimerRef.current = setTimeout(() => setRoomNotice(""), 5000);
     }
+  };
+
+  const copyRoomInviteLink = async () => {
+    const current = roomRef.current;
+    if (!current?.joinCode) return;
+    const webLink = `https://dengtahome.com/room/join?room_code=${encodeURIComponent(current.joinCode)}`;
+    const copied = await writeClipboardText(webLink);
+    setRoomNotice(copied ? "已复制邀请链接" : `邀请链接：${webLink}`);
+    clearTimeout(shareTimerRef.current);
+    shareTimerRef.current = setTimeout(() => setRoomNotice(""), 5000);
   };
 
   /* ─── 检查待处理邀请 ─── */
@@ -776,6 +807,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
                 <div className="cast-room-code-label">邀请码</div>
                 <div className="cast-room-code">{room.joinCode}</div>
                 <button type="button" className="cast-room-share-btn" onClick={shareRoomInvite}>📤 分享邀请</button>
+                <button type="button" className="cast-room-share-btn" onClick={copyRoomInviteLink}>🔗 复制邀请链接</button>
                 <p style={{ color: "#666", fontSize: 12, textAlign: "center" }}>最多 {room.maxParticipants || 50} 人</p>
                 <button type="button" className="cast-room-leave-btn" disabled={roomBusy} onClick={handleLeaveRoom}>{roomBusy ? "退出中…" : "退出放映厅"}</button>
               </div>
@@ -955,6 +987,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
               </div>
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                 <button type="button" className="cast-room-share-btn" style={{ padding: "6px 14px", fontSize: 12 }} onClick={shareRoomInvite}>分享邀请</button>
+                <button type="button" className="cast-room-share-btn" style={{ padding: "6px 14px", fontSize: 12 }} onClick={copyRoomInviteLink}>复制链接</button>
                 <button type="button" className="cast-room-leave-btn" disabled={roomBusy} onClick={handleLeaveRoom}>{roomBusy ? "退出中…" : "退出"}</button>
               </div>
             </div>
