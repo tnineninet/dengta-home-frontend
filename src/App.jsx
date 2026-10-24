@@ -7653,6 +7653,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 onReference={selectMessageForReference}
                 onDismissError={dismissChatError}
                 onOpenActivity={openCompanionActivity}
+                onOpenProviderSettings={openProviderRecovery}
                 innerMonologues={innerMonologues}
                 innerMonologuePending={innerMonologuePending}
                 innerMonologueErrors={innerMonologueErrors}
