@@ -3,14 +3,14 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 265,
-    "version": "2.13.7",
+    "version_code": 266,
+    "version": "2.13.8",
     "apk_url": "https://www.dengtahome.com/downloads/DengTa-latest.apk",
-    "sha256": "f345d84fa89f8bb7274f78956f52e223f49fa5f890f3b2c6a6092edb6eaf953b",
-    "size_bytes": 41293245,
-    "published_at": "2026-10-24T20:16:42.966Z",
+    "sha256": "4aa62de8f5ee775cec0f94a8f07774b87a67c43b58fea959aed7884736ae886c",
+    "size_bytes": 41293269,
+    "published_at": "2026-10-24T20:19:09.329Z",
     "notes": [
-      "2.13.7：模型接入页在仍用旧版接口时显示明确提示，引导新增兼容接口",
+      "2.13.8：模型接入页在无已保存接口时更稳定地显示旧版接口说明",
       "保留自动播放修复、简洁失败提示、邀请二维码与供应商恢复入口。"
     ]
   }
