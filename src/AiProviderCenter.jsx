@@ -1007,7 +1007,7 @@ export default function AiProviderCenter({
         </button>
       </div>
 
-      {!status.checking && !status.active_profile && (
+      {!status.checking && profiles.length === 0 && (
         <p className="provider-legacy-notice" role="note">
           当前仍在用旧版接口。如果主聊天提示“供应商不可用/敏感词”，请用下方表单新增一个与产品定位兼容的接口并保存启用；旧接口的优先级/模型名无法在这个页面调整。
         </p>
