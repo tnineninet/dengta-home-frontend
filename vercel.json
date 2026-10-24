@@ -50,6 +50,10 @@
     {
       "source": "/receive",
       "destination": "/index.html"
+    },
+    {
+      "source": "/room/join",
+      "destination": "/room-invite.html"
     }
   ]
 }
