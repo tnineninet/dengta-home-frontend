@@ -3,15 +3,15 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 252,
-    "version": "2.12.94",
+    "version_code": 253,
+    "version": "2.12.95",
     "apk_url": "https://www.dengtahome.com/downloads/DengTa-latest.apk",
-    "sha256": "b28f3462d52b5428067ef4059a20914b36f00016ad91fd7d93ddcbeba9c66604",
-    "size_bytes": 41287133,
-    "published_at": "2026-10-24T18:18:43.491Z",
+    "sha256": "f4e730bf9721a475d20e44d0c21465dea7493f2ea6238f48b2a6a5038a2f6237",
+    "size_bytes": 41291497,
+    "published_at": "2026-10-24T18:24:37.337Z",
     "notes": [
-      "2.12.94：网页播放时不再显示伪 0:00 进度，改为清晰状态卡并可回到播放器",
-      "保留创建放映厅/分享邀请、外部音乐胶囊和彩虹性能优化。"
+      "2.12.95：新增 Android 设备语音朗读（免费、无需 API Key）",
+      "聊天输入框「+」菜单 → 朗读回复；保留外部音乐胶囊、放映厅状态卡与彩虹性能优化。"
     ]
   }
 }
