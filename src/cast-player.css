@@ -812,6 +812,44 @@
   outline-offset: 3px;
 }
 .cast-sync-label.is-error { color: #ff9890; }
+
+/* The cast page is rendered next to the receiver banner inside .view-content
+   (a single-row CSS grid). Without this, the 100dvh cast root shares the only
+   row with the banner, gets clipped at the bottom, and can sit over the status
+   capsule portal. */
+.main-panel.view-cast .view-content {
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: auto;
+}
+
+.main-panel.view-cast .cast-root {
+  min-height: 0;
+  height: 100%;
+  overflow: auto;
+}
+
+.cast-web-fallback {
+  max-width: 520px;
+  margin: 48px auto;
+  padding: 22px;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: 16px;
+  color: #e8e4e0;
+  background: rgb(26 21 21 / 0.92);
+  text-align: center;
+}
+
+.cast-web-fallback strong {
+  display: block;
+  font-size: 17px;
+}
+
+.cast-web-fallback p {
+  margin: 10px 0 0;
+  color: #9a9692;
+  font-size: 13px;
+  line-height: 1.6;
+}
 .cast-sync-label.is-error::before { color: #ff9890; }
 .cast-sync-label.is-pending::before { color: var(--cast-text-accent); }
 .cast-retry-button {
@@ -1096,4 +1134,35 @@
   min-height: 100vh;
   min-height: 100dvh;
   background: var(--cast-bg);
+}
+
+/* Bilibili WebView fallback: the native preview/controls do not own this
+   media, so show an explicit card instead of a fake 0:00 progress bar. */
+.cast-web-player-fallback {
+  margin: 12px 0;
+  padding: 24px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  background: linear-gradient(150deg, rgba(62, 98, 168, 0.28), rgba(26, 28, 44, 0.9));
+  text-align: center;
+}
+.cast-web-player-icon {
+  font-size: 34px;
+  line-height: 1;
+  margin-bottom: 10px;
+}
+.cast-web-player-fallback strong {
+  display: block;
+  color: var(--cast-text);
+  font-size: 17px;
+}
+.cast-web-player-fallback p {
+  max-width: 520px;
+  margin: 8px auto 14px;
+  color: var(--cast-text-muted);
+  font-size: 13px;
+  line-height: 1.7;
+}
+.cast-web-player-fallback .cast-retry-button {
+  margin: 0 auto;
 }

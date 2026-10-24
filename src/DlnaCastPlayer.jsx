@@ -680,13 +680,15 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
         // ExoPlayer cannot play Bilibili DASH video-only streams. Keep a local
         // WebView player fallback so the 放映厅 remains usable for Bilibili.
         try {
+          const webPlayerUrl = `https://player.bilibili.com/player.html?bvid=${encodeURIComponent(bvid)}&page=1&high_quality=1&danmaku=0`;
           setManualMedia({
             uri: url,
             title: `B站 · ${bvid}`,
             webFallback: true,
+            webPlayerUrl,
           });
           await DlnaReceiver.openWebPlayer({
-            url: `https://player.bilibili.com/player.html?bvid=${encodeURIComponent(bvid)}&page=1&high_quality=1&danmaku=0`,
+            url: webPlayerUrl,
             title: `B站 · ${bvid}`,
           });
           return;
@@ -711,6 +713,13 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
   const launching = Boolean(mediaUrl) && !manualWebFallback && !launchCurrent;
   const launchFailed = launchCurrent && !launchResult?.ok && !manualWebFallback;
   const showWaitingOnly = !mediaUrl;
+
+  const reopenWebPlayer = () => {
+    const target = manualMedia?.webPlayerUrl || manualMedia?.uri;
+    if (!manualWebFallback || !target) return;
+    DlnaReceiver.openWebPlayer({ url: target, title: title || "投屏播放" })
+      .catch(() => setPlaybackError("网页播放器打开失败，请稍后重试。"));
+  };
 
   const inviteDialog = (inviteCode && (inviteInfo || inviteError) && (
             <div className="cast-invite-overlay">
@@ -827,52 +836,63 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
         </div>
 
         {/* 同步标签 */}
-        <div className={`cast-sync-label${launchFailed ? " is-error" : launching ? " is-pending" : ""}`}>{launching ? "正在打开播放器…" : launchFailed ? "播放器打开失败" : "已打开原生播放器"}</div>
+        <div className={`cast-sync-label${launchFailed ? " is-error" : launching ? " is-pending" : ""}`}>{manualWebFallback ? "网页播放器已打开 · 可创建放映厅" : launching ? "正在打开播放器…" : launchFailed ? "播放器打开失败" : "已打开原生播放器"}</div>
         {launchFailed && <button type="button" className="cast-retry-button" onClick={() => setLaunchAttempt((value) => value + 1)}>重试打开播放器</button>}
         {playbackError && <p role="alert" className="cast-room-error">{playbackError}</p>}
         {playbackError.includes("停止播放未确认") && <button type="button" className="cast-retry-button" onClick={() => onClose?.()}>返回聊天</button>}
         {captureNotice && <p role="status" className="cast-sync-label">{captureNotice}</p>}
 
-        {/* 视频播放器 */}
-        <div className="cast-video-container">
-          {/* 视频占位 */}
-          <div className="cast-video-placeholder">
-            {cover ? (
-              <img className="cast-video-cover" src={cover} alt="" />
-            ) : (
-              <span className="cast-video-placeholder-text">视频预览区域</span>
-            )}
+        {/* 视频播放器：网页兜底播放器不在这里伪造进度 */}
+        {manualWebFallback ? (
+          <div className="cast-web-player-fallback">
+            <div className="cast-web-player-icon" aria-hidden="true">📺</div>
+            <strong>网页播放器正在前台播放</strong>
+            <p>B站网页画面由独立播放器承载。这里管理放映厅房间、邀请和对话。</p>
+            <button type="button" className="cast-retry-button" onClick={reopenWebPlayer}>回到网页播放器</button>
           </div>
+        ) : (
+          <>
+            <div className="cast-video-container">
+              {/* 视频占位 */}
+              <div className="cast-video-placeholder">
+                {cover ? (
+                  <img className="cast-video-cover" src={cover} alt="" />
+                ) : (
+                  <span className="cast-video-placeholder-text">视频预览区域</span>
+                )}
+              </div>
 
-          {/* 进度条 */}
-          <div className="cast-progress-track">
-            <div className="cast-progress-fill" style={{ width: (position.durationMs > 0 ? Math.min(100, position.positionMs / position.durationMs * 100) : 0) + "%" }} />
-          </div>
+              {/* 进度条 */}
+              <div className="cast-progress-track">
+                <div className="cast-progress-fill" style={{ width: (position.durationMs > 0 ? Math.min(100, position.positionMs / position.durationMs * 100) : 0) + "%" }} />
+              </div>
 
-          {/* 控制栏 */}
-          <div className={`cast-controls ${controlsVisible ? "" : "cast-controls-hidden"}`}>
-            <div className="cast-controls-left">
-              <button className="cast-control-btn" onClick={handlePlayPause} title={isPlaying ? "暂停" : "播放"}>
-                {isPlaying ? "⏸" : "▶"}
-              </button>
-              <span className="cast-control-time">{currentTime} / {totalTime}</span>
+              {/* 控制栏 */}
+              <div className={`cast-controls ${controlsVisible ? "" : "cast-controls-hidden"}`}>
+                <div className="cast-controls-left">
+                  <button className="cast-control-btn" onClick={handlePlayPause} title={isPlaying ? "暂停" : "播放"}>
+                    {isPlaying ? "⏸" : "▶"}
+                  </button>
+                  <span className="cast-control-time">{currentTime} / {totalTime}</span>
+                </div>
+                <div className="cast-controls-right">
+                  <button className="cast-control-btn" onClick={handleScreenshot} title="截帧" disabled={capturing}>
+                    {capturing ? "…" : "📷"}
+                  </button>
+                  <button type="button" className="cast-control-speed" onClick={handleCycleSpeed} title="切换倍速">
+                    {playbackSpeed}x
+                  </button>
+                  <button type="button" className="cast-control-fullscreen" onClick={handleToggleFullscreen} title="全屏">
+                    ⛶
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="cast-controls-right">
-              <button className="cast-control-btn" onClick={handleScreenshot} title="截帧" disabled={capturing}>
-                {capturing ? "…" : "📷"}
-              </button>
-              <button type="button" className="cast-control-speed" onClick={handleCycleSpeed} title="切换倍速">
-                {playbackSpeed}x
-              </button>
-              <button type="button" className="cast-control-fullscreen" onClick={handleToggleFullscreen} title="全屏">
-                ⛶
-              </button>
-            </div>
-          </div>
-        </div>
 
-        {/* 分 P 信息 */}
-        <div className="cast-episode">P1/1 · {totalTime}</div>
+            {/* 分 P 信息 */}
+            <div className="cast-episode">P1/1 · {totalTime}</div>
+          </>
+        )}
 
         {/* 内容标题 */}
         <div className="cast-content-title">{title || "内容标题"}</div>
