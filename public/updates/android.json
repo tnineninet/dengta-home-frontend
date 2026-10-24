@@ -3,15 +3,15 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 254,
-    "version": "2.12.96",
+    "version_code": 255,
+    "version": "2.12.97",
     "apk_url": "https://www.dengtahome.com/downloads/DengTa-latest.apk",
-    "sha256": "661479dd5bf534e7de9f265c626919903fe8a19f9c69a61d5da85a7cc8d48495",
-    "size_bytes": 41291985,
-    "published_at": "2026-10-24T18:32:16.372Z",
+    "sha256": "e7719e2b779502db76821da19dfd89659c6ad39e2b1bd46e56b6b6eea87c7ca7",
+    "size_bytes": 41292005,
+    "published_at": "2026-10-24T18:43:16.680Z",
     "notes": [
-      "2.12.96：侧栏搜索栏吸顶，滚动时仍可直接搜索",
-      "朗读回复会提示媒体音量为 0；保留设备语音/放映厅/胶囊功能。"
+      "2.12.97：放映厅新增复制邀请链接，分享失败时也能直接发链接",
+      "保留深链邀请弹窗、网页播放状态卡、设备语音与侧栏吸顶搜索。"
     ]
   }
 }
