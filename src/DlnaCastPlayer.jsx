@@ -1,7 +1,7 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { DlnaReceiver } from "./dlna-receiver";
 import { awaitCastReceipt } from "./cast-receipt";
-import { apiFetch } from "./api.js";
+import { apiFetch, API_BASE_URL } from "./api.js";
 import {
   createCoWatchSession,
   readActiveCoWatchSession,
@@ -95,29 +95,30 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
     const lifetime = lifetimeRef.current;
     if (!current?.joinCode) return;
     const code = current.joinCode;
-    // 获取自己的显示ID
-    let displayId = "";
-    try {
-      const resp = await apiFetch("/api/v2/co-watch/display-id", { timeoutMs: 5000 }).catch(() => null);
-      if (resp) {
-        const data = await resp.json().catch(() => ({}));
-        displayId = data?.display_id || "";
-      }
-    } catch { /* 显示 ID 不影响分享。 */ }
     if (!lifetime?.active || roomRef.current?.id !== current.id) return;
-    const webLink = `https://dengtahome.com/room/join?room_code=${encodeURIComponent(code)}${displayId ? `&host_id=${encodeURIComponent(displayId)}` : ""}`;
+    const webLink = `https://dengtahome.com/room/join?room_code=${encodeURIComponent(code)}`;
     const text = `🎬 ${userName} 邀请您和您的伴侣（${aiName}）一起观影《${current.title || "影片"}》！\n\n加入放映厅：${webLink}\n邀请码：${code}`;
+    let shared = false;
     try {
       if (navigator.share && navigator.canShare?.({ text })) {
         await navigator.share({ title: "灯塔放映厅邀请", text, url: webLink });
-      } else {
+        shared = true;
+      }
+    } catch (error) {
+      if (error?.name === "AbortError") return;
+    }
+    if (!shared) {
+      try {
         await navigator.clipboard.writeText(text);
         if (!lifetime.active) return;
         setRoomNotice("已复制邀请链接");
-        clearTimeout(shareTimerRef.current);
-        shareTimerRef.current = setTimeout(() => setRoomNotice(""), 3000);
+      } catch {
+        if (!lifetime.active) return;
+        setRoomNotice(`邀请码：${code}（可截图发给朋友）`);
       }
-    } catch { /* 系统分享可以由用户取消。 */ }
+      clearTimeout(shareTimerRef.current);
+      shareTimerRef.current = setTimeout(() => setRoomNotice(""), 5000);
+    }
   };
 
   /* ─── 检查待处理邀请 ─── */
@@ -650,6 +651,37 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
     const lifetime = lifetimeRef.current;
     setExtracting(true); setPlaybackError("");
     try {
+      // Bilibili's player page exposes DASH video-only streams to the native
+      // extractor, which ExoPlayer rejects as an unsupported container. Resolve
+      // the progressive (video+audio) stream through the backend instead.
+      const bvid = String(url).match(/\b(BV[0-9A-Za-z]{10})\b/i)?.[1];
+      if (bvid) {
+        const streamUri = `${API_BASE_URL}/api/v2/co-watch/bilibili-stream?bvid=${encodeURIComponent(bvid)}`;
+        const probe = await fetch(streamUri, {
+          headers: { Range: "bytes=0-0" },
+          cache: "no-store",
+        }).catch(() => null);
+        if (probe?.ok) {
+          await DlnaReceiver.launchPlayer({
+            uri: streamUri,
+            title: `B站 · ${bvid}`,
+            userName,
+            aiName,
+          });
+          return;
+        }
+        // ExoPlayer cannot play Bilibili DASH video-only streams. Keep a local
+        // WebView player fallback so the 放映厅 remains usable for Bilibili.
+        try {
+          await DlnaReceiver.openWebPlayer({
+            url: `https://player.bilibili.com/player.html?bvid=${encodeURIComponent(bvid)}&page=1&high_quality=1&danmaku=0`,
+            title: `B站 · ${bvid}`,
+          });
+          return;
+        } catch {
+          // fall through to the native extractor on older builds
+        }
+      }
       const { VideoExtractor } = await import("./video-extractor");
       if (lifetime?.active) await VideoExtractor.extractVideo({ url, title: url });
     } catch {
@@ -742,7 +774,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
           <div className="cast-nav">
             <button type="button" className="cast-nav-back" onClick={handleClose}>← 返回</button>
             <span className="cast-nav-title">放映厅</span>
-            <span className="cast-nav-right">票夹</span>
+            <span className="cast-nav-right" aria-hidden="true" />
           </div>
 
           {playbackError && <p role="alert" className="cast-room-error">{playbackError}</p>}

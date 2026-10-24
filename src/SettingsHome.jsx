@@ -1,5 +1,8 @@
 import { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, Check, ChevronDown, Search, X } from "lucide-react";
+import SearchHistoryChips from "./SearchHistoryChips.jsx";
+import { filterSearchHistory } from "./search-history.js";
+import { useSearchHistory } from "./useSearchHistory.js";
 import {
   buildSettingsGroups,
   SETTINGS_QUICK_LINKS,
@@ -25,12 +28,14 @@ export default function SettingsHome({ categories = [], onSelectCategory, prefer
   const guideId = useId();
   const quickEditorId = useId();
   const quickLimitId = useId();
+  const searchHistory = useSearchHistory({ accountScope: preferenceScope, area: "settings" });
   const storedQuickIds = useMemo(() => readSettingsQuickLinks(categories, preferenceScope), [categories, preferenceScope]);
   const quickIds = normalizeSettingsQuickLinks(quickLinkEdits?.scope === preferenceScope ? quickLinkEdits.ids : storedQuickIds, categories);
   const quickIdsRef = useRef(quickIds);
   const quickCategoriesRef = useRef(categories);
   const groups = buildSettingsGroups(categories, query);
   const isSearching = query.trim().length > 0;
+  const matchingHistory = filterSearchHistory(searchHistory.history, query);
   const resultCount = groups.reduce((total, group) => total + group.categories.length, 0);
   const availableIds = new Set(categories.map((category) => category.id));
   const quickLinks = quickIds.map((id) => ({
@@ -51,6 +56,23 @@ export default function SettingsHome({ categories = [], onSelectCategory, prefer
     searchRef.current?.focus();
   }
 
+  function handleSearchChange(event) {
+    const value = event.target.value;
+    setQuery(value);
+    if (!event.nativeEvent?.isComposing) searchHistory.rememberSoon(value);
+  }
+
+  function pickSearch(term) {
+    setQuery(term);
+    searchHistory.flush(term);
+    searchRef.current?.focus();
+  }
+
+  function selectSearchResult(categoryId, event) {
+    searchHistory.flush(query);
+    onSelectCategory?.(categoryId, event?.currentTarget || event);
+  }
+
   function handleSearchKeyDown(event) {
     if (event.isComposing || event.nativeEvent?.isComposing || event.keyCode === 229 || event.nativeEvent?.keyCode === 229 || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
     if (event.key === "Escape" && query) {
@@ -58,6 +80,7 @@ export default function SettingsHome({ categories = [], onSelectCategory, prefer
       clearSearch();
     } else if (event.key === "Enter" && isSearching && resultCount === 1) {
       event.preventDefault();
+      searchHistory.flush(query);
       onSelectCategory?.(groups[0].categories[0].id, event.currentTarget);
     }
   }
@@ -99,7 +122,8 @@ export default function SettingsHome({ categories = [], onSelectCategory, prefer
             value={query}
             placeholder="试试“记忆”“语音”或“备份”"
             autoComplete="off"
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={handleSearchChange}
+            onCompositionEnd={(event) => searchHistory.rememberSoon(event.currentTarget.value)}
             onKeyDown={handleSearchKeyDown}
           />
           {query ? (
@@ -108,6 +132,12 @@ export default function SettingsHome({ categories = [], onSelectCategory, prefer
             </button>
           ) : null}
         </div>
+        <SearchHistoryChips
+          history={isSearching ? matchingHistory : searchHistory.history}
+          label={isSearching ? "搜索历史匹配" : "最近搜索"}
+          onPick={pickSearch}
+          onClear={searchHistory.clear}
+        />
       </div>
 
       {!isSearching && categories.length > 0 ? (
@@ -167,7 +197,7 @@ export default function SettingsHome({ categories = [], onSelectCategory, prefer
                   key={id}
                   type="button"
                   data-settings-category={id}
-                  onClick={event => onSelectCategory?.(id, event?.currentTarget)}
+                  onClick={event => selectSearchResult(id, event)}
                 >
                   {Icon ? <span className="settings-home-entry-icon" aria-hidden="true"><Icon /></span> : null}
                   <span className="settings-home-entry-text"><strong>{label}</strong><small>{description}</small></span>

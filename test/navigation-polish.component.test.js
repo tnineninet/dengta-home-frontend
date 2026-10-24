@@ -114,7 +114,10 @@ test("feature navigation keeps all known and future destinations reachable and p
     await ui.press("Enter");
     assert.deepEqual(ui.selected, ["future-feature", "future-feature"]);
     assert.equal(JSON.stringify(items), before);
-    assert.equal(ui.writes.length, 0);
+    assert.equal(
+      ui.writes.filter(([key]) => !String(key).startsWith("dengta.search-history.v1")).length,
+      0
+    );
   } finally { await ui.unmount(); }
 });
 

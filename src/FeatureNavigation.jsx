@@ -1,17 +1,22 @@
 import { useId, useRef, useState } from "react";
 import { Search, X } from "lucide-react";
 import "./feature-navigation.css";
+import SearchHistoryChips from "./SearchHistoryChips.jsx";
+import { filterSearchHistory } from "./search-history.js";
+import { useSearchHistory } from "./useSearchHistory.js";
 
 import { FEATURE_GROUPS, FEATURE_LABELS, FEATURE_DETAILS, filterFeatures } from "./feature-navigation.js";
 
 const groupedFeatureIds = new Set(FEATURE_GROUPS.flatMap(group => group.ids));
 
-export default function FeatureNavigation({ items = [], activeView, onNavigate }) {
+export default function FeatureNavigation({ items = [], activeView, onNavigate, historyScope = "" }) {
   const [search, setSearch] = useState("");
   const searchRef = useRef(null);
   const searchId = useId();
+  const searchHistory = useSearchHistory({ accountScope: historyScope, area: "features" });
   const visible = filterFeatures(items, search);
   const isSearching = search.trim().length > 0;
+  const matchingHistory = filterSearchHistory(searchHistory.history, search);
   const otherEntries = visible.filter(item => !groupedFeatureIds.has(item.id));
   const groups = FEATURE_GROUPS.map(group => ({ ...group, entries: visible.filter(item => group.ids.includes(item.id)) }));
   if (otherEntries.length) groups.push({ label: "更多功能", entries: otherEntries });
@@ -19,6 +24,18 @@ export default function FeatureNavigation({ items = [], activeView, onNavigate }
   function clearSearch() {
     setSearch("");
     searchRef.current?.focus();
+  }
+
+  function pickSearch(term) {
+    setSearch(term);
+    searchHistory.flush(term);
+    searchRef.current?.focus();
+  }
+
+  function handleSearchChange(event) {
+    const value = event.target.value;
+    setSearch(value);
+    if (!event.nativeEvent?.isComposing) searchHistory.rememberSoon(value);
   }
 
   function handleSearchKeyDown(event) {
@@ -29,6 +46,7 @@ export default function FeatureNavigation({ items = [], activeView, onNavigate }
       clearSearch();
     } else if (event.key === "Enter" && isSearching && visible.length === 1) {
       event.preventDefault();
+      searchHistory.flush(search);
       onNavigate?.(visible[0].id);
     }
   }
@@ -38,9 +56,15 @@ export default function FeatureNavigation({ items = [], activeView, onNavigate }
       <label htmlFor={searchId}>找个玩法</label>
       <div className="feature-navigation-search-field">
         <Search aria-hidden="true" />
-        <input id={searchId} ref={searchRef} type="search" value={search} onChange={event => setSearch(event.target.value)} onKeyDown={handleSearchKeyDown} placeholder="聊天、听歌、小棉花…" maxLength={60} autoComplete="off" aria-describedby={isSearching ? `${searchId}-results` : undefined} />
+        <input id={searchId} ref={searchRef} type="search" value={search} onChange={handleSearchChange} onCompositionEnd={event => searchHistory.rememberSoon(event.currentTarget.value)} onKeyDown={handleSearchKeyDown} placeholder="聊天、听歌、小棉花…" maxLength={60} autoComplete="off" aria-describedby={isSearching ? `${searchId}-results` : undefined} />
         {search ? <button type="button" aria-label="清空玩法搜索" onClick={clearSearch}><X aria-hidden="true" /></button> : null}
       </div>
+      <SearchHistoryChips
+        history={isSearching ? matchingHistory : searchHistory.history}
+        label={isSearching ? "搜索历史匹配" : "最近搜索"}
+        onPick={pickSearch}
+        onClear={searchHistory.clear}
+      />
     </div>
     {isSearching ? <p id={`${searchId}-results`} className="feature-navigation-results" role="status">{visible.length ? `找到 ${visible.length} 个玩法` : "没有找到匹配的玩法"}</p> : null}
     <nav className="primary-nav" aria-label="主要功能">
