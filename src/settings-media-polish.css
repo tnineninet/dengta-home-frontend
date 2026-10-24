@@ -58,3 +58,20 @@
     -webkit-backdrop-filter: blur(12px) saturate(1.16) !important;
   }
 }
+@media (max-width: 820px) {
+  .celestial-chromatic-light {
+    filter: blur(12px) saturate(1.16) !important;
+  }
+  .celestial-horizon-glow {
+    filter: blur(10px) !important;
+  }
+  .celestial-milky-way {
+    filter: blur(8px) saturate(1.12) !important;
+  }
+  .celestial-aura {
+    filter: blur(8px) saturate(1.2) !important;
+  }
+  .celestial-sunset-glow {
+    filter: blur(12px) saturate(1.16) !important;
+  }
+}
