@@ -36,6 +36,9 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
   const captureBusyRef = useRef(false);
   const [urlInput, setUrlInput] = useState("");
   const [extracting, setExtracting] = useState(false);
+  // Manual URL extraction does not come through the DLNA `info` receipt; keep
+  // the resolved media locally so 创建放映厅/分享邀请 are usable afterwards.
+  const [manualMedia, setManualMedia] = useState(null);
   // 放映厅
   const [room, setRoom] = useState(null);
   const [participants, setParticipants] = useState([]);
@@ -181,11 +184,18 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
     clearPendingInvite();
   };
 
-  const mediaUrl = room?.mediaUrl || info?.uri || info?.mediaUrl || "";
-  const title = room?.title || info?.title || "投屏播放";
-  const durationSeconds = Number(info?.durationSeconds || info?.duration || 0);
+  const mediaUrl =
+    room?.mediaUrl ||
+    info?.uri ||
+    info?.mediaUrl ||
+    manualMedia?.uri ||
+    "";
+  const title = room?.title || info?.title || manualMedia?.title || "投屏播放";
+  const durationSeconds = Number(
+    info?.durationSeconds || info?.duration || manualMedia?.durationSeconds || 0
+  );
   const cover = info?.cover || info?.thumb || "";
-  const sourceApp = info?.sourceApp || "DLNA 投屏";
+  const sourceApp = info?.sourceApp || (manualMedia ? "链接提取" : "DLNA 投屏");
 
   /* ─── 异步会话 ─── */
   const ensureSession = async () => {
@@ -603,7 +613,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
     }
   });
   useEffect(() => {
-    if (!mediaUrl) return;
+    if (!mediaUrl || manualMedia?.webFallback) return;
     let active = true, busy = false, unsupported = false;
     let timer;
     const poll = async () => {
@@ -632,7 +642,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
     return DlnaReceiver.launchPlayer({ uri, title, userName, aiName });
   });
   useEffect(() => {
-    if (!mediaUrl) return;
+    if (!mediaUrl || manualMedia?.webFallback) return;
     let active = true;
     if (launchedRef.current?.uri !== mediaUrl || launchedRef.current?.attempt !== launchAttempt) {
       launchedRef.current = { uri: mediaUrl, attempt: launchAttempt, promise: Promise.resolve().then(() => launchNativePlayer(mediaUrl)) };
@@ -662,17 +672,19 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
           cache: "no-store",
         }).catch(() => null);
         if (probe?.ok) {
-          await DlnaReceiver.launchPlayer({
-            uri: streamUri,
-            title: `B站 · ${bvid}`,
-            userName,
-            aiName,
-          });
+          // Let the normal mediaUrl effect launch the native player so the
+          // cast page also keeps a title/duration for room creation.
+          setManualMedia({ uri: streamUri, title: `B站 · ${bvid}` });
           return;
         }
         // ExoPlayer cannot play Bilibili DASH video-only streams. Keep a local
         // WebView player fallback so the 放映厅 remains usable for Bilibili.
         try {
+          setManualMedia({
+            uri: url,
+            title: `B站 · ${bvid}`,
+            webFallback: true,
+          });
           await DlnaReceiver.openWebPlayer({
             url: `https://player.bilibili.com/player.html?bvid=${encodeURIComponent(bvid)}&page=1&high_quality=1&danmaku=0`,
             title: `B站 · ${bvid}`,
@@ -693,9 +705,11 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
 
   const currentTime = formatDuration(position.positionMs / 1000);
   const totalTime = formatDuration(position.durationMs / 1000 || durationSeconds);
-  const launchCurrent = launchResult?.uri === mediaUrl && launchResult?.attempt === launchAttempt;
-  const launching = Boolean(mediaUrl) && !launchCurrent;
-  const launchFailed = launchCurrent && !launchResult.ok;
+  const manualWebFallback = manualMedia?.webFallback === true;
+  const launchCurrent = manualWebFallback ||
+    (launchResult?.uri === mediaUrl && launchResult?.attempt === launchAttempt);
+  const launching = Boolean(mediaUrl) && !manualWebFallback && !launchCurrent;
+  const launchFailed = launchCurrent && !launchResult?.ok && !manualWebFallback;
   const showWaitingOnly = !mediaUrl;
 
   const inviteDialog = (inviteCode && (inviteInfo || inviteError) && (
