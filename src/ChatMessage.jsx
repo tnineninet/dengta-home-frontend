@@ -45,6 +45,7 @@ function ChatMessage({
   onReference,
   onDismissError,
   onOpenActivity,
+  onOpenProviderSettings,
   innerMonologue,
   innerMonologuePending = false,
   innerMonologueError = "",
@@ -86,6 +87,11 @@ function ChatMessage({
   const refusalLogId = item.tool_calls?.refusal_detected?.error_log_id || item.error_log_id || item.tool_calls?.error_log_id;
   const storedFailure = item.chatError === true ||
     Boolean(item.tool_calls?.partial_reply === true && item.tool_calls?.error_code);
+  const errorCode = String(item.error_code || item.tool_calls?.error_code || "");
+  const errorSource = String(item.error_source || item.tool_calls?.error_source || "");
+  const providerError = /^provider_/i.test(errorCode) ||
+    errorSource === "upstream_provider_or_gateway" ||
+    /sensitive_words/i.test(String(item.provider_code || item.tool_calls?.provider_code || ""));
 
   function formatErrorTime(value) {
     if (!value) return "";
@@ -258,6 +264,7 @@ function ChatMessage({
         <AuthenticatedImage
           src={avatar}
           loading="eager"
+          fetchPriority="high"
           alt={`${displayName}的头像`}
           className={`message-avatar message-avatar-image ${
             isUser ? "is-user" : "is-assistant"
@@ -428,7 +435,25 @@ function ChatMessage({
                 provider_code: item.provider_code || item.tool_calls?.provider_code || "",
                 upstream_status: item.upstream_status ?? item.tool_calls?.upstream_status
               }} />
+              {providerError && typeof onOpenProviderSettings === "function" && (
+                <button
+                  type="button"
+                  className="chat-error-provider-action"
+                  onClick={onOpenProviderSettings}
+                >
+                  检查 / 切换模型接口
+                </button>
+              )}
             </div>
+          )}
+          {providerError && !showErrorDetails && typeof onOpenProviderSettings === "function" && (
+            <button
+              type="button"
+              className="chat-error-provider-action chat-error-provider-action-inline"
+              onClick={onOpenProviderSettings}
+            >
+              检查 / 切换模型接口
+            </button>
           )}
           {item.voiceAnalysis && voiceAnalysisVisible && (
             <div className="voice-message-meta">
