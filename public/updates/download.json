@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "latest": {
-    "version_code": 247,
-    "version": "2.12.89",
+    "version_code": 248,
+    "version": "2.12.90",
     "apk_url": "https://www.dengtahome.com/downloads/DengTa-latest.apk",
-    "sha256": "a2463c3aac5c1820eaa619df2368410a4cf658220d83ee917f05bc3544ddb175",
-    "size_bytes": 41286793,
-    "published_at": "2026-10-24T17:07:02.102Z",
+    "sha256": "7f696eb242c1dfeccd7a43f34574eff24ba074cf1630c4d9dc50dd3c68f2737a",
+    "size_bytes": 41286721,
+    "published_at": "2026-10-24T17:37:41.767Z",
     "notes": [
-      "2.12.89：胶囊媒体只在真正播放中显示，暂停时恢复状态胶囊",
-      "保留 2.12.88 放映厅/搜索历史/设置中文化；安装包约 41MB。"
+      "2.12.90：彩虹胶囊改为合成层位移动画，修复移动端持续占用一个 CPU 核的渲染问题",
+      "一起听未匹配提示去掉技术错误码；保留外部音乐胶囊显示/暂停/下一首。"
     ]
   }
 }
