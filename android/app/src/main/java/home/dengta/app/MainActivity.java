@@ -34,6 +34,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(BrowserLauncherPlugin.class);
         registerPlugin(DlnaReceiverPlugin.class);
         registerPlugin(VideoExtractorPlugin.class);
+        registerPlugin(DeviceTtsPlugin.class);
         registerPlugin(AppNavigationPlugin.class);
         registerPlugin(AppUpdatesPlugin.class);
         super.onCreate(savedInstanceState);
