@@ -16,3 +16,18 @@ test("historical function-call text is also hidden", () => {
   assert.equal(cleaned, "好呀");
   assert.equal(cleaned.includes("function"), false);
 });
+
+test("pipe-delimited provider tool tokens are hidden", () => {
+  const polluted = [
+    "正文。",
+    "</selectcompanionsticker:bear-hug|>",
+    "<|selectreplysuggestions: 抱紧点 | 把腿盘上来 |>",
+    '<|updatecompanionstatus:{"mood":"温柔"}|>',
+    '<|post_moment:{"content":"x"}|>',
+    "尾巴"
+  ].join("\n");
+  const cleaned = stripLegacyToolMarkupForDisplay(polluted);
+  assert.equal(cleaned, "正文。\n\n尾巴");
+  assert.equal(cleaned.includes("selectcompanionsticker"), false);
+  assert.equal(cleaned.includes("post_moment"), false);
+});

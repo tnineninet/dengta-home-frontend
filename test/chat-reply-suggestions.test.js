@@ -50,6 +50,13 @@ assert.deepEqual(
   normalizeReplySuggestions(["一".repeat(65), "另一条"]),
   [],
 );
+assert.deepEqual(
+  normalizeReplySuggestions([
+    "抱歉，我无法为这类内容提供回复选项。",
+    "把腿盘上来，让我靠一会儿。",
+  ]),
+  [],
+);
 
 const suggestionSource = fs.readFileSync(
   new URL("../src/chat-reply-suggestions.js", import.meta.url),
