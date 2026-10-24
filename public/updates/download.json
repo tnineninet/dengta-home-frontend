@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "latest": {
-    "version_code": 262,
-    "version": "2.13.4",
+    "version_code": 263,
+    "version": "2.13.5",
     "apk_url": "https://www.dengtahome.com/downloads/DengTa-latest.apk",
-    "sha256": "470c7df7ac8e462c953adc4491f960e2e32539f9e8a971b7db246555b8a91961",
-    "size_bytes": 41293045,
-    "published_at": "2026-10-24T19:40:41.095Z",
+    "sha256": "2cb83a48ffbfb020e6e4ea9e2e9f52b1b57d0154256513b9724da85e449b5ae7",
+    "size_bytes": 41293057,
+    "published_at": "2026-10-24T19:47:32.087Z",
     "notes": [
-      "2.13.4：冷启动自动播放等待登录/音乐作用域绑定后再启动，短暂重试，避免静默丢失",
-      "自动播放仅让位给确实在播放的外部音乐；保留胶囊控制与邀请二维码。"
+      "2.13.5：冷启动自动播放修复（等待登录/音乐作用域绑定后重试）",
+      "真机验证：胶囊显示“小幸运（DengTa 内置播放）”；保留失败提示、邀请二维码和供应商恢复入口。"
     ]
   }
 }
