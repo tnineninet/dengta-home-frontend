@@ -21,19 +21,33 @@ export function useBuiltInNowPlaying({ scope, accountScope, companionScope, enab
   useEffect(() => {
     if (!enabled) return;
     let active = true;
-    const instance = player.current, token = scope.capture();
+    let retryTimer = null;
+    const instance = player.current;
     let randomEnabled = false;
     try { randomEnabled = window.localStorage.getItem(`dengta_random_play_enabled:${accountScope || "guest"}`) === "1" || window.localStorage.getItem("dengta_random_play_enabled") === "1"; } catch { /* Storage may be unavailable. */ }
     if (!randomEnabled) return;
-    const timer = window.setTimeout(async () => {
-      if (!active || !scope.current(token)) return;
+    const attemptStart = async (remaining) => {
+      if (!active) return;
+      // Auth/scope can finish binding after the first cold-start effect. A
+      // captured token from then would be stale, so capture fresh and retry
+      // briefly instead of silently dropping autoplay for this launch.
+      const token = scope.capture();
+      if (!token || !scope.current(token)) {
+        if (remaining > 0) retryTimer = window.setTimeout(() => { void attemptStart(remaining - 1); }, 800);
+        return;
+      }
       if (callbacks.current.externalAvailable()) {
         const song = await callbacks.current.readExternal().catch(() => null);
         if (!active || !scope.current(token) || shouldYieldStartupToExternal(song)) return;
       }
       await instance?.start();
-    }, 2500);
-    return () => { active = false; window.clearTimeout(timer); };
+    };
+    const timer = window.setTimeout(() => { void attemptStart(6); }, 2500);
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+      if (retryTimer) window.clearTimeout(retryTimer);
+    };
   }, [scope, accountScope, companionScope, enabled]);
   return useMemo(() => ({
     control: (action, song) => player.current?.control(action, song),
