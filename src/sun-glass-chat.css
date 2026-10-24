@@ -2472,6 +2472,17 @@
   }
 }
 
+/* Compositor-only drift: the old background-position animation repainted the
+   blurred capsule every frame and kept one CPU core busy. */
+@keyframes sun-glass-rainbow-mobile-slide {
+  0% {
+    transform: translateX(-4%);
+  }
+  100% {
+    transform: translateX(4%);
+  }
+}
+
 @media (max-width: 820px) {
   .main-panel.view-chat .companion-status.sun-glass-floating-status-shell,
   .main-panel.view-chat .companion-status.sun-glass-floating-status-shell.high-energy,
@@ -3262,19 +3273,18 @@
   animation-play-state: running !important;
 }
 
-/* Phones: drift the gradient inside the capsule instead of sweeping a blurred
-   layer outside it. This keeps the rainbow moving without the old flicker. */
+/* Phones: slide the gradient with a compositor-only transform and a low
+   update rate. The previous 60fps background repaint kept a CPU core busy. */
 @media (pointer: coarse), (max-width: 820px) {
   .main-panel.view-chat .sun-glass-liquid-color-flow {
-    left: 0 !important;
-    width: 100% !important;
-    transform: none !important;
+    left: -6% !important;
+    width: 112% !important;
     opacity: 0.96 !important;
-    background-size: 200% 100% !important;
+    background-size: 100% 100% !important;
     filter: blur(2px) saturate(1.48) brightness(1.08) !important;
-    animation: sun-glass-rainbow-mobile-drift 9s ease-in-out infinite alternate !important;
+    animation: sun-glass-rainbow-mobile-slide 9s steps(24, end) infinite alternate !important;
     animation-play-state: running !important;
-    will-change: background-position;
+    will-change: auto;
   }
 
   .main-panel.view-chat .sun-glass-liquid-color-flow::after {
