@@ -47,3 +47,14 @@
     -webkit-backdrop-filter: blur(10px) saturate(1.1) !important;
   }
 }
+@media (max-width: 820px) {
+  .main-panel.view-chat .composer,
+  .save-bar {
+    backdrop-filter: blur(10px) saturate(1.15) !important;
+    -webkit-backdrop-filter: blur(10px) saturate(1.15) !important;
+  }
+  .chat-presence-stack {
+    backdrop-filter: blur(12px) saturate(1.16) !important;
+    -webkit-backdrop-filter: blur(12px) saturate(1.16) !important;
+  }
+}
