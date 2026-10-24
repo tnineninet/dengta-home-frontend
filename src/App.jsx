@@ -10293,7 +10293,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           </div>
         </div>
 
-        <FeatureNavigation items={navItems} activeView={activeView} onNavigate={changeView} />
+        <FeatureNavigation items={navItems} activeView={activeView} onNavigate={changeView} historyScope={privateMediaScope} />
 
         <div className="session-heading">
           <span>最近对话</span>
@@ -10531,7 +10531,22 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             onWatchTogether={() => { setTogetherEntryMode("external"); changeView("together"); }}
             onOpenNavigation={() => setIsSidebarOpen(true)}
             onOpenSettings={openSettingsPanel}
-            nowPlaying={nowPlaying}
+            nowPlaying={
+              nowPlaying ||
+              (coWatchSession?.status === "active" &&
+              coWatchSession?.sessionMode === "listening" &&
+              coWatchSession?.playbackState === "playing" &&
+              coWatchSession?.title
+                ? {
+                    title: coWatchSession.title,
+                    artist: "一起听",
+                    isPlaying: true,
+                    playbackStateKnown: true,
+                    source: "cowatch",
+                    readOnly: true,
+                  }
+                : null)
+            }
             nowPlayingBusy={nowPlayingBusy}
             onNowPlayingPlayPause={handleNowPlayingPlayPause}
             onNowPlayingNext={handleNowPlayingNext}
@@ -10749,11 +10764,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             <SettingsFlowField />
             <header className="settings-sheet-header">
               <div>
-                <span>PERSONAL SPACE</span>
-                <h2 id="settings-sheet-title">Settings</h2>
+                <span>个人空间</span>
+                <h2 id="settings-sheet-title">设置</h2>
               </div>
-              <button type="button" onClick={closeSettingsPanel}>
-                Done
+              <button type="button" aria-label="Done" onClick={closeSettingsPanel}>
+                完成
               </button>
             </header>
             <div
