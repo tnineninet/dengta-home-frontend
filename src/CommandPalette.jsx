@@ -31,6 +31,7 @@ export default function CommandPalette({
   const [query, setQuery] = useState("");
   const [highlighted, setHighlighted] = useState(0);
   const inputRef = useRef(null);
+  const dialogRef = useRef(null);
   const previouslyFocused = useRef(null);
   const shouldRestoreRef = useRef(true);
   const titleId = useId();
@@ -117,6 +118,28 @@ export default function CommandPalette({
   }, [onClose, open]);
 
   useEffect(() => {
+    if (!open) return undefined;
+    const onTab = event => {
+      if (event.key !== "Tab") return;
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const focusable = [...dialog.querySelectorAll(
+        'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+      )].filter(node => node.offsetParent !== null || node === globalThis.document?.activeElement);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = globalThis.document?.activeElement;
+      if (event.shiftKey ? active === first : active === last) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus({ preventScroll: true });
+      }
+    };
+    globalThis.document?.addEventListener?.("keydown", onTab);
+    return () => globalThis.document?.removeEventListener?.("keydown", onTab);
+  }, [open]);
+
+  useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- keep the highlighted row inside the filtered list
     setHighlighted(index => Math.min(index, Math.max(0, filtered.length - 1)));
   }, [filtered.length]);
@@ -167,7 +190,7 @@ export default function CommandPalette({
   if (!open) return null;
   return (
     <div className="command-palette-backdrop" role="presentation" onPointerDown={event => { if (event.target === event.currentTarget) closeAndRestore(); }}>
-      <section className="command-palette" role="dialog" aria-modal="true" aria-labelledby={titleId} onPointerDown={event => event.stopPropagation()}>
+      <section ref={dialogRef} className="command-palette" role="dialog" aria-modal="true" aria-labelledby={titleId} onPointerDown={event => event.stopPropagation()}>
         <header className="command-palette-header">
           <h2 id={titleId}>命令面板</h2>
           <button type="button" className="command-palette-close" aria-label="关闭命令面板" onClick={closeAndRestore}><X aria-hidden="true" /></button>

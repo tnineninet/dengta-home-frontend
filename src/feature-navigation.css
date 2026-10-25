@@ -92,6 +92,11 @@
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   line-height: 1;
+  animation: feature-badge-count-in 180ms cubic-bezier(.22, .8, .24, 1) both;
+}
+@keyframes feature-badge-count-in {
+  from { opacity: .35; transform: translateY(-5px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 .feature-navigation-badge.is-dot { min-width: 8px; min-height: 8px; padding: 0; font-size: 0; }
 .feature-navigation-groups > .sliding-indicator {
@@ -112,9 +117,11 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .sliding-indicator { transition: none !important; }
+  .feature-navigation-badge { animation: none !important; }
   .feature-navigation-group-items { transition: none !important; }
   .feature-navigation-group-toggle svg { transition: none !important; }
 }
+:root[data-dengta-reduced-motion="true"] .feature-navigation-badge { animation: none !important; }
 
 .feature-navigation .feature-navigation-group-items > button {
   display: flex;
