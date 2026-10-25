@@ -49,6 +49,14 @@ jobs:
         with:
           node-version: 24
 
+      - name: Verify Vercel production deployment SHA
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: prj_P6wMEPflv6ZGrwz9Aef92RWSCAqP
+          VERCEL_TEAM_ID: team_yr64LG4a6KOkuZ6WFpHqb7KA
+          EXPECTED_SHA: ${{ github.sha }}
+        run: node scripts/verify-vercel-production.mjs
+
       - name: Keep only the newest ten Vercel deployments
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
