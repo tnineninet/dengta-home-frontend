@@ -40,24 +40,26 @@ function installAndroidTouchRecovery() {
   if (!window.Capacitor?.isNativePlatform?.()) return;
   if (window.__dengtaTouchRecoveryInstalled) return;
   window.__dengtaTouchRecoveryInstalled = true;
-  let interacted = false;
   let recoveryButton = null;
   const removeButton = () => {
     recoveryButton?.remove();
     recoveryButton = null;
   };
-  const markInteraction = () => {
-    interacted = true;
-    removeButton();
-  };
-  ["pointerdown", "touchstart", "click"].forEach((name) => {
-    window.addEventListener(name, markInteraction, { capture: true, passive: true });
-  });
   window.setTimeout(() => {
-    if (interacted || document.querySelector(".dengta-touch-recovery")) return;
-    // A prelude left behind by an interrupted first paint is the most common
-    // invisible full-screen blocker. Removing it is harmless after startup.
-    document.querySelectorAll(".dengta-prelude").forEach((node) => node.remove());
+    if (document.querySelector(".dengta-touch-recovery")) return;
+    const root = document.getElementById("root");
+    const prelude = document.querySelector(".dengta-prelude");
+    const startup = document.querySelector(".app-startup-page");
+    const appEmpty = !root || root.childElementCount === 0;
+    const topElement = document.elementFromPoint(
+      Math.max(1, window.innerWidth / 2),
+      Math.max(1, window.innerHeight / 2),
+    );
+    const topOutsideRoot = Boolean(topElement && root && !root.contains(topElement));
+    if (!(prelude || startup || appEmpty || topOutsideRoot)) return;
+    // A prelude/startup veil left behind by an interrupted first paint is the
+    // most common invisible full-screen blocker. Removing it is harmless.
+    prelude?.remove();
     const button = document.createElement("button");
     button.type = "button";
     button.className = "dengta-touch-recovery";

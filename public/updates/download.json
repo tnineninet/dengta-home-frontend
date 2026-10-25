@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "latest": {
-    "version_code": 271,
-    "version": "2.13.13",
+    "version_code": 272,
+    "version": "2.13.14",
     "apk_url": "https://www.dengtahome.com/downloads/DengTa-latest.apk",
-    "sha256": "01b0f3949872bfd061e19071453c26ca60fa0ccb8a7e7f6e78250a1ae2d108c0",
-    "size_bytes": 41296577,
-    "published_at": "2026-10-25T04:42:11.495Z",
+    "sha256": "5cca4a36f868968d5c83778bcb3266743a97a32ab2823aec73a93e023a0b620d",
+    "size_bytes": 41296629,
+    "published_at": "2026-10-25T05:01:37.055Z",
     "notes": [
-      "2.13.13：红米/小米屏幕适配与点按失效修复（WebView 100% 文本缩放、触摸恢复按钮、装饰层禁用触摸）",
-      "一起听：自动选中歌单、顶部快速开始、随机播放立即生效；歌曲胶囊点击可打开状态栏；聊天支持颜文字/emoji/加粗。"
+      "2.13.14：红米/MIUI 点按修复加强（启动卡住时显示重载按钮）、聊天表达开关、一起听快速开始",
+      "歌曲胶囊内嵌到彩虹胶囊；藏宝图按钮宽度稳定。"
     ]
   }
 }
