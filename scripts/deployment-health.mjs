@@ -1,7 +1,4 @@
-import { createHash } from "node:crypto";
-
 const FEED = "https://www.dengtahome.com/updates/android.json";
-const APK = "https://www.dengtahome.com/downloads/DengTa-latest.apk";
 const BACKEND = "https://dengta-home-backend-rkmq.onrender.com/health";
 
 async function head(url) {
@@ -26,7 +23,9 @@ async function main() {
     result.errors.push(`feed: ${error.message}`);
   }
   try {
-    result.apk = await head(APK);
+    const apkUrl = result.feed?.latest?.apk_url;
+    if (!apkUrl) throw new Error("feed has no apk_url");
+    result.apk = await head(apkUrl);
     if (!result.apk.ok) result.errors.push(`apk HTTP ${result.apk.status}`);
   } catch (error) {
     result.errors.push(`apk: ${error.message}`);
