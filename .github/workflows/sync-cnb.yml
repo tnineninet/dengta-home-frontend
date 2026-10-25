@@ -31,4 +31,4 @@ jobs:
           test -n "$CNB_USERNAME"
           test -n "$CNB_TOKEN"
           AUTH="$(printf '%s:%s' "$CNB_USERNAME" "$CNB_TOKEN" | base64 -w0)"
-          git -c "http.https://cnb.cool/.extraheader=Authorization: Basic ${AUTH}" push "https://cnb.cool/dengtahome/dengtahome.git" "HEAD:refs/heads/frontend-main" --tags
+          git -c "http.https://cnb.cool/.extraheader=Authorization: Basic ${AUTH}" push "https://cnb.cool/dengtahome/dengtahome.git" "HEAD:refs/heads/frontend-main"
