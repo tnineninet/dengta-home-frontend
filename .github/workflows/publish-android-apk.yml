@@ -1,9 +1,12 @@
 name: Publish Android APK
 
 on:
-  # Do not publish from every src push. Publish is an explicit manual action
-  # after tests and real-device verification.
+  # Do not publish from every src push. Publish is an explicit action after
+  # tests and real-device verification; a release tag also starts it.
   workflow_dispatch:
+  push:
+    tags:
+      - "android-v*"
 
 permissions:
   contents: write
