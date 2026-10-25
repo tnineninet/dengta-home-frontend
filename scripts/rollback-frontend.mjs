@@ -8,7 +8,7 @@ if (!commit) {
   process.exit(2);
 }
 
-const git = (args, options = {}) => execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...options }).trim();
+const git = (args, options = {}) => String(execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...options }) ?? "").trim();
 const status = git(["status", "--porcelain"]);
 if (status) {
   console.error("Working tree is not clean. Commit or stash changes before rollback.");
