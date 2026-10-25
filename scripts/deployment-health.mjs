@@ -1,3 +1,5 @@
+import tls from "node:tls";
+
 const FEED = "https://www.dengtahome.com/updates/android.json";
 const BACKEND = "https://dengta-home-backend-rkmq.onrender.com/health";
 
@@ -10,6 +12,30 @@ async function head(url) {
     length: Number(response.headers.get("content-length") || 0),
     type: response.headers.get("content-type") || "",
   };
+}
+
+async function certExpiry(hostname) {
+  return new Promise((resolve, reject) => {
+    const socket = tls.connect({ host: hostname, port: 443, servername: hostname, timeout: 10000 }, () => {
+      const cert = socket.getPeerCertificate();
+      socket.end();
+      if (!cert || !cert.valid_to) {
+        reject(new Error(`no certificate for ${hostname}`));
+        return;
+      }
+      const validTo = new Date(cert.valid_to);
+      resolve({
+        hostname,
+        validTo: validTo.toISOString(),
+        daysRemaining: Math.floor((validTo.getTime() - Date.now()) / 86400000),
+      });
+    });
+    socket.on("timeout", () => {
+      socket.destroy();
+      reject(new Error(`TLS timeout for ${hostname}`));
+    });
+    socket.on("error", (error) => reject(error));
+  });
 }
 
 async function main() {
@@ -62,6 +88,17 @@ async function main() {
   } catch (error) {
     result.errors.push(`backend: ${error.message}`);
   }
+  result.certs = { site: null, backend: null };
+  for (const [key, hostname] of [["site", "www.dengtahome.com"], ["backend", "dengta-home-backend-rkmq.onrender.com"]]) {
+    try {
+      result.certs[key] = await certExpiry(hostname);
+      if (result.certs[key].daysRemaining < 14) {
+        result.errors.push(`${key} certificate expires in ${result.certs[key].daysRemaining} days`);
+      }
+    } catch (error) {
+      result.errors.push(`${key} certificate: ${error.message}`);
+    }
+  }
   result.summary = {
     feedVersion: result.feed?.latest?.version || null,
     feedVersionCode: result.feed?.latest?.version_code || null,
@@ -69,6 +106,8 @@ async function main() {
     apkBytes: result.apk?.length || null,
     backendRevision: result.backend?.body?.revision || null,
     backendStatus: result.backend?.body?.status || null,
+    siteCertDays: result.certs?.site?.daysRemaining ?? null,
+    backendCertDays: result.certs?.backend?.daysRemaining ?? null,
   };
   console.log(JSON.stringify(result, null, 2));
   if (result.errors.length) process.exitCode = 1;
