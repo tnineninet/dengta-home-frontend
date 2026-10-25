@@ -108,4 +108,13 @@ jobs:
       - name: Keep the APK on the runner
         run: |
           ls -lh android/app/build/outputs/apk/debug/app-debug.apk
-          echo "APK is published to Supabase by the explicit Publish Android APK workflow; GitHub artifact storage is not used."
+          echo "The APK is also uploaded when GitHub artifact quota allows; retention is one day."
+
+      - name: Upload APK
+        continue-on-error: true
+        uses: actions/upload-artifact@v6
+        with:
+          name: DengTa-home-android-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 1
