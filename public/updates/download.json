@@ -1,15 +1,15 @@
 {
   "schema_version": 1,
   "latest": {
-    "version_code": 270,
-    "version": "2.13.12",
+    "version_code": 271,
+    "version": "2.13.13",
     "apk_url": "https://www.dengtahome.com/downloads/DengTa-latest.apk",
-    "sha256": "51f0e6619fe787eaa8d7dfe7d4671b46d51fa5973600b0520c5275ac86f8bc89",
-    "size_bytes": 41293433,
-    "published_at": "2026-10-24T20:37:02.363Z",
+    "sha256": "01b0f3949872bfd061e19071453c26ca60fa0ccb8a7e7f6e78250a1ae2d108c0",
+    "size_bytes": 41296577,
+    "published_at": "2026-10-25T04:42:11.495Z",
     "notes": [
-      "2.13.12：手机端动态背景大面积 blur 降频，降低前台 CPU",
-      "保留设置页/聊天 blur 优化、自动播放修复、邀请二维码与供应商恢复入口。"
+      "2.13.13：红米/小米屏幕适配与点按失效修复（WebView 100% 文本缩放、触摸恢复按钮、装饰层禁用触摸）",
+      "一起听：自动选中歌单、顶部快速开始、随机播放立即生效；歌曲胶囊点击可打开状态栏；聊天支持颜文字/emoji/加粗。"
     ]
   }
 }
