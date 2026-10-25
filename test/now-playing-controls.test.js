@@ -59,15 +59,22 @@ let tree;
 try {
   const { default: Card } = await vite.ssrLoadModule("/src/NowPlayingCard.jsx");
   let clicked = 0;
-  await act(async () => { tree = TestRenderer.create(React.createElement(Card, { song, busy: true, expanded: false, onNext: () => clicked++ })); });
+  let toggled = 0;
+  await act(async () => { tree = TestRenderer.create(React.createElement(Card, { song, busy: true, expanded: false, onNext: () => clicked++, onToggle: () => toggled++ })); });
   const buttons = tree.root.findAllByType("button");
   assert.equal(buttons.length, 4);
+  const glassCard = tree.root.findAll(node => node.props?.className === "sun-glass-liquid-capsule-toggle has-now-playing")[0];
+  assert.ok(glassCard, "capsule retains a dedicated hit target");
+  await act(async () => glassCard.props.onClick({ target: { closest: () => null } }));
+  assert.equal(toggled, 1, "clicking empty capsule space opens the status panel");
+  await act(async () => glassCard.props.onClick({ target: { closest: () => buttons[0] } }));
+  assert.equal(toggled, 1, "clicking a real control must not toggle the status panel");
   for (const button of buttons) {
     let parent = button.parent;
     while (parent) { assert.notEqual(parent.type, "button", "no nested buttons"); assert.notEqual(parent.props["aria-hidden"], "true", "controls must be visible to screen readers"); parent = parent.parent; }
   }
   assert.equal(buttons.find(b => b.props["aria-label"] === "下一首").props.disabled, true);
-  await act(async () => tree.update(React.createElement(Card, { song, busy: false, expanded: true, onNext: () => clicked++ })));
+  await act(async () => tree.update(React.createElement(Card, { song, busy: false, expanded: true, onNext: () => clicked++, onToggle: () => toggled++ })));
   const next = tree.root.findAllByType("button").find(b => b.props["aria-label"] === "下一首");
   assert.equal(next.props.disabled, false); await act(async () => next.props.onClick()); assert.equal(clicked, 1);
 } finally { if (tree) await act(async () => tree.unmount()); await vite.close(); }

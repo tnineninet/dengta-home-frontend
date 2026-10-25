@@ -27,14 +27,16 @@ const vite=await createServer({root:fileURLToPath(new URL('..',import.meta.url))
  if(id.replaceAll('\\','/').endsWith('/src/api.js'))return 'export const apiRequest=(...args)=>globalThis.__musicFixture.request(...args);export const apiFetch=apiRequest;';
  if(id.replaceAll('\\','/').endsWith('/src/auth-session.js'))return 'export const authSession=globalThis.__musicFixture.auth;';
 }}]});
-let tree,starts=0,ends=0,resolveStart,resolveEnd;
+let tree,starts=0,ends=0,resolveStart,resolveEnd,randomStarts=0;
 const settle=()=>new Promise(resolve=>setTimeout(resolve,20));
-const props={...identity,onStart:()=>{starts++;return new Promise(resolve=>{resolveStart=resolve;});},onEnd:()=>{ends++;return new Promise(resolve=>{resolveEnd=resolve;});}};
+const props={...identity,onStartRandom:()=>{randomStarts++;},onStart:()=>{starts++;return new Promise(resolve=>{resolveStart=resolve;});},onEnd:()=>{ends++;return new Promise(resolve=>{resolveEnd=resolve;});}};
 const button=text=>tree.root.findAllByType('button').find(n=>n.children.includes(text));
 try{
  const {default:Music}=await vite.ssrLoadModule('/src/TogetherMusic.jsx');
  async function mount(){await act(async()=>{tree=TestRenderer.create(React.createElement(Music,props));await settle();});const initialSrc=tree.root.findByType('audio').props.src;assert.ok(initialSrc===undefined||initialSrc===playlist.items[0].url,'empty player must not request the page itself as media');await act(async()=>{tree.root.findAllByType('select').find(n=>n.findAllByType('option').some(o=>o.props.value==='p')).props.onChange({target:{value:'p'}});await settle();});assert.equal(tree.root.findByType('audio').props.src,playlist.items[0].url,'selecting a playable song must attach its exact media source');}
  await mount();
+ await act(async()=>{const randomToggle=tree.root.findAllByType('input').find(n=>n.props.type==='checkbox');assert.ok(randomToggle,'random-play switch is rendered');randomToggle.props.onChange({target:{checked:true}});});
+ assert.equal(randomStarts,1,'turning on random play starts playback immediately');
  await act(async()=>{const click=button('开始一起听').props.onClick;click();click();});assert.equal(starts,1,'synchronous duplicate click must only create one session');
  await act(async()=>{resolveStart({ok:false,code:'fixture_start_failure',message:'fixture failed'});await settle();});assert.match(JSON.stringify(tree.toJSON()),/fixture_start_failure/);assert.equal(calls.filter(c=>c.path.endsWith('/queue/operations')).length,0);
  await act(async()=>{button('开始一起听').props.onClick();});assert.equal(starts,2);
