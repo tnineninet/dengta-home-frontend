@@ -290,7 +290,8 @@ test("actual scope hydration cannot write the previous companion's state into a 
     companionStatusRef: { current: oldStatus }, companionInteractionStatsRef: { current: oldStats }, runtimeStateHydratedRef: { current: true }, companionStatus: oldStatus, companionInteractionStats: oldStats,
     readCompanionStatus: () => nextStatus, readCompanionInteractionStats: () => nextStats,
     setCompanionStatus: value => { context.nextStatus = value; }, setCompanionInteractionStats: value => { context.nextStats = value; },
-    useLayoutEffect: callback => callback(), useEffect: callback => callback(),
+    useLayoutEffect: callback => callback(), useEffect: callback => callback(), useRef: value => ({ current: value }),
+    activeSessionId: "",
     saveCompanionStatus: (value, scope) => writes.push({ value, scope }), saveCompanionInteractionStats: (value, scope) => writes.push({ value, scope }),
   };
   const writes = [];
