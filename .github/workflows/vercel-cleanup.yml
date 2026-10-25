@@ -1,6 +1,8 @@
 name: Vercel deployment storage cleanup
 
 on:
+  schedule:
+    - cron: "17 3 * * 1"
   workflow_dispatch:
     inputs:
       apply:
@@ -31,6 +33,6 @@ jobs:
       - name: Clean old Vercel deployments
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          APPLY: ${{ inputs.apply && '1' || '' }}
-          KEEP: ${{ inputs.keep }}
+          APPLY: ${{ github.event_name == 'schedule' || inputs.apply ? '1' : '' }}
+          KEEP: ${{ inputs.keep || 10 }}
         run: node scripts/vercel-cleanup.mjs
