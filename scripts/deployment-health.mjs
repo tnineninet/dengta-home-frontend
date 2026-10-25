@@ -28,6 +28,10 @@ async function main() {
     if (!Number.isSafeInteger(Number(result.feed.latest.version_code)) || Number(result.feed.latest.version_code) < 1) {
       throw new Error("feed version_code is invalid");
     }
+    const expectedVersionCode = Number(process.env.EXPECTED_FEED_VERSION_CODE || 0);
+    if (expectedVersionCode > 0 && Number(result.feed.latest.version_code) !== expectedVersionCode) {
+      throw new Error(`feed is stale: expected ${expectedVersionCode}, got ${result.feed.latest.version_code}`);
+    }
   } catch (error) {
     result.feed = null;
     result.errors.push(`feed: ${error.message}`);

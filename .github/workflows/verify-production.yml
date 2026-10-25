@@ -59,4 +59,7 @@ jobs:
         run: node scripts/vercel-cleanup.mjs
 
       - name: Verify feed, APK and backend
-        run: node scripts/deployment-health.mjs
+        run: |
+          EXPECTED_FEED_VERSION_CODE="$(node -p "require('./public/updates/android.json').latest.version_code")"
+          export EXPECTED_FEED_VERSION_CODE
+          node scripts/deployment-health.mjs
