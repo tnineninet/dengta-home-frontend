@@ -7,6 +7,12 @@ on:
       - main
     paths:
       - "android/**"
+      - "src/**"
+      - "public/**"
+      - "index.html"
+      - "package.json"
+      - "package-lock.json"
+      - "capacitor.config.*"
       - ".github/workflows/android-apk.yml"
 
 permissions:
