@@ -72,7 +72,7 @@ const neteasePlaybackPlugin = fs.readFileSync(
 );
 
 assert.match(buildGradle, /applicationId "home\.dengta\.app"/);
-assert.match(buildGradle, /versionCode project\.hasProperty\("versionCode"\)[\s\S]*?: 277\b/);
+assert.match(buildGradle, /versionCode project\.hasProperty\("versionCode"\)[\s\S]*?: 278\b/);
 assert.match(buildGradle, /versionName project\.hasProperty\("versionName"\)/, "APK version name must be injectable by the release workflow");
 assert.ok(buildGradle.includes(`: "${packageJson.version}"`), "fallback APK versionName must match the package version");
 assert.match(
@@ -133,7 +133,7 @@ assert.doesNotMatch(
 );
 assert.doesNotMatch(
   screenGlanceService,
-  /小灯|桃桃/,
+  /灏忕伅|妗冩/,
   "native background notifications must not ship a private companion identity",
 );
 assert.match(neteasePlaybackPlugin, /Pattern\.compile\("\^\[0-9\]\{1,20\}\$"\)/);
@@ -142,3 +142,4 @@ assert.match(neteasePlaybackPlugin, /new AlertDialog\.Builder/);
 assert.match(neteasePlaybackPlugin, /Intent\.CATEGORY_BROWSABLE/);
 assert.doesNotMatch(neteasePlaybackPlugin, /getString\("(?:url|intent|package|component)"/);
 console.log("Android release configuration, signing and artifact retention checks passed");
+
