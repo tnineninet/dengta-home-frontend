@@ -153,7 +153,8 @@ jobs:
             curl -fsS -X POST "$VERCEL_DEPLOY_HOOK" >/dev/null
             echo "Triggered Vercel deployment"
           else
-            echo "VERCEL_DEPLOY_HOOK is not configured; the repository push still deploys normally"
+            echo "VERCEL_DEPLOY_HOOK is not configured; refusing to publish without a site deploy" >&2
+            exit 1
           fi
 
       - name: Dispatch post-release verification and CNB sync

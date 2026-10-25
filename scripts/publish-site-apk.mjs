@@ -19,7 +19,7 @@ if (!supabaseUrl || !supabaseKey) {
 
 const bytes = fs.readFileSync(apkSource);
 const sha256 = createHash("sha256").update(bytes).digest("hex");
-const objectPath = "apk/DengTa-latest.apk";
+const objectPath = `apk/DengTa-${versionName}.apk`;
 const upload = await fetch(`${supabaseUrl}/storage/v1/object/dengta-updates/${objectPath}`, {
   method: "POST",
   headers: {
