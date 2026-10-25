@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "*"
   workflow_dispatch:
 
 permissions:
@@ -24,6 +26,7 @@ jobs:
           fetch-depth: 0
 
       - name: Mirror main to CNB frontend-main
+        if: github.ref_type == 'branch'
         env:
           CNB_USERNAME: ${{ secrets.CNB_USERNAME }}
           CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
