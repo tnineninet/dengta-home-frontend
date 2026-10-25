@@ -27,6 +27,17 @@ async function main() {
     if (!apkUrl) throw new Error("feed has no apk_url");
     result.apk = await head(apkUrl);
     if (!result.apk.ok) result.errors.push(`apk HTTP ${result.apk.status}`);
+    const expectedSize = Number(result.feed?.latest?.size_bytes);
+    if (Number.isSafeInteger(expectedSize) && expectedSize > 0 && result.apk.length !== expectedSize) {
+      result.errors.push(`apk size mismatch: feed=${expectedSize} remote=${result.apk.length}`);
+    }
+    const expectedSha = String(result.feed?.latest?.sha256 || "");
+    if (!/^[a-f0-9]{64}$/i.test(expectedSha)) {
+      result.errors.push("apk sha256 missing or invalid in feed");
+    }
+    if (!/android|octet-stream/i.test(result.apk.type)) {
+      result.errors.push(`apk content-type unexpected: ${result.apk.type || "missing"}`);
+    }
   } catch (error) {
     result.errors.push(`apk: ${error.message}`);
   }
