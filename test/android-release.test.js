@@ -72,7 +72,7 @@ const neteasePlaybackPlugin = fs.readFileSync(
 );
 
 assert.match(buildGradle, /applicationId "home\.dengta\.app"/);
-assert.match(buildGradle, /versionCode project\.hasProperty\("versionCode"\)[\s\S]*?: 177\b/);
+assert.match(buildGradle, /versionCode project\.hasProperty\("versionCode"\)[\s\S]*?: 277\b/);
 assert.match(buildGradle, /versionName project\.hasProperty\("versionName"\)/, "APK version name must be injectable by the release workflow");
 assert.ok(buildGradle.includes(`: "${packageJson.version}"`), "fallback APK versionName must match the package version");
 assert.match(
