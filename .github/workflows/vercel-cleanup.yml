@@ -1,0 +1,36 @@
+name: Vercel deployment storage cleanup
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Delete old deployments instead of dry-running
+        type: boolean
+        default: false
+      keep:
+        description: Number of newest deployments to keep
+        type: number
+        default: 10
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Clean old Vercel deployments
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          APPLY: ${{ inputs.apply && '1' || '' }}
+          KEEP: ${{ inputs.keep }}
+        run: node scripts/vercel-cleanup.mjs
