@@ -166,11 +166,12 @@ test("receiver route, SW bypass, Vercel rewrite and controller contract are wire
   assert.equal(
     vercel.rewrites.some((item) => item.source === "/downloads/DengTa-latest.apk"),
     false,
-    "the APK is served from the local public directory, not a GitHub release rewrite",
+    "the APK is not proxied through a Vercel rewrite; it is hosted in object storage",
   );
+  const androidManifest = JSON.parse(source("../public/updates/android.json"));
   assert.match(
-    JSON.stringify(vercel.headers.find((item) => item.source === "/downloads/DengTa-latest.apk")),
-    /application\/vnd\.android\.package-archive/,
+    androidManifest.latest.apk_url,
+    /^https:\/\/nyyqizwrlmejpfdhgrnd\.supabase\.co\/storage\/v1\/object\/public\/dengta-updates\/apk\/DengTa-latest\.apk$/,
+    "the update feed points at the object-storage APK so Vercel does not store a 41 MB binary per deployment",
   );
-  assert.ok(fs.statSync(new URL("../public/downloads/DengTa-latest.apk", import.meta.url)).size > 1_000_000);
 });

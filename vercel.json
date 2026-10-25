@@ -40,10 +40,6 @@
   ],
   "rewrites": [
     {
-      "source": "/downloads/DengTa-latest.apk",
-      "destination": "https://nyyqizwrlmejpfdhgrnd.supabase.co/storage/v1/object/public/dengta-updates/apk/DengTa-latest.apk"
-    },
-    {
       "source": "/download",
       "destination": "/download.html"
     },
