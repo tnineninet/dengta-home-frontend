@@ -24,16 +24,17 @@ const api = async (method, pathname) => {
 };
 
 const deployments = [];
-let until = "";
+let until = 0;
 while (true) {
-  const query = new URLSearchParams({ projectId, limit: "100", ...(until ? { until } : {}) });
+  const query = new URLSearchParams({ projectId, limit: "100", ...(until ? { until: String(until) } : {}) });
   if (orgId) query.set("teamId", orgId);
   const page = await api("GET", `/v6/deployments?${query}`);
   const rows = page.deployments || [];
   deployments.push(...rows);
   if (rows.length < 100) break;
-  until = rows.at(-1)?.uid || rows.at(-1)?.id || "";
-  if (!until) break;
+  const lastCreated = Number(rows.at(-1)?.created || 0);
+  if (!lastCreated || lastCreated === until) break;
+  until = lastCreated;
 }
 
 const unique = [...new Map(deployments.map((item) => [item.uid || item.id, item])).values()]

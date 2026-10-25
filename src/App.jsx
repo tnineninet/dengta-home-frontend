@@ -10487,7 +10487,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     <div
       className={`app-shell${
         chatSkinPreferences.reduceMotion ? " reduce-chat-motion" : ""
-      }${isSettingsOpen ? " is-settings-open" : ""}`}
+      }${isSettingsOpen ? " is-settings-open" : ""}${isSidebarOpen ? " is-sidebar-open" : ""}`}
       data-chat-skin={chatSkinPreferences.skin}
       data-ornament-activity={chatSkinPreferences.ornamentActivity}
       data-chat-streaming={isSending ? "true" : "false"}
@@ -10533,6 +10533,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             <small>给 AI 一个家</small>
           </div>
         </div>
+
+        <button
+          type="button"
+          className="sidebar-close"
+          aria-label="关闭菜单"
+          onClick={() => setIsSidebarOpen(false)}
+        >
+          ×
+        </button>
 
         <FeatureNavigation items={navItems} activeView={activeView} onNavigate={changeView} historyScope={privateMediaScope} badges={navigationBadges} />
 
