@@ -157,6 +157,23 @@ jobs:
             exit 1
           fi
 
+      - name: Wait for the new feed and verify APK checksum
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run == true) && !startsWith(github.ref_name, 'android-dryrun-') }}
+        env:
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+        run: |
+          for attempt in $(seq 1 30); do
+            live_code="$(curl -fsS "https://www.dengtahome.com/updates/android.json?ts=$(date +%s)" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).latest.version_code)}catch{console.log('')}})")"
+            echo "attempt=${attempt} live_version_code=${live_code} expected=${VERSION_CODE}"
+            if [ "$live_code" = "$VERSION_CODE" ]; then
+              node scripts/verify-apk-integrity.mjs
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for the update feed to expose ${VERSION_CODE}." >&2
+          exit 1
+
       - name: Dispatch post-release verification and CNB sync
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run == true) && !startsWith(github.ref_name, 'android-dryrun-') }}
         env:
@@ -164,4 +181,3 @@ jobs:
         run: |
           gh workflow run verify-production.yml --ref main || echo "verify-production dispatch failed"
           gh workflow run sync-cnb.yml --ref main || echo "CNB sync dispatch failed"
-          gh workflow run verify-apk-integrity.yml --ref main || echo "APK integrity dispatch failed"
