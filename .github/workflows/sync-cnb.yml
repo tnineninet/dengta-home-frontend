@@ -36,6 +36,19 @@ jobs:
           AUTH="$(printf '%s:%s' "$CNB_USERNAME" "$CNB_TOKEN" | base64 -w0)"
           git -c "http.https://cnb.cool/.extraheader=Authorization: Basic ${AUTH}" push "https://cnb.cool/dengtahome/dengtahome.git" "HEAD:refs/heads/frontend-main"
 
+      - name: Verify CNB frontend-main matches this commit
+        if: github.ref_type == 'branch'
+        env:
+          CNB_USERNAME: ${{ secrets.CNB_USERNAME }}
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+        run: |
+          test -n "$CNB_USERNAME"
+          test -n "$CNB_TOKEN"
+          AUTH="$(printf '%s:%s' "$CNB_USERNAME" "$CNB_TOKEN" | base64 -w0)"
+          REMOTE_SHA="$(git -c "http.https://cnb.cool/.extraheader=Authorization: Basic ${AUTH}" ls-remote "https://cnb.cool/dengtahome/dengtahome.git" refs/heads/frontend-main | awk '{print $1}')"
+          echo "cnb=${REMOTE_SHA} github=${GITHUB_SHA}"
+          test "$REMOTE_SHA" = "$GITHUB_SHA"
+
       - name: Mirror missing tags
         env:
           CNB_USERNAME: ${{ secrets.CNB_USERNAME }}
