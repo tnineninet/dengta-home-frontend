@@ -1,16 +1,7 @@
-name: Vercel deployment storage cleanup
+name: Vercel storage cleanup
 
 on:
   workflow_dispatch:
-    inputs:
-      apply:
-        description: Delete old deployments instead of dry-running
-        required: false
-        default: "false"
-      keep:
-        description: Number of newest deployments to keep
-        required: false
-        default: "10"
   schedule:
     - cron: "17 3 * * 1"
 
@@ -30,9 +21,9 @@ jobs:
         with:
           node-version: 24
 
-      - name: Clean old Vercel deployments
+      - name: Keep only the newest ten Vercel deployments
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          APPLY: ${{ github.event_name == 'schedule' || inputs.apply == 'true' ? '1' : '' }}
-          KEEP: ${{ inputs.keep || '10' }}
+          APPLY: "1"
+          KEEP: "10"
         run: node scripts/vercel-cleanup.mjs
