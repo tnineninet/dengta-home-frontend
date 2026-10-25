@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  deployments: read
 
 jobs:
   health:
@@ -23,3 +24,9 @@ jobs:
 
       - name: Check feed, APK and backend
         run: node scripts/deployment-health.mjs
+
+      - name: Verify latest Production GitHub deployment
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: node scripts/deployment-status.mjs
