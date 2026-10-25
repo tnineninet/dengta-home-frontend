@@ -3,14 +3,14 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 273,
-    "version": "2.13.15",
+    "version_code": 274,
+    "version": "2.13.16",
     "apk_url": "https://www.dengtahome.com/downloads/DengTa-latest.apk",
-    "sha256": "33fe1515ff0ffb7cb0bbba35f99ddf6d535d05e29ef26c7314f8af49d1e7e813",
-    "size_bytes": 41296701,
-    "published_at": "2026-10-25T05:19:16.232Z",
+    "sha256": "305bdc72ba4c3900512606cd95e43342a82b91a68c11ddb26e500506a5993be4",
+    "size_bytes": 41298717,
+    "published_at": "2026-10-25T05:52:08.958Z",
     "notes": [
-      "2.13.15：红米/MIUI 点按与屏幕适配、歌曲胶囊内嵌彩虹胶囊、地图缩放按钮固定尺寸、一起听快速开始"
+      "2.13.16：全安卓适配（320–768dp、横屏、短屏、旧 WebView 回退）；红米/MIUI 点按保护；歌曲胶囊内嵌彩虹；地图缩放控件固定尺寸"
     ]
   }
 }
