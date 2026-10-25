@@ -85,7 +85,7 @@ function installAndroidTouchRecovery() {
       "touch-action:manipulation",
     ].join(";");
     button.addEventListener("click", () => {
-      button.remove();
+      removeButton();
       window.location.reload();
     });
     document.body.appendChild(button);

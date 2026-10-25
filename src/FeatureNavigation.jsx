@@ -52,6 +52,7 @@ export default function FeatureNavigation({ items = [], activeView, onNavigate, 
   const lastActiveViewRef = useRef(activeView);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- hydrate UI-only collapse state from storage
     setCollapsed(readCollapsedGroups(historyScope));
   }, [historyScope]);
 
@@ -60,6 +61,7 @@ export default function FeatureNavigation({ items = [], activeView, onNavigate, 
     lastActiveViewRef.current = activeView;
     if (!activeGroup || isSearching) return;
     if (collapsed[activeGroup.label]) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- expand the destination group on a real view change
       setCollapsed(previous => {
         if (!previous[activeGroup.label]) return previous;
         const next = { ...previous, [activeGroup.label]: false };

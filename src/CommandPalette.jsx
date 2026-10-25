@@ -97,6 +97,7 @@ export default function CommandPalette({
     }
     shouldRestoreRef.current = true;
     previouslyFocused.current = globalThis.document?.activeElement || returnFocusRef?.current || null;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset transient search state when the dialog opens
     setQuery("");
     setHighlighted(0);
     const timer = globalThis.setTimeout(() => inputRef.current?.focus(), 0);
@@ -116,6 +117,7 @@ export default function CommandPalette({
   }, [onClose, open]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- keep the highlighted row inside the filtered list
     setHighlighted(index => Math.min(index, Math.max(0, filtered.length - 1)));
   }, [filtered.length]);
 

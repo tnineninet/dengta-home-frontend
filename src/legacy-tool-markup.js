@@ -72,7 +72,7 @@ export function stripLegacyToolMarkupForDisplay(value) {
     }
     if (!knownAt(source, start)) { output += "<"; index = start + 1; continue; }
     const end = findTagEnd(source, start);
-    if (end < 0) { index = source.length; break; }
+    if (end < 0) break;
     index = end;
   }
   return output.replace(/\n{3,}/g, "\n\n").trim();

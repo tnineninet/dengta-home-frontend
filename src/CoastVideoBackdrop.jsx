@@ -21,6 +21,7 @@ export default function CoastVideoBackdrop({ sky, weatherMode = "clear", reduced
       video.pause();
       video.removeAttribute("src");
       video.load();
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- poster fallback owns playback state
       setPlayback(current => ({ ...current, state: "static", posterScene: scene }));
       return undefined;
     }
