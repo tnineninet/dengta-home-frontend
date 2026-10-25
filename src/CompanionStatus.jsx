@@ -138,6 +138,8 @@ function CompanionStatus({
   const xinchaoDetailsRef = useRef(null);
   const rootRef = useRef(null);
   const panelRef = useRef(null);
+  const panelRootRef = useRef(null);
+  const wasExpandedRef = useRef(false);
   const lastCloseRequestRef = useRef(closeRequest);
   const remainingSeconds = remainingAt(normalized.countdown, clockNow);
   const rawCountdownEnd = Date.parse(status?.countdown?.endsAt);
@@ -176,6 +178,7 @@ function CompanionStatus({
     let cancelled = false;
     let timer = null;
     const load = async () => {
+      if (globalThis.document?.visibilityState === "hidden") return;
       try {
         const data = await apiRequest("/api/v2/xinchao/state");
         if (!cancelled) {
@@ -244,6 +247,22 @@ function CompanionStatus({
   ]);
 
   useEffect(() => {
+    if (!expanded) {
+      if (wasExpandedRef.current) {
+        xinchaoButtonRef.current?.focus?.({ preventScroll: true });
+      }
+      wasExpandedRef.current = false;
+      return undefined;
+    }
+    wasExpandedRef.current = true;
+    const closeButton = panelRootRef.current?.querySelector(
+      ".sun-glass-status-window-actions button:last-child",
+    );
+    closeButton?.focus?.({ preventScroll: true });
+    return undefined;
+  }, [expanded]);
+
+  useEffect(() => {
     if (active) return undefined;
     const animationFrame = window.requestAnimationFrame(closePanel);
     return () => window.cancelAnimationFrame(animationFrame);
@@ -259,9 +278,14 @@ function CompanionStatus({
     if (!expanded) return undefined;
     panelRef.current?.scrollTo({ top: 0 });
     function closeFromOutside(event) {
+      // The panel is portaled out of rootRef. panelRef only points at the
+      // scroll body, so header actions (menu/settings/close) must also count
+      // as inside; otherwise pointerdown closes the panel before onClick runs
+      // and phone taps fall through to the chat.
       if (
         !rootRef.current?.contains(event.target) &&
-        !panelRef.current?.contains(event.target)
+        !panelRef.current?.contains(event.target) &&
+        !event.target?.closest?.(".sun-glass-floating-status-panel")
       ) {
         closePanel();
       }
@@ -524,6 +548,7 @@ function CompanionStatus({
 
       {renderStatusPortal(
         <div
+          ref={panelRootRef}
           className={`status-panel sun-glass-floating-status-panel${
             expanded ? " is-open" : ""
           }`}
@@ -543,7 +568,8 @@ function CompanionStatus({
                 type="button"
                 aria-label="打开侧边导航"
                 title="导航"
-                onClick={() => {
+                onClick={(event) => {
+                  event.stopPropagation();
                   closePanel();
                   onOpenNavigation?.();
                 }}
@@ -554,7 +580,8 @@ function CompanionStatus({
                 type="button"
                 aria-label="打开设置"
                 title="设置"
-                onClick={() => {
+                onClick={(event) => {
+                  event.stopPropagation();
                   closePanel();
                   onOpenSettings?.();
                 }}
