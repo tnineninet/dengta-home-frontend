@@ -32,3 +32,18 @@ jobs:
           test -n "$CNB_TOKEN"
           AUTH="$(printf '%s:%s' "$CNB_USERNAME" "$CNB_TOKEN" | base64 -w0)"
           git -c "http.https://cnb.cool/.extraheader=Authorization: Basic ${AUTH}" push "https://cnb.cool/dengtahome/dengtahome.git" "HEAD:refs/heads/frontend-main"
+
+      - name: Mirror missing tags
+        env:
+          CNB_USERNAME: ${{ secrets.CNB_USERNAME }}
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+        run: |
+          test -n "$CNB_USERNAME"
+          test -n "$CNB_TOKEN"
+          AUTH="$(printf '%s:%s' "$CNB_USERNAME" "$CNB_TOKEN" | base64 -w0)"
+          URL="https://cnb.cool/dengtahome/dengtahome.git"
+          for tag in $(git tag --list); do
+            if ! git -c "http.https://cnb.cool/.extraheader=Authorization: Basic ${AUTH}" ls-remote --tags "$URL" "refs/tags/${tag}" | grep -q .; then
+              git -c "http.https://cnb.cool/.extraheader=Authorization: Basic ${AUTH}" push "$URL" "refs/tags/${tag}:refs/tags/${tag}"
+            fi
+          done
