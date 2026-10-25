@@ -2,6 +2,7 @@ import tls from "node:tls";
 
 const FEED = "https://www.dengtahome.com/updates/android.json";
 const BACKEND = "https://dengta-home-backend-rkmq.onrender.com/health";
+const SITE = "https://www.dengtahome.com/";
 
 async function head(url) {
   const response = await fetch(url, { method: "HEAD", redirect: "follow" });
@@ -40,7 +41,16 @@ async function certExpiry(hostname) {
 
 async function main() {
   const checkedAt = new Date().toISOString();
-  const result = { checkedAt, feed: null, apk: null, backend: null, errors: [] };
+  const result = { checkedAt, site: null, feed: null, apk: null, backend: null, errors: [] };
+  try {
+    const response = await fetch(SITE, { cache: "no-store" });
+    const html = await response.text();
+    result.site = { status: response.status, bytes: Buffer.byteLength(html), hasRoot: html.includes('id="root"') };
+    if (!response.ok) result.errors.push(`site HTTP ${response.status}`);
+    if (!result.site.hasRoot) result.errors.push("site HTML has no root mount");
+  } catch (error) {
+    result.errors.push(`site: ${error.message}`);
+  }
   try {
     const response = await fetch(`${FEED}?ts=${Date.now()}`, { cache: "no-store" });
     if (!response.ok) throw new Error(`feed HTTP ${response.status}`);
@@ -109,6 +119,8 @@ async function main() {
     result.errors.push(`apk certificate: ${error.message}`);
   }
   result.summary = {
+    siteStatus: result.site?.status ?? null,
+    siteBytes: result.site?.bytes ?? null,
     feedVersion: result.feed?.latest?.version || null,
     feedVersionCode: result.feed?.latest?.version_code || null,
     feedApkUrl: result.feed?.latest?.apk_url || null,
