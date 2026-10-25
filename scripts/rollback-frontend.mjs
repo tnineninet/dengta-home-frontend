@@ -32,6 +32,17 @@ if (!apply) {
   process.exit(0);
 }
 
+let hasGitIdentity = false;
+try {
+  hasGitIdentity = Boolean(git(["config", "user.name"]) && git(["config", "user.email"]));
+} catch {
+  hasGitIdentity = false;
+}
+if (!hasGitIdentity) {
+  console.error("Git identity is not configured. Set user.name and user.email before applying a rollback.");
+  process.exit(1);
+}
+
 try {
   git(["revert", "--no-edit", commit], { stdio: ["ignore", "pipe", "pipe"] });
 } catch {
