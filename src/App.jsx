@@ -279,6 +279,9 @@ import {
 } from "./takeout-executor.js";
 import TakeoutLoginPanel from "./TakeoutLoginPanel.jsx";
 import XhsLoginPanel from "./XhsLoginPanel.jsx";
+import XhsWritePanel from "./XhsWritePanel.jsx";
+import XhsPublishPanel from "./XhsPublishPanel.jsx";
+import XhsNotificationsPanel from "./XhsNotificationsPanel.jsx";
 import {
   SCREEN_GLANCE_DEFAULT_CONFIG,
   ScreenGlance,
@@ -1185,6 +1188,26 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [message, setMessage, setSessionDraft, moveSessionDraft] = useChatDraft(accountStorageScope, companionScope, activeSessionId);
   const [messageReference, setMessageReference] = useState(null);
   const [turnContext, setTurnContext] = useState("");
+  const [expressiveChatEnabled, setExpressiveChatEnabled] = useState(() => {
+    try {
+      const key = `dengta_expressive_chat:${accountStorageScope || "guest"}`;
+      return window.localStorage.getItem(key) !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const expressiveChatEnabledRef = useRef(expressiveChatEnabled);
+  useEffect(() => {
+    expressiveChatEnabledRef.current = expressiveChatEnabled;
+    try {
+      window.localStorage.setItem(
+        `dengta_expressive_chat:${accountStorageScope || "guest"}`,
+        expressiveChatEnabled ? "1" : "0",
+      );
+    } catch {
+      // Chrome WebView may disable storage; the in-memory preference still works.
+    }
+  }, [accountStorageScope, expressiveChatEnabled]);
   const [chatAttachments, setChatAttachments] = useState([]);
   const [attachmentSafetyEnabled, setAttachmentSafetyEnabled] = useState(true);
   const [availableModels, setAvailableModels] = useState([]);
@@ -1226,6 +1249,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     return () => { if (workspaceLeaveGuardRef.current === guard) workspaceLeaveGuardRef.current = null; };
   }, []);
   const [togetherEntryMode, setTogetherEntryMode] = useState("external");
+  const [bilibiliLoginRequest, setBilibiliLoginRequest] = useState(0);
   const coWatchViewKindRef = useRef(activeView);
   coWatchViewKindRef.current = activeView;
   const [musicActivityRequest, setMusicActivityRequest] = useState(null);
@@ -1310,18 +1334,24 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const { state: notificationAccess, request: requestNotificationAccess, refresh: refreshNotificationAccess } = useNotificationAccess();
 
   const aiMusicScope = useMusicScope(accountStorageScope, companionScope);
-  const { control: controlBuiltInNowPlaying, yieldToExternal: yieldBuiltInNowPlaying, onLocalPlaybackChange } = useBuiltInNowPlaying({
+  const { control: controlBuiltInNowPlaying, start: startBuiltInNowPlaying, yieldToExternal: yieldBuiltInNowPlaying, onLocalPlaybackChange } = useBuiltInNowPlaying({
     scope: aiMusicScope, accountScope: accountStorageScope, companionScope, enabled: hasLoadedSettings,
     externalAvailable: deviceActivityPluginAvailable, readExternal: readNowPlaying,
     onSong: song => setNowPlaying(current => nowPlayingDismissedRef.current ? current : song || (current?.source === "dengta" ? null : current)),
     onBusy: setNowPlayingBusy, onFeedback: message => setNotice(message),
-    onStartupFeedback: value => setScreenGlanceFeedback(value),
+    onStartupFeedback: value => {
+      setScreenGlanceFeedback(value);
+      if (value?.message) setNotice(value.message);
+    },
   });
   useEffect(() => {
     if (!Capacitor.isNativePlatform() || visualPreview || !accountStorageScope || !companionScope) return;
     const consumer = createAiMusicConsumer({ scope: aiMusicScope, list: listAiMusicPlayRequests, claim: claimAiMusicPlayRequest, commit: commitAiMusicPlayRequest, report: reportAiMusicPlayResult, open: playNeteaseSilent, storage: globalThis.sessionStorage, onFeedback: message => setNotice(message) });
     void consumer.drain();
-    const timer = window.setInterval(() => void consumer.drain(), 5000);
+    const timer = window.setInterval(() => {
+      if (globalThis.document?.visibilityState === "hidden") return;
+      void consumer.drain();
+    }, 5000);
     return () => { window.clearInterval(timer); consumer.cancel(); };
   }, [aiMusicScope, accountStorageScope, companionScope, visualPreview]);
 
@@ -1335,6 +1365,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     const token = aiMusicScope.capture();
     const poll = async () => {
       if (busy || !alive || !aiMusicScope.current(token)) return;
+      if (globalThis.document?.visibilityState === "hidden") return;
       busy = true;
       try {
         const song = await readNowPlaying().catch(() => null);
@@ -1380,9 +1411,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const handleNowPlayingNext = useCallback(() => handleNowPlayingControl("next"), [handleNowPlayingControl]);
 
   const handleDismissNowPlaying = useCallback(() => {
+    if (nowPlaying?.source === "dengta") {
+      void controlBuiltInNowPlaying("pause", nowPlaying);
+    }
     nowPlayingDismissedRef.current = true;
     setNowPlaying(null);
-  }, []);
+  }, [controlBuiltInNowPlaying, nowPlaying]);
   const [deviceActivityFeedback, setDeviceActivityFeedback] = useState({
     status: "idle",
     message: "默认关闭。开启后只提供最近使用过的 App 名称和粗略时长。",
@@ -1479,6 +1513,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [pendingMomentComments, setPendingMomentComments] = useState({});
   const [notice, setNotice] = useState("");
   const [dialog, setDialog] = useState(null);
+  useEffect(() => {
+    if (!notice) return undefined;
+    const timer = window.setTimeout(() => setNotice(""), 9000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
   const dialogRef = useRef(dialog);
   const sessionsRef = useRef(sessions);
   const sessionDialogPendingRef = useRef(null);
@@ -1611,6 +1650,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       return undefined;
     }
     const timer = window.setTimeout(() => {
+      // Don't open a reply popover behind a status panel/settings/sidebar;
+      // it would become visible only after the overlay closes.
+      if (
+        document.querySelector(".sun-glass-floating-status-panel.is-open") ||
+        document.querySelector(".settings-sheet") ||
+        document.querySelector(".sidebar.open")
+      ) {
+        return;
+      }
       replyOptionsAutoRef.current = messageId;
       void openReplyOptions();
     }, 900);
@@ -3913,9 +3961,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     setVoiceError("");
     setVoiceMode(VOICE_STATES.uploading);
     const turnContextDraftAtRequest = turnContextRef.current;
-    const turnContextSnapshot = turnContextDraftAtRequest
-      .trim()
-      ;
+    const turnContextSnapshot = [
+      turnContextDraftAtRequest.trim(),
+      expressiveChatEnabledRef.current
+        ? "【表达偏好】回复可以自然使用中文颜文字、emoji 和少量加粗强调；按角色自己的语气来，不要每句都用，也不要为了格式牺牲内容。"
+        : "",
+    ].filter(Boolean).join("\n");
     let sessionId = activeSessionIdRef.current;
     let voiceSessionId = sessionId;
     let requestHandle;
@@ -5401,9 +5452,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     const turnContextDraftAtRequest = String(
       options?.turnContext ?? turnContextRef.current,
     );
-    const turnContextSnapshot = turnContextDraftAtRequest
-      .trim()
-      ;
+    const turnContextSnapshot = [
+      turnContextDraftAtRequest.trim(),
+      expressiveChatEnabledRef.current
+        ? "【表达偏好】回复可以自然使用中文颜文字、emoji 和少量加粗强调；按角色自己的语气来，不要每句都用，也不要为了格式牺牲内容。"
+        : "",
+    ].filter(Boolean).join("\n");
     const messageReferenceAtRequest = normalizeMessageReference(
       options?.messageReference ?? messageReference,
     );
@@ -5669,7 +5723,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       // Device context refresh is optional; an unresponsive native plugin must not hold the message.
       await Promise.race([
         deviceActivityRefresh,
-        new Promise((resolve) => window.setTimeout(resolve, 250)),
+        new Promise((resolve) => window.setTimeout(resolve, 80)),
       ]);
 
       void loadEarlyMusicCard(text);
@@ -6717,11 +6771,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     diagnostic: null,
   });
   const distillFileControllerRef = useRef(null);
-  useEffect(() => () => distillFileControllerRef.current?.abort(), [accountScope, companionScope]);
+  const distillRequestControllerRef = useRef(null);
+  useEffect(() => () => {
+    distillFileControllerRef.current?.abort();
+    distillRequestControllerRef.current?.abort();
+  }, [accountScope, companionScope]);
 
   async function runDistill() {
     const source = distillState.source.trim();
     if (source.length < 40 || distillState.busy) return;
+    const controller = new AbortController();
+    distillRequestControllerRef.current = controller;
     setDistillState((previous) => ({
       ...previous,
       busy: true,
@@ -6740,7 +6800,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           kind: "聊天记录",
           model: distillState.model,
         }),
-      }, apiFetch);
+      }, apiFetch, 180000, controller.signal);
+      if (controller.signal.aborted) return;
       const distilled = data?.result?.distilled || "";
       if (!distilled) throw new Error("提纯结果为空，请换一段更清晰的聊天记录。");
       setDistillState((previous) => ({
@@ -6751,13 +6812,29 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         modalOpen: true,
       }));
     } catch (error) {
+      if (controller.signal.aborted) {
+        setDistillState((previous) => ({ ...previous, busy: false }));
+        setNotice("已取消提纯，原材料仍然保留。");
+        return;
+      }
       setDistillState((previous) => ({
         ...previous,
         busy: false,
         error: error?.message || "提纯失败，请稍后再试。",
         diagnostic: distillDiagnostic(error),
       }));
+    } finally {
+      if (distillRequestControllerRef.current === controller) distillRequestControllerRef.current = null;
     }
+  }
+
+  function cancelDistill() {
+    const controller = distillRequestControllerRef.current;
+    if (!controller) return;
+    controller.abort();
+    distillRequestControllerRef.current = null;
+    setDistillState((previous) => ({ ...previous, busy: false }));
+    setNotice("已取消提纯，原材料仍然保留。");
   }
 
   function applyDistilledToPrompt() {
@@ -7626,6 +7703,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             <div className="empty-state">正在加载 DengTa home…</div>
           ) : messages.length === 0 && historyLoadState?.sessionId === activeSessionId && !isSending ? (
             <ChatHistoryFeedback state={historyLoadState} onRetry={retrySessionHistory} onInspect={() => { setSettingsCategory("logs"); setIsSettingsOpen(true); }} />
+          ) : messages.length === 0 && !activeSessionId && !isSending ? (
+            <div className="empty-state chat-boot-placeholder" role="status">正在准备你们的聊天…</div>
           ) : messages.length === 0 ? (
             <div className="empty-state">
               {settings.user_display_name || settings.ai_name !== "伴侣" ? (
@@ -8400,7 +8479,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   function renderDiscover() {
     return (
-      <div className="fun-view">
+      <div className="fun-view" aria-busy={discoverState.busy}>
         <header className="fun-view-header">
           <h2>🔭 发现</h2>
           <p>基于你的一起看记录,AI 帮你从 B 站找到感兴趣的视频</p>
@@ -8433,6 +8512,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             return feedback.status === "error" ? <div key={section} className="fun-labs-feedback is-error">
               <p role="status">{section === "interests" ? "兴趣档案" : "视频推荐"}暂时无法读取。{feedback.reason} {feedback.action}</p>
               <small>错误代码：{feedback.diagnostic.error_code}{feedback.diagnostic.http_status ? ` · HTTP ${feedback.diagnostic.http_status}` : ""}</small>
+              {String(feedback.diagnostic.error_code || "").startsWith("bilibili") ? (
+                <button type="button" onClick={() => { setBilibiliLoginRequest((value) => value + 1); changeView("together"); }}>去一起看登录 B 站</button>
+              ) : null}
               <ChatErrorLog key={feedback.diagnostic.error_log_id || feedback.diagnostic.error_code} logId={feedback.diagnostic.error_log_id} diagnostic={feedback.diagnostic} feedbackByCode={DISCOVERY_ERROR_FEEDBACK} />
             </div> : null;
           })}
@@ -8489,7 +8571,20 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             ))}
           </div>
         ) : discoverState.busy ? (
-          <p className="fun-labs-line">正在根据你的口味找视频…</p>
+          <>
+            <p className="fun-labs-line" role="status" aria-live="polite">正在根据你的口味找视频…</p>
+            <div className="discover-grid discover-grid-skeleton" aria-hidden="true">
+              {[0, 1, 2, 3].map((index) => (
+                <article className="discover-card discover-card-skeleton" key={index}>
+                  <div className="discover-card-cover discover-skeleton-cover" />
+                  <div className="discover-card-body">
+                    <span className="discover-skeleton-line is-wide" />
+                    <span className="discover-skeleton-line is-short" />
+                  </div>
+                </article>
+              ))}
+            </div>
+          </>
         ) : discoverState.sections.recommend.status === "success" ? (
           <p className="fun-labs-line">
             这次没有找到匹配的视频。可以换一批，或继续一起看，让推荐逐渐了解你的口味。
@@ -8831,6 +8926,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   function renderDlnaCastPlayer() {
+    if (!dlnaPluginAvailable()) {
+      return (
+        <div className="cast-web-fallback" role="status">
+          <strong>放映厅需要在 Android App 中接收</strong>
+          <p>网页端无法注册 DLNA 设备；想在电视上一起看，请使用「一起看」的网页直链或电视接收页。</p>
+        </div>
+      );
+    }
     const receiverHint = !dlnaState.supported
       ? "请在 Android App 内使用投屏接收；网页端不能注册 DLNA 设备。"
       : dlnaState.active
@@ -8873,6 +8976,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       <Suspense fallback={<DeferredFeature label="正在打开一起看…" />}>
         <Together
           key={JSON.stringify(["together", accountStorageScope, companionScope, togetherEntryMode])}
+          bilibiliLoginRequest={bilibiliLoginRequest}
           musicRequest={musicActivityRequest?.accountScope === accountStorageScope && musicActivityRequest?.companionScope === companionScope ? musicActivityRequest : null}
           aiName={effectiveAiName}
           accountScope={accountStorageScope}
@@ -8894,6 +8998,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           onStop={(options) => void stopScreenGlanceSession(options)}
           onStopDirect={stopDirectMediaCoWatchSession}
           onStartMusic={startMusicCoWatchSession}
+          onStartRandomMusic={() => void startBuiltInNowPlaying?.()}
           onStopMusic={stopMusicCoWatchSession}
           onMusicPlaybackChange={(snapshot) => void updateMusicCoWatchPlayback(snapshot)}
           onLocalPlaybackChange={onLocalPlaybackChange}
@@ -9381,6 +9486,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 />
                 <div className="device-activity-actions">
                   {distillState.fileBusy && <button type="button" onClick={() => distillFileControllerRef.current?.abort()}>取消读取（{distillState.readPercent || 0}%）</button>}
+                  {distillState.busy && !distillState.fileBusy && <button type="button" onClick={cancelDistill}>取消提纯</button>}
                   <button
                     type="button"
                     disabled={distillState.busy || distillState.source.trim().length < 40}
@@ -9443,6 +9549,22 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   placeholder="例如：这一轮接着昨晚雨天回家的剧情……"
                   rows="5"
                 />
+              </label>
+
+              <label className="prompt-intimacy-toggle prompt-expression-toggle">
+                <input
+                  type="checkbox"
+                  checked={expressiveChatEnabled}
+                  onChange={(event) => setExpressiveChatEnabled(event.target.checked)}
+                />
+                <span className="prompt-toggle-visual" aria-hidden="true" />
+                <span>
+                  <strong>允许颜文字、Emoji 与加粗</strong>
+                  <small>
+                    作为每轮临时表达偏好发送，帮助伴侣用更自然的符号和少量 **加粗** 表达；不会写入长期记忆或修改你的个性化指令。
+                  </small>
+                </span>
+                <em>{expressiveChatEnabled ? "已允许" : "已关闭"}</em>
               </label>
 
               <label className="prompt-intimacy-toggle">
@@ -10093,6 +10215,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               <p>点左侧的「🛵 外卖」和「🏆 成就」即可使用；这里保留小红书登录。</p>
             </div>
             <XhsLoginPanel scope={diagnosticScopeKey(accountStorageScope, companionScope)} />
+            <XhsWritePanel scope={diagnosticScopeKey(accountStorageScope, companionScope)} />
+            <XhsPublishPanel />
+            <XhsNotificationsPanel />
               </>
             )}
 
@@ -10589,7 +10714,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 ? {
                     title: coWatchSession.title,
                     artist: "一起听",
-                    isPlaying: true,
+                    isPlaying: coWatchSession.playbackState === "playing",
                     playbackStateKnown: true,
                     source: "cowatch",
                     readOnly: true,

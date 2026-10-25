@@ -82,6 +82,18 @@ public class MainActivity extends BridgeActivity {
 
         WebView webView = getBridge().getWebView();
         webView.setLayerType(View.LAYER_TYPE_NONE, null);
+        // MIUI/HyperOS may apply a large system font scale to the WebView. That
+        // shrinks the usable page and can push every hit target off-screen.
+        // Keep the app's own responsive layout at 100% text zoom.
+        android.webkit.WebSettings webSettings = webView.getSettings();
+        webSettings.setTextZoom(100);
+        webSettings.setSupportZoom(false);
+        webSettings.setBuiltInZoomControls(false);
+        webSettings.setDisplayZoomControls(false);
+        webSettings.setUseWideViewPort(true);
+        webSettings.setLoadWithOverviewMode(true);
+        webView.setFocusable(true);
+        webView.setFocusableInTouchMode(true);
         // 安卓密码保险箱/系统自动填充会在登录输入框抢焦点：输入一个字符就收键盘，
         // 再弹出旧密码快捷栏。App 内只有登录需要输密码，这里关闭 WebView 自动填充。
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {

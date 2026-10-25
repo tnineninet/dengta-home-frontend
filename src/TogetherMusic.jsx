@@ -76,7 +76,7 @@ function CookieReadFeedback({ kind, read, busy, onRetry, readyMessage = "" }) {
   return <div className="music-provider-feedback"><p role={read.phase === "error" ? "alert" : "status"}>{message}</p>{["error", "cancelled"].includes(read.phase) && <button type="button" disabled={busy} onClick={onRetry}>{COOKIE_READ_FEEDBACK[kind][2]}</button>}</div>;
 }
 
-export default function TogetherMusic({ session, busy = false, onStart, onEnd, onPlaybackChange, onLocalPlaybackChange, onPositionChange, onUnderstandingSaved, onOpenMcpDeviceCenter, request = null, accountScope = "", companionScope = "" }) {
+export default function TogetherMusic({ session, busy = false, onStart, onStartRandom, onEnd, onPlaybackChange, onLocalPlaybackChange, onPositionChange, onUnderstandingSaved, onOpenMcpDeviceCenter, request = null, accountScope = "", companionScope = "" }) {
   const musicScope = useMusicScope(accountScope, companionScope);
   const audioRef = useRef(null);
   const attachAudio = useCallback((node) => {
@@ -125,10 +125,11 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   const [shareUrl, setShareUrl] = useState("");
   const [providerBusy, setProviderBusy] = useState(false);
   const [providerStatus, setProviderStatus] = useState("");
-  const RANDOM_PLAY_KEY = "dengta_random_play_enabled";
+  const RANDOM_PLAY_KEY = `dengta_random_play_enabled:${accountScope || "guest"}`;
   const [randomPlayEnabled, setRandomPlayEnabled] = useState(() => {
     try {
-      return window.localStorage.getItem(RANDOM_PLAY_KEY) === "1";
+      return window.localStorage.getItem(RANDOM_PLAY_KEY) === "1" ||
+        window.localStorage.getItem("dengta_random_play_enabled") === "1";
     } catch {
       return false;
     }
@@ -140,7 +141,12 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
     } catch {
       // 存储不可用时忽略
     }
-  }, []);
+    if (enabled) {
+      setStatus("已开启随机播放，正在让伴侣放一首歌…");
+      // Start immediately instead of waiting for the next cold launch.
+      void onStartRandom?.();
+    }
+  }, [RANDOM_PLAY_KEY, onStartRandom]);
 
   const [cookieStatus, setCookieStatus] = useState({
     checking: true,
@@ -170,6 +176,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
     setImportBusy(importBusyRef.current);
   }, []);
   const playlistSelectionRef = useRef(0);
+  const selectedPlaylistIdRef = useRef("");
 
   useLayoutEffect(() => () => {
     cookieIdentityRef.current.generation++;
@@ -358,7 +365,12 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
       if (!musicScope.current(token)) return;
       if (playlistResult.status === "fulfilled") {
         setPlaylists(playlistResult.value);
-        setStatus(playlistResult.value.length ? "选择歌单后即可开始。" : "还没有可播放歌单，请先在设置中导入。");
+        const ready = playlistResult.value.filter((entry) => entry.saveState !== "incomplete");
+        const preferred = [...ready].sort((a, b) => (Number(b.itemCount) || 0) - (Number(a.itemCount) || 0))[0];
+        setStatus(playlistResult.value.length ? (preferred ? `已自动选中「${preferred.name}」，可直接开始一起听。` : "选择歌单后即可开始。") : "还没有可播放歌单，请先导入歌曲。");
+        if (!selectedPlaylistIdRef.current && preferred) {
+          void selectPlaylist(preferred.id);
+        }
       }
       if (favoriteResult.status === "fulfilled") setFavorites(favoriteResult.value);
       if (connectionResult.status === "fulfilled") {
@@ -487,6 +499,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   const selectPlaylist = async (id) => {
     const selection = ++playlistSelectionRef.current;
     if (!id) {
+      selectedPlaylistIdRef.current = "";
       setPlaylist(null);
       setLoading(false);
       return;
@@ -496,6 +509,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
     try {
       const next = await getMusicPlaylist(id, musicRequestOptions());
       if (!mountedRef.current || selection !== playlistSelectionRef.current) return;
+      selectedPlaylistIdRef.current = next.id;
       setPlaylist(next);
       rememberPlaylist(next);
       setLocalIndex(0);
@@ -916,23 +930,72 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
   const currentQueueIndex = queue?.items.findIndex((entry) => entry.id === queue.currentQueueItemId) ?? -1;
   const localCanGoBack = !active && localIndex > 0;
   const controlsBusy = busy || loading || queueBusy;
+  const orderedPlaylists = [...playlists].sort((a, b) =>
+    (Number(b.itemCount) || 0) - (Number(a.itemCount) || 0) ||
+    String(a.name || "").localeCompare(String(b.name || ""), "zh-CN")
+  );
+  const playlistOptionLabel = (entry) =>
+    `${Number(entry.itemCount) <= 1 ? "单曲 · " : ""}${entry.name} · ${musicPlaylistStatus(entry)}`;
 
   return <div className="together-setup together-music-setup" aria-busy={loading || queueBusy}>
-    {!active && <section className="music-import-entry"><div><strong>把想听的歌带进来</strong><p>粘贴分享链接、选择歌单文件或导入本机音频，保存后直接选中。</p></div><button type="button" className="together-primary" aria-haspopup="dialog" aria-expanded={importOpen} onClick={() => { if (importBusyRef.current || importOpen) return; updateImportBusy(false); setImportOpen(true); }}><ListPlus aria-hidden="true" />导入歌曲</button></section>}
-    {!active && importOpen && <MusicImportDialog busy={importBusy} onClose={() => { if (importBusyRef.current) return; updateImportBusy(false); setImportOpen(false); }}><MusicSettings accountScope={accountScope} companionScope={companionScope} compact onBusyChange={updateImportBusy} onImported={acceptImportedPlaylist} onOpenMcpDeviceCenter={openMcpFromImport} /></MusicImportDialog>}
     {!active && (
-      <label className="music-random-play-toggle">
+      <label className="music-random-play-toggle is-primary">
         <input
           type="checkbox"
           checked={randomPlayEnabled}
           onChange={(event) => toggleRandomPlay(event.target.checked)}
         />
         <span>
-          <strong>打开软件后随机播放一首歌</strong>
-          <small>在 DengTa 里已有的歌里随机挑一首内置播放（不跳转网易云）；没有可播的歌时会尝试抓取一首下载进来。勾选后每次打开 App 都会自动播放。</small>
+          <strong>打开软件就随机放一首歌</strong>
+          <small>开启后立即尝试播放，不用重启；在 DengTa 已有歌曲里随机挑一首内置播放，没有可播歌曲时会尝试抓取。开关就在听歌页最上方。</small>
         </span>
       </label>
     )}
+    {!active && (
+      <section className="music-quick-start" aria-label="快速开始一起听">
+        <div className="music-quick-start-copy">
+          <strong>{playlist ? playlist.name : "先选一张歌单"}</strong>
+          <small>
+            {playlist
+              ? `${playlist.itemCount} 首 · ${item?.title || "可直接开始"}`
+              : "导入或选择歌单后，这里会直接开始；不会再出现点击没反应。"}
+          </small>
+        </div>
+        <div className="music-quick-start-actions">
+          <select
+            aria-label="快速选择歌单"
+            value={playlist?.id || ""}
+            disabled={controlsBusy || !orderedPlaylists.length}
+            onChange={(event) => void selectPlaylist(event.target.value)}
+          >
+            <option value="">{orderedPlaylists.length ? "选择歌单" : "还没有可播放歌单"}</option>
+            {orderedPlaylists.map((entry) => (
+              <option key={entry.id} value={entry.id} disabled={entry.saveState === "incomplete"}>
+                {playlistOptionLabel(entry)}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            className="together-primary"
+            disabled={controlsBusy || Boolean(playlist && !item)}
+            onClick={() => {
+              if (!playlist) {
+                if (playlists.length) void refreshLibrary();
+                else if (!importBusyRef.current) setImportOpen(true);
+                return;
+              }
+              void start();
+            }}
+          >
+            <Play aria-hidden="true" />
+            {controlsBusy ? "准备中…" : playlist ? "开始一起听" : playlists.length ? "读取歌单…" : "导入歌曲后开始"}
+          </button>
+        </div>
+      </section>
+    )}
+    {!active && <section className="music-import-entry"><div><strong>把想听的歌带进来</strong><p>粘贴分享链接、选择歌单文件或导入本机音频，保存后直接选中。</p></div><button type="button" className="together-primary" aria-haspopup="dialog" aria-expanded={importOpen} onClick={() => { if (importBusyRef.current || importOpen) return; updateImportBusy(false); setImportOpen(true); }}><ListPlus aria-hidden="true" />导入歌曲</button></section>}
+    {!active && importOpen && <MusicImportDialog busy={importBusy} onClose={() => { if (importBusyRef.current) return; updateImportBusy(false); setImportOpen(false); }}><MusicSettings accountScope={accountScope} companionScope={companionScope} compact onBusyChange={updateImportBusy} onImported={acceptImportedPlaylist} onOpenMcpDeviceCenter={openMcpFromImport} /></MusicImportDialog>}
       {!active && (
         <section className="music-provider-connect music-provider-cookie">
           <div className="music-provider-connect-heading">
@@ -1133,7 +1196,8 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
       <button type="button" className={favorite ? "is-favorite" : ""} aria-label={favorite ? "取消收藏当前曲目" : "收藏当前曲目"} aria-pressed={favorite} disabled={!item || favoriteBusy} onClick={() => void toggleFavorite()}><Heart aria-hidden="true" /></button>
       <button type="button" aria-label="刷新音乐资料" disabled={refreshing} onClick={() => void refreshLibrary()}><RefreshCw aria-hidden="true" />{refreshing ? "刷新中" : "刷新"}</button>
     </div>
-    <label>{active ? "加入曲目的来源歌单" : "歌单"}<select value={playlist?.id || ""} disabled={busy} onChange={(event) => void selectPlaylist(event.target.value)}><option value="">选择已导入歌单</option>{playlists.map((entry) => <option key={entry.id} value={entry.id} disabled={entry.saveState === "incomplete"}>{entry.name} · {musicPlaylistStatus(entry)}</option>)}</select></label>
+    <label>{active ? "加入曲目的来源歌单" : "歌单"}<select value={playlist?.id || ""} disabled={busy} onChange={(event) => void selectPlaylist(event.target.value)}><option value="">选择已导入歌单</option>{orderedPlaylists.map((entry) => <option key={entry.id} value={entry.id} disabled={entry.saveState === "incomplete"}>{playlistOptionLabel(entry)}</option>)}</select></label>
+    {!active && playlists.some(entry => Number(entry.itemCount) <= 1) && <p className="music-playlist-note">标为“单曲”的是一次只导入了一首歌；要一次听多首，请导入歌单文件或网易云歌单链接。</p>}
     {playlists.some(entry => entry.saveState === "incomplete") && <p role="status">部分歌单保存未完成。请回到仍打开的导入面板继续保存；面板已关闭时重新导入原文件，然后刷新歌单列表。</p>}
     {!active && playlist && <label>曲目<select value={localIndex} onChange={(event) => setLocalIndex(Number(event.target.value))}>{playlist.items.map((entry, itemIndex) => <option key={entry.id || itemIndex} value={itemIndex}>{itemIndex + 1}. {entry.title}{entry.artist ? ` · ${entry.artist}` : ""}</option>)}</select></label>}
     <audio

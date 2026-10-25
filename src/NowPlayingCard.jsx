@@ -13,8 +13,22 @@ export default function NowPlayingCard({ song, busy, expanded, onToggle, onPlayP
     : playback.reason && next.reason && playback.reason !== next.reason
     ? `当前播放器未提供${song.isPlaying ? "暂停" : "播放"}、下一首，请在音乐 App 中操作。`
     : playback.reason || next.reason;
+  // The glass capsule itself remains a status-panel hit target. Controls are
+  // real buttons and stop here, so playing a song no longer turns the whole
+  // rainbow capsule into a dead layer.
+  const openStatusFromCapsule = (event) => {
+    if (event.target.closest("button, a, input, select, textarea")) return;
+    onToggle?.();
+  };
   return (
-    <div className="sun-glass-liquid-capsule-toggle has-now-playing" role="group" aria-label={`当前歌曲：${song.title}`} aria-busy={busy}>
+    <div
+      className="sun-glass-liquid-capsule-toggle has-now-playing"
+      role="group"
+      aria-label={`当前歌曲：${song.title}`}
+      aria-busy={busy}
+      data-now-playing
+      onClick={openStatusFromCapsule}
+    >
       <span className="sun-glass-now-playing">
         <span className={`sun-glass-now-playing-cover${song.isPlaying ? " is-spinning" : ""}`} style={song.cover ? { backgroundImage: `url("${song.cover}")` } : undefined} aria-hidden="true">
           <span className="sun-glass-now-playing-disc" /><span className="sun-glass-now-playing-hole" />

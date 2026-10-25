@@ -29,6 +29,12 @@ import { useLocalPlaybackHandoff } from "./useBuiltInNowPlaying.js";
 import BilibiliQrLogin from "./BilibiliQrLogin.jsx";
 import { WatchQueryPanel } from "./ActivityQueryPanels.jsx";
 
+const PUBLIC_APP_ORIGIN = "https://www.dengtahome.com";
+
+function tvReceiveOrigin() {
+  const native = globalThis.Capacitor?.isNativePlatform?.() === true;
+  return native ? PUBLIC_APP_ORIGIN : (globalThis.location?.origin || PUBLIC_APP_ORIGIN);
+}
 
 function webPageStorageKey(accountScope, companionScope) {
   return "dengta_together_web_page_v2:" + JSON.stringify([accountScope, companionScope]);
@@ -87,6 +93,7 @@ export default function Together({
   accountScope = "",
   companionScope = "",
   watchRequest = null,
+  bilibiliLoginRequest = 0,
   session,
   receipt,
   screenState,
@@ -99,6 +106,7 @@ export default function Together({
   onStop,
   onStopDirect,
   onStartMusic,
+  onStartRandomMusic,
   onStopMusic,
   onMusicPlaybackChange,
   onLocalPlaybackChange,
@@ -132,6 +140,7 @@ export default function Together({
       ? "direct"
       : "external",
   );
+  const [bilibiliLoginOpen, setBilibiliLoginOpen] = useState(false);
   const webVideoRef = useRef(null);
   const [activeDanmaku, setActiveDanmaku] = useState([]);
   const danmakuCursorRef = useRef(0);
@@ -326,6 +335,17 @@ export default function Together({
     if (refresh) onRefresh?.(nextMode);
     return true;
   };
+
+  useEffect(() => {
+    if (!bilibiliLoginRequest) return undefined;
+    if (chooseMode("web", true)) {
+      const timer = globalThis.setTimeout(() => setBilibiliLoginOpen(true), 0);
+      return () => globalThis.clearTimeout(timer);
+    }
+    return undefined;
+    // chooseMode intentionally tracks the current mode refs; only a new explicit request should reopen the panel.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bilibiliLoginRequest]);
 
   const currentDirectVideo = (video) => video && video === videoRef.current && selectedModeRef.current === "direct" && (!video.currentSrc || video.currentSrc === directMediaUrl);
   const currentWebVideo = (video) => video && video === webVideoRef.current && selectedModeRef.current === "web" && (!video.currentSrc || video.currentSrc === webVideoUrl);
@@ -623,7 +643,7 @@ export default function Together({
     ? feedback.message : "";
 
   return (
-    <section className="feature-page together-page" aria-label={viewKind === "music" ? "一起听歌" : "一起看"}>
+    <section className="feature-page together-page" aria-label={viewKind === "music" ? "一起听歌" : "一起看"} aria-busy={busy}>
       <header className="together-heading">
         <div>
           <small>{viewKind === "music" ? "LISTENING" : "TOGETHER"}</small>
@@ -638,7 +658,7 @@ export default function Together({
               : "切到任意视频 App，DengTa 会在画面有变化时陪你聊。"}
           </p>
         </div>
-        <span className={`together-live${selectedActive ? " is-live" : ""}`}>
+        <span className={`together-live${selectedActive ? " is-live" : ""}`} role="status" aria-live="polite">
           <i aria-hidden="true" />
           {selectedActive
             ? selectedMode === "web"
@@ -656,7 +676,7 @@ export default function Together({
 
       {externalPageUrl && viewKind !== "music" && pendingWatchLink?.scope === watchLinkScope && <section className="together-watch-handoff" aria-label="待选视频">
         <div><strong>已收到待选视频</strong><p>{pendingWatchLink.title}</p></div>
-        <p role="status">{watchLinkBlocked ? busy ? "当前操作完成后可载入，推荐已保留。" : "结束当前活动后可载入，正在看的内容保持不变。" : "现在可以载入这条推荐，再由你决定是否开始一起看。"}</p>
+        <p role="status" aria-live="polite">{watchLinkBlocked ? busy ? "当前操作完成后可载入，推荐已保留。" : "结束当前活动后可载入，正在看的内容保持不变。" : "现在可以载入这条推荐，再由你决定是否开始一起看。"}</p>
         <div className="together-direct-actions">
           <button type="button" disabled={watchLinkBlocked} onClick={() => acceptWatchLink(pendingWatchLink)}>载入待选视频</button>
           <button type="button" onClick={() => ignoreWatchLink(pendingWatchLink)}>忽略这条推荐</button>
@@ -851,6 +871,7 @@ export default function Together({
               session={musicActive ? session : null}
               busy={busy}
               onStart={onStartMusic}
+              onStartRandom={onStartRandomMusic}
               onEnd={onStopMusic}
               onPlaybackChange={onMusicPlaybackChange}
               onLocalPlaybackChange={onLocalPlaybackChange}
@@ -894,7 +915,11 @@ export default function Together({
                   <p id="web-page-guidance" className="together-device-note">
                     支持哔哩哔哩官方链接（自动切换内嵌播放器）与其它 HTTPS 网页；DengTa 不做内嵌限制，部分站点自身可能不支持外部内嵌。网页画面不会发送给 AI，AI 依据标题与你发送的文字陪聊。
                   </p>
-                  <details className="music-provider-connect bilibili-provider">
+                  <details
+                    className="music-provider-connect bilibili-provider"
+                    open={bilibiliLoginOpen}
+                    onToggle={(event) => setBilibiliLoginOpen(event.currentTarget.open)}
+                  >
                     <summary>扫码登录哔哩哔哩，从收藏夹挑视频</summary>
                     <BilibiliQrLogin onPickVideo={pickBilibiliVideo} />
                   </details>
@@ -991,7 +1016,7 @@ export default function Together({
               </p>
               {directActive && <section className="together-cast" aria-label="电视接收">
                 <header><strong>在电视上接收</strong><span>{castReceiver?.status === "online" ? "接收端在线" : castReceiver?.status || "等待接收端"}</span></header>
-                <p>在电视浏览器打开 <strong>{globalThis.location?.origin || ""}/receive</strong>，再输入短期配对码。这里不会显示媒体 URL 或接收端凭据。</p>
+                <p>在电视浏览器打开 <strong>{tvReceiveOrigin()}/receive</strong>，再输入短期配对码。这里不会显示媒体 URL 或接收端凭据。</p>
                 {castPairing?.pairingCode ? <div className="together-pairing-code"><b>{castPairing.pairingCode}</b><small>会话编号：{castPairing.sessionId}</small><small>有效期至 {castPairing.expiresAt ? new Date(castPairing.expiresAt).toLocaleTimeString("zh-CN") : "短期有效"}</small></div> : <button type="button" disabled={busy} onClick={onGenerateCastPairing}>生成配对码</button>}
                 {castReceiver?.lastAckAt && <small>最近确认：{formatMoment(castReceiver.lastAckAt)}</small>}
                 <div className="cast-provider-list">{castProviders.map((provider) => <span key={provider.id}><b>{provider.label}</b><small>{provider.status === "ready" ? "可用" : `计划中${provider.detected ? " · 检测到浏览器能力" : ""}`}</small></span>)}</div>
@@ -1097,6 +1122,7 @@ export default function Together({
           <p
             className={`together-feedback is-${currentFeedback?.status || "idle"}`}
             role="status"
+            aria-live="polite"
           >
             {currentFeedback?.message || "等待开始。"}
           </p>

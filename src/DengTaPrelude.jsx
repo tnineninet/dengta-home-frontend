@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-const PRELUDE_DURATION_MS = 3_180;
+const PRELUDE_DURATION_MS = 2_200;
 const THREAD_REST_MS = 940;
 const THREAD_PULL_MS = 1_060;
 const THREAD_POINT_COUNT = 180;
@@ -137,7 +137,7 @@ export default function DengTaPrelude() {
   if (!visible) return null;
 
   return (
-    <div className="dengta-prelude" aria-hidden="true">
+    <div className="dengta-prelude" aria-hidden="true" style={{ pointerEvents: "none" }}>
       <div className="dengta-prelude-mark">
         <svg viewBox="0 0 420 108" role="presentation">
           <path

@@ -59,6 +59,7 @@ export function useBuiltInNowPlaying({ scope, accountScope, companionScope, enab
   }, [scope, accountScope, companionScope, enabled]);
   return useMemo(() => ({
     control: (action, song) => player.current?.control(action, song),
+    start: () => player.current?.start(),
     yieldToExternal: () => player.current?.yieldToExternal(),
     onLocalPlaybackChange: event => player.current?.localPlaybackChanged(event),
   }), []);

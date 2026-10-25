@@ -9,10 +9,12 @@
 
 :root {
   --dengta-font-standard:
-    "DengTa Sans CJK", system-ui, sans-serif;
+    "DengTa Sans CJK", system-ui, "Apple Color Emoji", "Segoe UI Emoji",
+    "Noto Color Emoji", "Android Emoji", sans-serif;
   --dengta-font-system:
     system-ui, -apple-system, BlinkMacSystemFont, "HarmonyOS Sans SC",
-    "PingFang SC", "Microsoft YaHei", sans-serif;
+    "PingFang SC", "Microsoft YaHei", "Apple Color Emoji", "Segoe UI Emoji",
+    "Noto Color Emoji", "Android Emoji", sans-serif;
   --dengta-font: var(--dengta-font-standard);
   --font-ui: var(--dengta-font);
   --font-display: var(--dengta-font);
@@ -87,6 +89,14 @@ body :where(h1, h2, h3, h4, h5, h6, p, span, small, strong, em, label, dt, dd, l
 
 .app-shell .message-content {
   font-weight: 400;
+  font-synthesis: weight style;
+}
+
+.app-shell .message-content strong,
+.app-shell .reply-suggestions strong {
+  font-family: var(--dengta-font-system) !important;
+  font-weight: 800 !important;
+  color: var(--theme-ink, #302831);
 }
 
 .app-shell .message-content code,
