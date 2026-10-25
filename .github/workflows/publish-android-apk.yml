@@ -4,6 +4,11 @@ on:
   # Do not publish from every src push. Publish is an explicit action after
   # tests and real-device verification; a release tag also starts it.
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and verify without publishing or committing manifests
+        type: boolean
+        default: false
   push:
     tags:
       - "android-v*"
@@ -23,6 +28,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v5
@@ -103,6 +111,7 @@ jobs:
             | grep -F "certificate SHA-256 digest: 38a03ab2815c285bef17521d7fc7d4cd6ea4c85d6f14e337ef7391af9b2bb4c6"
 
       - name: Publish APK and update manifests
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
         env:
           VERSION_CODE: ${{ steps.version.outputs.code }}
           VERSION_NAME: ${{ steps.version.outputs.name }}
@@ -112,6 +121,7 @@ jobs:
         run: node scripts/publish-site-apk.mjs
 
       - name: Commit published manifests
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
         env:
           VERSION_CODE: ${{ steps.version.outputs.code }}
           VERSION_NAME: ${{ steps.version.outputs.name }}
@@ -127,6 +137,7 @@ jobs:
           git push
 
       - name: Trigger website deployment
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
         env:
           VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
         run: |
