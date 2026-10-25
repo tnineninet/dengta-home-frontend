@@ -88,7 +88,7 @@ async function main() {
   } catch (error) {
     result.errors.push(`backend: ${error.message}`);
   }
-  result.certs = { site: null, backend: null };
+  result.certs = { site: null, backend: null, apk: null };
   for (const [key, hostname] of [["site", "www.dengtahome.com"], ["backend", "dengta-home-backend-rkmq.onrender.com"]]) {
     try {
       result.certs[key] = await certExpiry(hostname);
@@ -99,6 +99,15 @@ async function main() {
       result.errors.push(`${key} certificate: ${error.message}`);
     }
   }
+  try {
+    const apkHostname = new URL(result.feed?.latest?.apk_url).hostname;
+    result.certs.apk = await certExpiry(apkHostname);
+    if (result.certs.apk.daysRemaining < 14) {
+      result.errors.push(`apk certificate expires in ${result.certs.apk.daysRemaining} days`);
+    }
+  } catch (error) {
+    result.errors.push(`apk certificate: ${error.message}`);
+  }
   result.summary = {
     feedVersion: result.feed?.latest?.version || null,
     feedVersionCode: result.feed?.latest?.version_code || null,
@@ -108,6 +117,7 @@ async function main() {
     backendStatus: result.backend?.body?.status || null,
     siteCertDays: result.certs?.site?.daysRemaining ?? null,
     backendCertDays: result.certs?.backend?.daysRemaining ?? null,
+    apkCertDays: result.certs?.apk?.daysRemaining ?? null,
   };
   console.log(JSON.stringify(result, null, 2));
   if (result.errors.length) process.exitCode = 1;
