@@ -1784,6 +1784,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const mobileNavRef = useRef(null);
   const mobileActiveNavRef = useRef(null);
   const commandButtonRef = useRef(null);
+  const mobileCommandButtonRef = useRef(null);
   const environmentContextRef = useRef({});
   const turnContextRef = useRef("");
   const companionInteractionStatsRef = useRef(companionInteractionStats);
@@ -10495,7 +10496,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       <Suspense fallback={null}><AppUpdateCenter canPrompt={!isSending && !isTakeoutOpen && !isSettingsOpen && !isStatusPanelExpanded && !isComposerMenuOpen && !isMobileNavOpen && !isSidebarOpen && !dialog && !imageViewer && !distillState.modalOpen} /></Suspense>
       <CommandPalette
         open={commandPaletteOpen}
-        onClose={(options) => { setCommandPaletteOpen(false); if (!options?.navigate) commandButtonRef.current?.focus?.({ preventScroll: true }); }}
+        onClose={(options) => {
+          setCommandPaletteOpen(false);
+          if (!options?.navigate) {
+            const trigger = [commandButtonRef.current, mobileCommandButtonRef.current]
+              .find(node => node && node.getClientRects().length > 0);
+            trigger?.focus?.({ preventScroll: true });
+          }
+        }}
         onNavigate={(view, sessionId) => { if (sessionId) chooseSession(sessionId); else changeView(view); }}
         onCreateSession={createSession}
         onOpenSettings={(category) => { openSettingsPanel(); if (category) setSettingsCategory(category); }}
@@ -11013,6 +11021,20 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   <button ref={!QUICK_FEATURES.includes(activeView) ? mobileActiveNavRef : undefined} type="button" aria-current={!QUICK_FEATURES.includes(activeView) ? "page" : undefined} className={!QUICK_FEATURES.includes(activeView) ? "active" : ""} aria-label="查看全部玩法" onClick={() => { setIsMobileNavOpen(false); setIsSidebarOpen(true); }}><span aria-hidden="true">···</span><small>更多</small></button>
         </nav>
       </div>
+
+      {activeView === "chat" && (
+        <button
+          ref={mobileCommandButtonRef}
+          type="button"
+          className="mobile-command-trigger"
+          aria-label="打开命令面板"
+          aria-haspopup="dialog"
+          aria-expanded={commandPaletteOpen}
+          onClick={() => setCommandPaletteOpen(true)}
+        >
+          <span aria-hidden="true">⌘K</span>
+        </button>
+      )}
 
       {isSettingsOpen && (
         <div
