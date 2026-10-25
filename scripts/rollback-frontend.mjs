@@ -33,10 +33,14 @@ if (!apply) {
 }
 
 try {
-  git(["revert", "--no-edit", commit], { stdio: ["inherit", "inherit", "inherit"] });
+  git(["revert", "--no-edit", commit], { stdio: ["ignore", "pipe", "pipe"] });
 } catch {
-  console.error("git revert failed. Resolve the conflict manually; nothing was pushed.");
-  process.exit(1);
+  const subject = git(["log", "-1", "--format=%s", commit]);
+  const latestSubject = git(["log", "-1", "--format=%s"]);
+  if (latestSubject !== `Revert "${subject}"`) {
+    console.error("git revert failed. Resolve the conflict manually; nothing was pushed.");
+    process.exit(1);
+  }
 }
 
 console.log("Revert commit created locally.");
