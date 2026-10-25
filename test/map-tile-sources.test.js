@@ -43,3 +43,18 @@ test("tile preference falls back safely and stores only source data", () => {
   assert.deepEqual(Object.keys(raw).sort(), ["attribution", "id", "key", "template"]);
   assert.equal(values.has("dengta_surprise_map_tiles_v1:scope-b"), false);
 });
+
+test("native Chinese clients default to the key-free Amap basemap", () => {
+  const priorCapacitor = Object.getOwnPropertyDescriptor(globalThis, "Capacitor");
+  const priorNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  const values = new Map();
+  const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)) };
+  try {
+    Object.defineProperty(globalThis, "Capacitor", { configurable: true, value: { isNativePlatform: () => true } });
+    Object.defineProperty(globalThis, "navigator", { configurable: true, value: { language: "zh-CN", languages: ["zh-CN"] } });
+    assert.equal(readTileSourcePreference(storage, "native-zh").id, "amap");
+  } finally {
+    if (priorCapacitor) Object.defineProperty(globalThis, "Capacitor", priorCapacitor); else delete globalThis.Capacitor;
+    if (priorNavigator) Object.defineProperty(globalThis, "navigator", priorNavigator); else delete globalThis.navigator;
+  }
+});

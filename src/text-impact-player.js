@@ -77,9 +77,11 @@ export async function playTextImpact(source, { mode = "scatter", target = "compo
   const viewport = view.visualViewport;
   const width = Math.min(view.innerWidth, viewport?.width || view.innerWidth);
   const height = Math.min(view.innerHeight, viewport?.height || view.innerHeight);
-  const glyphs = Array.isArray(suppliedGlyphs)
+  const compact = width <= 640;
+  let glyphs = Array.isArray(suppliedGlyphs)
     ? suppliedGlyphs
-    : measureTextImpactGlyphs(source, { width, height });
+    : measureTextImpactGlyphs(source, { width, height, maximum: compact ? 36 : 96 });
+  if (compact) glyphs = glyphs.slice(0, 36);
   if (!glyphs.length) return { started: false, reason: "empty" };
   const candidates = target === "floor" || target === "none"
     ? []
@@ -147,7 +149,7 @@ export async function playTextImpact(source, { mode = "scatter", target = "compo
   }
   const render = now => {
     if (stopped) return;
-    if (!visibleSource(source, scopeKey) || reducedMotion() || source.ownerDocument.visibilityState === "hidden" || now - startedAt > 5500) { stop(); return; }
+    if (!visibleSource(source, scopeKey) || reducedMotion() || source.ownerDocument.visibilityState === "hidden" || now - startedAt > (compact ? 3200 : 5500)) { stop(); return; }
     simulation.step(lastTime === null ? 0 : Math.max(0, (now - lastTime) / 1000));
     lastTime = now;
     if (!hitShown && simulation.particles.some(particle => particle.targetImpacts > 0)) {

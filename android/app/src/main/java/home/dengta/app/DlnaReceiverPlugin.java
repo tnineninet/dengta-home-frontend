@@ -121,15 +121,18 @@ public final class DlnaReceiverPlugin extends Plugin {
         super.load();
         instance = this;
         registerBroadcastReceivers();
-        // 默认开启 DLNA 投屏接收，自动启动前台服务
-        // 用户可以在设置中手动关闭（ENABLED_KEY 会记录关闭状态）
+        // 首次安装默认开启；用户明确关闭后，重启 App 不再自动启动。
         try {
             DlnaReceiverService.ensureEnabledByDefault(getContext());
+            if (!DlnaReceiverService.isEnabled(getContext())) {
+                Log.i("DlnaReceiverPlugin", "auto-start skipped: receiver disabled by user");
+                return;
+            }
             ContextCompat.startForegroundService(
                 getContext(),
                 DlnaReceiverService.startIntent(getContext())
             );
-            Log.i("DlnaReceiverPlugin", "auto-start: default enabled, foreground service started");
+            Log.i("DlnaReceiverPlugin", "auto-start: enabled, foreground service started");
         } catch (Exception e) {
             Log.w("DlnaReceiverPlugin", "auto-start failed: " + e.getMessage());
         }
@@ -178,6 +181,26 @@ public final class DlnaReceiverPlugin extends Plugin {
     public void clearPending(PluginCall call) {
         DlnaReceiverService.clearPending(getContext());
         call.resolve();
+    }
+
+    /** 网页播放器回退：B站 DASH 等 ExoPlayer 不兼容源时，保留网页播放。 */
+    @PluginMethod
+    public void openWebPlayer(PluginCall call) {
+        String url = call.getString("url");
+        String title = call.getString("title", "");
+        if (url == null || url.isEmpty()) {
+            call.reject("missing_url", "缺少网页播放地址。");
+            return;
+        }
+        try {
+            Intent intent = new Intent(getContext(), CastWebPlayerActivity.class)
+                .putExtra(CastWebPlayerActivity.EXTRA_URL, url)
+                .putExtra(CastWebPlayerActivity.EXTRA_TITLE, title == null ? "" : title);
+            getContext().startActivity(intent);
+            call.resolve();
+        } catch (Exception error) {
+            call.reject("web_player_failed", "打开网页播放器失败: " + error.getMessage());
+        }
     }
 
     /**

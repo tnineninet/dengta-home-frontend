@@ -12,6 +12,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { formatMediaTime, resolveCoWatchPage } from "./co-watch";
+import SlidingIndicator from "./SlidingIndicator.jsx";
 import { API_BASE_URL } from "./api.js";
 import { mediaPlaybackFeedback } from "./media-playback-errors.js";
 import { detectPlannedCastProviders } from "./receiver-playback.js";
@@ -142,6 +143,8 @@ export default function Together({
   );
   const [bilibiliLoginOpen, setBilibiliLoginOpen] = useState(false);
   const webVideoRef = useRef(null);
+  const togetherTabsRef = useRef(null);
+  const togetherActiveTabRef = useRef(null);
   const [activeDanmaku, setActiveDanmaku] = useState([]);
   const danmakuCursorRef = useRef(0);
   const danmakuSpawnedRef = useRef(new Set());
@@ -684,12 +687,14 @@ export default function Together({
       </section>}
       {selectedMode !== "music" && <WatchQueryPanel key={watchRequest?.id || "watch-search"} initialQuery={watchRequest?.query || ""} active={selectedActive} />}
 
-      {selectedMode !== "music" && <div className="together-mode-switch" role="tablist" aria-label="一起看方式">
+      {selectedMode !== "music" && <div className="together-mode-switch has-sliding-indicator" role="tablist" aria-label="一起看方式" ref={togetherTabsRef}>
+        <SlidingIndicator containerRef={togetherTabsRef} activeRef={togetherActiveTabRef} activeKey={selectedMode} className="together-mode-indicator" />
         <button
           type="button"
           role="tab"
           aria-selected={selectedMode === "external"}
           className={selectedMode === "external" ? "is-selected" : ""}
+          ref={selectedMode === "external" ? togetherActiveTabRef : undefined}
           disabled={busy || (modeLocked && selectedMode !== "external")}
           onClick={() => chooseMode("external", true)}
         >
@@ -701,6 +706,7 @@ export default function Together({
           role="tab"
           aria-selected={selectedMode === "direct"}
           className={selectedMode === "direct" ? "is-selected" : ""}
+          ref={selectedMode === "direct" ? togetherActiveTabRef : undefined}
           disabled={busy || (modeLocked && selectedMode !== "direct")}
           onClick={() => chooseMode("direct", true)}
         >
@@ -712,6 +718,7 @@ export default function Together({
           role="tab"
           aria-selected={selectedMode === "web"}
           className={selectedMode === "web" ? "is-selected" : ""}
+          ref={selectedMode === "web" ? togetherActiveTabRef : undefined}
           disabled={busy || (modeLocked && selectedMode !== "web")}
           onClick={() => chooseMode("web", true)}
         >

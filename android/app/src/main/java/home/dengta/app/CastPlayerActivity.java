@@ -483,11 +483,15 @@ public final class CastPlayerActivity extends AppCompatActivity
         titleText.setTextSize(15);
         titleText.setMaxLines(1);
         titleText.setEllipsize(TextUtils.TruncateAt.END);
+        titleText.setGravity(Gravity.CENTER);
         titleText.setPadding(dp(8), 0, dp(8), 0);
-        FrameLayout.LayoutParams tlp = new FrameLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT);
+        FrameLayout.LayoutParams tlp = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        );
         tlp.gravity = Gravity.CENTER_VERTICAL;
         tlp.setMarginStart(dp(70));
-        tlp.setMarginEnd(dp(80));
+        tlp.setMarginEnd(dp(132));
         bar.addView(titleText, tlp);
 
         // 状态标签
@@ -502,8 +506,8 @@ public final class CastPlayerActivity extends AppCompatActivity
         statusLabel.setBackground(badgeBg);
         FrameLayout.LayoutParams slp = new FrameLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        slp.gravity = Gravity.CENTER_VERTICAL;
-        slp.setMarginEnd(dp(52));
+        slp.gravity = Gravity.CENTER_VERTICAL | Gravity.END;
+        slp.setMarginEnd(dp(12));
         bar.addView(statusLabel, slp);
 
         return bar;

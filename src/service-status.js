@@ -21,7 +21,12 @@ export function describeExpressiveTts(features = {}) {
   const voiceConfigured = features.expressive_tts_voice_configured;
   const provider = String(features.expressive_tts_provider || "minimax").toLowerCase();
   const isDeepgram = provider === "deepgram";
-  const providerName = isDeepgram ? "Deepgram" : "MiniMax";
+  const isOpenAi = provider === "openai";
+  const providerName = isOpenAi
+    ? "OpenAI TTS"
+    : isDeepgram
+      ? "Deepgram"
+      : "MiniMax";
   const chineseFallbackAvailable =
     features.expressive_tts_chinese_fallback_available === true;
 
@@ -47,16 +52,20 @@ export function describeExpressiveTts(features = {}) {
         isDeepgram && !chineseFallbackAvailable
           ? "Deepgram 已连接 · 中文暂不可用"
           : `已连接 ${providerName}`,
-      detail: isDeepgram
-        ? chineseFallbackAvailable
-          ? "AI 的受支持语言可使用 Deepgram Aura 发声，中文自动回退 MiniMax；费用由相应服务额度决定。"
-          : "Deepgram 的英语、日语等受支持语言可以发声；MiniMax 回退尚未配置，所以中文回复暂时只显示文字。"
-        : "AI 回复可使用 MiniMax 云端情绪语音；费用由 MiniMax 套餐或余额决定。",
-      settingsText: isDeepgram
-        ? chineseFallbackAvailable
-          ? "Deepgram Aura 已连接。Aura 当前不支持中文；中文回复会自动使用服务器 MiniMax 语音回退。"
-          : "Deepgram Aura 已连接，英语、日语等所选语言可用；中文回退尚未配置，中文回复暂时只显示文字。"
-        : "MiniMax 自然语音已连接：会根据 AI 回复选择较合适的情绪后播放；云端失败时本轮只显示文字。",
+      detail: isOpenAi
+        ? "AI 回复可使用 OpenAI TTS 多语言语音；费用由 OpenAI 账户额度决定。"
+        : isDeepgram
+          ? chineseFallbackAvailable
+            ? "AI 的受支持语言可使用 Deepgram Aura 发声，中文自动回退 MiniMax；费用由相应服务额度决定。"
+            : "Deepgram 的英语、日语等受支持语言可以发声；MiniMax 回退尚未配置，所以中文回复暂时只显示文字。"
+          : "AI 回复可使用 MiniMax 云端情绪语音；费用由 MiniMax 套餐或余额决定。",
+      settingsText: isOpenAi
+        ? "OpenAI TTS 已连接：AI 回复可以自动朗读；密钥只保存在服务端。"
+        : isDeepgram
+          ? chineseFallbackAvailable
+            ? "Deepgram Aura 已连接。Aura 当前不支持中文；中文回复会自动使用服务器 MiniMax 语音回退。"
+            : "Deepgram Aura 已连接，英语、日语等所选语言可用；中文回退尚未配置，中文回复暂时只显示文字。"
+          : "MiniMax 自然语音已连接：会根据 AI 回复选择较合适的情绪后播放；云端失败时本轮只显示文字。",
     };
   }
 
@@ -83,12 +92,16 @@ export function describeExpressiveTts(features = {}) {
       stage: "incomplete",
       status: "pending",
       summary: `${providerName} 语音配置不完整`,
-      detail: isDeepgram
-        ? "请填写 Deepgram API Key 并选择 Aura 音色模型；当前只显示文字。"
-        : "请检查 MiniMax API Key 与 Voice ID；当前只显示文字，不会影响文字聊天和语音理解。",
-      settingsText: isDeepgram
-        ? "Deepgram 还没有完整连接；请在发声接口中保存 API Key 和 Aura 音色。"
-        : "MiniMax 服务器配置还不完整；现在选择自然语音时本轮只显示文字。",
+      detail: isOpenAi
+        ? "请填写 OpenAI API Key 并选择音色；当前只显示文字。"
+        : isDeepgram
+          ? "请填写 Deepgram API Key 并选择 Aura 音色模型；当前只显示文字。"
+          : "请检查 MiniMax API Key 与 Voice ID；当前只显示文字，不会影响文字聊天和语音理解。",
+      settingsText: isOpenAi
+        ? "OpenAI TTS 还没有完整连接；请在发声接口中保存 API Key 和音色。"
+        : isDeepgram
+          ? "Deepgram 还没有完整连接；请在发声接口中保存 API Key 和 Aura 音色。"
+          : "MiniMax 服务器配置还不完整；现在选择自然语音时本轮只显示文字。",
     };
   }
 

@@ -27,13 +27,14 @@
   opacity: 0.45;
 }
 
-@media (max-width: 480px) {
+@media (max-width: 640px) {
   .composer-reply-options-button span {
     display: none;
   }
 
   .composer-reply-options-button {
-    width: 32px;
+    width: 44px;
+    min-width: 44px;
     justify-content: center;
     padding: 0;
   }

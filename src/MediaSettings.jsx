@@ -9,6 +9,7 @@ import StickerImportSettings, { StickerSource } from "./StickerImportSettings.js
 import XhsStickerImportSettings from "./XhsStickerImportSettings.jsx";
 import {
   archivePrivateMediaAsset,
+  describePrivateSticker,
   patchPrivateMediaAsset,
   privateMediaFileWarning,
   updatePrivateMediaPreferences,
@@ -58,6 +59,25 @@ function StickerEditor({ asset, busy, onSave, onArchive, onDelete, onPreview }) 
     alt_text: asset.alt_text,
     mood_tags: asset.mood_tags.join(", "),
   }));
+  const [understanding, setUnderstanding] = useState(false);
+  const [understandError, setUnderstandError] = useState("");
+  async function understand() {
+    if (understanding || busy) return;
+    setUnderstanding(true);
+    setUnderstandError("");
+    try {
+      const description = await describePrivateSticker(asset.id);
+      setDraft((current) => ({
+        ...current,
+        alt_text: description,
+        display_name: current.display_name || description.slice(0, 40),
+      }));
+    } catch (error) {
+      setUnderstandError(error?.message || "AI 暂时无法理解这张表情。");
+    } finally {
+      setUnderstanding(false);
+    }
+  }
   return (
     <article className="media-sticker-item">
       <AuthenticatedImage
@@ -102,6 +122,13 @@ function StickerEditor({ asset, busy, onSave, onArchive, onDelete, onPreview }) 
       <div className="media-item-actions">
         <button
           type="button"
+          disabled={busy || understanding}
+          onClick={() => void understand()}
+        >
+          {understanding ? "AI 理解中…" : "AI 理解这张表情"}
+        </button>
+        <button
+          type="button"
           disabled={busy}
           onClick={() =>
             void onSave(asset.id, {
@@ -131,6 +158,7 @@ function StickerEditor({ asset, busy, onSave, onArchive, onDelete, onPreview }) 
           删除
         </button>
       </div>
+      {understandError ? <p className="media-file-warning" role="alert">{understandError}</p> : null}
       <StickerSource assetId={asset.id} />
     </article>
   );

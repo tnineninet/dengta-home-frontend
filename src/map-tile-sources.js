@@ -97,14 +97,24 @@ export function unprojectForSource(source, point) {
     : { latitude: point.lat, longitude: point.lng };
 }
 
+function defaultTilePreset() {
+  // OpenStreetMap is often slow/unreachable on mainland mobile networks; use
+  // the key-free Amap raster by default for Chinese UI, without changing the
+  // stored WGS84 coordinates (the map layer projects to GCJ-02 only for draw).
+  const language = String(globalThis.navigator?.language || globalThis.navigator?.languages?.[0] || "");
+  const native = globalThis.Capacitor?.isNativePlatform?.() === true;
+  return native && /^zh\b/i.test(language) ? TILE_SOURCE_PRESETS.amap : TILE_SOURCE_PRESETS.osm;
+}
+
 export function readTileSourcePreference(storage, scopeKey) {
   try {
     const raw = storage?.getItem("dengta_surprise_map_tiles_v1:" + String(scopeKey || ""));
     const parsed = raw ? JSON.parse(raw) : null;
+    if (!parsed) return normalizeTileSource(defaultTilePreset());
     const source = normalizeTileSource(parsed);
-    return source.usable ? source : normalizeTileSource(TILE_SOURCE_PRESETS.osm);
+    return source.usable ? source : normalizeTileSource(defaultTilePreset());
   } catch {
-    return normalizeTileSource(TILE_SOURCE_PRESETS.osm);
+    return normalizeTileSource(defaultTilePreset());
   }
 }
 

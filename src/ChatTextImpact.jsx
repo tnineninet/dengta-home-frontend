@@ -91,12 +91,17 @@ export default function ChatTextImpact({ rowRef, scopeKey = "", messageId, recen
     avatar.classList.remove("text-impact-avatar-burst", "text-impact-avatar-fall");
     void avatar.offsetWidth;
     avatar.classList.add(className);
-    const cleanup = () => avatar.classList.remove(className);
-    const timer = window.setTimeout(cleanup, mode === "burst" ? 620 : 1050);
-    activeStop.current = () => {
+    let timer = 0;
+    const cleanup = () => {
       window.clearTimeout(timer);
-      cleanup();
+      avatar.removeEventListener?.("animationend", cleanup);
+      avatar.classList.remove(className);
     };
+    avatar.addEventListener?.("animationend", cleanup, { once: true });
+    // Safety net for background tabs / interrupted animations: the fall effect
+    // must never leave an avatar transparent or missing.
+    timer = window.setTimeout(cleanup, mode === "burst" ? 900 : 1600);
+    activeStop.current = cleanup;
     if (mode === "burst") {
       try { onAvatarHit?.({ messageId, mode, target: "avatar" }); } catch { /* interaction is optional */ }
     }
@@ -153,7 +158,11 @@ export default function ChatTextImpact({ rowRef, scopeKey = "", messageId, recen
     queueMicrotask(() => {
       if (cancelled || completed.current) return;
       completed.current = true;
-      if (preference.auto && !reducedMotion) void play(preference.mode, preference.target);
+      // Automatic impact playback is expensive on a phone (glyph measurement,
+      // canvas, avatar fall). Keep it manual on narrow screens so opening a
+      // chat does not compete with message rendering and avatar decoding.
+      const narrowScreen = globalThis.matchMedia?.("(max-width: 640px)").matches === true;
+      if (preference.auto && !reducedMotion && !narrowScreen) void play(preference.mode, preference.target);
     });
     return () => { cancelled = true; };
     // Only a newly completed reply can start automatic playback.

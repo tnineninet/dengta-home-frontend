@@ -16,8 +16,9 @@ const vite = await createServer({ configFile: false, envDir: false, root: fileUR
   resolveId(id) { if (["@capacitor/core", "@capacitor/app", "virtual:back-flow", "virtual:back-hook"].includes(id)) return "\0" + id; },
   async load(id) {
     if (id === "\0virtual:back-hook") return readFileSync(new URL("../src/useAppBackNavigation.js", import.meta.url), "utf8")
-      .replace('import { Capacitor, registerPlugin } from "@capacitor/core";', 'const Capacitor={getPlatform:()=>"android"}; const registerPlugin=()=>globalThis.__backFixture.Native;')
+      .replace('import { Capacitor } from "@capacitor/core";', 'const Capacitor={getPlatform:()=>"android"};')
       .replace('import { App } from "@capacitor/app";', 'const App=globalThis.__backFixture.App;')
+      .replace('import { AppNavigation } from "./app-navigation.js";', 'const AppNavigation=globalThis.__backFixture.Native;')
       .replace('"./app-back-navigation.js"', '"/src/app-back-navigation.js"');
     if (id === "\0@capacitor/core") return 'export const Capacitor={getPlatform:()=>"android"}; export const registerPlugin=()=>globalThis.__backFixture.Native;';
     if (id === "\0@capacitor/app") return "export const App=globalThis.__backFixture.App;";

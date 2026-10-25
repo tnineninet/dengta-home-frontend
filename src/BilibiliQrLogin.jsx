@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { LogIn, RefreshCw, Smartphone } from "lucide-react";
 import {
   beginBilibiliQrLogin,
+  cancelBilibiliQrLogin,
   checkBilibiliQrLogin,
   disconnectBilibiliQrLogin,
   getBilibiliQrStatus,
@@ -15,8 +16,21 @@ import { openBuiltInBrowser, readBrowserCookie } from "./browser-launcher.js";
 const POLL_INTERVAL_MS = 2_000;
 const FOCUSABLE_SELECTOR = 'button:not(:disabled), a[href], [tabindex]';
 
+function cancelPendingQrSession(login) {
+  if (login?.key) void cancelBilibiliQrLogin(login.key).catch(() => {});
+}
+
 function pickError(caught) {
   return caught?.message || "哔哩哔哩扫码登录暂时失败。";
+}
+
+function safeQrFallback(value) {
+  try {
+    const url = new URL(String(value || ""));
+    return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password ? url.href : "";
+  } catch {
+    return "";
+  }
 }
 
 export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
@@ -81,7 +95,9 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
     lifetimeRef.current = lifetime;
     return () => {
       lifetime.active = false;
+      const pending = loginRef.current;
       loginRef.current = null;
+      cancelPendingQrSession(pending);
       actionRef.current = null;
       videosRequestRef.current = null;
       stopPolling();
@@ -101,7 +117,10 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
         errorCorrectionLevel: "M",
       }))
       .catch(() => {
-        if (!cancelled) setError("二维码渲染失败，请点击“重新生成”再试。");
+        if (!cancelled) {
+          setQrStatus("error");
+          setError("二维码渲染失败，请点击“重新生成”再试。");
+        }
       });
     return () => { cancelled = true; };
   }, [qrOpen, qrContent]);
@@ -124,8 +143,10 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
     if (!action) return;
     if (!automatic && !qrOpen) qrOpeningFocusRef.current = { element: globalThis.document?.activeElement };
     if (!automatic) autoRefreshCountRef.current = 0;
-    const login = { lifetime: action.lifetime, polling: false };
+    const previousLogin = loginRef.current;
+    const login = { lifetime: action.lifetime, polling: false, key: "" };
     loginRef.current = login;
+    cancelPendingQrSession(previousLogin);
     connectionEpochRef.current += 1;
     stopPolling();
     const current = () => login.lifetime.active && loginRef.current === login;
@@ -146,6 +167,7 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
       const session = await beginBilibiliQrLogin();
       if (!current() || !ownsAction(action)) return;
       if (!session?.key || !session.qr_content) throw new Error("没有拿到登录二维码。");
+      login.key = session.key;
       startedAtRef.current = Date.now();
       setQrStatus("waiting");
       setQrOpen(true);
@@ -207,7 +229,9 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
   }
 
   const cancelLogin = useCallback(() => {
+    const pending = loginRef.current;
     loginRef.current = null;
+    cancelPendingQrSession(pending);
     connectionEpochRef.current += 1;
     stopPolling();
     const action = actionRef.current;
@@ -375,6 +399,7 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
     risk_blocked: "登录被风控拦截，请稍后再试。",
     error: "登录失败，请重试。",
   }[qrStatus] || "";
+  const qrFallback = safeQrFallback(qrContent);
 
   return <div className="bilibili-qr-login">
     <div className="music-provider-connect-body">
@@ -393,8 +418,8 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
       {qrOpen && createPortal(<div className="netease-qr-modal bilibili-qr-modal" ref={qrPanelRef} tabIndex={-1} role="dialog" aria-modal="true" aria-label="哔哩哔哩扫码登录" aria-busy={busy}>
         <div className="netease-qr-card bilibili-qr-card">
           <strong>用手机哔哩哔哩 App 扫码</strong>
-          <canvas ref={canvasRef} aria-label="登录二维码" />
-          <p>{qrStatusText}</p>
+          <canvas ref={canvasRef} aria-label="登录二维码" role="img" />
+          <p role="status" aria-live="polite">{qrStatusText}</p>
           <small className="netease-qr-hint">二维码过期后会自动刷新，无需手动操作。</small>
           <div className="netease-qr-actions">
             <button type="button" disabled={busy} onClick={() => void startLogin()}><RefreshCw aria-hidden="true" />重新生成</button>
@@ -404,10 +429,10 @@ export default function BilibiliQrLogin({ onPickVideo = () => {} }) {
             推荐:用你手机上的哔哩哔哩 App 扫上面的码,App 里点确认即完成(凭证自动回到灯塔)。
             不想扫码的话,点下面按钮,在打开的网页里直接用账号密码或验证码登录——登录成功后本页会自动完成绑定,无需跳转任何 App。
           </small>
-          {qrContent && (
+          {qrFallback && (
             <a
               className="netease-qr-fallback-button"
-              href={qrContent}
+              href={qrFallback}
               target="_blank"
               rel="noopener noreferrer"
             >

@@ -23,6 +23,15 @@ export async function checkBilibiliQrLogin(key) {
   return data?.result || null;
 }
 
+export async function cancelBilibiliQrLogin(key) {
+  const query = new URLSearchParams({ key: text(key, 200) });
+  const data = await apiRequest(`/api/v2/co-watch/bilibili-qr/check?${query}`, {
+    method: "DELETE",
+    timeoutMs: READ_TIMEOUT_MS,
+  });
+  return data?.result?.cancelled === true;
+}
+
 export async function getBilibiliQrStatus() {
   const data = await apiRequest("/api/v2/co-watch/bilibili-qr/status", {
     timeoutMs: READ_TIMEOUT_MS,

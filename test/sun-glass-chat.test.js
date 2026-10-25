@@ -67,6 +67,47 @@ test("the mobile layer preserves the prototype dimensions and jelly motion", () 
   );
 });
 
+test("the mobile status sheet stays inside the viewport and keeps its actions tappable", () => {
+  const styles = read("src/sun-glass-chat.css");
+
+  assert.match(styles, /@media \(pointer: coarse\), \(max-width: 820px\)/);
+  assert.match(
+    styles,
+    /\.sun-glass-floating-status-panel[\s\S]*?max-width:\s*calc\(100vw - 16px\)\s*!important/,
+    "the floating status sheet must not overflow a narrow phone viewport",
+  );
+  assert.match(
+    styles,
+    /\.sun-glass-status-window-actions\s*\{[\s\S]*?z-index:\s*6;[\s\S]*?pointer-events:\s*auto/,
+    "the settings/navigation/close actions must sit above the animated canvas",
+  );
+  assert.match(
+    styles,
+    /\.sun-glass-status-window-actions > button\s*\{[\s\S]*?min-width:\s*44px;[\s\S]*?min-height:\s*44px;[\s\S]*?touch-action:\s*manipulation/,
+    "phone action buttons must meet the touch target and disable double-tap zoom",
+  );
+  assert.match(
+    styles,
+    /\.settings-sheet-header\s*\{[\s\S]*?position:\s*sticky;[\s\S]*?padding-top:\s*max\(16px,\s*env\(safe-area-inset-top\)\)/,
+    "the settings sheet header must stay reachable below the notch",
+  );
+  assert.match(
+    styles,
+    /\.settings-sheet-backdrop\s*\{[\s\S]*?z-index:\s*1200\s*!important/,
+    "the settings sheet must open above the floating status panel",
+  );
+  assert.match(
+    styles,
+    /grid-template-columns:\s*44px minmax\(0,\s*1fr\) auto 44px/,
+    "the composer must reserve a second action slot for 更多回复 instead of overlapping the input",
+  );
+  assert.match(
+    styles,
+    /\.composer-reply-options-button\s*\{[\s\S]*?grid-column:\s*3/,
+    "更多回复 must render inside the composer action slot",
+  );
+});
+
 test("the local visual preview is isolated from production startup data", () => {
   const app = read("src/App.jsx");
 

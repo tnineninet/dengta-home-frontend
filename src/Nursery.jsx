@@ -4,6 +4,7 @@ import { authSession } from "./auth-session.js";
 import { createScopedSettingsSession, settingsSaveScope } from "./settings-save-scope.js";
 import { describeOperationError } from "./operation-error-help.js";
 import TypewriterText from "./TypewriterText";
+import SlidingIndicator from "./SlidingIndicator.jsx";
 
 const SPEECH_ACTIONS = [
   { id: "talk", label: "说话" },
@@ -143,6 +144,8 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
   const recheckRef = useRef(false);
   const readVersionRef = useRef(0);
   const noticeRef = useRef(onNotice);
+  const speechTabsRef = useRef(null);
+  const activeSpeechRef = useRef(null);
 
   useEffect(() => {
     noticeRef.current = onNotice;
@@ -455,12 +458,14 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
       </div>
 
       <form className="nursery-speech-form" onSubmit={sendSpeech}>
-        <div className="nursery-segments" role="group" aria-label="说话方式">
+        <div className="nursery-segments has-sliding-indicator" role="group" aria-label="说话方式" ref={speechTabsRef}>
+          <SlidingIndicator containerRef={speechTabsRef} activeRef={activeSpeechRef} activeKey={speechAction} className="nursery-segment-indicator" />
           {SPEECH_ACTIONS.map((action) => (
             <button
               type="button"
               key={action.id}
               className={speechAction === action.id ? "active" : ""}
+              ref={speechAction === action.id ? activeSpeechRef : undefined}
               onClick={() => setSpeechAction(action.id)}
             >
               {action.label}

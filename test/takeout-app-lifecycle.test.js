@@ -158,6 +158,7 @@ function intentFixture(extra = {}) {
     turnContextRef: { current: "" }, messageReference: null, normalizeMessageReference: value => value,
     chatAttachmentsRef: { current: [] }, attachmentSafetyEnabled: true,
     isSendingRef: { current: false }, companionInteractionInFlightRef: { current: false },
+    statusRefreshAbortRef: { current: null }, setReplyOptionsOpen: () => {},
     voiceBlocksComposer: () => false, voiceStateRef: { current: "idle" },
     window: { dispatchEvent: event => events.push(event) }, CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
     accountStorageScope: "fictional-account-A", companionScope: "companion-A", diagnosticScopeKey: () => scope,

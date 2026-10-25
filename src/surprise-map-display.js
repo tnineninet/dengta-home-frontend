@@ -70,7 +70,8 @@ export function mountSurpriseMap(container, { load = loadLibrary, onStatus = () 
   let state = { items: [], position: null, selectedId: null }, visible = true, tileErrors = 0, centered = false, lastFocus = "";
   const status = value => { if (!disposed) onStatus(value); };
   const stopTimer = () => { clearTimeout(timer); timer = null; };
-  const startTimer = () => { stopTimer(); timer = setTimeout(() => status("timeout"), 18000); };
+  const MAP_TILE_TIMEOUT_MS = 12000;
+  const startTimer = () => { stopTimer(); timer = setTimeout(() => status("timeout"), MAP_TILE_TIMEOUT_MS); };
   function choosePublicPoint(point) {
     if (disposed || !picker || !Number.isFinite(point?.lat) || !Number.isFinite(point?.lng)) return;
     const unprojected = unprojectPoint(point);

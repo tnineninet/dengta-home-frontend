@@ -57,14 +57,27 @@ export function mergeDeviceSignalsContext(environmentContext, signals) {
   };
 }
 
+let deviceStateFailures = 0;
+let deviceStateRetryAt = 0;
+
 export async function reportDeviceState(payload, { client = apiRequest } = {}) {
+  // A missing/broken backend table must not create a 500 request every polling
+  // tick. Back off for five minutes after three consecutive failures.
+  if (Date.now() < deviceStateRetryAt) return null;
   try {
-    return await client("/api/v2/device/state", {
+    const result = await client("/api/v2/device/state", {
       method: "POST",
       timeoutMs: 15_000,
       body: JSON.stringify(payload),
     });
+    deviceStateFailures = 0;
+    return result;
   } catch {
+    deviceStateFailures += 1;
+    if (deviceStateFailures >= 3) {
+      deviceStateFailures = 0;
+      deviceStateRetryAt = Date.now() + 5 * 60 * 1000;
+    }
     return null;
   }
 }

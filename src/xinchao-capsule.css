@@ -237,3 +237,13 @@
   .xinchao-capsule-petal { width: 7px; }
   .xinchao-capsule-copy strong { font-size: 12px; }
 }
+
+@media (max-width: 820px) {
+  /* Five blurred, shadowed petals animated forever cost ~35% of one core on
+     the real phone. Keep the level display but stop the per-frame repaint. */
+  .xinchao-capsule-petal {
+    animation: none !important;
+    box-shadow: none;
+    opacity: calc(.5 + var(--xinchao-level, .2) * .5);
+  }
+}

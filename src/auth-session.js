@@ -47,6 +47,18 @@ export class AuthSessionError extends Error {
   }
 }
 
+function withAuthTimeout(promise, milliseconds, message) {
+  let timer;
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise((_, reject) => {
+      timer = globalThis.setTimeout(() => {
+        reject(new AuthSessionError(message, { code: "auth_timeout" }));
+      }, milliseconds);
+    }),
+  ]).finally(() => globalThis.clearTimeout(timer));
+}
+
 function cleanEmail(value) {
   return String(value || "").trim().toLowerCase();
 }
@@ -244,9 +256,17 @@ export function createAuthSessionManager({
       // Consume that result once so a failed email link cannot block password login.
       if (!callbackInitializationChecked && authClient.auth.initialize) {
         callbackInitializationChecked = true;
-        const { error } = await authClient.auth.initialize();
+        const { error } = await withAuthTimeout(
+          authClient.auth.initialize(),
+          20_000,
+          "登录服务响应超时，请检查网络后重试。",
+        );
         if (error) {
-          const restored = await authClient.auth.getSession();
+          const restored = await withAuthTimeout(
+            authClient.auth.getSession(),
+            20_000,
+            "登录服务响应超时，请检查网络后重试。",
+          );
           if (!restored.data?.session?.user?.id) {
             throw authFailure(error, "邮箱链接验证失败，请重新发送验证邮件，或使用已验证的邮箱和密码登录。");
           }
@@ -270,7 +290,11 @@ export function createAuthSessionManager({
         authSubscription = result?.data?.subscription || null;
       }
 
-      const { data, error } = await authClient.auth.getSession();
+      const { data, error } = await withAuthTimeout(
+        authClient.auth.getSession(),
+        20_000,
+        "登录服务响应超时，请检查网络后重试。",
+      );
       if (error) {
         throw authFailure(error, "无法恢复登录状态，请重新登录。");
       }
@@ -356,10 +380,14 @@ export function createAuthSessionManager({
     requireConfiguration();
     await initialize();
     publish({ status: AUTH_STATUS.authenticating, error: null });
-    const { data, error } = await (await ensureClient()).auth.signInWithPassword({
-      email: cleanEmail(email),
-      password: String(password || ""),
-    });
+    const { data, error } = await withAuthTimeout(
+      (await ensureClient()).auth.signInWithPassword({
+        email: cleanEmail(email),
+        password: String(password || ""),
+      }),
+      20_000,
+      "登录请求超时，请检查网络后重试。",
+    );
     if (error || !data?.session) {
       const failure = authFailure(
         error || { code: "invalid_session" },
@@ -448,18 +476,34 @@ export function createAuthSessionManager({
   }
 
   async function signOut() {
+    passwordRecovery = false;
     if (!configured(normalizedUrl, normalizedKey)) {
-      passwordRecovery = false;
       applySession(null);
       return;
     }
-    await initialize();
-    // 用户主动退出时通知服务端撤销 refresh token（缺陷 7 修复）
-    const { error } = await (await ensureClient()).auth.signOut();
-    if (error) {
-      throw authFailure(error, "退出登录失败，请稍后再试。");
+    // A dead network must not trap the user in a signed-in shell. Try the
+    // server revoke first, then always clear local auth storage + snapshot.
+    try {
+      await withAuthTimeout(
+        initialize(),
+        10_000,
+        "退出登录服务响应超时。",
+      );
+      const { error } = await withAuthTimeout(
+        (await ensureClient()).auth.signOut(),
+        10_000,
+        "退出登录服务响应超时。",
+      );
+      if (error) throw authFailure(error, "退出登录失败，请稍后再试。");
+    } catch {
+      // best-effort server revoke; local sign-out below is authoritative
     }
-    passwordRecovery = false;
+    try {
+      const storage = await resolveAuthStorage({ storage: persistentStorage });
+      await storage?.removeItem?.(AUTH_STORAGE_KEY);
+    } catch {
+      // ignore storage failures; the in-memory session still clears
+    }
     applySession(null);
   }
 
@@ -488,7 +532,11 @@ export function createAuthSessionManager({
         const refreshRevision = sessionRevision;
         const refreshUserId = session.user?.id;
         try {
-          const refreshed = await client.auth.refreshSession();
+          const refreshed = await withAuthTimeout(
+            client.auth.refreshSession(),
+            15_000,
+            "刷新登录状态超时。",
+          );
           // SDK events can publish a newer session before this promise settles.
           if (requestScope === scopeRevision && refreshRevision === sessionRevision && refreshed?.data?.session?.user?.id === refreshUserId && refreshed.data.session.access_token) {
             session = refreshed.data.session;

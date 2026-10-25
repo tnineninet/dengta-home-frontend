@@ -23,3 +23,129 @@
 @media (hover: hover) { .feature-navigation .feature-navigation-group > button:hover, .feature-navigation-search-field button:hover { background: color-mix(in srgb, currentColor 7%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .feature-navigation .feature-navigation-group > button { transition: none; } .feature-navigation .feature-navigation-group > button:active { transform: none; } }
 :root[data-dengta-reduced-motion="true"] .feature-navigation .feature-navigation-group > button { transition: none; transform: none; }
+
+/* Menu interaction layer: one moving active block, collapsible groups and
+   real navigation badges. The active button remains the semantic current item. */
+.feature-navigation-groups { position: relative; display: grid; gap: 6px; }
+.feature-navigation-group { display: block; min-width: 0; }
+.feature-navigation-group-toggle {
+  display: flex;
+  width: 100%;
+  min-height: 32px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 8px;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: .06em;
+  opacity: .72;
+  cursor: pointer;
+}
+.feature-navigation-group-toggle svg { width: 14px; height: 14px; transition: transform 200ms ease; }
+.feature-navigation-group-toggle svg.is-collapsed { transform: rotate(-90deg); }
+.feature-navigation-group.is-current-group > .feature-navigation-group-toggle { opacity: 1; color: var(--theme-accent, currentColor); }
+.feature-navigation-group-items {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+  max-height: 1200px;
+  overflow: hidden;
+  transition: max-height 230ms ease, opacity 160ms ease;
+}
+.feature-navigation-group.is-collapsed .feature-navigation-group-items {
+  max-height: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.feature-navigation .feature-navigation-group-items > button {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  border-color: transparent;
+}
+.feature-navigation .feature-navigation-group-items > button.active {
+  background: transparent !important;
+  border-color: transparent !important;
+}
+.feature-navigation .feature-navigation-group-items > button.is-action {
+  border-style: dashed;
+}
+.feature-navigation-badge {
+  position: relative;
+  z-index: 2;
+  display: inline-grid;
+  min-width: 18px;
+  min-height: 18px;
+  margin-left: auto;
+  padding: 1px 5px;
+  place-items: center;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--theme-accent, #9a6275);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  line-height: 1;
+}
+.feature-navigation-badge.is-dot { min-width: 8px; min-height: 8px; padding: 0; font-size: 0; }
+.feature-navigation-groups > .sliding-indicator {
+  z-index: 0;
+  border: 1px solid rgb(var(--theme-accent-rgb, 171 134 108) / .36);
+  border-radius: 11px;
+  background: rgb(var(--theme-accent-rgb, 171 134 108) / .16);
+}
+.sliding-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  pointer-events: none;
+  opacity: 0;
+  transition: transform 230ms cubic-bezier(.22,.8,.24,1), width 230ms cubic-bezier(.22,.8,.24,1), height 230ms cubic-bezier(.22,.8,.24,1), opacity 120ms ease;
+  will-change: transform, width, height;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sliding-indicator { transition: none !important; }
+  .feature-navigation-group-items { transition: none !important; }
+  .feature-navigation-group-toggle svg { transition: none !important; }
+}
+
+.feature-navigation .feature-navigation-group-items > button {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 54px;
+  align-items: center;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid transparent;
+  border-radius: 11px;
+  color: inherit;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease;
+}
+.feature-navigation .feature-navigation-group-items > button > span:first-child {
+  display: grid;
+  width: 23px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: inherit;
+  font-size: 17px;
+}
+.feature-navigation .feature-navigation-group-items > button > span:last-child {
+  min-width: 0;
+  color: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.feature-navigation .feature-navigation-group-items .feature-navigation-badge { margin-left: auto; flex: none; }

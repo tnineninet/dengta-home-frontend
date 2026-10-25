@@ -19,7 +19,7 @@ function extract(start, end) {
   return source.slice(first, last);
 }
 const states = extract("  const [moments,", "  const [isLoading,");
-const operations = extract("  const [isPostingMoment,", "  const [dialog,");
+const operations = extract("  const [isPostingMoment,", "  const [navigationUnread,");
 const refs = extract("  const pendingMomentLikesRef =", "  const draftSettingsRef =");
 const load = extract("  const getMomentsRequestScope =", '  useEffect(() => {\n    if (activeView === "moments")');
 const mutations = extract("  async function postMoment(", "  function changeView(");
@@ -57,7 +57,7 @@ const vite = await createServer({
     async load(id) {
       if (id !== "\0virtual:moments-lifecycle.jsx") return;
       return (await transformWithOxc(`
-        import {useState,useRef,useCallback,useLayoutEffect} from "react";
+        import {useState,useRef,useCallback,useEffect,useLayoutEffect} from "react";
         import {createScopedSettingsSession,settingsSaveScope} from "/src/settings-save-scope.js";
         import {toggleMomentLikeOptimistically} from "/src/moment-like.js";
         import {describeOperationError} from "/src/operation-error-help.js";

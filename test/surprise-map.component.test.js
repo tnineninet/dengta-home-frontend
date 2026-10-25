@@ -245,6 +245,17 @@ try {
     await click("本次开启街道地图"); assert.equal(tree.root.findAllByType(SurpriseLetterMap)[0].props.tiles, true); assert.equal(locations, 0);
     await click("切换到雷达图"); assert.equal(tree.root.findAllByType(SurpriseLetterMap)[0].props.tiles, false); await unmount();
   });
+  await test("OSM failure falls back to Amap, then to radar instead of leaving a blank map", async () => {
+    await mount({ request: async () => receipt([letter]) });
+    await click("打开街道地图"); await click("本次开启街道地图");
+    const map = () => tree.root.findAllByType(SurpriseLetterMap).find(node => !node.props.picker);
+    await act(async () => map().props.onTilesUnavailable());
+    assert.match(text(tree.toJSON()), /已切换到高德底图/);
+    await act(async () => map().props.onTilesUnavailable());
+    assert.equal(map().props.tiles, false);
+    assert.match(text(tree.toJSON()), /已切回雷达图/);
+    await unmount();
+  });
   await test("coarse viewport changes affect only public queries and reset public pagination without GPS", async () => {
     const paths = []; let locations = 0;
     await mount({ request: async path => { paths.push(path); return receipt([letter], path.includes("/public?") ? 40 : null); }, locatePosition: async () => { locations++; return position(); } });
@@ -278,5 +289,30 @@ try {
     await act(async () => mounts[0].options.onStatus("failed")); await click("重试地图");
     assert.equal(mounts.length, 2); assert.equal(mounts[0].calls.at(-1)[0], "destroy"); assert.equal(mounts[1].calls[0][1].items[0].id, letter.id);
     mounts[1].options.onViewport("121.4,31.2,121.5,31.3"); assert.deepEqual(viewports, ["121.4,31.2,121.5,31.3"]); await unmount();
+  });
+  await test("switching radar and street map replays the current letters into the new runtime", async () => {
+    const mounts = [];
+    const mountRuntime = (_host, options) => { const calls = []; mounts.push({ options, calls }); return { update: value => calls.push(["update", value]), destroy: () => calls.push(["destroy"]), fit() {} }; };
+    await act(async () => { tree = TestRenderer.create(React.createElement(SurpriseLetterMap, { items: [letter], mount: mountRuntime, tiles: true })); });
+    await act(async () => { tree.update(React.createElement(SurpriseLetterMap, { items: [letter], mount: mountRuntime, tiles: false })); });
+    assert.equal(mounts.length, 2);
+    assert.equal(mounts[1].calls[0][1].items[0].id, letter.id, "remount must replay letters or the new map stays empty");
+    await unmount();
+  });
+  await test("tile timeout asks the parent for one fallback attempt", async () => {
+    const mounts = []; let fallbacks = 0;
+    const mountRuntime = (_host, options) => { mounts.push({ options, calls: [] }); return { update() {}, destroy() {}, fit() {} }; };
+    await act(async () => { tree = TestRenderer.create(React.createElement(SurpriseLetterMap, { items: [letter], mount: mountRuntime, tiles: true, onTilesUnavailable: () => { fallbacks += 1; } })); });
+    await act(async () => mounts[0].options.onStatus("timeout")); await act(async () => mounts[0].options.onStatus("timeout"));
+    assert.equal(fallbacks, 1, "timeout must offer one fallback without spamming the parent");
+    await unmount();
+  });
+  await test("radar mode never offers a tile retry", async () => {
+    const mounts = [];
+    const mountRuntime = (_host, options) => { mounts.push({ options, calls: [] }); return { update() {}, destroy() {}, fit() {} }; };
+    await act(async () => { tree = TestRenderer.create(React.createElement(SurpriseLetterMap, { items: [letter], mount: mountRuntime, tiles: false })); });
+    await act(async () => mounts[0].options.onStatus("timeout"));
+    assert.equal(button("重试地图"), undefined);
+    await unmount();
   });
 } finally { if (tree) await act(async () => tree.unmount()); await vite.close(); delete globalThis.IS_REACT_ACT_ENVIRONMENT; }

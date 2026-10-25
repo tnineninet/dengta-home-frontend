@@ -237,6 +237,7 @@
   .music-provider-grid,
   .music-import-grid { grid-template-columns: 1fr; }
   .music-content-label { grid-column: auto; }
+}
 
 /* NetEase QR login + music understanding */
 .music-provider-qr summary { font-weight: 600; }
@@ -295,6 +296,7 @@
   border-radius: 14px;
   background: #0b0d16;
 }
+@media (max-width: 760px) {
   .music-queue-picker .music-paged-items > div { grid-template-columns: minmax(0, 1fr) 1fr; }
   .music-queue-picker .music-paged-items > div span { grid-column: 1 / -1; }
   .music-provider-connect,

@@ -1,9 +1,8 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
-import { Capacitor, registerPlugin } from "@capacitor/core";
+import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { appBackLayers, createAppBackController } from "./app-back-navigation.js";
-
-const AppNavigation = registerPlugin("AppNavigation");
+import { AppNavigation } from "./app-navigation.js";
 
 export function useBackLayer(isOpen, onClose, priority = 100) {
   const live = useRef(onClose);

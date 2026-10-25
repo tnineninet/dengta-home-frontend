@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { drawCompanionInspiration, INSPIRATION_CATEGORIES } from "./companion-inspiration.js";
+import SlidingIndicator from "./SlidingIndicator.jsx";
 
 export default function CompanionInspiration({ onUse, disabled = false }) {
   const [card, setCard] = useState(null);
@@ -8,6 +9,8 @@ export default function CompanionInspiration({ onUse, disabled = false }) {
   const [pending, setPending] = useState(false);
   const [feedback, setFeedback] = useState("");
   const history = useRef({});
+  const categoriesRef = useRef(null);
+  const activeCategoryRef = useRef(null);
   const pendingRef = useRef(false);
   const mounted = useRef(false);
   const titleId = useId();
@@ -41,8 +44,9 @@ export default function CompanionInspiration({ onUse, disabled = false }) {
     <div className="companion-inspiration-heading"><div><h3 id={titleId}>陪伴灵感签</h3><p>挑一种心情，和伴侣一起把它展开。</p></div>
       <button type="button" className="inspiration-draw" disabled={pending} onClick={draw}>{card ? "换一张" : "抽一张"}</button>
     </div>
-    <div className="companion-inspiration-categories" role="group" aria-label="选择灵感类型">
-      {INSPIRATION_CATEGORIES.map(item => <button key={item.id} type="button" aria-pressed={category === item.id} disabled={pending} onClick={() => {
+    <div className="companion-inspiration-categories has-sliding-indicator" role="group" aria-label="选择灵感类型" ref={categoriesRef}>
+      <SlidingIndicator containerRef={categoriesRef} activeRef={activeCategoryRef} activeKey={category} className="inspiration-category-indicator" />
+      {INSPIRATION_CATEGORIES.map(item => <button key={item.id} type="button" aria-pressed={category === item.id} ref={category === item.id ? activeCategoryRef : undefined} disabled={pending} onClick={() => {
         if (pendingRef.current || item.id === category) return;
         setCategory(item.id); setCard(null); setUsed(false); setFeedback("");
       }}>{item.label}</button>)}

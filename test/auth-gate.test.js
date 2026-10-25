@@ -72,7 +72,7 @@ assert.match(
   /minLength=\{\s*\["register", "reset"\]\.includes\(mode\) \? 8 : undefined\s*\}/,
 );
 assert.match(source, /role="alert"/);
-assert.match(source, /aria-busy="true"/);
+assert.match(source, /aria-busy=/);
 assert.match(source, /aria-expanded=\{open\}/);
 assert.match(source, /忘记密码/);
 assert.match(source, /发送重置邮件/);

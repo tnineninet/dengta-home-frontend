@@ -14,6 +14,16 @@ export default function CoastVideoBackdrop({ sky, weatherMode = "clear", reduced
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return undefined;
+    // The phone layout deliberately hides the looping coastline video and keeps
+    // the poster. Do not decode the hidden clip: display:none does not pause a
+    // playing <video>, and it dominated idle CPU/battery on the real device.
+    if (globalThis.matchMedia?.("(max-width: 820px)")?.matches === true) {
+      video.pause();
+      video.removeAttribute("src");
+      video.load();
+      setPlayback(current => ({ ...current, state: "static", posterScene: scene }));
+      return undefined;
+    }
     let disposed = false;
     let posterTimer = null;
     const lifecycle = createCoastVideoLifecycle(video, {

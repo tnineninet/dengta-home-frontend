@@ -59,6 +59,10 @@ function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode, ra
     const weatherContext = weatherCanvas.getContext("2d");
     if (!starsContext || !cloudContext || !weatherContext) return undefined;
     const wetWeather = mode === "rain" || mode === "storm";
+    const compact = typeof window !== "undefined" && (
+      window.matchMedia?.("(max-width: 820px)")?.matches === true ||
+      window.matchMedia?.("(pointer: coarse)")?.matches === true
+    );
     let starPoints = [];
     let galaxyPoints = [];
     let cloudPoints = [];
@@ -72,10 +76,10 @@ function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode, ra
 
 
     const resize = () => {
-      sizeCanvas(starsCanvas, 2);
-      sizeCanvas(cloudCanvas, 1.5);
-      sizeCanvas(weatherCanvas, 1.5);
-      starPoints = Array.from({ length: 190 }, (_, index) => ({
+      sizeCanvas(starsCanvas, compact ? 1.5 : 2);
+      sizeCanvas(cloudCanvas, compact ? 1.25 : 1.5);
+      sizeCanvas(weatherCanvas, compact ? 1.25 : 1.5);
+      starPoints = Array.from({ length: compact ? 70 : 110 }, (_, index) => ({
         x: ((index * 73) % 997) / 997,
         y: (((index * 137 + 31) % 719) / 719) * 0.78,
         radius: 0.35 + ((index * 19) % 13) / 10,
@@ -83,7 +87,7 @@ function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode, ra
         steady: index % 4 === 0,
         speed: 900 + (index % 7) * 230,
       }));
-      galaxyPoints = Array.from({ length: 520 }, (_, index) => {
+      galaxyPoints = Array.from({ length: compact ? 150 : 260 }, (_, index) => {
         const x = ((index * 89) % 997) / 997;
         const spread =
           ((((index * 149 + 47) % 1009) / 1009) - 0.5) * 0.2;
@@ -186,7 +190,7 @@ function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode, ra
           starsContext.shadowColor = point.steady
             ? "transparent"
             : "rgba(210,225,255,.72)";
-          starsContext.shadowBlur = point.steady ? 0 : 4;
+          starsContext.shadowBlur = point.steady || compact ? 0 : 4;
           starsContext.arc(
             point.x * width,
             point.y * height,
@@ -309,10 +313,12 @@ function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode, ra
     resize();
     let resizeTimer = null;
     const hasVisibleMotion = starsVisible || mode === "cloudy" || mode === "rain" || mode === "storm";
-    const loop = createVisualLoop(paint, { animated: hasVisibleMotion, reducedMotion: reduceMotion, interval: () => {
+    const weatherMotion = mode === "cloudy" || mode === "rain" || mode === "storm";
+    const loop = createVisualLoop(paint, { animated: hasVisibleMotion && (!compact || weatherMotion), reducedMotion: reduceMotion, interval: () => {
       if (document.documentElement.dataset.timeScrubbing === "true") return 120;
       if (document.querySelector(".settings-sheet, .message-list.is-scrolling")) return 180;
       if (document.querySelector('[data-chat-streaming="true"]')) return 100;
+      if (compact) return 66;
       return 33;
     } });
     loopRef.current = loop;

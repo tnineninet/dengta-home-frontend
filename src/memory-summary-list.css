@@ -20,3 +20,8 @@
 .memory-summary-orphan-drafts textarea { box-sizing: border-box; width: 100%; padding: 12px; border: 1px solid var(--theme-control-border, rgba(105, 125, 118, .2)); border-radius: 12px; color: inherit; background: rgb(var(--theme-card-rgb, 255 255 255) / .7); font: inherit; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; resize: vertical; }
 .memory-summary-orphan-drafts button { justify-self: start; }
 @media (max-width: 420px) { .memory-summary-toolbar { align-items: flex-start; flex-direction: column; gap: 8px; } .memory-summary-toolbar button { width: 100%; } }
+
+.memory-summary-toolbar { flex-wrap: wrap; }
+.memory-summary-toolbar p { flex: 1 1 220px; }
+.memory-consolidate-button { white-space: nowrap; }
+@media (max-width: 420px) { .memory-consolidate-button { width: 100%; } }

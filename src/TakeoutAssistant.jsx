@@ -28,17 +28,19 @@ export function TakeoutTaskCard({ task, onOpen }) {
   const stepIndex = takeoutStepIndex(task);
   const step = TAKEOUT_STEPS[stepIndex] || null;
   const price = formatTakeoutPrice(task.total);
+  const budget = formatTakeoutPrice(task.budget);
   const tone = task.status === "awaiting_payment" ? "is-ready"
     : task.status === "manual_review" ? "is-attention"
       : task.status === "error" ? "is-error" : "is-working";
   const subtitle = [task.shop, task.product].filter(Boolean).join(" · ")
     || (task.requirement ? `想点：${task.requirement}` : "点一下查看进度");
-  return <button type="button" className="takeout-task-card" onClick={onOpen} aria-label={`查看外卖点餐进度：${takeoutTaskLabel(task)}`}>
+  const amount = price ? `实付 ${price}` : budget ? `预算 ${budget}` : "";
+  return <button type="button" className="takeout-task-card" onClick={onOpen} aria-label={`查看外卖点餐进度：${takeoutTaskLabel(task)}${subtitle ? `，${subtitle}` : ""}${amount ? `，${amount}` : ""}`}>
     <span className={`takeout-task-icon ${tone}`}><ShoppingBag size={19} aria-hidden="true" /></span>
     <span className="takeout-task-copy">
       <span className="takeout-task-title-row">
         <strong>{takeoutTaskLabel(task)}</strong>
-        {price && <em>{price}</em>}
+        {price ? <em>{price}</em> : budget ? <em className="is-budget">预算 {budget}</em> : null}
       </span>
       <small>{subtitle}</small>
       <span className="takeout-task-meta">

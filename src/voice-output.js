@@ -3,7 +3,22 @@ import { apiFetch } from "./api.js";
 export const VOICE_OUTPUT_PROVIDERS = Object.freeze({
   serverDefault: "server_default",
   deepgram: "deepgram",
+  openai: "openai",
 });
+
+export const OPENAI_VOICES = Object.freeze([
+  "alloy",
+  "ash",
+  "ballad",
+  "coral",
+  "echo",
+  "fable",
+  "nova",
+  "onyx",
+  "sage",
+  "shimmer",
+  "verse",
+]);
 
 export const DEEPGRAM_MODELS = Object.freeze([
   { value: "aura-2-thalia-en", label: "Thalia", language: "en" },
@@ -61,8 +76,8 @@ export const DEFAULT_VOICE_OUTPUT = Object.freeze({
 });
 
 function cleanProvider(value) {
-  return value === VOICE_OUTPUT_PROVIDERS.deepgram
-    ? VOICE_OUTPUT_PROVIDERS.deepgram
+  return Object.values(VOICE_OUTPUT_PROVIDERS).includes(value)
+    ? value
     : VOICE_OUTPUT_PROVIDERS.serverDefault;
 }
 
@@ -131,36 +146,64 @@ export function normalizeVoiceOutput(source = {}) {
   const model =
     String(value.model || value.voice || DEFAULT_VOICE_OUTPUT.model).trim() ||
     DEFAULT_VOICE_OUTPUT.model;
+  const normalizedModel =
+    provider === VOICE_OUTPUT_PROVIDERS.openai &&
+    !OPENAI_VOICES.includes(model)
+      ? "alloy"
+      : model;
   const configured =
     value.configured === true ||
     value.ready === true ||
-    (provider === VOICE_OUTPUT_PROVIDERS.deepgram &&
+    (provider !== VOICE_OUTPUT_PROVIDERS.serverDefault &&
       enabled &&
       credentialConfigured &&
-      Boolean(model));
+      Boolean(normalizedModel));
   const providerEntry = Array.isArray(source?.providers)
-    ? source.providers.find((item) => item?.id === "deepgram")
+    ? source.providers.find((item) => item?.id === provider)
     : null;
-  const region = cleanRegion(value.region);
+  const region =
+    provider === VOICE_OUTPUT_PROVIDERS.openai ? "global" : cleanRegion(value.region);
 
   return {
     provider,
     enabled,
-    model,
+    model: normalizedModel,
     region,
     speed: cleanSpeed(value.speed),
+    base_url:
+      provider === VOICE_OUTPUT_PROVIDERS.openai
+        ? String(value.base_url || "https://api.openai.com").trim().replace(/\/+$/, "")
+        : "",
+    tts_model:
+      provider === VOICE_OUTPUT_PROVIDERS.openai
+        ? String(value.tts_model || "gpt-4o-mini-tts").trim() || "gpt-4o-mini-tts"
+        : "",
     credential: "",
     credential_configured: credentialConfigured,
     configured,
-    chinese_fallback_available: value.chinese_fallback_available === true,
-    model_options: normalizeModelOptions(
-      value.model_options || source.model_options || providerEntry?.models,
-      model,
-    ),
-    region_options: normalizeRegionOptions(
-      value.region_options || source.region_options || providerEntry?.regions,
-      region,
-    ),
+    chinese_fallback_available:
+      provider === VOICE_OUTPUT_PROVIDERS.openai ||
+      value.chinese_fallback_available === true,
+    model_options:
+      provider === VOICE_OUTPUT_PROVIDERS.openai
+        ? (Array.isArray(value.model_options) && value.model_options.length
+            ? value.model_options
+            : OPENAI_VOICES.map((voice) => ({
+                value: voice,
+                language: "multi",
+                label: voice,
+              })))
+        : normalizeModelOptions(
+            value.model_options || source.model_options || providerEntry?.models,
+            normalizedModel,
+          ),
+    region_options:
+      provider === VOICE_OUTPUT_PROVIDERS.openai
+        ? ["global"]
+        : normalizeRegionOptions(
+            value.region_options || source.region_options || providerEntry?.regions,
+            region,
+          ),
     available: source.available !== false,
   };
 }
@@ -198,6 +241,8 @@ export function voiceOutputPayload(source = {}) {
     model: normalized.model,
     region: normalized.region,
     speed: normalized.speed,
+    base_url: normalized.base_url,
+    tts_model: normalized.tts_model,
     credential: String(source.credential || "").trim(),
   };
 }
@@ -288,14 +333,17 @@ export function voiceOutputServiceState(source, fallback = {}) {
       expressiveProvider: config.provider,
     };
   }
-  if (config.provider === VOICE_OUTPUT_PROVIDERS.deepgram) {
+  if (
+    config.provider === VOICE_OUTPUT_PROVIDERS.deepgram ||
+    config.provider === VOICE_OUTPUT_PROVIDERS.openai
+  ) {
     return {
       expressiveEnabled: true,
       expressiveAvailable: config.configured,
       expressiveChineseFallbackAvailable: config.chinese_fallback_available,
       expressiveApiKeyConfigured: config.credential_configured,
       expressiveVoiceConfigured: Boolean(config.model),
-      expressiveProvider: VOICE_OUTPUT_PROVIDERS.deepgram,
+      expressiveProvider: config.provider,
     };
   }
   const defaultAvailable =

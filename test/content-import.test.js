@@ -33,6 +33,7 @@ test("settings has a lazy, standalone data import entry and responsive glass sty
   assert.match(cssSource, /\.content-import-hero[\s\S]{0,500}backdrop-filter: blur/);
   assert.match(cssSource, /@media \(max-width: 760px\)[\s\S]*\.content-import-grid/);
   assert.match(componentSource, /aria-label="选择导入文件"/);
+  assert.match(componentSource, /event\.target\.value\s*=\s*""/, "the same file can be selected again after a canceled or completed preview");
   assert.match(componentSource, /memory[\s\S]*style[\s\S]*world_book[\s\S]*calendar/);
 });
 

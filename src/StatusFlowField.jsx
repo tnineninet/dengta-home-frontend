@@ -36,6 +36,13 @@ export default function StatusFlowField({ active }) {
 
   useEffect(() => {
     if (!active || reduceMotion) return undefined;
+    // The fluid field is a large per-frame canvas/WebGL workload. On phones the
+    // status sheet is already the most expensive surface; keep a static glass
+    // background there so opening it does not stall message scrolling.
+    if (globalThis.matchMedia?.("(max-width: 820px)").matches === true) {
+      canvasRef.current?.parentElement?.classList.add("status-flow-field--fallback");
+      return undefined;
+    }
     const canvas = canvasRef.current;
     const panel = canvas?.closest(".sun-glass-floating-status-panel");
     const field = canvas?.parentElement;

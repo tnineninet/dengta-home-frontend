@@ -63,14 +63,15 @@ try {
   const items = Object.entries(FEATURE_LABELS).map(([id, label]) => ({ id, label, icon: "✧" }));
   const selected = [];
   await act(async () => { tree = TestRenderer.create(React.createElement(Navigation, { items, activeView: "chat", onNavigate: id => selected.push(id) })); });
-  assert.equal(tree.root.findByType("nav").findAllByType("button").length, expectedFeatures.length);
+  const featureButtons = () => tree.root.findByType("nav").findAll(node => node.type === "button" && node.props["data-feature-item"]);
+  assert.equal(featureButtons().length, expectedFeatures.length);
   await act(async () => tree.root.findByType("input").props.onChange({ target: { value: "听歌" } }));
-  assert.equal(tree.root.findByType("nav").findAllByType("button").length, 1);
+  assert.equal(featureButtons().length, 1);
   assert.ok(tree.root.findByProps({ "aria-label": "清空玩法搜索" }));
-  await act(async () => tree.root.findByType("nav").findByType("button").props.onClick());
+  await act(async () => featureButtons()[0].props.onClick());
   assert.deepEqual(selected, ["music"]);
   await act(async () => tree.root.findByType("input").props.onChange({ target: { value: "没有这个功能" } }));
-  assert.equal(tree.root.findByType("nav").findAllByType("button").length, 0);
+  assert.equal(featureButtons().length, 0);
   console.log("Interaction polish: canvas lifecycle, reduced motion, diagnostic privacy/scope/bounds, navigation and activity discovery passed");
 } finally {
   if (tree) await act(async () => tree.unmount());

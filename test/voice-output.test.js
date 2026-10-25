@@ -95,6 +95,8 @@ assert.deepEqual(
     model: "aura-2-helena-en",
     region: "eu",
     speed: 1.5,
+    base_url: "",
+    tts_model: "",
     credential: "dg-secret",
   },
 );
@@ -107,6 +109,35 @@ assert.deepEqual(voiceOutputServiceState(deepgram), {
   expressiveVoiceConfigured: true,
   expressiveProvider: "deepgram",
 });
+
+const openai = normalizeVoiceOutput({
+  profile: {
+    provider: "openai",
+    enabled: true,
+    model: "nova",
+    speed: 1,
+    credential_configured: true,
+    configured: true,
+    region: "global",
+  },
+});
+assert.equal(openai.provider, "openai");
+assert.equal(openai.model, "nova");
+assert.equal(openai.configured, true);
+assert.equal(openai.chinese_fallback_available, true);
+assert.ok(openai.model_options.some((item) => item.value === "nova"));
+assert.deepEqual(openai.region_options, ["global"]);
+assert.deepEqual(voiceOutputServiceState(openai), {
+  expressiveEnabled: true,
+  expressiveAvailable: true,
+  expressiveChineseFallbackAvailable: true,
+  expressiveApiKeyConfigured: true,
+  expressiveVoiceConfigured: true,
+  expressiveProvider: "openai",
+});
+assert.match(component, /OpenAI TTS/);
+assert.match(component, /OpenAI API Key/);
+assert.match(component, /OpenAI 音色/);
 assert.deepEqual(
   voiceOutputServiceState(
     { provider: "server_default", enabled: true },

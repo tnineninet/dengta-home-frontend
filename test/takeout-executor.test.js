@@ -212,6 +212,18 @@ try {
   wakeStop(); assert.equal(listeners.get('dengta:takeout-wake').size, 0);
   work.resolve({ status: 'done', products: [] }); await settle(); wakeHandler(); interval.at(-1)(); await settle();
   assert.equal(wakePolls, pollsBeforeStop, 'stopped listeners and timers cannot restart the previous identity');
+  let resumePolls = 0;
+  const resumeStop = startTakeoutRunner({ scope: 'fixture-resume-sync', capacitor, plugin,
+    client: async path => { if (path.endsWith('/pending')) { resumePolls++; return { commands: [] }; } return {}; },
+  });
+  interval.at(-1)(); await settle();
+  const resumeBaseline = resumePolls;
+  const focusListener = [...(listeners.get('focus') || [])].at(-1);
+  assert.ok(focusListener, 'an app foreground event registers a resume sync listener');
+  focusListener(); await settle();
+  assert.equal(resumePolls, resumeBaseline + 1, 'coming back to the app immediately checks for the current takeout card state');
+  resumeStop();
+  assert.equal((listeners.get('focus') || new Set()).size, 0, 'resume sync listeners are removed with the runner');
   const nativeWait = deferred(), cancelled = [], pendingItems = [], pausedOutcomes = []; let pausedOpens = 0;
   const pausePlugin = { orderProduct: () => { pausedOpens++; return nativeWait.promise; }, cancelSearch: async input => { cancelled.push(input.scope); nativeWait.resolve({ status: 'manual_review' }); } };
   const pauseClient = async path => {

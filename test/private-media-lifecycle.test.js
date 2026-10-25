@@ -34,6 +34,7 @@ const vite = await createServer({
         export const updatePrivateMediaPreferences=payload=>{fixture.calls.push(payload);return fixture.action();};
         export const patchPrivateMediaAsset=()=>fixture.action();
         export const archivePrivateMediaAsset=()=>fixture.action();
+        export const describePrivateSticker=async()=>"fixture sticker description";
       `;
     },
   }],

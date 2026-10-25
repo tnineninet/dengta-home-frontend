@@ -1,5 +1,5 @@
 import { apiFetch, apiRequest } from "./api.js";
-import { isPrivateMediaAssetId } from "./private-media.js";
+import { isPrivateMediaAssetId, privateMediaContentPath } from "./private-media.js";
 
 export const PRIVATE_MEDIA_IMAGE_LIMIT_BYTES = 5 * 1024 * 1024;
 export const PRIVATE_MEDIA_BACKGROUND_LIMIT_BYTES = 12 * 1024 * 1024;
@@ -56,6 +56,46 @@ export async function uploadPrivateMediaAsset(
     retry: false,
   });
   return parseResponse(response, "图片上传失败，请稍后重试。");
+}
+
+function base64FromBytes(bytes) {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let index = 0; index < bytes.length; index += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunk));
+  }
+  return btoa(binary);
+}
+
+export async function describePrivateSticker(
+  assetId,
+  { client = { apiFetch, apiRequest }, signal, maxBytes = 12 * 1024 * 1024 } = {},
+) {
+  if (!isPrivateMediaAssetId(assetId)) throw new TypeError("私密媒体资源 ID 无效。");
+  const path = privateMediaContentPath(assetId);
+  const response = await client.apiFetch(path, { signal, retry: false });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    const error = new Error(errorMessage(data, "表情图片读取失败，请稍后重试。"));
+    error.status = response.status;
+    error.code = data?.code || "private_media_download_failed";
+    throw error;
+  }
+  const blob = await response.blob();
+  if (!blob || blob.size <= 0) throw new Error("表情图片为空，无法理解。");
+  if (blob.size > maxBytes) throw new Error("表情图片超过 12MB，无法自动理解。");
+  const imageBase64 = base64FromBytes(new Uint8Array(await blob.arrayBuffer()));
+  const data = await client.apiRequest("/api/v2/vision/describe", {
+    method: "POST",
+    signal,
+    body: JSON.stringify({
+      image_base64: imageBase64,
+      mime_type: String(blob.type || "image/png").slice(0, 100),
+    }),
+  });
+  const description = String(data?.description || "").trim();
+  if (!description) throw new Error("视觉服务没有返回可用的表情描述。");
+  return description.slice(0, 1000);
 }
 
 const PREFERENCE_PURPOSES = ["user_avatar", "companion_avatar", "chat_background"];

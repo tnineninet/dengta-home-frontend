@@ -138,17 +138,14 @@ export async function apiFetch(path, options = {}) {
     response.status === 401 &&
     typeof response.clone === "function"
   ) {
-    // 对任意 401 都触发 session 失效，不限于白名单 code（缺陷 5 修复）
+    // A 401 from a third-party provider (NetEase/Bilibili/XHS cookie expired)
+    // is not a DengTa session failure. Only the auth whitelist may log out.
     const data = await response.clone().json().catch(() => ({}));
     if (
-      ["invalid_session", "authentication_required"].includes(data.code)
+      ["invalid_session", "authentication_required", "token_expired"].includes(data.code)
     ) {
       await (options.authSession || defaultAuthSession)
         ?.invalidateSession?.(data.message);
-    } else {
-      // 其他 code 的 401 也触发失效，用默认提示
-      await (options.authSession || defaultAuthSession)
-        ?.invalidateSession?.();
     }
   }
   return response;
@@ -188,7 +185,7 @@ async function requestJson(path, options = {}) {
   if (!response.ok) {
     if (
       response.status === 401 &&
-      ["invalid_session", "authentication_required"].includes(data.code)
+      ["invalid_session", "authentication_required", "token_expired"].includes(data.code)
     ) {
       await (options.authSession || defaultAuthSession)
         ?.invalidateSession?.(data.message);

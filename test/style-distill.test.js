@@ -24,6 +24,17 @@ test("provider error preserves diagnostic metadata and hides raw HTML/key detail
     assert.equal(distillDiagnostic(error).upstream_status,404);return true;
   });assert.equal(calls,1);
 });
+test("external cancellation covers a hanging distillation request and keeps the source intact",async()=>{
+  const controller=new AbortController();
+  let requestOptions;
+  const pending=requestDistill("/api/v2/style-distill",{},async(_,options)=>{
+    requestOptions=options;
+    return new Promise(()=>{});
+  },180000,controller.signal);
+  controller.abort();
+  await assert.rejects(pending,{code:"style_distill_cancelled"});
+  assert.equal(requestOptions.signal.aborted,true);
+});
 test("deadline covers hanging authentication/fetch and hanging JSON body",async()=>{
   for(const request of [()=>new Promise(()=>{}),async()=>({ok:true,json:()=>new Promise(()=>{})})]){
     const started=Date.now(); await assert.rejects(requestDistill("/distill",{},request,20),{code:"request_timeout"});

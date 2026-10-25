@@ -102,14 +102,14 @@ test("feature navigation keeps all known and future destinations reachable and p
   const ui = await fixture(FeatureNavigation, { items, activeView: "cotton" });
   try {
     const nav = ui.tree.root.findByType("nav");
-    assert.equal(nav.findAllByType("button").length, items.length);
+    assert.equal(nav.findAll(node => node.type === "button" && node.props["data-feature-item"]).length, items.length);
     assert.equal(nav.findAllByProps({ "aria-current": "page" }).length, 1);
     assert.match(content(nav), /更多功能.*未来玩法/);
     assert.equal(ui.selected.length, 0);
     await ui.click("未来玩法");
     assert.deepEqual(ui.selected, ["future-feature"]);
     await ui.search("未来");
-    assert.equal(nav.findAllByType("button").length, 1);
+    assert.equal(nav.findAll(node => node.type === "button" && node.props["data-feature-item"]).length, 1);
     assert.match(content(ui.tree.toJSON()), /找到 1 个玩法/);
     await ui.press("Enter");
     assert.deepEqual(ui.selected, ["future-feature", "future-feature"]);
@@ -132,7 +132,7 @@ test("single feature search Enter opens once; IME and modified keys never naviga
     assert.deepEqual(await ui.press("Enter"), { prevented: 1, stopped: 0 });
     assert.deepEqual(ui.selected, ["cotton"]);
     await ui.search("一");
-    assert.ok(ui.tree.root.findByType("nav").findAllByType("button").length > 1);
+    assert.ok(ui.tree.root.findByType("nav").findAll(node => node.type === "button" && node.props["data-feature-item"]).length > 1);
     assert.equal((await ui.press("Enter")).prevented, 0);
     await ui.search("没有这个玩法");
     assert.equal((await ui.press("Enter")).prevented, 0);
@@ -148,7 +148,7 @@ test("feature search reset restores focus, while Escape consumes only its actual
     await ui.click("清空玩法搜索");
     assert.equal(ui.input().props.value, "");
     assert.deepEqual(ui.focus, ["search"]);
-    assert.equal(ui.tree.root.findByType("nav").findAllByType("button").length, items.length);
+    assert.equal(ui.tree.root.findByType("nav").findAll(node => node.type === "button" && node.props["data-feature-item"]).length, items.length);
     await ui.search("歌");
     for (const extra of ignoredKeys) assert.equal((await ui.press("Escape", extra)).prevented, 0);
     assert.equal(ui.input().props.value, "歌");

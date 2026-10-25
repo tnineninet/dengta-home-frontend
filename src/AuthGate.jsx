@@ -61,17 +61,28 @@ function ConfigurationScreen() {
   );
 }
 
-function LoadingScreen() {
+function LoadingScreen({ timedOut = false, onRetry }) {
   return (
-    <main className="auth-page auth-loading-page" aria-busy="true">
+    <main className="auth-page auth-loading-page" aria-busy={timedOut ? "false" : "true"}>
       <div className="auth-loading-mark" aria-hidden="true">
         灯
       </div>
-      <strong>正在找回你的家</strong>
-      <span>恢复登录与伴侣空间...</span>
-      <small className="auth-loading-hint">
-        网络较慢时可能需要几秒；若长时间停在这里，请检查网络后重新打开灯塔。
-      </small>
+      <strong>{timedOut ? "登录状态恢复超时" : "正在找回你的家"}</strong>
+      <span>{timedOut ? "网络可能较慢或暂时无法连接。" : "恢复登录与伴侣空间..."}</span>
+      {timedOut ? (
+        <>
+          <small className="auth-loading-hint">
+            本地登录信息还在；检查网络后重试不会清空账号或聊天。
+          </small>
+          <button type="button" className="auth-loading-retry" onClick={onRetry}>
+            重新连接
+          </button>
+        </>
+      ) : (
+        <small className="auth-loading-hint">
+          网络较慢时可能需要几秒；若长时间停在这里，请检查网络后重新打开灯塔。
+        </small>
+      )}
     </main>
   );
 }
@@ -593,7 +604,8 @@ export function AccountMenu({ sessionManager, snapshot }) {
   const alive = useRef(false);
   const exiting = useRef(false);
   const email = snapshot.user?.email || "已登录";
-  const initial = email.slice(0, 1).toUpperCase();
+  const rawInitial = String(snapshot.user?.displayName || email).trim().slice(0, 1).toUpperCase();
+  const initial = rawInitial && !/^\d$/.test(rawInitial) ? rawInitial : "我";
 
   useLayoutEffect(() => {
     alive.current = true;
@@ -638,6 +650,7 @@ export function AccountMenu({ sessionManager, snapshot }) {
         className="account-menu-trigger"
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-label={`账号：${email}`}
         title="账号"
         onClick={() => setOpen((current) => !current)}
       >
@@ -675,12 +688,29 @@ export default function AuthGate({
   sessionManager = authSession,
 }) {
   const [snapshot, setSnapshot] = useState(sessionManager.getSnapshot);
+  const [initRetry, setInitRetry] = useState(0);
+  const [initTimedOut, setInitTimedOut] = useState(false);
 
   useEffect(() => {
+    let active = true;
     const unsubscribe = sessionManager.subscribe(setSnapshot);
-    sessionManager.initialize().catch(() => {});
-    return unsubscribe;
-  }, [sessionManager]);
+    // Supabase SDK calls can hang on a dead captive network; never leave the
+    // app on the loading screen with no way forward.
+    const timer = globalThis.setTimeout(() => {
+      if (active) setInitTimedOut(true);
+    }, 20_000);
+    sessionManager.initialize().catch(() => {}).finally(() => {
+      if (active) {
+        active = false;
+        globalThis.clearTimeout(timer);
+      }
+    });
+    return () => {
+      active = false;
+      globalThis.clearTimeout(timer);
+      unsubscribe();
+    };
+  }, [sessionManager, initRetry]);
 
   useEffect(
     () => startBackgroundNotificationIdentitySync(sessionManager),
@@ -688,7 +718,17 @@ export default function AuthGate({
   );
 
   if (!sessionManager.isConfigured()) return <ConfigurationScreen />;
-  if (snapshot.status === AUTH_STATUS.loading) return <LoadingScreen />;
+  if (snapshot.status === AUTH_STATUS.loading) {
+    return (
+      <LoadingScreen
+        timedOut={initTimedOut}
+        onRetry={() => {
+          setInitTimedOut(false);
+          setInitRetry((value) => value + 1);
+        }}
+      />
+    );
+  }
 
   if (
     snapshot.status !== AUTH_STATUS.authenticated ||

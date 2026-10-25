@@ -6,6 +6,7 @@ import { locateForSurpriseMap, surpriseMapError } from "./surprise-map.js";
 import { recordOperationFailure } from "./operation-diagnostics.js";
 import { useBackLayer } from "./useAppBackNavigation.js";
 import SurpriseLetterMap from "./SurpriseLetterMap.jsx";
+import SlidingIndicator from "./SlidingIndicator.jsx";
 import { displayMapArea, publicAuthorLabel, selectedPublicMapPoint } from "./surprise-map-display.js";
 import { TILE_SOURCE_PRESETS, normalizeTileSource, readTileSourcePreference, saveTileSourcePreference } from "./map-tile-sources.js";
 import "./surprise-map.css";
@@ -79,6 +80,7 @@ export function SurpriseMapContent({ request, isCurrent, aiName = "伴侣", scop
   const [tileSource, setTileSource] = useState(() => readTileSourcePreference(globalThis.localStorage, scopeKey));
   const [tileDraft, setTileDraft] = useState(() => ({ id: tileSource.id, key: tileSource.key, template: tileSource.template, attribution: tileSource.attribution }));
   const createReceipt = useRef(null), loadSequence = useRef({ private: 0, public: 0, collection: 0 }), operation = useRef(null), alive = useRef(false), mapArea = useRef(null), viewportRef = useRef("");
+  const tabsRef = useRef(null), activeTabRef = useRef(null);
   useEffect(() => { viewportRef.current = viewport; }, [viewport]);
   useEffect(() => { alive.current = true; return () => { alive.current = false; operation.current = null; }; }, []);
   const current = useCallback(() => alive.current && isCurrent(), [isCurrent]);
@@ -87,6 +89,20 @@ export function SurpriseMapContent({ request, isCurrent, aiName = "伴侣", scop
     setTileSource(normalized);
     setTileDraft({ id: normalized.id, key: normalized.key, template: normalized.template, attribution: normalized.attribution });
     saveTileSourcePreference(globalThis.localStorage, scopeKey, normalized);
+  }
+  const tileFallbackTried = useRef(false);
+  function handleTilesUnavailable() {
+    if (tileSource.id === "osm" && !tileFallbackTried.current) {
+      tileFallbackTried.current = true;
+      applyTileSource(TILE_SOURCE_PRESETS.amap);
+      setFeedback("OpenStreetMap 底图加载失败，已切换到高德底图；可在底图设置里改回。");
+      return;
+    }
+    if (basemap) {
+      setBasemap(false);
+      setViewport("");
+      setFeedback("街道底图暂时无法加载，已切回雷达图；可点“街道地图”重试。");
+    }
   }
   function chooseTilePreset(id) {
     const preset = TILE_SOURCE_PRESETS[id] || TILE_SOURCE_PRESETS.osm;
@@ -242,7 +258,7 @@ export function SurpriseMapContent({ request, isCurrent, aiName = "伴侣", scop
   return <section className="feature-page surprise-map-page" aria-label="灯塔邮局">
     <div className="surprise-map-main" inert={hasDialog || undefined}>
       <header className="surprise-map-hero"><div className="surprise-map-hero-top"><span className="surprise-map-kicker">DENGTA · LETTERS BY THE SEA</span><button type="button" className="surprise-map-icon-button" aria-label="查看邮局玩法" onClick={() => setGuide(true)}><Info size={20} aria-hidden="true" /></button></div><h2>灯塔邮局</h2><p>把惊喜留在某个地方</p><span className="surprise-map-hero-caption"><Waves size={14} aria-hidden="true" /> 海风会替你，保管这份期待</span></header>
-      <nav className="surprise-map-tabs" aria-label="来信分类">{tabs.map(({ id, label, icon: Icon }) => <button type="button" key={id} aria-pressed={view === id} onClick={() => switchView(id)}><Icon size={17} aria-hidden="true" />{label}</button>)}</nav>
+      <nav className="surprise-map-tabs has-sliding-indicator" aria-label="来信分类" ref={tabsRef}><SlidingIndicator containerRef={tabsRef} activeRef={activeTabRef} activeKey={view} className="surprise-map-tab-indicator" />{tabs.map(({ id, label, icon: Icon }) => <button type="button" key={id} aria-pressed={view === id} ref={view === id ? activeTabRef : undefined} onClick={() => switchView(id)}><Icon size={17} aria-hidden="true" />{label}</button>)}</nav>
       <div className="surprise-map-toolbar"><p>{view === "private" ? "只属于你们的沿途惊喜" : view === "public" ? "和路过的人，交换一点温柔" : "把相遇，收进自己的信箱"}</p>{view === "public" && authorFilter && <button type="button" className="surprise-map-author-filter" onClick={() => setAuthorFilter("")} aria-label="清除笔名筛选">只看 {authorFilter} ×</button>}<button type="button" className="surprise-map-icon-button" aria-label="MCP 接口" onClick={openMcp}><Bot size={18} aria-hidden="true" /></button><button type="button" className="surprise-map-icon-button" aria-label="刷新当前来信" disabled={feed.status === "loading" || feed.status === "more"} onClick={() => void load(view)}><RefreshCw size={18} aria-hidden="true" /></button></div>
 {feed.status === "loading" && (
   <div className="surprise-map-skeleton-list" aria-busy="true" aria-label="正在整理沿途的来信">
@@ -259,7 +275,7 @@ export function SurpriseMapContent({ request, isCurrent, aiName = "伴侣", scop
   </div>
 )}
       {view !== "collection" && <div className="surprise-map-geography" ref={mapArea}>
-        <SurpriseLetterMap items={mapItems} position={position} selectedId={selected?.id || null} onSelect={setSelectedId} onViewport={setViewport} tileSource={tileSource} tiles={basemap} />
+        <SurpriseLetterMap items={mapItems} position={position} selectedId={selected?.id || null} onSelect={setSelectedId} onViewport={setViewport} tileSource={tileSource} tiles={basemap} onTilesUnavailable={handleTilesUnavailable} />
         <div className="surprise-map-layer-switch"><button type="button" aria-label={basemap ? "切换到雷达图" : "打开街道地图"} onClick={() => { if (basemap) { setBasemap(false); setViewport(""); } else if (mapAllowed) setBasemap(true); else setMapConsent("browse"); }}>{basemap ? <><Compass size={14} aria-hidden="true" />雷达图</> : <><MapPin size={14} aria-hidden="true" />街道地图</>}</button></div>
         {!basemap && <div className="surprise-map-radar-badge"><Compass size={12} aria-hidden="true" />雷达图 · 只显示模糊范围</div>}
         <div className="surprise-map-map-caption"><LockKeyhole size={13} aria-hidden="true" />信件只显示模糊范围</div>
@@ -353,7 +369,7 @@ export function SurpriseMapContent({ request, isCurrent, aiName = "伴侣", scop
       {feedback && <p role="alert" className="surprise-map-feedback">{feedback}</p>}<div className="surprise-map-form-navigation">{step > 1 && <button type="button" className="surprise-map-secondary" disabled={Boolean(busy)} onClick={() => setStep(value => value - 1)}><ArrowLeft size={16} aria-hidden="true" />上一步</button>}<button className="surprise-map-primary" disabled={Boolean(busy) || (step === 2 && (!draft.title.trim() || !draft.body.trim()))}>{step === 3 ? busy === "create" ? "正在藏好…" : "在这里藏好，只给我们" : "下一步"}{step === 3 ? <Send size={16} aria-hidden="true" /> : <ArrowRight size={16} aria-hidden="true" />}</button></div></form></MapDialog>}
     {publicPicker && publication && <MapDialog title="在地图上选公共地点" onClose={() => { setPublicPicker(false); setPublicCandidate(null); }}><div className="surprise-map-public-picker">
       <p>拖动地图，或点一下方便到达的公园、广场等公共地点。公开地图只显示模糊范围，领取以你实际点选的位置为准。不使用私人落点或本次定位。</p>
-      <SurpriseLetterMap items={[]} position={null} selectedId={null} picker pickerPoint={publicCandidate} tileSource={tileSource} onPick={value => { const point = selectedPublicMapPoint(value); if (point) setPublicCandidate(point); }} />
+      <SurpriseLetterMap items={[]} position={null} selectedId={null} picker pickerPoint={publicCandidate} tileSource={tileSource} onPick={value => { const point = selectedPublicMapPoint(value); if (point) setPublicCandidate(point); }} onTilesUnavailable={handleTilesUnavailable} />
       <div className="surprise-map-picker-candidate" role="status"><MapPin size={17} aria-hidden="true" />{publicCandidate ? `已选公共地点 · 公开地图约显示：${publicCandidate.latitude.toFixed(2)}, ${publicCandidate.longitude.toFixed(2)}` : "先拖动地图或点选一个公共地点"}</div>
       <button type="button" className="surprise-map-primary" disabled={!publicCandidate} onClick={() => { if (!publicCandidate) return; setPublication(value => value ? { ...value, public_latitude: String(publicCandidate.latitude), public_longitude: String(publicCandidate.longitude) } : value); setConfirmPublic(false); setPublicPicker(false); setPublicCandidate(null); }}>使用这个公共落点<Check size={17} aria-hidden="true" /></button>
       <small>确认后仍需核对公开文案并勾选发布；本次选点不会直接发布。</small>

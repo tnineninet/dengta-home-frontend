@@ -437,6 +437,13 @@ export function startTakeoutRunner({
   };
   window.addEventListener?.("dengta:takeout-wake", resume);
   window.addEventListener?.("dengta:takeout-pause", pause);
+  const refreshAfterResume = () => {
+    if (stopped || paused) return;
+    if (globalThis.document?.visibilityState === "hidden") return;
+    wake();
+  };
+  window.addEventListener?.("focus", refreshAfterResume);
+  globalThis.document?.addEventListener?.("visibilitychange", refreshAfterResume);
   // 延迟启动:避免 App 一打开就弹出外卖页面,留给启动流程喘息空间。
   const firstTimer = setTimeout(() => {
     void tick();
@@ -448,6 +455,8 @@ export function startTakeoutRunner({
     controller.abort();
     clearInterval(timer);
     clearTimeout(firstTimer);
+    window.removeEventListener?.("focus", refreshAfterResume);
+    globalThis.document?.removeEventListener?.("visibilitychange", refreshAfterResume);
     clearInterval(burstTimer);
     clearTimeout(burstDeadline);
     window.removeEventListener?.("dengta:takeout-wake", resume);

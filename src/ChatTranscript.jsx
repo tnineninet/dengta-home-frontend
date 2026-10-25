@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, useState } from "react";
 import ChatMessage from "./ChatMessage.jsx";
 import { getMessageSkinPresentation } from "./chat-skin.js";
 import { innerMonologueForMessage, visibleMonologueForMessage } from "./inner-monologue.js";
@@ -45,12 +45,42 @@ export default function ChatTranscript({ messages, preferences, innerMonologues,
   const visibleMessages = hideProcess
     ? (Array.isArray(messages) ? messages : []).filter(hasVisibleAssistantContent)
     : (Array.isArray(messages) ? messages : []);
-  return visibleMessages.map((item,index)=><Entry key={item.renderKey ?? item.id} {...props} item={item}
-    hideProcess={hideProcess} showErrorDetails={props.showErrorDetails === true}
-    textImpactRecent={item.id === recentAssistantMessageId}
-    previousRole={visibleMessages[index-1]?.role} nextRole={visibleMessages[index+1]?.role} preferences={preferences}
-    monologueRecord={innerMonologues?.[item.id]} innerMonologuePending={innerMonologuePending?.[item.id]===true}
-    innerMonologueError={innerMonologueErrors?.[item.id] || ""} onPreview={preview} onReference={reference}
-    onDismissError={dismiss} onOpenActivity={activity} onRequestInnerMonologue={requestMonologue}
-    onCancelInnerMonologue={typeof onCancelInnerMonologue === "function" ? cancelMonologue : undefined} />);
+  // Very long histories otherwise create thousands of composited rows at once.
+  // Streaming keeps the newest rows live; older rows load in chunks.
+  const [visibleLimit, setVisibleLimit] = useState(200);
+  const start = Math.max(0, visibleMessages.length - visibleLimit);
+  const renderedMessages = start > 0 ? visibleMessages.slice(start) : visibleMessages;
+  return (
+    <>
+      {start > 0 ? (
+        <button
+          type="button"
+          className="chat-history-earlier"
+          onClick={(event) => {
+            const scroller = event?.currentTarget?.closest?.(".message-list");
+            const previousHeight = scroller?.scrollHeight || 0;
+            setVisibleLimit((current) => current + 150);
+            if (scroller && typeof window !== "undefined") {
+              window.requestAnimationFrame(() => {
+                scroller.scrollTop += scroller.scrollHeight - previousHeight;
+              });
+            }
+          }}
+        >
+          显示更早的 {start} 条消息
+        </button>
+      ) : null}
+      {renderedMessages.map((item, index) => {
+        const absoluteIndex = start + index;
+        return <Entry key={item.renderKey ?? item.id} {...props} item={item}
+          hideProcess={hideProcess} showErrorDetails={props.showErrorDetails === true}
+          textImpactRecent={item.id === recentAssistantMessageId}
+          previousRole={visibleMessages[absoluteIndex - 1]?.role} nextRole={visibleMessages[absoluteIndex + 1]?.role} preferences={preferences}
+          monologueRecord={innerMonologues?.[item.id]} innerMonologuePending={innerMonologuePending?.[item.id] === true}
+          innerMonologueError={innerMonologueErrors?.[item.id] || ""} onPreview={preview} onReference={reference}
+          onDismissError={dismiss} onOpenActivity={activity} onRequestInnerMonologue={requestMonologue}
+          onCancelInnerMonologue={typeof onCancelInnerMonologue === "function" ? cancelMonologue : undefined} />;
+      })}
+    </>
+  );
 }

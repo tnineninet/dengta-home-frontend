@@ -45,9 +45,25 @@ export function distillDiagnostic(error = {}) {
 }
 
 // The deadline also covers authentication and reading the response body.
-export async function requestDistill(path, options, request, timeoutMs = 180000) {
+export async function requestDistill(path, options, request, timeoutMs = 180000, externalSignal = null) {
   const controller = new AbortController();
   let timer;
+  let abortListener;
+  const cancelled = () => Object.assign(new Error("提纯已取消，原材料仍然保留。"), {
+    code: "style_distill_cancelled",
+    path,
+  });
+  const cancellation = new Promise((_, reject) => {
+    if (externalSignal?.aborted) {
+      reject(cancelled());
+      return;
+    }
+    abortListener = () => {
+      controller.abort();
+      reject(cancelled());
+    };
+    externalSignal?.addEventListener?.("abort", abortListener, { once: true });
+  });
   try {
     return await Promise.race([
       (async () => {
@@ -71,8 +87,10 @@ export async function requestDistill(path, options, request, timeoutMs = 180000)
           controller.abort();
         }, timeoutMs);
       }),
+      cancellation,
     ]);
   } finally {
     clearTimeout(timer);
+    if (externalSignal && abortListener) externalSignal.removeEventListener?.("abort", abortListener);
   }
 }

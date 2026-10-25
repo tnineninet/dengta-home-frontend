@@ -1,4 +1,4 @@
-﻿import { createRoot } from "react-dom/client";
+import { createRoot } from "react-dom/client";
 import { useEffect } from "react";
 import "./index.css";
 import "./cozy-theme.css";
@@ -16,6 +16,7 @@ import "./interaction-polish.css";
 import "./interface-polish.css";
 import "./settings-night-contrast.css";
 import "./android-compat.css";
+import "./menu-interactions.css";
 import App from "./App.jsx";
 
 function setRangeValue(selector, value) {

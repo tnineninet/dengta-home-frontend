@@ -23,6 +23,7 @@ globalThis.__bilibiliDialogFixture = {
   getBilibiliQrStatus: async () => ({ connected: false }),
   beginBilibiliQrLogin() { begins++; return beginRead?.promise || Promise.resolve({ key: `fictional-${begins}`, qr_content: `https://fictional.invalid/qr-${begins}` }); },
   checkBilibiliQrLogin() { checks++; return checkRead?.promise || Promise.resolve({ status: "expired" }); },
+  cancelBilibiliQrLogin: async () => true,
   disconnectBilibiliQrLogin: async () => true,
   listBilibiliFavoriteFolders: async () => [],
   listBilibiliFavoriteVideos: async () => [],
@@ -45,7 +46,7 @@ const vite = await createServer({
     load(id) {
       if (id === "\0virtual:bili-dialog-portal") return "export const createPortal = node => node;";
       const methods = {
-        "\0virtual:bili-dialog-api": ["getBilibiliQrStatus", "beginBilibiliQrLogin", "checkBilibiliQrLogin", "disconnectBilibiliQrLogin", "listBilibiliFavoriteFolders", "listBilibiliFavoriteVideos"],
+        "\0virtual:bili-dialog-api": ["getBilibiliQrStatus", "beginBilibiliQrLogin", "cancelBilibiliQrLogin", "checkBilibiliQrLogin", "disconnectBilibiliQrLogin", "listBilibiliFavoriteFolders", "listBilibiliFavoriteVideos"],
         "\0virtual:bili-dialog-browser": ["openBuiltInBrowser", "readBrowserCookie"],
         "\0virtual:bili-dialog-base": ["apiRequest"],
       }[id];

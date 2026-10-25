@@ -14,7 +14,7 @@
 .text-impact-source-playing { opacity: .38; }
 .text-impact-canvas { contain: strict; }
 .text-impact-target-hit { animation: text-impact-target-nudge 220ms ease-out, text-impact-hit-ring 440ms ease-out; }
-.text-impact-avatar-fall { animation: text-impact-avatar-fall 1020ms cubic-bezier(.22,.8,.28,1) both !important; transform-origin: 50% 40%; }
+.text-impact-avatar-fall { animation: text-impact-avatar-fall 900ms cubic-bezier(.22,.8,.28,1) none !important; transform-origin: 50% 40%; }
 .text-impact-avatar-burst { animation: text-impact-avatar-burst 600ms cubic-bezier(.2,.9,.24,1.25) both !important; transform-origin: 50% 55%; }
 @keyframes text-impact-avatar-fall { 0% { transform: translateY(0) rotate(0); opacity: 1; } 18% { transform: translateY(-14px) rotate(-4deg); } 100% { transform: translateY(72vh) rotate(18deg); opacity: 0; } }
 @keyframes text-impact-avatar-burst { 0% { transform: scale(1) rotate(0); } 28% { transform: scale(1.22, .86) rotate(-8deg); } 58% { transform: scale(.9, 1.14) rotate(7deg); } 100% { transform: scale(1) rotate(0); } }
@@ -41,4 +41,6 @@
   .text-impact-targets button,
   .text-impact-modes button { min-height: 44px; font-size: 14px; }
   .text-impact-feedback { max-width: 120px; }
+  .text-impact-avatar-fall { animation-duration: 760ms !important; }
+  .text-impact-avatar-burst { animation-duration: 480ms !important; }
 }

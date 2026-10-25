@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   DEEPGRAM_LANGUAGE_LABELS,
   DEFAULT_VOICE_OUTPUT,
+  OPENAI_VOICES,
   VOICE_OUTPUT_PROVIDERS,
   getVoiceOutput,
   previewTextForModel,
@@ -10,12 +11,17 @@ import {
 } from "./voice-output";
 
 function providerLabel(value) {
-  return value === VOICE_OUTPUT_PROVIDERS.deepgram
-    ? "Deepgram Aura"
-    : "服务器默认语音";
+  if (value === VOICE_OUTPUT_PROVIDERS.deepgram) return "Deepgram Aura";
+  if (value === VOICE_OUTPUT_PROVIDERS.openai) return "OpenAI / 自定义兼容 TTS";
+  return "服务器默认语音";
 }
 
 function connectionMessage(config) {
+  if (config.provider === VOICE_OUTPUT_PROVIDERS.openai) {
+    return config.configured
+      ? "OpenAI TTS 已连接，可生成中英等多语言语音。"
+      : "OpenAI TTS 尚缺 API Key。";
+  }
   if (config.provider !== VOICE_OUTPUT_PROVIDERS.deepgram) {
     return config.configured
       ? "当前沿用已连接的服务器默认语音。"
@@ -97,7 +103,9 @@ export default function VoiceProviderSettings({
         return;
       }
       const previewResult = await previewVoiceOutput(
-        previewTextForModel(saved.model),
+        saved.provider === VOICE_OUTPUT_PROVIDERS.openai
+          ? "你好，欢迎回家。我在灯下留了一点声音给你。"
+          : previewTextForModel(saved.model),
       );
       const objectUrl = URL.createObjectURL(previewResult.blob);
       const audio = new Audio(objectUrl);
@@ -115,6 +123,7 @@ export default function VoiceProviderSettings({
 
   const busy = ["loading", "saving", "previewing"].includes(status);
   const usingDeepgram = draft.provider === VOICE_OUTPUT_PROVIDERS.deepgram;
+  const usingOpenAi = draft.provider === VOICE_OUTPUT_PROVIDERS.openai;
   const deepgramWithoutChinese =
     usingDeepgram &&
     draft.configured &&
@@ -161,6 +170,9 @@ export default function VoiceProviderSettings({
             </option>
             <option value={VOICE_OUTPUT_PROVIDERS.deepgram}>
               Deepgram Aura
+            </option>
+            <option value={VOICE_OUTPUT_PROVIDERS.openai}>
+              OpenAI / 自定义兼容 TTS
             </option>
           </select>
           <small>设置按登录账号与伴侣隔离；切换账号后会读取该账号自己的选择。</small>
@@ -256,6 +268,88 @@ export default function VoiceProviderSettings({
             </label>
           </div>
         </>
+      )}
+
+      {usingOpenAi && (
+        <div className="voice-provider-form-grid">
+          <label>
+            OpenAI API Key
+            <input
+              type="password"
+              value={draft.credential || ""}
+              onChange={(event) => update("credential", event.target.value)}
+              placeholder={
+                draft.credential_configured
+                  ? "已安全保存；留空会保留原密钥"
+                  : "粘贴 OpenAI API Key"
+              }
+              autoComplete="off"
+              spellCheck="false"
+              disabled={busy}
+            />
+            <small>
+              {draft.credential_configured
+                ? "当前账号已有密钥；只有重新填写才会替换。"
+                : "密钥只发送给 DengTa 后端加密保存，不会回显。"}
+            </small>
+          </label>
+          <label>
+            自定义接口地址（可选）
+            <input
+              type="url"
+              value={draft.base_url || "https://api.openai.com"}
+              onChange={(event) => update("base_url", event.target.value)}
+              placeholder="https://api.openai.com"
+              spellCheck="false"
+              disabled={busy}
+            />
+            <small>
+              留默认就是 OpenAI 官方；也可以填任意公开 HTTPS 的 OpenAI 兼容 TTS 接口。
+            </small>
+          </label>
+          <label>
+            TTS 模型
+            <input
+              value={draft.tts_model || "gpt-4o-mini-tts"}
+              onChange={(event) => update("tts_model", event.target.value)}
+              placeholder="gpt-4o-mini-tts 或 tts-1"
+              spellCheck="false"
+              disabled={busy}
+            />
+            <small>按你的供应商文档填写模型名。</small>
+          </label>
+          <label>
+            OpenAI 音色
+            <select
+              value={draft.model}
+              onChange={(event) => update("model", event.target.value)}
+              disabled={busy}
+            >
+              {(draft.model_options?.length
+                ? draft.model_options
+                : OPENAI_VOICES.map((voice) => ({ value: voice, label: voice }))
+              ).map((voice) => (
+                <option value={voice.value || voice} key={voice.value || voice}>
+                  {voice.label || voice.value || voice}
+                </option>
+              ))}
+            </select>
+            <small>支持多语言；填自定义地址时会按 OpenAI 兼容的 /v1/audio/speech 调用。</small>
+          </label>
+          <label>
+            语速 · {Number(draft.speed || 1).toFixed(2)}×
+            <input
+              type="range"
+              min="0.7"
+              max="1.5"
+              step="0.05"
+              value={draft.speed}
+              onChange={(event) => update("speed", Number(event.target.value))}
+              disabled={busy}
+            />
+            <small>1.00× 是原始语速；可在 0.70× 到 1.50× 之间调节。</small>
+          </label>
+        </div>
       )}
 
       {feedback && (

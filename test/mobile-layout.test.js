@@ -122,6 +122,7 @@ assert.deepEqual(
     "interface-polish.css",
     "settings-night-contrast.css",
     "android-compat.css",
+    "menu-interactions.css",
   ],
   "layout tests must use the same stylesheet order as the application entrypoint",
 );
@@ -154,6 +155,7 @@ assert.deepEqual(
     "interface-polish.css",
     "settings-night-contrast.css",
     "android-compat.css",
+    "menu-interactions.css",
   ],
   "the 280px regression must use the complete application stylesheet cascade",
 );

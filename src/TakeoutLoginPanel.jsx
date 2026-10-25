@@ -25,7 +25,13 @@ function ScopedTakeoutLoginPanel({ scope, feedback, available = takeoutPluginAva
       setState({ scope, status: "checking" });
       owner.pending = Promise.resolve().then(() => current() ? readLogin() : null)
         .catch(() => takeoutLoginFailure()).then(result => {
-          if (!current() || !result) return null;
+          if (!current()) return null;
+          if (!result) {
+            const failure = takeoutLoginFailure("takeout_login_state_invalid");
+            setState({ ...failure, scope });
+            recordOperationFailure(scope, "/api/v2/takeout/login", failure);
+            return failure;
+          }
           setState({ ...result, scope });
           if (result.status === "error") recordOperationFailure(scope, "/api/v2/takeout/login", result);
           return result;
@@ -87,7 +93,7 @@ function ScopedTakeoutLoginPanel({ scope, feedback, available = takeoutPluginAva
   const localNotice = notice?.scope === scope && notice.feedbackAtOpen === feedback ? notice : null;
   const operationFeedback = feedback?.scope === scope ? feedback : null;
   const displayed = status === "error" ? visible : localNotice || operationFeedback;
-  return <div className="notification-feature-panel device-activity-panel takeout-login-panel">
+  return <div className="notification-feature-panel device-activity-panel takeout-login-panel" aria-busy={status === "checking" || isOpening}>
     <div className="device-activity-heading"><div><strong>登录外卖平台</strong><span>{available ? "Android · 本机执行" : "仅 Android App 可用"}</span></div>
       <div className="device-activity-actions"><em className={`takeout-login-state${status === "ready" && visible?.loggedIn ? " is-logged-in" : ""}`} role="status" aria-live="polite">{badge}</em></div></div>
     <p>登录后，AI 可以在聊天里帮你找吃的（例如“帮我找家附近的烧烤，预算 30”）。平台登录态只保存在本机 WebView，不会上传服务器。</p>

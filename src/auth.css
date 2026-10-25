@@ -660,6 +660,21 @@
   text-align: center;
 }
 
+.auth-loading-retry {
+  min-width: 132px;
+  min-height: 44px;
+  margin-top: 4px;
+  padding: 10px 18px;
+  border: 1px solid rgb(120 87 103 / 0.32);
+  border-radius: 999px;
+  color: #5f414d;
+  background: rgb(255 255 255 / 0.72);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
 .auth-network-help .auth-inline-action {
   margin-top: 10px;
 }

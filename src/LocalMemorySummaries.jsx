@@ -6,9 +6,10 @@ import "./memory-summary-list.css";
 
 const PATH = "/api/v2/memories";
 
-export default function LocalMemorySummaries({ scopeKey, items = [], drafts = {}, onItemsChange, onDraftsChange, onNotice }) {
+export default function LocalMemorySummaries({ scopeKey, conversationId = "", items = [], drafts = {}, onItemsChange, onDraftsChange, onNotice }) {
   const { request, isCurrent } = useMemoryUiRequest(scopeKey);
   const [reading, setReading] = useState(false);
+  const [consolidating, setConsolidating] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [busyId, setBusyId] = useState("");
   const [feedback, setFeedback] = useState(null);
@@ -45,6 +46,41 @@ export default function LocalMemorySummaries({ scopeKey, items = [], drafts = {}
       if (isCurrent() && readVersion.current === version) setReading(false);
     }
   }, [isCurrent, request, onItemsChange, showFailure]);
+
+  const consolidate = useCallback(async () => {
+    if (!conversationId || consolidating || !isCurrent()) return;
+    setConsolidating(true);
+    setFeedback(null);
+    try {
+      const data = await request("/api/v2/memories/consolidate", {
+        method: "POST",
+        body: { conversation_id: conversationId },
+        responseReader: readMemorySummaryJson,
+        timeoutMs: 90_000,
+      });
+      if (!isCurrent()) return;
+      if (data?.ok !== true) throw new Error("记忆整理回执不完整。");
+      if (data.compressed === true) {
+        setFeedback({ message: `已整理当前对话，保存了 1 条新摘要，隐去 ${data.hidden_message_count || 0} 条已整理消息。`, error: false });
+        onNotice?.("当前对话的长期记忆已更新。");
+      } else {
+        const reason = {
+          not_enough_messages: "当前对话消息还不够，至少需要 3 条可见消息。",
+          nothing_worth_remembering: "模型认为当前对话没有值得长期保留的新内容。",
+          duplicate_memory: "整理出的内容与已有记忆重复，没有重复保存。",
+          model_unavailable: "当前接口没有可用模型或密钥，暂时无法整理。",
+          already_running: "已有一条整理任务在进行，请稍后再看。",
+          below_threshold: "当前对话内容还不到自动整理阈值。",
+        }[data.reason] || "当前对话暂时没有生成新摘要。";
+        setFeedback({ message: `${reason}`, error: false });
+      }
+      await refresh();
+    } catch (error) {
+      if (isCurrent()) showFailure(error, "/api/v2/memories/consolidate", true);
+    } finally {
+      if (isCurrent()) setConsolidating(false);
+    }
+  }, [conversationId, consolidating, isCurrent, onNotice, refresh, request, showFailure]);
 
   useEffect(() => {
     let cancelled = false;
@@ -124,6 +160,15 @@ export default function LocalMemorySummaries({ scopeKey, items = [], drafts = {}
       <div className="memory-summary-toolbar">
         <p role="status">{reading ? "正在读取对话摘要…" : feedback?.error && (confirmed || items.length) ? "保留上次确认的摘要，本次结果尚未确认。" : confirmed ? "已读取当前账号与伴侣的摘要。" : items.length ? "保留上次读取的摘要，本次尚未确认。" : "尚未成功读取对话摘要。"}</p>
         <button type="button" onClick={() => void refresh()} disabled={reading || Boolean(busyId)}>{reading ? "读取中…" : "重新读取摘要"}</button>
+        <button
+          type="button"
+          className="memory-consolidate-button"
+          onClick={() => void consolidate()}
+          disabled={!conversationId || consolidating || reading}
+          title={conversationId ? "立即整理当前聊天，不等待自动阈值" : "请先在聊天里打开一个会话"}
+        >
+          {consolidating ? "整理中…" : "立即整理当前对话"}
+        </button>
       </div>
       {feedback && <div className={`memory-summary-feedback${feedback.error ? " is-error" : ""}`} role={feedback.error ? "alert" : "status"}>
         <p>{feedback.message}</p>

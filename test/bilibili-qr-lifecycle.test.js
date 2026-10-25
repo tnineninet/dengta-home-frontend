@@ -32,6 +32,7 @@ globalThis.__bilibiliLifecycleFixture = {
     return beginRead?.promise || Promise.resolve({ key: `fictional-key-${begins}`, qr_content: `https://fictional.invalid/qr-${begins}` });
   },
   checkBilibiliQrLogin() { checks++; return checkRead?.promise || Promise.resolve({ status: "expired" }); },
+  cancelBilibiliQrLogin: async () => true,
   disconnectBilibiliQrLogin: async () => true,
   listBilibiliFavoriteFolders: async () => folders,
   listBilibiliFavoriteVideos(id) { const pending = deferred(); videoReads.set(id, pending); return pending.promise; },
@@ -56,7 +57,7 @@ const vite = await createServer({
     load(id) {
       if (id === "\0virtual:bili-portal") return "export const createPortal = (node) => node;";
       const exports = {
-        "\0virtual:bili-api": ["getBilibiliQrStatus", "beginBilibiliQrLogin", "checkBilibiliQrLogin", "disconnectBilibiliQrLogin", "listBilibiliFavoriteFolders", "listBilibiliFavoriteVideos"],
+        "\0virtual:bili-api": ["getBilibiliQrStatus", "beginBilibiliQrLogin", "cancelBilibiliQrLogin", "checkBilibiliQrLogin", "disconnectBilibiliQrLogin", "listBilibiliFavoriteFolders", "listBilibiliFavoriteVideos"],
         "\0virtual:bili-browser": ["openBuiltInBrowser", "readBrowserCookie"],
         "\0virtual:bili-base": ["apiRequest"],
       }[id];

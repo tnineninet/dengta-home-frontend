@@ -97,7 +97,7 @@ test("the loading deadline also covers a stalled map module download", async con
   const fixture = fakeLibrary(), statuses = []; let resolve;
   const pending = new Promise(done => { resolve = done; });
   const runtime = mountSurpriseMap({}, { load: () => pending, onStatus: value => statuses.push(value) });
-  await Promise.resolve(); context.mock.timers.tick(18000);
+  await Promise.resolve(); context.mock.timers.tick(12000);
   assert.equal(statuses.at(-1), "timeout"); runtime.destroy(); resolve(fixture.library); await runtime.ready;
   assert.equal(fixture.calls.length, 0);
 });

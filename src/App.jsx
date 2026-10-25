@@ -91,6 +91,8 @@ import ChatActivities from "./ChatActivities.jsx";
 import ActivityReturnBar from "./ActivityReturnBar.jsx";
 import { createActivityReturn, resolveActivityReturn } from "./activity-return.js";
 import AchievementGuide from "./AchievementGuide.jsx";
+import SlidingIndicator from "./SlidingIndicator.jsx";
+import CommandPalette from "./CommandPalette.jsx";
 import CompanionInspiration from "./CompanionInspiration.jsx";
 import OperationErrorHelp from "./OperationErrorHelp.jsx";
 import { describeOperationError } from "./operation-error-help.js";
@@ -1512,6 +1514,34 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [pendingMomentLikes, setPendingMomentLikes] = useState({});
   const [pendingMomentComments, setPendingMomentComments] = useState({});
   const [notice, setNotice] = useState("");
+  const [navigationUnread, setNavigationUnread] = useState({ chat: 0 });
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [viewEntering, setViewEntering] = useState(false);
+  const hasMountedViewRef = useRef(false);
+  useEffect(() => {
+    if (!hasMountedViewRef.current) {
+      hasMountedViewRef.current = true;
+      return undefined;
+    }
+    setViewEntering(true);
+    const timer = window.setTimeout(() => setViewEntering(false), 220);
+    return () => window.clearTimeout(timer);
+  }, [activeView]);
+  useEffect(() => {
+    if (activeView === "chat" && navigationUnread.chat) {
+      setNavigationUnread(previous => previous.chat ? { ...previous, chat: 0 } : previous);
+    }
+  }, [activeView, navigationUnread.chat]);
+  useEffect(() => {
+    const onKeyDown = event => {
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && String(event.key).toLowerCase() === "k") {
+        event.preventDefault();
+        setCommandPaletteOpen(current => !current);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
   const [dialog, setDialog] = useState(null);
   useEffect(() => {
     if (!notice) return undefined;
@@ -1751,6 +1781,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const screenGlanceConsumeRunRef = useRef(null);
   const pendingScreenGlanceTurnRef = useRef(null);
   const sendMessageRef = useRef(null);
+  const mobileNavRef = useRef(null);
+  const mobileActiveNavRef = useRef(null);
+  const commandButtonRef = useRef(null);
   const environmentContextRef = useRef({});
   const turnContextRef = useRef("");
   const companionInteractionStatsRef = useRef(companionInteractionStats);
@@ -3424,6 +3457,18 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         }
 
         if (incoming.length === 0) return;
+
+        const unreadIncoming = incoming.filter(
+          (item) =>
+            activeViewRef.current !== "chat" ||
+            item.conversation_id !== activeSessionIdRef.current,
+        );
+        if (unreadIncoming.length) {
+          setNavigationUnread(previous => ({
+            ...previous,
+            chat: previous.chat + unreadIncoming.length,
+          }));
+        }
 
         const nextSeenIds = [
           ...seenIds,
@@ -8857,6 +8902,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           <LocalMemorySummaries
             key={privateMediaScope}
             scopeKey={privateMediaScope}
+            conversationId={activeSessionId || ""}
             items={memories}
             drafts={memoryDrafts}
             onItemsChange={setMemories}
@@ -10427,6 +10473,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     Number(startupConnection.nextRetryDelayMs || 0) / 1_000,
   );
   const providerSetup = providerSetupHint(providerStatus);
+  const navigationBadges = {
+    chat: navigationUnread.chat > 0
+      ? { count: navigationUnread.chat, label: `聊天，${navigationUnread.chat} 条新消息` }
+      : undefined,
+    achievements: activeView !== "achievements" && achievementPopup.visible && achievementPopup.items.length
+      ? { count: achievementPopup.items.length, label: `成就，${achievementPopup.items.length} 个新纪念` }
+      : undefined,
+    takeout: { action: true },
+  };
 
   return (
     <div
@@ -10438,6 +10493,18 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       data-chat-streaming={isSending ? "true" : "false"}
     >
       <Suspense fallback={null}><AppUpdateCenter canPrompt={!isSending && !isTakeoutOpen && !isSettingsOpen && !isStatusPanelExpanded && !isComposerMenuOpen && !isMobileNavOpen && !isSidebarOpen && !dialog && !imageViewer && !distillState.modalOpen} /></Suspense>
+      <CommandPalette
+        open={commandPaletteOpen}
+        onClose={(options) => { setCommandPaletteOpen(false); if (!options?.navigate) commandButtonRef.current?.focus?.({ preventScroll: true }); }}
+        onNavigate={(view, sessionId) => { if (sessionId) chooseSession(sessionId); else changeView(view); }}
+        onCreateSession={createSession}
+        onOpenSettings={(category) => { openSettingsPanel(); if (category) setSettingsCategory(category); }}
+        onReturnActivity={activityReturn ? returnToActivity : undefined}
+        features={navItems}
+        settingsCategories={SETTINGS_CATEGORIES}
+        sessions={sessions}
+        returnFocusRef={commandButtonRef}
+      />
       <TakeoutAssistant scope={privateMediaScope} open={isTakeoutOpen} onClose={closeTakeoutAssistant} aiName={effectiveAiName}
         initialQuery={activityRequestInScope(takeoutActivityRequest, accountStorageScope, companionScope)?.query || ""}
         task={takeoutTask} available={takeoutPluginAvailable()} busy={isSending || isCompanionResponding || isVoiceInputBusy}
@@ -10467,7 +10534,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           </div>
         </div>
 
-        <FeatureNavigation items={navItems} activeView={activeView} onNavigate={changeView} historyScope={privateMediaScope} />
+        <FeatureNavigation items={navItems} activeView={activeView} onNavigate={changeView} historyScope={privateMediaScope} badges={navigationBadges} />
 
         <div className="session-heading">
           <span>最近对话</span>
@@ -10545,6 +10612,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       </aside>
 
       <main
+        id="main-content"
+        tabIndex={-1}
         className={`main-panel view-${activeView}${
           isStatusPanelExpanded ? " status-panel-open" : ""
         }`}
@@ -10580,6 +10649,18 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             )}
           </div>
           <div className="topbar-actions">
+            <button
+              ref={commandButtonRef}
+              type="button"
+              className="command-palette-trigger"
+              aria-label="打开命令面板"
+              aria-haspopup="dialog"
+              aria-expanded={commandPaletteOpen}
+              onClick={() => setCommandPaletteOpen(true)}
+            >
+              <span aria-hidden="true">⌘K</span>
+              <span className="command-palette-trigger-label">命令</span>
+            </button>
             <button
               className="new-chat-top"
               aria-label={isCreatingSession ? "正在创建新对话" : "新对话"}
@@ -10864,7 +10945,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           </div>
         )}
 
-        <div className="view-content">
+        <div className={`view-content${viewEntering ? " is-view-entering" : ""}`}>
           {activeView === "chat" && renderChat()}
           {activeView === "moments" && renderMoments()}
           {activeView === "diary" && renderDiary()}
@@ -10905,18 +10986,22 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         >
           <span aria-hidden="true">{isMobileNavOpen ? "‹" : "›"}</span>
         </button>
-        <nav className="mobile-nav" aria-label="手机侧边导航">
+        <nav className="mobile-nav has-sliding-indicator" aria-label="手机侧边导航" ref={mobileNavRef}>
+          <SlidingIndicator containerRef={mobileNavRef} activeRef={mobileActiveNavRef} activeKey={activeView} revision={`${QUICK_FEATURES.join(",")}|${isMobileNavOpen ? "open" : "closed"}`} className="mobile-nav-indicator" />
           {navItems.filter(item => QUICK_FEATURES.includes(item.id)).map((item) => (
             <button
               className={activeView === item.id ? "active" : ""}
+              aria-current={activeView === item.id ? "page" : undefined}
+              ref={activeView === item.id ? mobileActiveNavRef : undefined}
               key={item.id}
               onClick={() => changeView(item.id)}
             >
               <span>{item.icon}</span>
               <small>{FEATURE_LABELS[item.id] || item.label}</small>
+              {navigationBadges[item.id]?.count > 0 ? <span className="mobile-nav-badge" aria-label={navigationBadges[item.id]?.label}>{navigationBadges[item.id].count > 99 ? "99+" : navigationBadges[item.id].count}</span> : null}
             </button>
           ))}
-                  <button type="button" className={!QUICK_FEATURES.includes(activeView) ? "active" : ""} aria-label="查看全部玩法" onClick={() => { setIsMobileNavOpen(false); setIsSidebarOpen(true); }}><span aria-hidden="true">···</span><small>更多</small></button>
+                  <button ref={!QUICK_FEATURES.includes(activeView) ? mobileActiveNavRef : undefined} type="button" aria-current={!QUICK_FEATURES.includes(activeView) ? "page" : undefined} className={!QUICK_FEATURES.includes(activeView) ? "active" : ""} aria-label="查看全部玩法" onClick={() => { setIsMobileNavOpen(false); setIsSidebarOpen(true); }}><span aria-hidden="true">···</span><small>更多</small></button>
         </nav>
       </div>
 

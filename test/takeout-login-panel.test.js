@@ -83,6 +83,15 @@ test("real takeout panel preserves scope, retries read failures and never duplic
         assert.equal(reads, 2); assert.ok(!h.text().includes("browser_account_changed")); assert.equal(h.button("扫码登录外卖").props.disabled, false);
       } finally { await h.close(); }
     });
+    await t.test("a null local receipt is an explicit uncertain state, not a logout claim", async () => {
+      const h = fixture({ scope: "fictional-null", readLogin: async () => null });
+      try {
+        await h.mount();
+        assert.equal(h.badge(), "检测未完成");
+        assert.ok(h.text().includes("takeout_login_state_invalid"));
+        assert.ok(!h.text().includes("未检测到本机登录凭据"));
+      } finally { await h.close(); }
+    });
     await t.test("web and missing identity cause no native work; late listener registration is removed", async () => {
       let reads = 0, opens = 0, removed = 0;
       const late = deferred();

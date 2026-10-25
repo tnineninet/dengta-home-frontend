@@ -182,10 +182,13 @@ public final class DlnaReceiverService extends Service {
         }
     }
 
-    /** 确保每次 App 启动后投屏接收默认开启。 */
+    /** 首次安装默认开启；之后严格使用用户设置，不再每次启动写 true。 */
     public static void ensureEnabledByDefault(Context context) {
         try {
-            prefs(context).edit().putBoolean(ENABLED_KEY, true).apply();
+            SharedPreferences preferences = prefs(context);
+            if (!preferences.contains(ENABLED_KEY)) {
+                preferences.edit().putBoolean(ENABLED_KEY, true).apply();
+            }
         } catch (Exception ignored) {
         }
     }
@@ -250,7 +253,15 @@ public final class DlnaReceiverService extends Service {
                 return START_STICKY;
             }
         }
-        prefs(this).edit().putBoolean(ENABLED_KEY, true).apply();
+        // A sticky restart or an implicit service start must not override a
+        // user who explicitly turned receiver off in settings.
+        if (!ACTION_START.equals(action) && !isEnabled(this)) {
+            stopSelf();
+            return START_NOT_STICKY;
+        }
+        if (ACTION_START.equals(action)) {
+            prefs(this).edit().putBoolean(ENABLED_KEY, true).apply();
+        }
         startReceiver();
         return START_STICKY;
     }

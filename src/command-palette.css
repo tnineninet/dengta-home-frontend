@@ -1,0 +1,126 @@
+.command-palette-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  padding: max(72px, env(safe-area-inset-top)) 12px max(16px, env(safe-area-inset-bottom));
+  background: rgb(16 14 18 / 0.46);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.command-palette {
+  display: grid;
+  width: min(620px, 100%);
+  max-height: min(78dvh, 720px);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.5);
+  border-radius: 22px;
+  color: var(--theme-ink, #2d2530);
+  background: rgb(var(--theme-card-rgb, 255 255 255) / 0.96);
+  box-shadow: 0 24px 80px rgb(24 14 22 / 0.32);
+}
+
+.command-palette-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px 8px;
+}
+
+.command-palette-header h2 { margin: 0; font-size: 18px; }
+.command-palette-close {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+.command-palette-close svg { width: 18px; height: 18px; }
+
+.command-palette-search {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  gap: 9px;
+  margin: 0 14px 8px;
+  padding: 0 12px;
+  border: 1px solid rgb(var(--theme-accent-rgb, 134 90 105) / 0.24);
+  border-radius: 14px;
+  background: rgb(255 255 255 / 0.58);
+}
+.command-palette-search > svg { width: 18px; height: 18px; flex: none; opacity: .62; }
+.command-palette-search input {
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  border: 0;
+  outline: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  font-size: 15px;
+}
+
+.command-palette-results {
+  margin: 0;
+  padding: 4px 8px 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  list-style: none;
+}
+.command-palette-results li { margin: 0; padding: 0; }
+.command-palette-row {
+  display: flex;
+  width: 100%;
+  min-height: 52px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 12px;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+.command-palette-row.is-highlighted { background: rgb(var(--theme-accent-rgb, 134 90 105) / 0.14); }
+.command-palette-row > svg { width: 15px; height: 15px; flex: none; opacity: .5; }
+.command-palette-row-icon { display: grid; width: 30px; flex: none; place-items: center; font-size: 17px; }
+.command-palette-row-copy { display: grid; min-width: 0; gap: 2px; flex: 1; }
+.command-palette-row-copy strong { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+.command-palette-row-copy small { overflow: hidden; color: var(--theme-muted, #776d78); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+.command-palette-empty { padding: 22px 14px; color: var(--theme-muted, #776d78); font-size: 13px; text-align: center; }
+
+.command-palette-footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 14px;
+  padding: 10px 18px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid rgb(var(--theme-ink-rgb, 45 37 48) / 0.08);
+  color: var(--theme-muted, #776d78);
+  font-size: 11px;
+}
+.command-palette-footer span { display: inline-flex; align-items: center; gap: 4px; }
+.command-palette-footer svg { width: 13px; height: 13px; }
+
+@media (max-width: 600px) {
+  .command-palette-backdrop { align-items: stretch; padding: max(8px, env(safe-area-inset-top)) 8px max(8px, env(safe-area-inset-bottom)); }
+  .command-palette { width: 100%; max-height: none; height: 100%; border-radius: 18px; }
+  .command-palette-row-copy small { white-space: normal; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .command-palette-backdrop { backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+:root[data-dengta-reduced-motion="true"] .command-palette-backdrop { backdrop-filter: none; -webkit-backdrop-filter: none; }

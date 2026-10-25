@@ -12,15 +12,18 @@ function StillImage({
   className,
   buttonClassName,
   loading = "lazy",
+  fetchPriority = "auto",
   onPreview,
   fallback = null,
   scopeKey = "",
 }) {
   const placeholderRef = useRef(null);
   const [visibleSource, setVisibleSource] = useState(null);
+  const [failedUrl, setFailedUrl] = useState("");
   const needsObservation = loading !== "eager" && typeof IntersectionObserver === "function";
   const mayLoad = !needsObservation || visibleSource === src;
   const media = usePrivateMediaSource(src, { enabled: mayLoad, scopeKey });
+  const renderFailed = Boolean(media.url) && failedUrl === media.url;
 
   useEffect(() => {
     if (mayLoad || !placeholderRef.current) return;
@@ -43,7 +46,7 @@ function StillImage({
       />
     );
   }
-  if (!media.url) {
+  if (!media.url || renderFailed) {
     if (fallback) return fallback;
     return (
       <span
@@ -63,6 +66,8 @@ function StillImage({
       alt={alt}
       loading={loading}
       decoding="async"
+      fetchPriority={fetchPriority}
+      onError={() => setFailedUrl(media.url)}
     />
   );
   if (!onPreview) return image;
