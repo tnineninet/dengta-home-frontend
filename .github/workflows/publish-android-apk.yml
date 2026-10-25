@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: publish-android-apk
@@ -154,3 +155,12 @@ jobs:
           else
             echo "VERCEL_DEPLOY_HOOK is not configured; the repository push still deploys normally"
           fi
+
+      - name: Dispatch post-release verification and CNB sync
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run == true) && !startsWith(github.ref_name, 'android-dryrun-') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run verify-production.yml --ref main || echo "verify-production dispatch failed"
+          gh workflow run sync-cnb.yml --ref main || echo "CNB sync dispatch failed"
+          gh workflow run verify-apk-integrity.yml --ref main || echo "APK integrity dispatch failed"
