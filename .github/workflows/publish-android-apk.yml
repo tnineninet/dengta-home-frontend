@@ -104,18 +104,20 @@ jobs:
           VERSION_CODE: ${{ steps.version.outputs.code }}
           VERSION_NAME: ${{ steps.version.outputs.name }}
           COMMIT_SHA: ${{ github.sha }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
         run: node scripts/publish-site-apk.mjs
 
-      - name: Commit published APK
+      - name: Commit published manifests
         env:
           VERSION_CODE: ${{ steps.version.outputs.code }}
           VERSION_NAME: ${{ steps.version.outputs.name }}
         run: |
           git config user.name "DengTa Home"
           git config user.email "2458077782@qq.com"
-          git add public/downloads/DengTa-latest.apk public/updates/android.json public/updates/download.json
+          git add public/updates/android.json public/updates/download.json
           if git diff --cached --quiet; then
-            echo "No APK changes to publish"
+            echo "No manifest changes to publish"
             exit 0
           fi
           git commit -m "release: publish Android ${VERSION_NAME} (${VERSION_CODE})" -m "sha: ${COMMIT_SHA}"
