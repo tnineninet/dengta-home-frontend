@@ -286,3 +286,22 @@
     contain-intrinsic-size: auto 168px;
   }
 }
+
+/* Leaflet z×控件的 +/− 是地图中间最容易被误认成“按钮一直变宽”的元素。
+   固定为方形，禁用 width 过渡，避免地图缩放时反复 reflow。 */
+.surprise-map-canvas .leaflet-control-zoom {
+  overflow: hidden;
+  border-radius: 12px;
+}
+.surprise-map-canvas .leaflet-control-zoom a {
+  display: grid !important;
+  place-items: center !important;
+  width: 40px !important;
+  height: 40px !important;
+  min-width: 40px !important;
+  min-height: 40px !important;
+  padding: 0 !important;
+  font-size: 21px !important;
+  line-height: 1 !important;
+  transition: none !important;
+}
