@@ -19,16 +19,21 @@
 2. 提交并推送：
    ```powershell
    git push origin main
-   git push cnb main:frontend-main
    ```
+   CNB 镜像由 GitHub Actions 的 `sync-cnb.yml` 自动同步，不再需要手动 push。
 3. Vercel Git 集成自动部署前端；Render `autoDeploy` 自动部署后端。
-4. 检查：
+4. GitHub Actions 会自动：
+   - 等待并验证本次 commit 的 Vercel/Render production revision
+   - 清理旧 Vercel deployment，保留最新 10 个
+   - 校验 feed / APK / 后端 health
+5. 人工检查：
    ```powershell
    node scripts/deployment-health.mjs
    node scripts/deployment-status.mjs   # 需要 GITHUB_TOKEN/GITHUB_REPOSITORY
    ```
-5. APK 发布走显式 workflow：
+6. APK 发布走显式 workflow 或 `android-v*` tag：
    - GitHub Actions → `Publish Android APK`
+   - 或推送经确认的 `android-v*` 标签
    - APK 上传 Supabase `dengta-updates/apk/DengTa-latest.apk`
    - 只提交 `public/updates/*.json`，不提交 41MB APK
 
@@ -50,37 +55,44 @@ git push origin main
 
 ```powershell
 cd E:\chatgpt\dengta-home-backend
-git revert <bad-commit> --no-edit
+node scripts/rollback-backend.mjs <bad-commit>          # dry-run
+node scripts/rollback-backend.mjs <bad-commit> --apply  # 生成 revert 提交
+npm test; npm run check
 git push origin main
 ```
 
-Render `autoDeploy` 会部署 revert；检查 `/health` 的 revision。
+Render `autoDeploy` 会部署 revert；`verify-production.yml` 会等到 `/health` revision 等于 revert commit。
 
 ## Vercel 历史存储清理
 
-需要一次性 `VERCEL_TOKEN`：
+已配置自动清理：
 
-- GitHub Actions：`Vercel deployment storage cleanup` → Run workflow
-  - 默认 dry-run
-  - `apply=true` 才删除旧部署
-  - 默认保留最新 10 个
-- 或本地：
-  ```powershell
-  $env:VERCEL_TOKEN="..."
-  node scripts/vercel-cleanup.mjs          # dry-run
-  $env:APPLY="1"; $env:KEEP="10"; node scripts/vercel-cleanup.mjs
-  ```
+- `.github/workflows/vercel-storage-cleanup.yml`
+  - 每周一 03:17 UTC
+  - 也可手动触发
+  - 保留最新 10 个 deployment
+- `verify-production.yml` 每次部署验证成功后也会自动清理，保留最新 10 个
+
+本地手动清理（可选）：
+
+```powershell
+$env:VERCEL_TOKEN="..."
+$env:VERCEL_PROJECT_ID="prj_P6wMEPflv6ZGrwz9Aef92RWSCAqP"
+$env:VERCEL_TEAM_ID="team_yr64LG4a6KOkuZ6WFpHqb7KA"
+node scripts/vercel-cleanup.mjs
+$env:APPLY="1"; $env:KEEP="10"; node scripts/vercel-cleanup.mjs
+```
 
 ## 定时健康检查
 
-- 前端：`.github/workflows/deployment-health.yml`
-  - 每 30 分钟检查 feed/APK/后端 health
-  - 校验 GitHub Production deployment 最新状态为 success
-- 后端：`dengta-home-backend/.github/workflows/deployment-health.yml`
-  - 每 30 分钟检查 Render `/health` revision
+- 前端/后端都配置了 `deployment-health.yml` 和每次 push 的 `verify-production.yml`
+- GitHub `schedule` 在本仓库实测不稳定，**以每次 push 的 verify-production 为第一道保障**
+- 本地 8 小时监控日志：
+  `E:\chatgpt\artifacts\dengta-deploy-monitor-20261026.log`
 
 ## 注意
 
 - 不再把 APK 写入 Vercel 部署；否则每次部署增加 41MB。
 - `public/updates/android.json` 的 `apk_url` 指向 Supabase。
-- Vercel 旧 13.63GB 历史记录不会自动消失；只有加 `VERCEL_TOKEN` 后才能清理。
+- Vercel 旧部署已从 369 清理到 10，后续由自动清理维持。
+- CNB 分支/tags 自动同步，不再需要手动 push。
