@@ -1,4 +1,4 @@
-﻿/* Cross-Android WebView adaptation.
+/* Cross-Android WebView adaptation.
  *
  * OEM WebViews (MIUI/HyperOS, ColorOS, OriginOS, One UI, EMUI) are not all
  * current Chromium. Keep critical layout metrics on viewport units with a
@@ -60,15 +60,8 @@
   }
 }
 
-/* Short screens: the status capsule and fixed composer must leave room for
-   the actual page. Avoid a full-height decorative stage swallowing taps. */
+/* Short screens: keep the fixed composer and dialogs inside the viewport. */
 @media (max-height: 640px) {
-  .main-panel.view-chat .companion-status,
-  .main-panel.view-chat .companion-status.expanded {
-    height: 116px;
-    min-height: 116px;
-  }
-
   .dengta-prelude,
   .celestial-backdrop {
     pointer-events: none;

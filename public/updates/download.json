@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
   "latest": {
-    "version_code": 274,
-    "version": "2.13.16",
+    "version_code": 275,
+    "version": "2.13.17",
     "apk_url": "https://www.dengtahome.com/downloads/DengTa-latest.apk",
-    "sha256": "305bdc72ba4c3900512606cd95e43342a82b91a68c11ddb26e500506a5993be4",
-    "size_bytes": 41298717,
-    "published_at": "2026-10-25T05:52:08.958Z",
+    "sha256": "822e830386d387d89124c699d6d5dbabe352d93aa2d2d9a08628c74047b1d11e",
+    "size_bytes": 41298733,
+    "published_at": "2026-10-25T05:55:07.296Z",
     "notes": [
-      "2.13.16：全安卓适配（320–768dp、横屏、短屏、旧 WebView 回退）；红米/MIUI 点按保护；歌曲胶囊内嵌彩虹；地图缩放控件固定尺寸"
+      "2.13.17：全安卓适配（320–768dp、横屏、短屏、旧 WebView 回退）；红米/MIUI 点按保护；歌曲胶囊内嵌彩虹；地图缩放控件固定尺寸"
     ]
   }
 }
