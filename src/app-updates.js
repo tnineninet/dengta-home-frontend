@@ -2,6 +2,7 @@ export const APP_UPDATE_FEED = "https://www.dengtahome.com/updates/android.json"
 export const APP_UPDATE_PACKAGE = "home.dengta.app";
 export const UPDATE_REMIND_MS = 24 * 60 * 60 * 1_000;
 export const MAX_ANDROID_BUILD = 2_147_483_647;
+const APK_STORAGE_HOST = "nyyqizwrlmejpfdhgrnd.supabase.co";
 
 export function validUpdateDownload(value) {
   if (typeof value !== "string") return false;
@@ -16,7 +17,11 @@ export function validUpdateDownload(value) {
       url.protocol === "https:" &&
       url.hostname === "github.com" &&
       /^\/DengTaHome\/dengta-home(?:-frontend)?\/releases\/download\/v[\d.]+\/[-\w.]+\.apk$/.test(url.pathname);
-    return clean && (siteApk || githubApk);
+    const storageApk =
+      url.protocol === "https:" &&
+      url.hostname === APK_STORAGE_HOST &&
+      /^\/storage\/v1\/object\/public\/dengta-updates\/apk\/[-\w.]+\.apk$/.test(url.pathname);
+    return clean && (siteApk || githubApk || storageApk);
   } catch { return false; }
 }
 

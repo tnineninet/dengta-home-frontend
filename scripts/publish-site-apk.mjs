@@ -39,7 +39,7 @@ if (!upload.ok) {
 const release = {
   version_code: versionCode,
   version: versionName,
-  apk_url: "https://www.dengtahome.com/downloads/DengTa-latest.apk",
+  apk_url: `${supabaseUrl}/storage/v1/object/public/dengta-updates/${objectPath}`,
   sha256,
   size_bytes: bytes.length,
   published_at: new Date().toISOString(),
