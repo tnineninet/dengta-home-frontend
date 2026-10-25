@@ -34,8 +34,12 @@
 6. APK 发布走显式 workflow 或 `android-v*` tag：
    - GitHub Actions → `Publish Android APK`
    - 或推送经确认的 `android-v*` 标签
-   - APK 上传 Supabase `dengta-updates/apk/DengTa-latest.apk`
+   - 发布前必须存在 `VERCEL_DEPLOY_HOOK` secret，否则 workflow 会失败
+   - APK 上传 Supabase versioned 路径：`dengta-updates/apk/DengTa-<version>.apk`
+   - feed 指向 versioned URL，不再在发布过程中覆盖最新 APK
+   - publish workflow 会等待 feed 更新、校验 APK SHA256，并清理旧 versioned APK
    - 只提交 `public/updates/*.json`，不提交 41MB APK
+   - 发布提交作者必须是 Vercel 已授权身份（workflow 已配置）
 
 ## 回滚
 
@@ -93,9 +97,24 @@ $env:APPLY="1"; $env:KEEP="10"; node scripts/vercel-cleanup.mjs
 - 本地 8 小时监控作为兜底：
   `E:\chatgpt\artifacts\dengta-goal-monitor-20261026.log`
 
+## Vercel token 与 deploy hook
+
+- GitHub secret `VERCEL_DEPLOY_HOOK` 必须存在，用于 APK 发布后触发 Vercel 部署
+- GitHub secret `VERCEL_TOKEN` 用于：
+  - verify-production 直接核对 Vercel Production SHA
+  - 自动清理旧 Vercel deployment
+- 当前 `VERCEL_TOKEN` 是 Vercel CLI OAuth token，会过期
+  - 过期后运行 `npx vercel whoami` 刷新
+  - 更新 GitHub secret
+  - 更稳妥的是在 Vercel 网页创建长期 Personal Token
+- deploy hook 创建方式：
+  - Vercel Project → Settings → Git → Deploy Hooks
+  - 或 API `POST /v1/projects/<projectId>/deploy-hooks`
+
 ## 注意
 
 - 不再把 APK 写入 Vercel 部署；否则每次部署增加 41MB。
-- `public/updates/android.json` 的 `apk_url` 指向 Supabase。
+- `public/updates/android.json` 的 `apk_url` 指向 Supabase versioned URL。
+- `DengTa-latest.apk` 仅作为兼容对象保留，feed 优先使用 versioned URL。
 - Vercel 旧部署已从 369 清理到 10，后续由自动清理维持。
 - CNB 分支/tags 自动同步，不再需要手动 push。
