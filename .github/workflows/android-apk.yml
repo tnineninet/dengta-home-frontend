@@ -8,6 +8,7 @@ on:
     paths:
       - "android/**"
       - "src/**"
+      - "test/**"
       - "public/**"
       - "index.html"
       - "package.json"
