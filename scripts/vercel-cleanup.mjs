@@ -3,8 +3,10 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..");
 const projectFile = path.join(root, ".vercel", "project.json");
-if (!fs.existsSync(projectFile)) throw new Error("Missing .vercel/project.json");
-const { projectId, orgId } = JSON.parse(fs.readFileSync(projectFile, "utf8"));
+const local = fs.existsSync(projectFile) ? JSON.parse(fs.readFileSync(projectFile, "utf8")) : {};
+const projectId = String(process.env.VERCEL_PROJECT_ID || local.projectId || "").trim();
+const orgId = String(process.env.VERCEL_TEAM_ID || process.env.VERCEL_ORG_ID || local.orgId || "").trim();
+if (!projectId) throw new Error("Missing VERCEL_PROJECT_ID (or .vercel/project.json)");
 const token = String(process.env.VERCEL_TOKEN || "").trim();
 const apply = process.env.APPLY === "1";
 const keep = Math.max(1, Number(process.env.KEEP || 10));
