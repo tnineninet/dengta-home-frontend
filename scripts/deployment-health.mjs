@@ -45,9 +45,22 @@ async function main() {
   try {
     const response = await fetch(SITE, { cache: "no-store" });
     const html = await response.text();
-    result.site = { status: response.status, bytes: Buffer.byteLength(html), hasRoot: html.includes('id="root"') };
+    result.site = { status: response.status, bytes: Buffer.byteLength(html), hasRoot: html.includes('id="root"'), assets: { checked: 0, failed: [] } };
     if (!response.ok) result.errors.push(`site HTTP ${response.status}`);
     if (!result.site.hasRoot) result.errors.push("site HTML has no root mount");
+    const assetPaths = [...new Set([...html.matchAll(/(?:src|href)="([^"]+\.(?:js|css)[^"]*)"/g)].map((match) => match[1]))].slice(0, 12);
+    for (const assetPath of assetPaths) {
+      const assetUrl = new URL(assetPath, SITE);
+      if (assetUrl.hostname !== new URL(SITE).hostname) continue;
+      result.site.assets.checked += 1;
+      try {
+        const assetResponse = await fetch(assetUrl, { method: "HEAD" });
+        if (!assetResponse.ok) result.site.assets.failed.push(`${assetUrl.pathname} HTTP ${assetResponse.status}`);
+      } catch (error) {
+        result.site.assets.failed.push(`${assetUrl.pathname} ${error.message}`);
+      }
+    }
+    for (const failure of result.site.assets.failed) result.errors.push(`site asset: ${failure}`);
   } catch (error) {
     result.errors.push(`site: ${error.message}`);
   }
@@ -121,6 +134,8 @@ async function main() {
   result.summary = {
     siteStatus: result.site?.status ?? null,
     siteBytes: result.site?.bytes ?? null,
+    siteAssetsChecked: result.site?.assets?.checked ?? 0,
+    siteAssetFailures: result.site?.assets?.failed?.length ?? 0,
     feedVersion: result.feed?.latest?.version || null,
     feedVersionCode: result.feed?.latest?.version_code || null,
     feedApkUrl: result.feed?.latest?.apk_url || null,
