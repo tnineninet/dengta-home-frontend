@@ -86,10 +86,11 @@ $env:APPLY="1"; $env:KEEP="10"; node scripts/vercel-cleanup.mjs
 ## 定时健康检查
 
 - 前端/后端都配置了 `deployment-health.yml` 和每次 push 的 `verify-production.yml`
-- GitHub schedule 已实际产生成功运行：
+- GitHub schedule 历史上有成功运行：
   - 前端 `Production deployment health`：2026-10-25T17:52:43Z success
   - 后端 `Production backend health`：2026-10-25T17:53:26Z success
-- 本地 8 小时监控作为额外兜底：
+- 近期 schedule 触发存在延迟，**仍以每次 push 的 verify-production 和本地监控为主**
+- 本地 8 小时监控作为兜底：
   `E:\chatgpt\artifacts\dengta-goal-monitor-20261026.log`
 
 ## 注意
