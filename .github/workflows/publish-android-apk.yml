@@ -134,8 +134,8 @@ jobs:
           VERSION_CODE: ${{ steps.version.outputs.code }}
           VERSION_NAME: ${{ steps.version.outputs.name }}
         run: |
-          git config user.name "DengTa Home"
-          git config user.email "2458077782@qq.com"
+          git config user.name "DengTaHome"
+          git config user.email "306767933+DengTaHome@users.noreply.github.com"
           git add public/updates/android.json public/updates/download.json
           if git diff --cached --quiet; then
             echo "No manifest changes to publish"
