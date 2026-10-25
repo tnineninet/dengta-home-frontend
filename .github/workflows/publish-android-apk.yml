@@ -12,6 +12,7 @@ on:
   push:
     tags:
       - "android-v*"
+      - "android-dryrun-*"
 
 permissions:
   contents: write
@@ -117,7 +118,7 @@ jobs:
             | grep -F "certificate SHA-256 digest: 38a03ab2815c285bef17521d7fc7d4cd6ea4c85d6f14e337ef7391af9b2bb4c6"
 
       - name: Publish APK and update manifests
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run == true) && !startsWith(github.ref_name, 'android-dryrun-') }}
         env:
           VERSION_CODE: ${{ steps.version.outputs.code }}
           VERSION_NAME: ${{ steps.version.outputs.name }}
@@ -127,7 +128,7 @@ jobs:
         run: node scripts/publish-site-apk.mjs
 
       - name: Commit published manifests
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run == true) && !startsWith(github.ref_name, 'android-dryrun-') }}
         env:
           VERSION_CODE: ${{ steps.version.outputs.code }}
           VERSION_NAME: ${{ steps.version.outputs.name }}
@@ -143,7 +144,7 @@ jobs:
           git push
 
       - name: Trigger website deployment
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run != true }}
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run == true) && !startsWith(github.ref_name, 'android-dryrun-') }}
         env:
           VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
         run: |
