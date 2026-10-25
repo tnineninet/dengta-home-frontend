@@ -1,4 +1,4 @@
-import { createRoot } from "react-dom/client";
+﻿import { createRoot } from "react-dom/client";
 import { useEffect } from "react";
 import "./index.css";
 import "./cozy-theme.css";
@@ -10,6 +10,12 @@ import "./jelly-motion.css";
 import "./sun-glass-chat.css";
 import "./typography.css";
 import "./apple-high.css";
+import "./room-invite.css";
+import "./settings-media-polish.css";
+import "./interaction-polish.css";
+import "./interface-polish.css";
+import "./settings-night-contrast.css";
+import "./android-compat.css";
 import App from "./App.jsx";
 
 function setRangeValue(selector, value) {
@@ -43,10 +49,10 @@ export function VisualPreview() {
       const weather = search.get("weather");
       if (weather) {
         const labels = {
-          cloudy: "微云",
-          rain: "雨幕",
-          storm: "晴雷",
-          clear: "晴空",
+          cloudy: "寰簯",
+          rain: "闆ㄥ箷",
+          storm: "鏅撮浄",
+          clear: "鏅寸┖",
         };
         document
           .querySelector(`.sun-glass-weather-options [aria-label="${labels[weather]}"]`)
@@ -59,9 +65,10 @@ export function VisualPreview() {
     return () => window.clearTimeout(timerId);
   }, []);
 
-  return <App accountControl={null} userName="桃桃" visualPreview />;
+  return <App accountControl={null} userName="妗冩" visualPreview />;
 }
 
 createRoot(document.getElementById("root")).render(
   <VisualPreview />,
 );
+

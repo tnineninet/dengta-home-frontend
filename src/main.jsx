@@ -15,11 +15,13 @@ import "./settings-media-polish.css";
 import "./interaction-polish.css";
 import "./interface-polish.css";
 import "./settings-night-contrast.css";
+import "./android-compat.css";
 import LoadedApp from "./LoadedApp.jsx";
 import AuthGate from "./AuthGate.jsx";
 import { authSession } from "./auth-session.js";
 import DengTaPrelude from "./DengTaPrelude.jsx";
 import { prewarmBackend } from "./backend-prewarm.js";
+import { installAndroidCompatibility } from "./android-compat.js";
 import { pwaInstallController } from "./pwa-install.js";
 import ReceiverApp from "./ReceiverApp.jsx";
 import DownloadAppChip from "./DownloadAppChip.jsx";
@@ -91,6 +93,7 @@ function installAndroidTouchRecovery() {
 }
 
 if (!isReceiverRoute) {
+  installAndroidCompatibility();
   installChunkRecovery();
   installAndroidTouchRecovery();
   void prewarmBackend();

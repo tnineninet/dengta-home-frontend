@@ -721,7 +721,7 @@ export default function Together({
       </div>}
 
       <div className="together-layout">
-        <div className="together-stage">
+        <div className={`together-stage${selectedMode === "music" ? " together-stage-music-setup" : ""}`}>
           {selectedMode === "music" ? (
             <div className="together-stage-empty together-music-stage"><Music2 aria-hidden="true" /><strong>一起听歌</strong><span>播放器保持在前台运行，歌单与进度会同步到本场会话。</span></div>
           ) : selectedMode === "web" ? (

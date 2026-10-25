@@ -121,6 +121,7 @@ assert.deepEqual(
     "interaction-polish.css",
     "interface-polish.css",
     "settings-night-contrast.css",
+    "android-compat.css",
   ],
   "layout tests must use the same stylesheet order as the application entrypoint",
 );
@@ -128,6 +129,11 @@ assert.match(
   css,
   /html,\s*body,\s*#root\s*\{[^}]*min-width:\s*0;/s,
   "the app root must not force horizontal overflow on the 280px regression viewport",
+);
+assert.match(
+  css,
+  /\.app-shell\.is-settings-open > \.app-update-feedback[\s\S]{0,220}visibility:\s*visible/,
+  "update feedback launched from Settings must not be hidden by the settings visibility rule",
 );
 assert.deepEqual(
   narrowCssCascade.stylesheets.map((stylesheet) => stylesheet.name),
@@ -147,6 +153,7 @@ assert.deepEqual(
     "interaction-polish.css",
     "interface-polish.css",
     "settings-night-contrast.css",
+    "android-compat.css",
   ],
   "the 280px regression must use the complete application stylesheet cascade",
 );
@@ -453,8 +460,8 @@ assert.match(
 );
 assert.match(
   status,
-  /if \(\s*!rootRef\.current\?\.contains\(event\.target\) &&\s*!panelRef\.current\?\.contains\(event\.target\)\s*\) \{\s*closePanel\(\)/,
-  "using anything outside the status panel must collapse it",
+  /!rootRef\.current\?\.contains\(event\.target\)[\s\S]*?!panelRef\.current\?\.contains\(event\.target\)[\s\S]*?!event\.target\?\.closest\?\.\("\.sun-glass-floating-status-panel"\)[\s\S]*?closePanel\(\)/,
+  "using anything outside the status panel, including the portaled header actions, must collapse it",
 );
 assert.match(
   status,
@@ -771,8 +778,8 @@ assert.match(
 );
 assert.match(
   celestialBackdrop,
-  /length:\s*520/,
-  "the sharp night background must preserve the prototype galaxy density",
+  /length:\s*compact\s*\?\s*150\s*:\s*260/,
+  "the sharp night background keeps the full galaxy density on desktop and a lighter mobile budget",
 );
 assert.doesNotMatch(
   app,

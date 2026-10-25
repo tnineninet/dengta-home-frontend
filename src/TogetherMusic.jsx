@@ -939,19 +939,6 @@ export default function TogetherMusic({ session, busy = false, onStart, onStartR
 
   return <div className="together-setup together-music-setup" aria-busy={loading || queueBusy}>
     {!active && (
-      <label className="music-random-play-toggle is-primary">
-        <input
-          type="checkbox"
-          checked={randomPlayEnabled}
-          onChange={(event) => toggleRandomPlay(event.target.checked)}
-        />
-        <span>
-          <strong>打开软件就随机放一首歌</strong>
-          <small>开启后立即尝试播放，不用重启；在 DengTa 已有歌曲里随机挑一首内置播放，没有可播歌曲时会尝试抓取。开关就在听歌页最上方。</small>
-        </span>
-      </label>
-    )}
-    {!active && (
       <section className="music-quick-start" aria-label="快速开始一起听">
         <div className="music-quick-start-copy">
           <strong>{playlist ? playlist.name : "先选一张歌单"}</strong>
@@ -993,6 +980,19 @@ export default function TogetherMusic({ session, busy = false, onStart, onStartR
           </button>
         </div>
       </section>
+    )}
+    {!active && (
+      <label className="music-random-play-toggle is-primary">
+        <input
+          type="checkbox"
+          checked={randomPlayEnabled}
+          onChange={(event) => toggleRandomPlay(event.target.checked)}
+        />
+        <span>
+          <strong>打开软件就随机放一首歌</strong>
+          <small>开启后立即尝试播放，不用重启；在 DengTa 已有歌曲里随机挑一首内置播放，没有可播歌曲时会尝试抓取。开关就在听歌页最上方。</small>
+        </span>
+      </label>
     )}
     {!active && <section className="music-import-entry"><div><strong>把想听的歌带进来</strong><p>粘贴分享链接、选择歌单文件或导入本机音频，保存后直接选中。</p></div><button type="button" className="together-primary" aria-haspopup="dialog" aria-expanded={importOpen} onClick={() => { if (importBusyRef.current || importOpen) return; updateImportBusy(false); setImportOpen(true); }}><ListPlus aria-hidden="true" />导入歌曲</button></section>}
     {!active && importOpen && <MusicImportDialog busy={importBusy} onClose={() => { if (importBusyRef.current) return; updateImportBusy(false); setImportOpen(false); }}><MusicSettings accountScope={accountScope} companionScope={companionScope} compact onBusyChange={updateImportBusy} onImported={acceptImportedPlaylist} onOpenMcpDeviceCenter={openMcpFromImport} /></MusicImportDialog>}
