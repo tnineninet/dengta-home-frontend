@@ -19,7 +19,17 @@ async function main() {
     const response = await fetch(`${FEED}?ts=${Date.now()}`, { cache: "no-store" });
     if (!response.ok) throw new Error(`feed HTTP ${response.status}`);
     result.feed = await response.json();
+    if (result.feed?.schema_version !== 1) throw new Error("feed schema_version is not 1");
+    if (result.feed?.package_id !== "home.dengta.app") throw new Error("feed package_id mismatch");
+    if (!result.feed?.latest || typeof result.feed.latest !== "object") throw new Error("feed has no latest release");
+    if (!/^\d+\.\d+\.\d+(?:\.\d+)?$/.test(String(result.feed.latest.version || ""))) {
+      throw new Error("feed version is invalid");
+    }
+    if (!Number.isSafeInteger(Number(result.feed.latest.version_code)) || Number(result.feed.latest.version_code) < 1) {
+      throw new Error("feed version_code is invalid");
+    }
   } catch (error) {
+    result.feed = null;
     result.errors.push(`feed: ${error.message}`);
   }
   try {
