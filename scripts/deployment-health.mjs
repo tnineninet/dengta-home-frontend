@@ -108,6 +108,11 @@ async function main() {
     const response = await fetch(BACKEND, { cache: "no-store" });
     result.backend = { status: response.status, body: await response.json().catch(() => null) };
     if (!response.ok) result.errors.push(`backend HTTP ${response.status}`);
+    if (!result.backend.body || typeof result.backend.body !== "object") {
+      result.errors.push("backend health body is not JSON");
+    } else if (!result.backend.body.revision) {
+      result.errors.push("backend health is missing revision");
+    }
   } catch (error) {
     result.errors.push(`backend: ${error.message}`);
   }
