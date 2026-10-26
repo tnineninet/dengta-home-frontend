@@ -33,6 +33,8 @@ export default function MemoryGatewayStatus({ scopeKey = settingsSaveScope(authS
       <p>{error || busy ? "上次检测：" : ""}服务可达 · 账号与伴侣范围已确认</p>
       <p>{status.memory_enabled ? `${status.total_memories} 条记忆（网关统计）` : "网关未确认记忆功能可用；请检查记忆功能和统计端点。"}</p>
       <p>{status.embedding_available ? "嵌入服务报告可用；实际聊天召回仍待验证。" : "嵌入服务不可用，语义召回未通过；请检查 Kiwi 的嵌入模型配置。"}</p>
+      {status.diagnostics?.recall?.at && <p>{`最近一次召回：${status.diagnostics.recall.ok ? `成功 ${status.diagnostics.recall.count || 0} 条` : `失败（${status.diagnostics.recall.error || "未知错误"}）`} · ${new Date(status.diagnostics.recall.at).toLocaleString()}`}</p>}
+      {status.diagnostics?.report?.at && <p>{`最近一次上报：${status.diagnostics.report.ok ? "成功" : `失败（${status.diagnostics.report.error || "未知错误"}）`} · ${new Date(status.diagnostics.report.at).toLocaleString()}`}</p>}
     </div>}
   </section>;
 }

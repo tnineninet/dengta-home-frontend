@@ -1232,8 +1232,9 @@ select:focus-visible {
   }
 
   .new-chat-top {
-    width: 36px;
-    min-width: 36px;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
     padding: 0;
     border-radius: 50%;
   }

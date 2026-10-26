@@ -403,10 +403,14 @@
 .memory-import-card { display: flex; flex-direction: column; gap: 10px; }
 .memory-import-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .memory-import-actions input[type=file] {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 0;
   font-size: 13px;
   color: var(--text-2, #888);
-  flex: 1 1 auto;
-  min-width: 220px;
+  flex: 1 1 100%;
 }
 .memory-import-run {
   padding: 8px 18px;

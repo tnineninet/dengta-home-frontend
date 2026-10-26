@@ -39,6 +39,7 @@
 .workspace-view .workspace-storage-warning { margin: 10px 0; font-size: .85rem; line-height: 1.6; overflow-wrap: anywhere; }
 .workspace-view .workspace-storage-warning button { min-width: 44px; min-height: 44px; max-width: 100%; margin: 4px 6px 4px 0; white-space: normal; overflow-wrap: anywhere; }
 .workspace-view button:focus-visible { outline: 2px solid var(--accent-color, #985b70); outline-offset: 3px; }
+.workspace-view .workspace-file-actions button { min-width: 44px; min-height: 44px; }
 @media (max-width: 680px) {
   .workspace-view .workspace-editor-actions { flex-basis: 100%; }
   .workspace-view .workspace-editor-actions button,
