@@ -24,8 +24,8 @@ android {
         applicationId "home.dengta.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode project.hasProperty("versionCode") ? project.property("versionCode").toString().toInteger() : 284
-        versionName project.hasProperty("versionName") ? project.property("versionName").toString() : "2.13.26"
+        versionCode project.hasProperty("versionCode") ? project.property("versionCode").toString().toInteger() : 285
+        versionName project.hasProperty("versionName") ? project.property("versionName").toString() : "2.13.27"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -45,6 +45,17 @@ android {
         }
     }
 }
+
+// The APK must not embed the previous release feed. The in-app updater reads
+// the remote feed; download.html falls back to the remote feed when the local
+// asset is absent. Removing it prevents a signed APK from shipping stale
+// version metadata for the next release.
+tasks.register("removeEmbeddedUpdateFeed") {
+    doLast {
+        delete fileTree("$projectDir/src/main/assets/public/updates")
+    }
+}
+preBuild.dependsOn("removeEmbeddedUpdateFeed")
 
 repositories {
     flatDir{
