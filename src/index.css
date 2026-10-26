@@ -12206,3 +12206,5 @@ body,
 .memory-gateway-edit textarea { resize: vertical; line-height: 1.55; }
 
 .settings-sheet select { min-height: 44px; }
+
+.sun-glass-countdown-controls select { min-height: 44px; }
