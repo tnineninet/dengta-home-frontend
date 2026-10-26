@@ -1,5 +1,7 @@
-.feature-page.surprise-map-page{--post-night:#102237;--post-cream:#fbf2df;--post-wine:#795365;--post-ink:#26303d;position:relative;max-width:800px;height:100%;max-height:100%;min-height:0;margin:auto;padding:0 0 96px;overflow-x:clip;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;background:#102237;color:#f9efd9;border-radius:28px;isolation:isolate}
+.feature-page.surprise-map-page{--post-night:#102237;--post-cream:#fbf2df;--post-wine:#795365;--post-ink:#26303d;position:relative;width:100%;max-width:800px;height:100%;max-height:100%;min-height:0;margin:auto;padding:0 0 96px;overflow-x:clip;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;background:#102237;color:#f9efd9;border-radius:28px;isolation:isolate}
+body.surprise-map-active .download-app-chip{display:none!important}
 .surprise-map-page *{box-sizing:border-box}
+
 .surprise-map-page button,.surprise-map-dialog button{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:10px 16px;border:1px solid #a99a8b5e;border-radius:99px;background:transparent;color:inherit;font:inherit;font-size:14px;cursor:pointer;touch-action:manipulation}
 .surprise-map-page button:disabled,.surprise-map-dialog button:disabled{opacity:.5;cursor:default}
 .surprise-map-page :focus-visible,.surprise-map-dialog :focus-visible{outline:3px solid #d6aa75;outline-offset:4px}

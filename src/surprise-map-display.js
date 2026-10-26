@@ -151,7 +151,7 @@ export function mountSurpriseMap(container, { load = loadLibrary, onStatus = () 
     } else if (!centered && points.length) { map.fitBounds(markers.getBounds(), { padding: [30, 30], maxZoom: 14, animate: false }); centered = true; }
     lastFocus = focusKey;
   }
-  startTimer();
+  if (tiles) startTimer();
   const ready = Promise.resolve().then(load).then(value => {
     if (disposed || !container) return;
     library = value;
@@ -169,6 +169,7 @@ export function mountSurpriseMap(container, { load = loadLibrary, onStatus = () 
       layer.on("tileerror", () => { tileErrors++; status("unavailable"); });
       layer.on("load", () => { stopTimer(); status(tileErrors ? "unavailable" : "ready"); });
     } else if (!picker) {
+      stopTimer();
       status("ready");
     }
     markers = library.featureGroup().addTo(map);

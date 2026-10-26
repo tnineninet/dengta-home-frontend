@@ -192,7 +192,13 @@ export function SurpriseMapContent({ request, isCurrent, aiName = "伴侣", scop
   async function locate(owns) { const value = await locatePosition(); if (!owns()) return null; setPosition(value); return value; }
   const feed = feeds[view], items = feed.items, selected = items.find(letter => letter.id === selectedId);
   const mapItems = useMemo(() => items.filter(item => !item.unavailable), [items]);
-  const hasDialog = Boolean(opened || composer || publication || mapConsent || guide || publicPicker);
+  const hasDialog = Boolean(opened || composer || publication || mapConsent || guide || publicPicker || mcpOpen);
+  useEffect(() => {
+    const body = globalThis.document?.body;
+    if (!body) return undefined;
+    body.classList.add("surprise-map-active");
+    return () => body.classList.remove("surprise-map-active");
+  }, []);
   const switchView = id => { setView(id); setSelectedId(null); setFeedback(""); if (id !== "public") setAuthorFilter(""); };
   const choosePublication = letter => { setFeedback(""); setConfirmPublic(false); setPublication({ id: letter.id, public_title: "", public_text: "", public_place: "", public_latitude: "", public_longitude: "", source: "human" }); };
   const closeComposer = () => { if (busy !== "create") { setComposer(false); setFeedback(""); } };
@@ -260,20 +266,6 @@ export function SurpriseMapContent({ request, isCurrent, aiName = "伴侣", scop
       <header className="surprise-map-hero"><div className="surprise-map-hero-top"><span className="surprise-map-kicker">DENGTA · LETTERS BY THE SEA</span><button type="button" className="surprise-map-icon-button" aria-label="查看邮局玩法" onClick={() => setGuide(true)}><Info size={20} aria-hidden="true" /></button></div><h2>灯塔邮局</h2><p>把惊喜留在某个地方</p><span className="surprise-map-hero-caption"><Waves size={14} aria-hidden="true" /> 海风会替你，保管这份期待</span></header>
       <nav className="surprise-map-tabs has-sliding-indicator" aria-label="来信分类" ref={tabsRef}><SlidingIndicator containerRef={tabsRef} activeRef={activeTabRef} activeKey={view} className="surprise-map-tab-indicator" />{tabs.map(({ id, label, icon: Icon }) => <button type="button" key={id} aria-pressed={view === id} ref={view === id ? activeTabRef : undefined} onClick={() => switchView(id)}><Icon size={17} aria-hidden="true" />{label}</button>)}</nav>
       <div className="surprise-map-toolbar"><p>{view === "private" ? "只属于你们的沿途惊喜" : view === "public" ? "和路过的人，交换一点温柔" : "把相遇，收进自己的信箱"}</p>{view === "public" && authorFilter && <button type="button" className="surprise-map-author-filter" onClick={() => setAuthorFilter("")} aria-label="清除笔名筛选">只看 {authorFilter} ×</button>}<button type="button" className="surprise-map-icon-button" aria-label="MCP 接口" onClick={openMcp}><Bot size={18} aria-hidden="true" /></button><button type="button" className="surprise-map-icon-button" aria-label="刷新当前来信" disabled={feed.status === "loading" || feed.status === "more"} onClick={() => void load(view)}><RefreshCw size={18} aria-hidden="true" /></button></div>
-{feed.status === "loading" && (
-  <div className="surprise-map-skeleton-list" aria-busy="true" aria-label="正在整理沿途的来信">
-    <span className="surprise-map-sr-only">正在整理沿途的来信</span>
-    {[0, 1, 2].map(index => (
-      <article className="surprise-map-card surprise-map-skeleton" key={"map-skeleton-" + index} aria-hidden="true">
-        <span className="surprise-map-skeleton-badge" />
-        <span className="surprise-map-skeleton-line is-title" />
-        <span className="surprise-map-skeleton-line is-meta" />
-        <span className="surprise-map-skeleton-line is-wide" />
-        <span className="surprise-map-skeleton-line is-short" />
-      </article>
-    ))}
-  </div>
-)}
       {view !== "collection" && <div className="surprise-map-geography" ref={mapArea}>
         <SurpriseLetterMap items={mapItems} position={position} selectedId={selected?.id || null} onSelect={setSelectedId} onViewport={setViewport} tileSource={tileSource} tiles={basemap} onTilesUnavailable={handleTilesUnavailable} />
         <div className="surprise-map-layer-switch"><button type="button" aria-label={basemap ? "切换到雷达图" : "打开街道地图"} onClick={() => { if (basemap) { setBasemap(false); setViewport(""); } else if (mapAllowed) setBasemap(true); else setMapConsent("browse"); }}>{basemap ? <><Compass size={14} aria-hidden="true" />雷达图</> : <><MapPin size={14} aria-hidden="true" />街道地图</>}</button></div>
@@ -284,6 +276,20 @@ export function SurpriseMapContent({ request, isCurrent, aiName = "伴侣", scop
       <div className="surprise-map-location-row"><span><LocateFixed size={14} aria-hidden="true" />{position ? `本次定位 · 精度约 ${Math.ceil(position.accuracy)} 米` : "定位仅在你点击时进行，不持续记录轨迹"}</span><button type="button" disabled={Boolean(busy)} onClick={() => void perform("locate", locate)}>{busy === "locate" ? "定位中…" : "定位附近"}</button></div>
       {feedback && !hasDialog && <p role="status" className="surprise-map-feedback">{feedback}</p>}
       <div className="surprise-map-list" aria-busy={feed.status === "loading" || feed.status === "more"}>
+        {feed.status === "loading" && (
+          <div className="surprise-map-skeleton-list" aria-busy="true" aria-label="正在整理沿途的来信">
+            <span className="surprise-map-sr-only">正在整理沿途的来信</span>
+            {[0, 1, 2].map(index => (
+              <article className="surprise-map-card surprise-map-skeleton" key={"map-skeleton-" + index} aria-hidden="true">
+                <span className="surprise-map-skeleton-badge" />
+                <span className="surprise-map-skeleton-line is-title" />
+                <span className="surprise-map-skeleton-line is-meta" />
+                <span className="surprise-map-skeleton-line is-wide" />
+                <span className="surprise-map-skeleton-line is-short" />
+              </article>
+            ))}
+          </div>
+        )}
         {feed.error && <div className="surprise-map-state surprise-map-state-error" role="alert"><p>{feed.error}</p>{items.length > 0 && <p>下面保留的是上次加载的来信。</p>}<button type="button" onClick={() => void load(view)}>重新加载此页</button></div>}
         {feed.status !== "loading" && !feed.error && !items.length && <article className="surprise-map-envelope surprise-map-empty"><span className="surprise-map-letter-eyebrow"><Mail size={15} aria-hidden="true" />{view === "collection" ? "属于你的相遇" : "沿途有信"}</span><h3>{view === "private" ? "下一封惊喜，等你开始" : view === "public" ? "这片风景，还在等第一封信" : "拆过的信，会留在这里"}</h3><p>{view === "private" ? `让${aiName}写一句想对你说的话，藏在下次会经过的地方。` : view === "public" ? "私人来信不会自动公开。你也可以另写一份，送给偶然路过的人。" : "走近一处惊喜，打开来信后，它就会自动收入收藏。"}</p><button type="button" className="surprise-map-primary" onClick={() => { if (view === "collection") switchView("private"); else { setFeedback(""); setComposer(true); setStep(1); } }}>{view === "collection" ? "去找一封信" : "让伴侣留一封"}<ChevronRight size={17} aria-hidden="true" /></button></article>}
         {items.map(letter => <article className={`surprise-map-letter-card ${letter.unavailable ? "is-unavailable" : ""} ${letter.claimed ? "is-opened" : ""}`} key={`${letter.kind || view}:${letter.id}`}>

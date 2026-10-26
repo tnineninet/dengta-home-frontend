@@ -27,7 +27,7 @@ export function surpriseMapError(error, { operation = "write" } = {}) {
     settings_scope_changed: "空间已切换，本次操作已取消。",
     request_timeout: "等待确认超时，请先刷新核对结果，避免重复留信。",
   };
-  if (operation === "read" && ["request_timeout", "request_failed", "network_error"].includes(code)) {
+  if (operation === "read" && ["request_timeout", "request_failed", "network_error", "surprise_map_request_failed", "surprise_map_receipt_invalid"].includes(code)) {
     return `来信列表暂时未加载成功，请点击重新加载；已藏好的信与本页草稿不会改变。（${code}）`;
   }
   return `${help[code] || "本次操作未确认完成，请刷新核对；仍失败时可提供错误代码检查。"}（${code}）`;
