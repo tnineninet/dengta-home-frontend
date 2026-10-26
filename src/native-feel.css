@@ -2021,10 +2021,10 @@ button:active:not(:disabled) {
 .send-button {
   position: relative;
   grid-row: 1;
-  width: 42px;
-  min-width: 42px;
-  height: 42px;
-  min-height: 42px;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
   padding: 0;
   border: 0;
   border-radius: 50%;
