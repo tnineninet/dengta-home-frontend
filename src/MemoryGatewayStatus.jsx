@@ -9,6 +9,7 @@ export default function MemoryGatewayStatus({ scopeKey = settingsSaveScope(authS
   const [items, setItems] = useState(null);
   const [itemsError, setItemsError] = useState("");
   const [itemsBusy, setItemsBusy] = useState(false);
+  const [mutatingId, setMutatingId] = useState("");
   const [query, setQuery] = useState("");
   const requestRef = useRef(null);
   const itemsRef = useRef(null);
@@ -56,6 +57,30 @@ export default function MemoryGatewayStatus({ scopeKey = settingsSaveScope(authS
       }
     }
   }
+  async function mutateItem(item, action) {
+    if (mutatingId || !isCurrent()) return;
+    const numericId = String(item.id).match(/(\d+)$/)?.[1];
+    if (!numericId) { setItemsError("这条记忆没有可管理的网关编号。"); return; }
+    if (action === "delete" && !window.confirm("确定删除这条 Kiwi 记忆吗？此操作不可撤销。")) return;
+    setMutatingId(item.id);
+    setItemsError("");
+    try {
+      if (action === "delete") {
+        await request(`/api/v2/memory/items/${numericId}`, { method: "DELETE", timeoutMs: 10_000 });
+        setItems(previous => (previous || []).filter(entry => entry.id !== item.id));
+      } else {
+        const data = await request(`/api/v2/memory/items/${numericId}/lock`, {
+          method: "POST", body: { permanent: !item.permanent }, timeoutMs: 10_000
+        });
+        if (data?.ok !== true) throw new Error("kiwi_memory_lock_invalid");
+        setItems(previous => (previous || []).map(entry => entry.id === item.id ? { ...entry, permanent: data.permanent === true } : entry));
+      }
+    } catch (failure) {
+      if (isCurrent()) setItemsError(memoryUiFailure(failure, { mutation: true }));
+    } finally {
+      if (isCurrent()) setMutatingId("");
+    }
+  }
   return <section className="memory-gateway-status" aria-label="Kiwi 记忆连接检查">
     <div><strong>Kiwi 服务器记忆</strong><button type="button" onClick={() => void check()} disabled={busy}>{busy ? "检测中…" : "检测连接与账号范围"}</button></div>
     <p>按当前账号和伴侣检查连接，不读取记忆正文。连接通过后，还需在聊天中验证实际召回。</p>
@@ -76,6 +101,10 @@ export default function MemoryGatewayStatus({ scopeKey = settingsSaveScope(authS
           <div><strong>{item.title || item.category_name || "记忆"}</strong>{item.permanent && <span className="memory-gateway-permanent">永久</span>}</div>
           <p>{item.content}</p>
           <small>{item.created_at ? new Date(item.created_at).toLocaleString() : ""}{item.importance ? ` · 重要度 ${item.importance}` : ""}</small>
+          <div className="memory-gateway-item-actions">
+            <button type="button" disabled={Boolean(mutatingId)} onClick={() => void mutateItem(item, "lock")}>{mutatingId === item.id ? "处理中…" : item.permanent ? "取消永久" : "设为永久"}</button>
+            <button type="button" className="is-danger" disabled={Boolean(mutatingId)} onClick={() => void mutateItem(item, "delete")}>删除</button>
+          </div>
         </article>)}
       </div>}
     </div>}
