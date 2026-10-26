@@ -2,7 +2,7 @@
 .achievement-guide-heading { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
 .achievement-guide strong { font-size: 14px; }
 .achievement-guide small { display: block; font-size: 12px; line-height: 1.6; margin-top: 4px; opacity: .8; }
-.achievement-guide button, .achievement-notice button { min-height: 40px; font: inherit; font-size: 12px; padding: 8px 12px; border: 1px solid rgba(173,137,106,.4); border-radius: 12px; background: rgba(190,154,118,.12); color: inherit; cursor: pointer; }
+.achievement-guide button, .achievement-notice button { min-height: 44px; font: inherit; font-size: 12px; padding: 8px 12px; border: 1px solid rgba(173,137,106,.4); border-radius: 12px; background: rgba(190,154,118,.12); color: inherit; cursor: pointer; }
 .achievement-guide button:disabled { opacity: .55; cursor: default; }
 .achievement-guide-heading > button { flex-shrink: 0; }
 .achievement-guide-body nav { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }

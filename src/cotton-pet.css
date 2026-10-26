@@ -31,7 +31,7 @@
 
 .cotton-chat-dock { flex: 0 0 auto; width: 100%; min-width: 0; margin-bottom: 6px; color: var(--theme-ink, #33463c); }
 .cotton-dock-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-width: 0; }
-.cotton-dock-bar button { min-height: 36px; border: 1px solid #9aac8c50; border-radius: 12px; padding: 6px 10px; background: #edf1e51c; color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
+.cotton-dock-bar button { min-height: 44px; border: 1px solid #9aac8c50; border-radius: 12px; padding: 6px 10px; background: #edf1e51c; color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
 .cotton-dock-bar span { flex: 1; font-size: 11px; opacity: .65; }
 .cotton-pet.cotton-pet-compact { padding: 8px 0 0; }
 .cotton-pet-compact .cotton-layout { grid-template-columns: minmax(100px, 160px) minmax(0, 1fr); gap: 12px; max-width: 480px; }
