@@ -11,6 +11,8 @@ export default function MemoryGatewayStatus({ scopeKey = settingsSaveScope(authS
   const [itemsBusy, setItemsBusy] = useState(false);
   const [mutatingId, setMutatingId] = useState("");
   const [query, setQuery] = useState("");
+  const [editingId, setEditingId] = useState("");
+  const [editDraft, setEditDraft] = useState({ title: "", content: "" });
   const requestRef = useRef(null);
   const itemsRef = useRef(null);
   const { request, isCurrent } = useMemoryUiRequest(scopeKey);
@@ -20,6 +22,8 @@ export default function MemoryGatewayStatus({ scopeKey = settingsSaveScope(authS
     setItems(null);
     setItemsError("");
     setItemsBusy(false);
+    setEditingId("");
+    setEditDraft({ title: "", content: "" });
   }, [scopeKey]);
   async function check() {
     if (requestRef.current || !isCurrent()) return;
@@ -81,6 +85,36 @@ export default function MemoryGatewayStatus({ scopeKey = settingsSaveScope(authS
       if (isCurrent()) setMutatingId("");
     }
   }
+  function startEdit(item) {
+    if (item.permanent) { setItemsError("永久记忆需先取消永久，再编辑内容。"); return; }
+    setEditingId(item.id);
+    setEditDraft({ title: item.title || "", content: item.content || "" });
+    setItemsError("");
+  }
+  async function saveEdit(item) {
+    if (mutatingId || !isCurrent()) return;
+    const numericId = String(item.id).match(/(\d+)$/)?.[1];
+    if (!numericId || !editDraft.content.trim()) { setItemsError("记忆内容不能为空。"); return; }
+    setMutatingId(item.id);
+    setItemsError("");
+    try {
+      const data = await request(`/api/v2/memory/items/${numericId}`, {
+        method: "PUT",
+        body: { title: editDraft.title, content: editDraft.content },
+        timeoutMs: 15_000
+      });
+      if (data?.ok !== true || !data.memory_id) throw new Error("kiwi_memory_update_invalid");
+      setItems(previous => (previous || []).map(entry => entry.id === item.id
+        ? { ...entry, id: String(data.memory_id), title: data.title || "", content: data.content || editDraft.content, permanent: false }
+        : entry));
+      setEditingId("");
+      setEditDraft({ title: "", content: "" });
+    } catch (failure) {
+      if (isCurrent()) setItemsError(memoryUiFailure(failure, { mutation: true }));
+    } finally {
+      if (isCurrent()) setMutatingId("");
+    }
+  }
   return <section className="memory-gateway-status" aria-label="Kiwi 记忆连接检查">
     <div><strong>Kiwi 服务器记忆</strong><button type="button" onClick={() => void check()} disabled={busy}>{busy ? "检测中…" : "检测连接与账号范围"}</button></div>
     <p>按当前账号和伴侣检查连接，不读取记忆正文。连接通过后，还需在聊天中验证实际召回。</p>
@@ -98,13 +132,23 @@ export default function MemoryGatewayStatus({ scopeKey = settingsSaveScope(authS
       {itemsError && <p role="alert" className="memory-gateway-items-error">{itemsError}</p>}
       {items && <div className="memory-gateway-items" aria-label="Kiwi 网关记忆">
         {items.length === 0 ? <p>没有匹配的 Kiwi 记忆。</p> : items.map(item => <article key={item.id} className="memory-gateway-item">
-          <div><strong>{item.title || item.category_name || "记忆"}</strong>{item.permanent && <span className="memory-gateway-permanent">永久</span>}</div>
-          <p>{item.content}</p>
-          <small>{item.created_at ? new Date(item.created_at).toLocaleString() : ""}{item.importance ? ` · 重要度 ${item.importance}` : ""}</small>
-          <div className="memory-gateway-item-actions">
-            <button type="button" disabled={Boolean(mutatingId)} onClick={() => void mutateItem(item, "lock")}>{mutatingId === item.id ? "处理中…" : item.permanent ? "取消永久" : "设为永久"}</button>
-            <button type="button" className="is-danger" disabled={Boolean(mutatingId)} onClick={() => void mutateItem(item, "delete")}>删除</button>
-          </div>
+          {editingId === item.id ? <div className="memory-gateway-edit">
+            <input value={editDraft.title} maxLength={200} placeholder="记忆标题" aria-label="记忆标题" onChange={event => setEditDraft({ ...editDraft, title: event.currentTarget.value })} />
+            <textarea value={editDraft.content} maxLength={10000} rows={4} aria-label="记忆内容" onChange={event => setEditDraft({ ...editDraft, content: event.currentTarget.value })} />
+            <div className="memory-gateway-item-actions">
+              <button type="button" disabled={Boolean(mutatingId)} onClick={() => void saveEdit(item)}>{mutatingId === item.id ? "保存中…" : "保存修改"}</button>
+              <button type="button" disabled={Boolean(mutatingId)} onClick={() => { setEditingId(""); setItemsError(""); }}>取消</button>
+            </div>
+          </div> : <>
+            <div><strong>{item.title || item.category_name || "记忆"}</strong>{item.permanent && <span className="memory-gateway-permanent">永久</span>}</div>
+            <p>{item.content}</p>
+            <small>{item.created_at ? new Date(item.created_at).toLocaleString() : ""}{item.importance ? ` · 重要度 ${item.importance}` : ""}</small>
+            <div className="memory-gateway-item-actions">
+              <button type="button" disabled={Boolean(mutatingId) || item.permanent} onClick={() => startEdit(item)}>{item.permanent ? "先取消永久再编辑" : "编辑"}</button>
+              <button type="button" disabled={Boolean(mutatingId)} onClick={() => void mutateItem(item, "lock")}>{mutatingId === item.id ? "处理中…" : item.permanent ? "取消永久" : "设为永久"}</button>
+              <button type="button" className="is-danger" disabled={Boolean(mutatingId)} onClick={() => void mutateItem(item, "delete")}>删除</button>
+            </div>
+          </>}
         </article>)}
       </div>}
     </div>}

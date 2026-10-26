@@ -12200,3 +12200,7 @@ body,
 
 /* 记忆导入文件选择器：限制在卡片内并保证可触控 */
 .memory-import-actions input[type=file] { width: 100%; max-width: 100%; min-width: 0; min-height: 44px; flex: 1 1 100%; padding: 8px 0; font-size: 13px; color: var(--text-2, #888); }
+
+.memory-gateway-edit { display: grid; gap: 8px; }
+.memory-gateway-edit input, .memory-gateway-edit textarea { box-sizing: border-box; width: 100%; min-height: 44px; padding: 9px 11px; border: 1px solid var(--line, #e5ddd8); border-radius: 10px; background: #fffdfa; color: inherit; font: inherit; }
+.memory-gateway-edit textarea { resize: vertical; line-height: 1.55; }
