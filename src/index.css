@@ -12212,3 +12212,10 @@ body,
 /* 聊天音乐控件 44px */
 .chat-music-toggle { width: 44px; height: 44px; flex: 0 0 44px; }
 .chat-music-lyric-button { width: 44px; height: 44px; flex: 0 0 44px; }
+
+/* 侧栏/状态条触控 44px */
+.sidebar-settings-button { min-height: 44px; }
+.sun-glass-status-window-actions button { min-width: 44px; min-height: 44px; }
+.sun-glass-countdown-controls button { min-height: 44px; }
+.cotton-dock-bar button { min-height: 44px; }
+.achievement-guide-heading button { min-height: 44px; }
