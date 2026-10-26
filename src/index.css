@@ -12219,3 +12219,5 @@ body,
 .sun-glass-countdown-controls button { min-height: 44px; }
 .cotton-dock-bar button { min-height: 44px; }
 .achievement-guide-heading button { min-height: 44px; }
+
+.settings-sheet .settings-card-heading > button { min-width: 44px; }
