@@ -7975,6 +7975,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 ref={chatFileInputRef}
                 className="visually-hidden-file-input"
                 type="file"
+                aria-label="选择聊天文件"
                 multiple
                 accept=".pdf,.docx,.txt,.md,.csv,.json,.xml"
                 onChange={(event) => {
@@ -7987,6 +7988,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 ref={chatImageInputRef}
                 className="visually-hidden-file-input"
                 type="file"
+                aria-label="选择聊天图片"
                 multiple
                 accept="image/*"
                 onChange={(event) => {
@@ -7999,6 +8001,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 ref={chatVideoInputRef}
                 className="visually-hidden-file-input"
                 type="file"
+                aria-label="选择聊天视频"
                 multiple
                 accept="video/mp4,video/webm,video/quicktime"
                 onChange={(event) => {
@@ -8011,6 +8014,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 ref={localMusicFileInputRef}
                 className="visually-hidden-file-input"
                 type="file"
+                aria-label="选择本地音乐"
                 accept="audio/mpeg,audio/mp4,audio/aac,audio/wav,audio/ogg,audio/flac,.mp3,.m4a,.aac,.wav,.ogg,.opus,.flac"
                 onChange={(event) => {
                   setIsComposerMenuOpen(false);
