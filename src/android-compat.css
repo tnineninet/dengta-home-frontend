@@ -154,3 +154,8 @@ html.dengta-flat-paint .status-flow-field {
 
 
 
+
+/* Android 15 edge-to-edge: keep chat content below the status bar/cutout. */
+:root[data-dengta-android="true"] .main-panel.view-chat {
+  padding-top: max(30px, env(safe-area-inset-top));
+}
