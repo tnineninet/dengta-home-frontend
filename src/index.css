@@ -5255,7 +5255,7 @@ button:disabled {
 .privacy-switch {
   position: relative;
   flex: 0 0 auto;
-  width: 42px;
+  width: 44px;
   height: 25px;
   padding: 2px;
   border: 0;
@@ -5283,7 +5283,7 @@ button:disabled {
 }
 
 .privacy-switch.is-on span {
-  transform: translateX(17px);
+  transform: translateX(19px);
 }
 
 .privacy-switch:disabled {
