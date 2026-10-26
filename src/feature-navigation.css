@@ -35,7 +35,7 @@
 .feature-navigation-group-toggle {
   display: flex;
   width: 100%;
-  min-height: 32px;
+  min-height: 44px;
   align-items: center;
   justify-content: space-between;
   gap: 8px;

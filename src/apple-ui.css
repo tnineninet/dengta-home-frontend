@@ -200,7 +200,7 @@ select:focus-visible {
 .primary-nav button,
 .session-select,
 .session-actions button {
-  min-height: 40px;
+  min-height: 44px;
   border-radius: var(--apple-radius-control);
   color: #d1d1d6;
   background: transparent;
