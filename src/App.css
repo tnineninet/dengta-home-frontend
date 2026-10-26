@@ -461,3 +461,14 @@
 .chat-error-provider-action-inline {
   margin: 8px 0 4px;
 }
+
+/* Kiwi 只读记忆列表 */
+.memory-gateway-load { min-height: 44px; margin-top: 10px; }
+.memory-gateway-items { display: grid; gap: 8px; max-height: 420px; margin-top: 10px; overflow: auto; }
+.memory-gateway-item { padding: 10px 12px; border: 1px solid var(--line, #e5ddd8); border-radius: 12px; background: rgba(255,255,255,.55); }
+.memory-gateway-item > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.memory-gateway-item strong { min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+.memory-gateway-item p { margin: 6px 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 12px; line-height: 1.6; }
+.memory-gateway-item small { color: var(--text-2, #8a7a80); font-size: 10px; }
+.memory-gateway-permanent { flex: none; padding: 1px 6px; border-radius: 99px; background: #f1dbe3; color: #795565; font-size: 10px; }
+.memory-gateway-items-error { font-size: 12px; overflow-wrap: anywhere; }

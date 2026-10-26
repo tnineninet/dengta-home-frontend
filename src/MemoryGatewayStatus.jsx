@@ -6,9 +6,19 @@ import { kiwiHealthReceipt, memoryUiFailure, useMemoryUiRequest } from "./memory
 export default function MemoryGatewayStatus({ scopeKey = settingsSaveScope(authSession.getSnapshot()) }) {
   const [view, setView] = useState({ scopeKey, status: null, error: "", busy: false });
   const { status, error, busy } = view.scopeKey === scopeKey ? view : { status: null, error: "", busy: false };
+  const [items, setItems] = useState(null);
+  const [itemsError, setItemsError] = useState("");
+  const [itemsBusy, setItemsBusy] = useState(false);
   const requestRef = useRef(null);
+  const itemsRef = useRef(null);
   const { request, isCurrent } = useMemoryUiRequest(scopeKey);
-  useLayoutEffect(() => { requestRef.current = null; }, [scopeKey]);
+  useLayoutEffect(() => {
+    requestRef.current = null;
+    itemsRef.current = null;
+    setItems(null);
+    setItemsError("");
+    setItemsBusy(false);
+  }, [scopeKey]);
   async function check() {
     if (requestRef.current || !isCurrent()) return;
     const operation = {};
@@ -25,6 +35,26 @@ export default function MemoryGatewayStatus({ scopeKey = settingsSaveScope(authS
       if (isCurrent() && requestRef.current === operation) { requestRef.current = null; setView(previous => ({ ...previous, busy: false })); }
     }
   }
+  async function loadItems() {
+    if (itemsRef.current || !isCurrent()) return;
+    const operation = {};
+    itemsRef.current = operation;
+    setItemsBusy(true);
+    setItemsError("");
+    try {
+      const data = await request("/api/v2/memory/items?limit=20", { timeoutMs: 10_000 });
+      if (!isCurrent() || itemsRef.current !== operation) return;
+      if (data?.ok !== true || !Array.isArray(data.memories)) throw new Error("kiwi_memory_list_invalid");
+      setItems(data.memories);
+    } catch (failure) {
+      if (isCurrent() && itemsRef.current === operation) setItemsError(memoryUiFailure(failure));
+    } finally {
+      if (isCurrent() && itemsRef.current === operation) {
+        itemsRef.current = null;
+        setItemsBusy(false);
+      }
+    }
+  }
   return <section className="memory-gateway-status" aria-label="Kiwi 记忆连接检查">
     <div><strong>Kiwi 服务器记忆</strong><button type="button" onClick={() => void check()} disabled={busy}>{busy ? "检测中…" : "检测连接与账号范围"}</button></div>
     <p>按当前账号和伴侣检查连接，不读取记忆正文。连接通过后，还需在聊天中验证实际召回。</p>
@@ -35,6 +65,15 @@ export default function MemoryGatewayStatus({ scopeKey = settingsSaveScope(authS
       <p>{status.embedding_available ? "嵌入服务报告可用；实际聊天召回仍待验证。" : "嵌入服务不可用，语义召回未通过；请检查 Kiwi 的嵌入模型配置。"}</p>
       {status.diagnostics?.recall?.at && <p>{`最近一次召回：${status.diagnostics.recall.ok ? `成功 ${status.diagnostics.recall.count || 0} 条` : `失败（${status.diagnostics.recall.error || "未知错误"}）`} · ${new Date(status.diagnostics.recall.at).toLocaleString()}`}</p>}
       {status.diagnostics?.report?.at && <p>{`最近一次上报：${status.diagnostics.report.ok ? "成功" : `失败（${status.diagnostics.report.error || "未知错误"}）`} · ${new Date(status.diagnostics.report.at).toLocaleString()}`}</p>}
+      <button type="button" className="memory-gateway-load" disabled={itemsBusy} onClick={() => void loadItems()}>{itemsBusy ? "读取中…" : items ? "重新读取网关记忆" : "查看最近 20 条网关记忆"}</button>
+      {itemsError && <p role="alert" className="memory-gateway-items-error">{itemsError}</p>}
+      {items && <div className="memory-gateway-items" aria-label="Kiwi 网关记忆">
+        {items.length === 0 ? <p>当前账号与伴侣在 Kiwi 网关里还没有可展示的记忆。</p> : items.map(item => <article key={item.id} className="memory-gateway-item">
+          <div><strong>{item.title || item.category_name || "记忆"}</strong>{item.permanent && <span className="memory-gateway-permanent">永久</span>}</div>
+          <p>{item.content}</p>
+          <small>{item.created_at ? new Date(item.created_at).toLocaleString() : ""}{item.importance ? ` · 重要度 ${item.importance}` : ""}</small>
+        </article>)}
+      </div>}
     </div>}
   </section>;
 }
