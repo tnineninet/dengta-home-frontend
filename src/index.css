@@ -12208,3 +12208,7 @@ body,
 .settings-sheet select { min-height: 44px; }
 
 .sun-glass-countdown-controls select { min-height: 44px; }
+
+/* 聊天音乐控件 44px */
+.chat-music-toggle { width: 44px; height: 44px; flex: 0 0 44px; }
+.chat-music-lyric-button { width: 44px; height: 44px; flex: 0 0 44px; }
