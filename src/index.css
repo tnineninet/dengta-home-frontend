@@ -12204,3 +12204,5 @@ body,
 .memory-gateway-edit { display: grid; gap: 8px; }
 .memory-gateway-edit input, .memory-gateway-edit textarea { box-sizing: border-box; width: 100%; min-height: 44px; padding: 9px 11px; border: 1px solid var(--line, #e5ddd8); border-radius: 10px; background: #fffdfa; color: inherit; font: inherit; }
 .memory-gateway-edit textarea { resize: vertical; line-height: 1.55; }
+
+.settings-sheet select { min-height: 44px; }
