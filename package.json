@@ -1,7 +1,7 @@
 {
   "name": "dengta-home-react",
   "private": true,
-  "version": "2.13.22",
+  "version": "2.13.23",
   "type": "module",
   "scripts": {
     "publish:app-update": "node scripts/publish-app-update.mjs",
