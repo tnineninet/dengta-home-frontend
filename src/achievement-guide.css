@@ -18,7 +18,7 @@
 .achievement-notice > div:last-child { display: flex; gap: 8px; }
 :root[data-dengta-appearance="night"] .achievement-notice { background: #302923; color: #f3e6d7; }
 .fun-achievements-grid .fun-achievement-card:not(.is-unlocked) { filter: none; opacity: 1; background: rgba(190,154,118,.06); }
-.fun-achievements-grid .fun-achievement-card > button { margin-top: 8px; min-height: 40px; padding: 8px; border: 1px solid rgba(173,137,106,.4); border-radius: 10px; background: transparent; color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
+.fun-achievements-grid .fun-achievement-card > button { margin-top: 8px; min-height: 44px; padding: 8px; border: 1px solid rgba(173,137,106,.4); border-radius: 10px; background: transparent; color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
 .fun-achievements-grid .fun-achievement-card > button:focus-visible { outline: 2px solid #ac815b; outline-offset: 3px; }
 
 /* 引导卡在聊天页的浅色与夜间背景上都要清晰可读。 */
