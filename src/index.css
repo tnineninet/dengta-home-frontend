@@ -12197,3 +12197,6 @@ body,
 .memory-gateway-item-actions { display: flex; gap: 8px; margin-top: 8px; }
 .memory-gateway-item-actions button { min-height: 44px; padding: 6px 12px; border: 1px solid var(--line, #e5ddd8); border-radius: 10px; background: #fffdfa; color: inherit; font: inherit; font-size: 12px; }
 .memory-gateway-item-actions button.is-danger { color: #a33b4d; }
+
+/* 记忆导入文件选择器：限制在卡片内并保证可触控 */
+.memory-import-actions input[type=file] { width: 100%; max-width: 100%; min-width: 0; min-height: 44px; flex: 1 1 100%; padding: 8px 0; font-size: 13px; color: var(--text-2, #888); }
