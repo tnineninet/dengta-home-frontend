@@ -4,7 +4,9 @@ import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const apkSource = path.join(root, "android", "app", "build", "outputs", "apk", "debug", "app-debug.apk");
+const apkSource = process.env.APK_PATH
+  ? path.resolve(root, process.env.APK_PATH)
+  : path.join(root, "android", "app", "build", "outputs", "apk", "debug", "app-debug.apk");
 const versionCode = Number(process.env.VERSION_CODE);
 const versionName = String(process.env.VERSION_NAME || "").trim();
 const commit = String(process.env.COMMIT_SHA || "").slice(0, 12);

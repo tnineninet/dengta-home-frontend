@@ -140,7 +140,7 @@ public final class PersistentBrowserActivity extends Activity {
         settings.setJavaScriptCanOpenWindowsAutomatically(false);
         // 登录页也会被活动广告 window.open 顶掉；禁止多窗口，保住这一页扫码结果。
         settings.setSupportMultipleWindows(false);
-        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
+        settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
         settings.setSupportZoom(true);
         settings.setBuiltInZoomControls(true);
         settings.setDisplayZoomControls(false);
