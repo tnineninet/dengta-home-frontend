@@ -10813,7 +10813,7 @@ body,
 .chat-music-copy strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
 .chat-music-copy span { overflow: hidden; color: #846f63; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .chat-music-progress { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
-.chat-music-progress input { width: 100%; height: 3px; accent-color: #9a5f72; }
+.chat-music-progress input { width: 100%; height: 44px; accent-color: #9a5f72; }
 .chat-music-progress small, .chat-music-unavailable { color: #9a8579; font-size: 10px; }
 .chat-music-error { color: #a14e47; font-size: 10px; line-height: 1.35; }
 .chat-music-toggle { display: grid; width: 36px; height: 36px; flex: 0 0 36px; place-items: center; border: 0; border-radius: 50%; color: #fff; background: #8f5267; }
