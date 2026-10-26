@@ -66,7 +66,7 @@ export function mountSurpriseMap(container, { load = loadLibrary, onStatus = () 
   };
   const projectPoint = point => projectForSource(source, point);
   const unprojectPoint = point => unprojectForSource(source, point);
-  let disposed = false, library, map, layer, markers, envelopeIcon, selectedEnvelopeIcon, resizeObserver, intersectionObserver, timer, viewportTimer, lastViewport = "", pickIntent = false;
+  let disposed = false, library, map, layer, markers, envelopeIcon, selectedEnvelopeIcon, resizeObserver, intersectionObserver, timer, viewportTimer, lastViewport = "", pickIntent = false, suppressViewportUntil = 0;
   let state = { items: [], position: null, selectedId: null }, visible = true, tileErrors = 0, centered = false, lastFocus = "";
   const status = value => { if (!disposed) onStatus(value); };
   const stopTimer = () => { clearTimeout(timer); timer = null; };
@@ -97,6 +97,7 @@ export function mountSurpriseMap(container, { load = loadLibrary, onStatus = () 
     clearTimeout(viewportTimer);
     viewportTimer = setTimeout(() => {
       if (disposed || !visible || documentObject?.hidden) return;
+      if (Date.now() < suppressViewportUntil) return;
       const bounds = coarseMapViewport(viewportBounds());
       if (bounds && bounds !== lastViewport) { lastViewport = bounds; onViewport(bounds); }
     }, 350);
@@ -172,7 +173,7 @@ export function mountSurpriseMap(container, { load = loadLibrary, onStatus = () 
     }
     markers = library.featureGroup().addTo(map);
     documentObject?.addEventListener("visibilitychange", visibility);
-    if (ResizeObserverClass) { resizeObserver = new ResizeObserverClass(() => { if (!disposed) map.invalidateSize({ animate: false, pan: false }); }); resizeObserver.observe(container); }
+    if (ResizeObserverClass) { resizeObserver = new ResizeObserverClass(() => { if (!disposed) { suppressViewportUntil = Date.now() + 1000; map.invalidateSize({ animate: false, pan: false }); } }); resizeObserver.observe(container); }
     if (IntersectionObserverClass) { intersectionObserver = new IntersectionObserverClass(entries => { visible = entries.some(entry => entry.isIntersecting); visibility(); }); intersectionObserver.observe(container); }
     draw(); visibility();
     map.on?.("moveend", publishViewport);
