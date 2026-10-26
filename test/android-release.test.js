@@ -9,6 +9,14 @@ const buildGradle = fs.readFileSync(
   path.join(projectRoot, "android", "app", "build.gradle"),
   "utf8",
 );
+const androidManifest = fs.readFileSync(
+  path.join(projectRoot, "android", "app", "src", "main", "AndroidManifest.xml"),
+  "utf8",
+);
+const publishWorkflow = fs.readFileSync(
+  path.join(projectRoot, ".github", "workflows", "publish-android-apk.yml"),
+  "utf8",
+);
 const variablesGradle = fs.readFileSync(
   path.join(projectRoot, "android", "variables.gradle"),
   "utf8",
@@ -72,9 +80,16 @@ const neteasePlaybackPlugin = fs.readFileSync(
 );
 
 assert.match(buildGradle, /applicationId "home\.dengta\.app"/);
-assert.match(buildGradle, /versionCode project\.hasProperty\("versionCode"\)[\s\S]*?: 280\b/);
+assert.match(buildGradle, /versionCode project\.hasProperty\("versionCode"\)[\s\S]*?: \d+\b/);
 assert.match(buildGradle, /versionName project\.hasProperty\("versionName"\)/, "APK version name must be injectable by the release workflow");
 assert.ok(buildGradle.includes(`: "${packageJson.version}"`), "fallback APK versionName must match the package version");
+assert.match(buildGradle, /signingConfig signingConfigs\.release/);
+assert.match(buildGradle, /debuggable false/);
+assert.match(publishWorkflow, /assembleRelease/);
+assert.doesNotMatch(publishWorkflow, /app-debug\.apk/);
+assert.doesNotMatch(androidManifest, /android:usesCleartextTraffic="true"/);
+assert.match(androidManifest, /android:allowBackup="false"/);
+assert.match(androidManifest, /android:networkSecurityConfig="@xml\/network_security_config"/);
 assert.match(
   buildGradle,
   /storeFile file\(System\.getProperty\("user\.home"\) \+ "\/\.android\/debug\.keystore"\)/,

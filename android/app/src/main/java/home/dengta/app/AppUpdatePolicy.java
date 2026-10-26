@@ -6,6 +6,7 @@ import java.time.format.DateTimeParseException;
 
 final class AppUpdatePolicy {
     static final String FEED_URL = "https://www.dengtahome.com/updates/android.json";
+    static final String APK_STORAGE_HOST = "nyyqizwrlmejpfdhgrnd.supabase.co";
     static boolean validDownload(String value) {
         try {
             URI uri = new URI(value);
@@ -18,7 +19,9 @@ final class AppUpdatePolicy {
                 path.matches("/downloads/[-A-Za-z0-9_.]+\\.apk");
             boolean githubApk = "github.com".equals(host) &&
                 path.matches("/DengTaHome/dengta-home(?:-frontend)?/releases/download/v[0-9.]+/[-A-Za-z0-9_.]+\\.apk");
-            return siteApk || githubApk;
+            boolean storageApk = APK_STORAGE_HOST.equals(host) &&
+                path.matches("/storage/v1/object/public/dengta-updates/apk/[-A-Za-z0-9_.]+\\.apk");
+            return siteApk || githubApk || storageApk;
         } catch (Exception error) { return false; }
     }
     static boolean newer(long installed, long candidate) { return installed > 0 && candidate > installed && candidate <= Integer.MAX_VALUE; }

@@ -6,10 +6,13 @@ import android.os.Build;
 import android.provider.Settings;
 import androidx.core.content.FileProvider;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.security.MessageDigest;
+import java.util.Locale;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -43,7 +46,19 @@ public final class AppUpdatesPlugin extends Plugin {
     }
     @PluginMethod public void openDownload(PluginCall call) {
         String url = call.getString("url", "");
-        if (!AppUpdatePolicy.validDownload(url)) { call.reject("更新下载地址无效。", "app_update_manifest_invalid"); return; }
+        String expectedSha = call.getString("sha256", "").toLowerCase(Locale.ROOT);
+        long expectedSize;
+        try {
+            expectedSize = Long.parseLong(call.getString("size", ""));
+        } catch (Exception error) {
+            expectedSize = -1;
+        }
+        if (!AppUpdatePolicy.validDownload(url) || !expectedSha.matches("[a-f0-9]{64}") || expectedSize < 1) {
+            call.reject("更新下载地址或校验信息无效。", "app_update_manifest_invalid");
+            return;
+        }
+        final String requiredSha = expectedSha;
+        final long requiredSize = expectedSize;
         if (Build.VERSION.SDK_INT >= 26 && !getContext().getPackageManager().canRequestPackageInstalls()) {
             try {
                 Intent settings = new Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:" + getContext().getPackageName()));
@@ -87,6 +102,8 @@ public final class AppUpdatesPlugin extends Plugin {
                     }
                 }
                 if (!target.isFile() || target.length() <= 0) throw new IllegalStateException("empty apk");
+                if (target.length() != requiredSize || !requiredSha.equals(sha256(target)))
+                    throw new IllegalStateException("apk integrity mismatch");
                 getActivity().runOnUiThread(() -> {
                     notifyListeners("downloadComplete", new JSObject().put("installing", true));
                     installApk(target);
@@ -98,6 +115,18 @@ public final class AppUpdatesPlugin extends Plugin {
                 if (connection != null) connection.disconnect();
             }
         }, "dengta-apk-download").start();
+    }
+
+    private static String sha256(File file) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        try (FileInputStream input = new FileInputStream(file)) {
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = input.read(buffer)) != -1) digest.update(buffer, 0, read);
+        }
+        StringBuilder value = new StringBuilder(64);
+        for (byte item : digest.digest()) value.append(String.format(Locale.ROOT, "%02x", item));
+        return value.toString();
     }
 
     private void installApk(File file) {
