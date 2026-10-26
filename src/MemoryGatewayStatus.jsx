@@ -9,6 +9,7 @@ export default function MemoryGatewayStatus({ scopeKey = settingsSaveScope(authS
   const [items, setItems] = useState(null);
   const [itemsError, setItemsError] = useState("");
   const [itemsBusy, setItemsBusy] = useState(false);
+  const [query, setQuery] = useState("");
   const requestRef = useRef(null);
   const itemsRef = useRef(null);
   const { request, isCurrent } = useMemoryUiRequest(scopeKey);
@@ -42,7 +43,7 @@ export default function MemoryGatewayStatus({ scopeKey = settingsSaveScope(authS
     setItemsBusy(true);
     setItemsError("");
     try {
-      const data = await request("/api/v2/memory/items?limit=20", { timeoutMs: 10_000 });
+      const data = await request(`/api/v2/memory/items?limit=20${query ? `&q=${encodeURIComponent(query)}` : ""}`, { timeoutMs: 10_000 });
       if (!isCurrent() || itemsRef.current !== operation) return;
       if (data?.ok !== true || !Array.isArray(data.memories)) throw new Error("kiwi_memory_list_invalid");
       setItems(data.memories);
@@ -65,10 +66,13 @@ export default function MemoryGatewayStatus({ scopeKey = settingsSaveScope(authS
       <p>{status.embedding_available ? "嵌入服务报告可用；实际聊天召回仍待验证。" : "嵌入服务不可用，语义召回未通过；请检查 Kiwi 的嵌入模型配置。"}</p>
       {status.diagnostics?.recall?.at && <p>{`最近一次召回：${status.diagnostics.recall.ok ? `成功 ${status.diagnostics.recall.count || 0} 条` : `失败（${status.diagnostics.recall.error || "未知错误"}）`} · ${new Date(status.diagnostics.recall.at).toLocaleString()}`}</p>}
       {status.diagnostics?.report?.at && <p>{`最近一次上报：${status.diagnostics.report.ok ? "成功" : `失败（${status.diagnostics.report.error || "未知错误"}）`} · ${new Date(status.diagnostics.report.at).toLocaleString()}`}</p>}
-      <button type="button" className="memory-gateway-load" disabled={itemsBusy} onClick={() => void loadItems()}>{itemsBusy ? "读取中…" : items ? "重新读取网关记忆" : "查看最近 20 条网关记忆"}</button>
+      <div className="memory-gateway-search">
+        <input type="search" value={query} maxLength={200} placeholder="搜索 Kiwi 记忆（可留空）" aria-label="搜索 Kiwi 记忆" onChange={event => setQuery(event.currentTarget.value)} />
+        <button type="button" className="memory-gateway-load" disabled={itemsBusy} onClick={() => void loadItems()}>{itemsBusy ? "读取中…" : items ? "搜索网关记忆" : "查看 / 搜索网关记忆"}</button>
+      </div>
       {itemsError && <p role="alert" className="memory-gateway-items-error">{itemsError}</p>}
       {items && <div className="memory-gateway-items" aria-label="Kiwi 网关记忆">
-        {items.length === 0 ? <p>当前账号与伴侣在 Kiwi 网关里还没有可展示的记忆。</p> : items.map(item => <article key={item.id} className="memory-gateway-item">
+        {items.length === 0 ? <p>没有匹配的 Kiwi 记忆。</p> : items.map(item => <article key={item.id} className="memory-gateway-item">
           <div><strong>{item.title || item.category_name || "记忆"}</strong>{item.permanent && <span className="memory-gateway-permanent">永久</span>}</div>
           <p>{item.content}</p>
           <small>{item.created_at ? new Date(item.created_at).toLocaleString() : ""}{item.importance ? ` · 重要度 ${item.importance}` : ""}</small>
