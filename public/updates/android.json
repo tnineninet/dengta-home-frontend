@@ -3,14 +3,14 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 298,
-    "version": "2.13.40",
-    "apk_url": "https://nyyqizwrlmejpfdhgrnd.supabase.co/storage/v1/object/public/dengta-updates/apk/DengTa-2.13.40.apk",
-    "sha256": "e42d407522f25308867414814d5b4cf9071a84939c81c3cccc164a19adb39c7e",
-    "size_bytes": 36410763,
-    "published_at": "2026-10-26T11:08:45.882Z",
+    "version_code": 299,
+    "version": "2.13.41",
+    "apk_url": "https://nyyqizwrlmejpfdhgrnd.supabase.co/storage/v1/object/public/dengta-updates/apk/DengTa-2.13.41.apk",
+    "sha256": "1ffd07f11059d2e9d43fa29f53d4869061f419a60893c0deb04aecef05c3ca43",
+    "size_bytes": 36410775,
+    "published_at": "2026-10-26T11:17:18.340Z",
     "notes": [
-      "自动构建 2.13.40（298） · 9bc80d6",
+      "自动构建 2.13.41（299） · 52b7d27",
       "包含最新的聊天、界面和 Android 修复。"
     ]
   }
