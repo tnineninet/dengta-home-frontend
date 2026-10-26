@@ -12,17 +12,17 @@
 .feature-navigation .primary-nav { grid-template-columns: minmax(0, 1fr); gap: 10px; }
 .feature-navigation-group { display: grid; min-width: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
 .feature-navigation-group > p { grid-column: 1 / -1; font-size: 11px; letter-spacing: .06em; opacity: .65; margin: 6px 8px 2px; }
-.feature-navigation .feature-navigation-group > button { display: flex; width: 100%; min-width: 0; min-height: 54px; align-items: center; gap: 7px; padding: 8px; border: 1px solid transparent; border-radius: 11px; color: inherit; text-align: left; background: transparent; cursor: pointer; transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease; }
-.feature-navigation .feature-navigation-group > button > span:first-child { display: grid; width: 23px; flex: 0 0 auto; place-items: center; color: inherit; font-size: 17px; }
-.feature-navigation .feature-navigation-group > button > span:last-child { min-width: 0; color: inherit; font-size: 13px; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
+.feature-navigation .feature-navigation-group-items > button { display: flex; width: 100%; min-width: 0; min-height: 54px; align-items: center; gap: 7px; padding: 8px; border: 1px solid transparent; border-radius: 11px; color: inherit; text-align: left; background: transparent; cursor: pointer; transition: background-color 140ms ease, border-color 140ms ease, transform 140ms ease; }
+.feature-navigation .feature-navigation-group-items > button > span:first-child { display: grid; width: 23px; flex: 0 0 auto; place-items: center; color: inherit; font-size: 17px; }
+.feature-navigation .feature-navigation-group-items > button > span:last-child { min-width: 0; color: inherit; font-size: 13px; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; }
 .feature-navigation-group small { display: block; font-size: 11px; font-weight: 400; line-height: 1.5; opacity: .72; }
-.feature-navigation .feature-navigation-group > button.active { border-color: rgb(var(--theme-accent-rgb, 171 134 108) / .36); background: rgb(var(--theme-accent-rgb, 171 134 108) / .14); }
-.feature-navigation .feature-navigation-group > button:active { transform: translateY(1px); }
+.feature-navigation .feature-navigation-group-items > button.active { border-color: rgb(var(--theme-accent-rgb, 171 134 108) / .36); background: rgb(var(--theme-accent-rgb, 171 134 108) / .14); }
+.feature-navigation .feature-navigation-group-items > button:active { transform: translateY(1px); }
 .feature-navigation-results, .feature-navigation-empty { margin: 0 0 8px; padding: 0 5px; font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .feature-navigation :focus-visible { outline: 2px solid var(--theme-accent, currentColor); outline-offset: 2px; }
-@media (hover: hover) { .feature-navigation .feature-navigation-group > button:hover, .feature-navigation-search-field button:hover { background: color-mix(in srgb, currentColor 7%, transparent); } }
-@media (prefers-reduced-motion: reduce) { .feature-navigation .feature-navigation-group > button { transition: none; } .feature-navigation .feature-navigation-group > button:active { transform: none; } }
-:root[data-dengta-reduced-motion="true"] .feature-navigation .feature-navigation-group > button { transition: none; transform: none; }
+@media (hover: hover) { .feature-navigation .feature-navigation-group-items > button:hover, .feature-navigation-search-field button:hover { background: color-mix(in srgb, currentColor 7%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .feature-navigation .feature-navigation-group-items > button { transition: none; } .feature-navigation .feature-navigation-group-items > button:active { transform: none; } }
+:root[data-dengta-reduced-motion="true"] .feature-navigation .feature-navigation-group-items > button { transition: none; transform: none; }
 
 /* Menu interaction layer: one moving active block, collapsible groups and
    real navigation badges. The active button remains the semantic current item. */

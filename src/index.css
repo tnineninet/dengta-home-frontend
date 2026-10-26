@@ -222,7 +222,7 @@ button:disabled {
 
 .session-list {
   display: flex;
-  min-height: 0;
+  min-height: 96px;
   flex: 1;
   flex-direction: column;
   gap: 6px;

@@ -1244,6 +1244,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [activeView, setActiveView] = useState("chat");
   const activeViewRef = useRef(activeView);
   activeViewRef.current = activeView;
+  useEffect(() => {
+    const body = globalThis.document?.body;
+    if (!body) return undefined;
+    body.dataset.dengtaView = activeView;
+    return () => {
+      if (body.dataset.dengtaView === activeView) delete body.dataset.dengtaView;
+    };
+  }, [activeView]);
   const workspaceLeaveGuardRef = useRef(null);
   const canLeaveWorkspace = useCallback(view => activeViewRef.current !== "workspace" || view === activeViewRef.current || !workspaceLeaveGuardRef.current || workspaceLeaveGuardRef.current(), []);
   const registerWorkspaceLeaveGuard = useCallback(guard => {
