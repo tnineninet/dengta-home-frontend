@@ -19,6 +19,7 @@ import { MAX_PLAYLIST_TEXT_LENGTH, readPlaylistTextFile } from "./playlist-file.
 import { resolveMusicPlayback, MUSIC_PLAYBACK_MODES } from "./music-playback.js";
 import { openNeteasePlayback } from "./netease-playback.js";
 import MusicPagedList from "./MusicPagedList.jsx";
+import NeteaseQrLogin from "./NeteaseQrLogin.jsx";
 import { useMusicScope } from "./use-music-scope.js";
 import { runMusicTask, musicErrorMessage } from "./music-operation-feedback.js";
 import { launchExternalMusic, externalMusicFeedback } from "./music-external-launch.js";
@@ -28,7 +29,7 @@ import { musicPlaylistStatus } from "./music-playlist-status.js";
 const PROVIDERS = [
   ["local_playlist", "本地歌单", "ready", "可用"],
   ["direct_https", "HTTPS 音频直链", "ready", "可用"],
-  ["netease", "网易云音乐 MCP", "unconnected", "等待用户自托管连接"],
+  ["netease", "网易云音乐", "unconnected", "扫码登录或自托管 MCP"],
 ];
 
 const PLAYLIST_ACCEPT = ".json,.m3u,.m3u8,.txt,application/json,text/plain,audio/x-mpegurl,application/vnd.apple.mpegurl";
@@ -256,9 +257,14 @@ function MusicSettingsPanel({ providerStatus = null, onOpenMcpDeviceCenter, onIm
       {PROVIDERS.map(([id, label, fallbackStatus, fallbackText]) => {
         const remote = Array.isArray(providerStatus?.providers) ? providerStatus.providers.find((item) => item?.id === id) : null;
         const status = remote?.status || fallbackStatus;
-        return <div className="music-provider-status" key={id}><strong>{label}</strong><span className={`provider-dot ${status}`}>{remote?.display_name || fallbackText}</span>{id === "netease" && <><small>通过用户自托管的 Code-MonkeyZhang/cloud-music-mcp 接入：元数据/歌单管理可用，Together 音频不可用。</small><button type="button" onClick={onOpenMcpDeviceCenter}>去连接网易云 MCP</button></>}</div>;
+        return <div className="music-provider-status" key={id}><strong>{label}</strong><span className={`provider-dot ${status}`}>{remote?.display_name || fallbackText}</span>{id === "netease" && <><small>每个用户用自己的网易云账号扫码登录，歌单/播放直链按账号隔离；也可接自托管 MCP。</small><button type="button" onClick={onOpenMcpDeviceCenter}>去连接网易云 MCP</button></>}</div>;
       })}
     </div>}
+      {!compact && <section className="music-netease-account" aria-label="网易云账号（每用户独立）">
+        <div className="settings-card-heading"><div><span className="settings-kicker">NETEASE ACCOUNT</span><h4>网易云账号 · 扫码登录</h4><p>每个用户用自己的网易云账号登录，登录态和歌单按账号隔离；AI 只读取你授权的歌单与播放直链。</p></div></div>
+        <NeteaseQrLogin onImported={() => { void refresh(); }} />
+      </section>}
+
     <details className="music-netease-library" open={compact ? undefined : true} aria-label="网易云音乐连接与曲库">
       <summary>高级来源：自托管网易云 MCP</summary>
       <label>已保存 MCP 连接<select value={connectionId} onChange={(event) => selectNeteaseConnection(event.target.value)}><option value="">选择 provider_profile=netease_cloud_music 的连接</option>{neteaseConnections.map((connection) => <option key={connection.id} value={connection.id}>{connection.name}</option>)}</select></label>
