@@ -451,9 +451,9 @@ assert.match(
   "immediate delivery and background polling must share one seen-id lock",
 );
 const fetchAndNotifySource =
-  workerSource.match(
-    /private Result fetchAndNotify\([\s\S]*?\n {4}}\n\n {4}private static void postNotification/,
-  )?.[0] || "";
+    workerSource.match(
+      /private Result fetchAndNotify\([\s\S]*?(?=\n\s*private static void postNotification)/,
+    )?.[0] || "";
 assert.match(
   fetchAndNotifySource,
   /String capturedScopeKey = identity\.userId \+ ":" \+ identity\.companionId/,
