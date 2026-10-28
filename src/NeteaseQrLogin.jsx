@@ -88,8 +88,8 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
     return () => { cancelled = true; };
   }, [qrOpen, qrContent]);
 
-  async function startLogin() {
-    autoRefreshCountRef.current = 0;
+  async function startLogin({ auto = false } = {}) {
+    if (!auto) autoRefreshCountRef.current = 0;
     setBusy(true);
     setError("");
     setFeedback("");
@@ -145,20 +145,20 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
               setFeedback("已扫码，请在手机上确认登录。");
             } else if (result?.status === "expired") {
               stopPolling();
-              if (autoRefreshCountRef.current < 6) {
+              if (autoRefreshCountRef.current < 2) {
                 autoRefreshCountRef.current += 1;
                 setFeedback("二维码已过期，正在为你自动刷新…");
-                void startLogin();
+                void startLogin({ auto: true });
               } else {
                 setQrStatus("expired");
                 setFeedback("二维码多次过期，请手动点击“重新生成”。");
               }
             }
             // 主动换新:网易云二维码约3分钟失效,每90秒自动换一张,保证扫到的永远新鲜。
-            if (Date.now() - startedAtRef.current > 90_000 && autoRefreshCountRef.current < 6) {
+            if (Date.now() - startedAtRef.current > 120_000 && autoRefreshCountRef.current < 2) {
               autoRefreshCountRef.current += 1;
               setFeedback("已为你换上新鲜二维码,请扫当前这张。");
-              void startLogin();
+              void startLogin({ auto: true });
             } else if (result?.status === "risk_blocked") {
               stopPolling();
               setQrStatus("risk_blocked");
@@ -180,7 +180,9 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
         })();
       }, POLL_INTERVAL_MS);
     } catch (caught) {
+      stopPolling();
       setError(pickError(caught));
+      setFeedback(caught?.code === "netease_qr_too_frequent" ? "尝试太频繁，请等 5 分钟再点一次。" : "二维码暂时生成失败，请稍后再试。");
     } finally {
       setBusy(false);
     }
