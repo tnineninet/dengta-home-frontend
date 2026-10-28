@@ -12255,3 +12255,35 @@ body,
   min-width: 44px;
   min-height: 44px;
 }
+
+/* Mobile compositing budget: glass blur is the most expensive continuous
+   effect on Android WebView. Keep the look, drop the blur on small screens. */
+@media (max-width: 700px) {
+  *,
+  *::before,
+  *::after {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  .rainbow-agent-mark-glint {
+    animation: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rainbow-agent-mark-glint {
+    animation: none !important;
+  }
+}
+
+/* Stop decorative animation work when the document is hidden or scrolling.
+   Keep transitions/animations that convey interaction feedback responsive by
+   only pausing while the scroll is moving (released 140ms after). */
+html[data-dengta-hidden="1"] *,
+html[data-dengta-hidden="1"] *::before,
+html[data-dengta-hidden="1"] *::after,
+html[data-dengta-scrolling="1"] *,
+html[data-dengta-scrolling="1"] *::before,
+html[data-dengta-scrolling="1"] *::after {
+  animation-play-state: paused !important;
+}

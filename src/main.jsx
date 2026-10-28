@@ -1,7 +1,7 @@
 import { StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
-import "./App.css";
+import "./refusal-banner.css";
 import "./cozy-theme.css";
 import "./auth.css";
 import "./native-feel.css";
@@ -139,6 +139,28 @@ if (!isReceiverRoute) {
       // @capacitor/app 在纯 Web 构建中不可用时静默跳过，邮箱验证走 Web URL 回跳
     });
 }
+
+// Pause decorative animations while the app is hidden or the user is actively
+// scrolling. Android WebView keeps compositing animations off-screen otherwise.
+const htmlRoot = document.documentElement;
+function syncDocumentHidden() {
+  htmlRoot.dataset.dengtaHidden =
+    document.visibilityState === "hidden" ? "1" : "";
+}
+syncDocumentHidden();
+document.addEventListener("visibilitychange", syncDocumentHidden);
+let scrollPauseTimer = 0;
+document.addEventListener(
+  "scroll",
+  () => {
+    htmlRoot.dataset.dengtaScrolling = "1";
+    window.clearTimeout(scrollPauseTimer);
+    scrollPauseTimer = window.setTimeout(() => {
+      htmlRoot.dataset.dengtaScrolling = "";
+    }, 140);
+  },
+  { capture: true, passive: true },
+);
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
