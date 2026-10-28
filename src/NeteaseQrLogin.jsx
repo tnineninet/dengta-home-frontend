@@ -121,6 +121,7 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
 
           try {
             const result = await checkNeteaseQrLogin(session.key);
+            if (attempt !== loginAttemptRef.current) return;
             const statusNames = {
               waiting: "等待扫码",
               scanned: "已扫码待确认",
@@ -138,6 +139,7 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
             );
             if (result?.status === "confirmed") {
               stopPolling();
+              loginAttemptRef.current += 1;
               setQrStatus("confirmed");
               setQrOpen(false);
               setQrContent("");
@@ -168,6 +170,7 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
               void startLogin({ auto: true });
             } else if (result?.status === "risk_blocked") {
               stopPolling();
+              loginAttemptRef.current += 1;
               setQrStatus("risk_blocked");
               setFeedback(
                 (result.message || "登录被网易云风控拦截。") +
@@ -202,7 +205,7 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
     setQrContent("");
     setQrStatus("idle");
     setFeedback("");
-    stopPolling();
+    setBusy(false);
   }, [stopPolling]);
 
   const logout = useCallback(async () => {
