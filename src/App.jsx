@@ -5440,6 +5440,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   async function openReplyOptions({ fresh = false } = {}) {
+    if (replyOptionsLoading) return;
     const sessionId = activeSessionIdRef.current;
     if (!sessionId) return;
     const latestAssistant = [...messages].reverse().find((item) => item?.role === "assistant" && !item.isStreaming);
