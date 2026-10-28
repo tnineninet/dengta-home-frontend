@@ -43,7 +43,10 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
     }
   }, []);
 
-  useEffect(() => () => stopPolling(), [stopPolling]);
+  useEffect(() => () => {
+    loginAttemptRef.current += 1;
+    stopPolling();
+  }, [stopPolling]);
 
   const refreshStatus = useCallback(async () => {
     try {
