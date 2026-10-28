@@ -203,3 +203,9 @@
   .reply-options-popover,
   .reply-options-popover-loading > span { animation: none; }
 }
+
+/* reply-options close touch target */
+.reply-options-popover-header button {
+  width: 44px;
+  height: 44px;
+}
