@@ -4094,7 +4094,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       streamingSessionIdRef.current = responseSessionId;
       const serverUserMessage = data.user_message;
       const serverAssistantMessage = data.assistant_message;
-      const normalizedAnalysis = normalizeVoiceAnalysis(data.voice_analysis);
+      const hasEmotionAnalysis = Boolean(
+        emotionUnderstandingEnabled &&
+          data.voice_analysis &&
+          typeof data.voice_analysis === "object",
+      );
+      const normalizedAnalysis = normalizeVoiceAnalysis(
+        hasEmotionAnalysis ? data.voice_analysis : null,
+      );
       const transcript =
         normalizedAnalysis.text ||
         String(serverUserMessage?.content || "").trim();
@@ -4111,11 +4118,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         throw new Error("服务器没有返回可播放的 AI 回复，请稍后再试。");
       }
 
-      const voiceAnalysis = {
-        ...normalizedAnalysis,
-        text: transcript,
-        durationMs,
-      };
+      const voiceAnalysis = hasEmotionAnalysis
+        ? { ...normalizedAnalysis, text: transcript, durationMs }
+        : null;
       const userMessage = {
         ...(serverUserMessage || {}),
         id: serverUserMessage?.id || `voice-user-${Date.now()}`,
@@ -4123,7 +4128,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         content: transcript,
         created_at:
           serverUserMessage?.created_at || new Date().toISOString(),
-        voiceAnalysis,
+        ...(voiceAnalysis ? { voiceAnalysis } : {}),
       };
 
       applyPromptReceipt(data.prompt_receipt);
@@ -4157,7 +4162,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       }
       setLastVoiceAnalysis(voiceAnalysis);
       setNotice(
-        `语音已转写。声音情绪线索：${voiceAnalysis.emotion}，${formatVoiceConfidence(voiceAnalysis.confidence)}。这不是心理诊断。`,
+        voiceAnalysis
+          ? `语音已转写。声音情绪线索：${voiceAnalysis.emotion}，${formatVoiceConfidence(voiceAnalysis.confidence)}。这不是心理诊断。`
+          : "语音已转写。",
       );
       try {
         await refreshSessions(responseSessionId);
