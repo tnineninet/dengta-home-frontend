@@ -192,6 +192,12 @@ export function voiceRecordingSupported(environment = globalThis) {
   );
 }
 
+export function voiceShouldAbortAfterPermission(pointerHeld) {
+  // First-use permission prompts force the finger off the hold button. Do not
+  // keep recording in the background when the pointer is no longer held.
+  return pointerHeld !== true;
+}
+
 export function resolveVoiceCaptureAfterPermission(
   pointerHeld,
   permissionWasUnconfirmed = false,

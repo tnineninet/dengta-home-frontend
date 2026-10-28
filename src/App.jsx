@@ -345,6 +345,7 @@ import {
   validateVoiceDuration,
   voiceCaptureErrorMessage,
   voiceRecordingSupported,
+  voiceShouldAbortAfterPermission,
 } from "./voice";
 import {
   deviceTtsSupported,
@@ -4324,6 +4325,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           releaseVoiceStream(stream);
           return;
         }
+        if (voiceShouldAbortAfterPermission(voicePointerHeldRef.current)) {
+          releaseVoiceStream(stream);
+          voiceCaptureRunRef.current += 1;
+          setVoiceMode(VOICE_STATES.idle);
+          setVoiceTapToSendMode(false);
+          setNotice("麦克风已开启，请重新按住说话。");
+          return;
+        }
         voicePermissionReadyRef.current = true;
         // 长按门控后进入录音，不启用 tapToSend
         voiceStreamRef.current = stream;
@@ -4391,6 +4400,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     if (voiceStateRef.current === VOICE_STATES.recording) {
       setVoiceTapToSendMode(false);
       void finishVoiceCapture({ send: true });
+      return;
+    }
+    if (voiceStateRef.current === VOICE_STATES.requesting) {
+      voiceCaptureRunRef.current += 1;
+      setVoiceMode(VOICE_STATES.idle);
+      setVoiceTapToSendMode(false);
+      setNotice("麦克风权限确认后请重新按住说话。");
     }
   }
 

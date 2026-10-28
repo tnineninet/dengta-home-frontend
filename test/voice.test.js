@@ -255,3 +255,10 @@ await assert.rejects(
 assert.equal(missingCredentialFetches, 0);
 
 console.log("voice helper tests passed");
+
+{
+    const { voiceShouldAbortAfterPermission } = await import("../src/voice.js");
+    assert.equal(voiceShouldAbortAfterPermission(false), true);
+    assert.equal(voiceShouldAbortAfterPermission(undefined), true);
+    assert.equal(voiceShouldAbortAfterPermission(true), false);
+}
