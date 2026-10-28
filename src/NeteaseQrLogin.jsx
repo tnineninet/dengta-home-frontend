@@ -21,6 +21,7 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
   const pollTimerRef = useRef(null);
   const startedAtRef = useRef(0);
   const autoRefreshCountRef = useRef(0);
+  const loginAttemptRef = useRef(0);
   const [qrContent, setQrContent] = useState("");
   const [qrStatus, setQrStatus] = useState("idle"); // idle | waiting | scanned | confirmed | expired | risk_blocked | error
   const [connection, setConnection] = useState(null);
@@ -89,12 +90,15 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
   }, [qrOpen, qrContent]);
 
   async function startLogin({ auto = false } = {}) {
+    const attempt = loginAttemptRef.current + 1;
+    loginAttemptRef.current = attempt;
     if (!auto) autoRefreshCountRef.current = 0;
     setBusy(true);
     setError("");
     setFeedback("");
     try {
       const session = await beginNeteaseQrLogin();
+      if (attempt !== loginAttemptRef.current) return;
       if (!session?.key || !session.qr_content) throw new Error("没有拿到登录二维码。");
       startedAtRef.current = Date.now();
       setQrStatus("waiting");
@@ -149,13 +153,14 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
                 autoRefreshCountRef.current += 1;
                 setFeedback("二维码已过期，正在为你自动刷新…");
                 void startLogin({ auto: true });
+                return;
               } else {
                 setQrStatus("expired");
                 setFeedback("二维码多次过期，请手动点击“重新生成”。");
               }
             }
             // 主动换新:网易云二维码约3分钟失效,每90秒自动换一张,保证扫到的永远新鲜。
-            if (Date.now() - startedAtRef.current > 120_000 && autoRefreshCountRef.current < 2) {
+            if (result?.status !== "confirmed" && result?.status !== "risk_blocked" && Date.now() - startedAtRef.current > 120_000 && autoRefreshCountRef.current < 2) {
               autoRefreshCountRef.current += 1;
               setFeedback("已为你换上新鲜二维码,请扫当前这张。");
               void startLogin({ auto: true });
@@ -189,6 +194,7 @@ export default function NeteaseQrLogin({ onImported = () => {} }) {
   }
 
   const cancelLogin = useCallback(() => {
+    loginAttemptRef.current += 1;
     stopPolling();
     setQrOpen(false);
     setQrContent("");
