@@ -398,6 +398,7 @@ export function createVoiceTurnRequest(
 }
 
 let activeAudioPlayback = null;
+let activeSpeechController = null;
 
 export function normalizeVoicePlaybackMode(value) {
   return Object.values(VOICE_PLAYBACK_MODES).includes(value)
@@ -413,6 +414,7 @@ export async function requestExpressiveSpeech(
     fetchImpl = globalThis.fetch,
     timeoutMs = 60_000,
     authSession = defaultAuthSession,
+    signal: callerSignal = null,
   } = {},
 ) {
   const safeMessageId = String(messageId || "").trim();
@@ -429,6 +431,11 @@ export async function requestExpressiveSpeech(
   }
 
   const controller = new AbortController();
+  const abortFromCaller = () => controller.abort();
+  if (callerSignal) {
+    if (callerSignal.aborted) controller.abort();
+    else callerSignal.addEventListener("abort", abortFromCaller, { once: true });
+  }
   const timer = globalThis.setTimeout(() => controller.abort(), timeoutMs);
   try {
     let response;
@@ -456,6 +463,11 @@ export async function requestExpressiveSpeech(
       });
     } catch (error) {
       if (error?.name === "AbortError") {
+        if (callerSignal?.aborted) {
+          const cancelled = new Error("自然语音已停止。", { cause: error });
+          cancelled.code = "speech_cancelled";
+          throw cancelled;
+        }
         throw new Error("自然语音等待超时。", { cause: error });
       }
       throw new Error("暂时无法连接自然语音服务。", { cause: error });
@@ -491,6 +503,7 @@ export async function requestExpressiveSpeech(
     };
   } finally {
     globalThis.clearTimeout(timer);
+    callerSignal?.removeEventListener?.("abort", abortFromCaller);
   }
 }
 
@@ -503,6 +516,8 @@ function playAudioBlob(
   }
 
   return new Promise((resolve, reject) => {
+    activeAudioPlayback?.stop?.();
+    activeAudioPlayback = null;
     const url = URLImpl.createObjectURL(blob);
     const audio = new AudioImpl();
     let finished = false;
@@ -555,19 +570,35 @@ export async function speakVoiceText(
     return { engine: "none" };
   }
 
-  const speech = await requestExpressiveSpeech(messageId, {
-    sessionId,
-    speechToken,
-  });
-  const playback = await playAudioBlob(speech.blob);
-  return {
-    ...playback,
-    provider: speech.provider,
-    emotion: speech.emotion,
-  };
+  // A new utterance cancels the previous request/audio; stopping must be able
+  // to abort a speech fetch that has not returned yet.
+  activeSpeechController?.abort();
+  activeAudioPlayback?.stop?.();
+  const controller = new AbortController();
+  activeSpeechController = controller;
+  try {
+    const speech = await requestExpressiveSpeech(messageId, {
+      sessionId,
+      speechToken,
+      signal: controller.signal,
+    });
+    if (controller.signal.aborted) {
+      return { engine: "none", stopped: true };
+    }
+    const playback = await playAudioBlob(speech.blob);
+    return {
+      ...playback,
+      provider: speech.provider,
+      emotion: speech.emotion,
+    };
+  } finally {
+    if (activeSpeechController === controller) activeSpeechController = null;
+  }
 }
 
 export async function stopVoiceSpeech() {
+  activeSpeechController?.abort();
+  activeSpeechController = null;
   activeAudioPlayback?.stop?.();
   activeAudioPlayback = null;
 }
