@@ -12221,3 +12221,26 @@ body,
 .achievement-guide-heading button { min-height: 44px; }
 
 .settings-sheet .settings-card-heading > button { min-width: 44px; }
+
+
+.mcp-app-catalog {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(201, 174, 184, 0.52);
+  border-radius: 14px;
+  background: rgba(255, 253, 251, 0.72);
+}
+.mcp-app-catalog-heading h4 { margin: 0 0 4px; }
+.mcp-app-catalog-heading p { margin: 0; color: var(--muted, #7a6b70); font-size: 12.5px; }
+.mcp-app-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; }
+.mcp-app-card { display: grid; gap: 8px; padding: 12px; border: 1px solid rgba(201, 174, 184, 0.42); border-radius: 12px; background: rgba(255, 255, 255, 0.78); }
+.mcp-app-card-title { display: flex; flex-direction: column; gap: 2px; }
+.mcp-app-card-title span { color: var(--muted, #7a6b70); font-size: 11.5px; }
+.mcp-app-card p { margin: 0; font-size: 12.5px; line-height: 1.55; }
+.mcp-app-card details { font-size: 12.5px; }
+.mcp-app-card details ol { margin: 6px 0; padding-left: 18px; display: grid; gap: 5px; }
+.mcp-app-card details li strong { display: block; }
+.mcp-app-card details li span { color: var(--muted, #7a6b70); }
+.mcp-app-safety { margin: 4px 0; padding-left: 18px; color: #8a5a4e; }
+.mcp-app-repo a { word-break: break-all; color: inherit; text-decoration: underline; }

@@ -12,6 +12,38 @@ const EMPTY_DRAFT = {
   provider_profile: "auto",
 };
 
+
+const FALLBACK_MCP_APPS = Object.freeze([
+  {
+    id: "netease-music",
+    name: "网易云音乐 · 自托管播放器",
+    summary: "Anko3o/Music-Mcp-Netease：搜歌、歌词、歌曲卡、插队、批注与共享歌单。",
+    transport: "HTTP MCP",
+    auth: "自行反代鉴权",
+    repo: "https://github.com/Anko3o/Music-Mcp-Netease",
+    steps: [
+      { title: "部署播放器", detail: "clone 仓库，把 MUSIC_U Cookie 写入 server/.netease_cred，运行 server/music.py（:9090）和 mcp/music_mcp.py（:18012，端点 /mcp）。" },
+      { title: "公网 HTTPS", detail: "用 Caddy/Nginx 或 Cloudflare Tunnel 把 /mcp 暴露为公网 HTTPS，并加随机路径或 Bearer；不要把 18012 裸暴露。" },
+      { title: "连接 DengTa", detail: "点“使用此应用”填入你的 https 地址，测试并读取工具；默认全部工具禁止，确认后再逐项授权。" },
+    ],
+    security_notes: ["MUSIC_U 只留在播放器服务器，绝不填写到 DengTa。", "播放器页面需要开着才能接走点歌队列。"],
+  },
+  {
+    id: "x-twitter",
+    name: "X / Twitter · twikit MCP",
+    summary: "yxiy171866-boop/x-twikit-mcp：发推、回复、搜索、私信、点赞、转推等 12 个工具。",
+    transport: "stdio → HTTP 包装",
+    auth: "Bearer / 随机路径",
+    repo: "https://github.com/yxiy171866-boop/x-twikit-mcp",
+    steps: [
+      { title: "准备 Cookie", detail: "登录 x.com，复制 auth_token 与 ct0，只保存在你自己的机器。" },
+      { title: "包装成 HTTP", detail: "用 supergateway 或 mcp-proxy 把 stdio 包装成 HTTP/SSE（例如 :8765），再加 HTTPS 反代/Bearer。" },
+      { title: "连接 DengTa", detail: "点“使用此应用”填入包装后的 /mcp 或 /sse，测试并读取工具；先只授权只读工具。" },
+    ],
+    security_notes: ["X Cookie 等同账号密码，不要上传。", "发推/私信/删推不可逆，建议先禁用写工具。"],
+  },
+]);
+
 const NETEASE_MCP_PRESET = Object.freeze({
   ...EMPTY_DRAFT,
   name: "网易云音乐 MCP（Code-MonkeyZhang，自托管）",
@@ -85,6 +117,7 @@ export default function McpDeviceCenter() {
   const [discovery, setDiscovery] = useState(null);
   const [busy, setBusy] = useState("");
   const [feedback, setFeedback] = useState("");
+    const [mcpApps, setMcpApps] = useState(FALLBACK_MCP_APPS);
 
   useEffect(() => {
     mcpRequest("/api/mcp/connections/status")
@@ -94,6 +127,9 @@ export default function McpDeviceCenter() {
       .then((data) => setConnections(data.connections || []))
       .catch((error) => setFeedback(error.message))
       .finally(() => setLoaded(true));
+      mcpRequest("/api/v2/mcp/catalog")
+        .then((data) => { if (Array.isArray(data.apps) && data.apps.length) setMcpApps(data.apps); })
+        .catch(() => {});
   }, []);
 
   const enabledTools = useMemo(
@@ -115,6 +151,18 @@ export default function McpDeviceCenter() {
     if (endpoint.protocol !== "https:") throw new Error("云端 MCP 只支持公网 HTTPS 端点。");
     if (draft.auth_type === "custom_header" && draft.auth_header.trim().toLowerCase() === "cookie") throw new Error("DengTa 绝不接收或转发 Cookie 请求头，请改用 MCP 服务自己的 Token/API Key（如有）。");
     if (/(?:MUSIC_U|__csrf|NETEASE_COOKIE)\s*=/i.test(draft.credential)) throw new Error("请不要向 DengTa 填写 MUSIC_U、__csrf、NETEASE_COOKIE 或任何 Cookie；它们只能配置在你自托管的 MCP 服务端。");
+  }
+
+  function applyMcpApp(app) {
+    setDraft({
+      ...EMPTY_DRAFT,
+      name: app.name || "",
+      endpoint: "",
+      auth_type: app.id === "x-twitter" ? "bearer" : "none",
+      provider_profile: "auto",
+    });
+    setDiscovery(null);
+    setFeedback(`已载入「${app.name}」模板。请按下方教程部署，然后把公网 HTTPS 地址填进“完整 MCP 地址”。`);
   }
 
   async function discover() {
@@ -241,7 +289,40 @@ export default function McpDeviceCenter() {
         </span>
       </div>
 
-      <div className="mcp-setup-required" role="note">
+              <section className="mcp-app-catalog" aria-label="MCP 应用目录">
+          <div className="mcp-app-catalog-heading">
+            <h4>MCP 应用目录</h4>
+            <p>挑选一个应用，按教程自托管后填入公网 HTTPS 地址即可接入；不需要改 DengTa 代码。</p>
+          </div>
+          <div className="mcp-app-grid">
+            {mcpApps.map((app) => (
+              <article className="mcp-app-card" key={app.id}>
+                <div className="mcp-app-card-title">
+                  <strong>{app.name}</strong>
+                  <span>{app.transport} · {app.auth}</span>
+                </div>
+                <p>{app.summary}</p>
+                <details>
+                  <summary>查看接入教程</summary>
+                  <ol>
+                    {(app.steps || []).map((step, index) => (
+                      <li key={index}><strong>{step.title}</strong><span>{step.detail}</span></li>
+                    ))}
+                  </ol>
+                  {(app.security_notes || []).length > 0 && (
+                    <ul className="mcp-app-safety">
+                      {app.security_notes.map((note, index) => <li key={index}>{note}</li>)}
+                    </ul>
+                  )}
+                  {app.repo && <p className="mcp-app-repo"><a href={app.repo} target="_blank" rel="noreferrer">{app.repo}</a></p>}
+                </details>
+                <button type="button" className="secondary-button" onClick={() => applyMcpApp(app)}>使用此应用</button>
+              </article>
+            ))}
+          </div>
+        </section>
+
+<div className="mcp-setup-required" role="note">
         <strong>连接外部 MCP 记忆</strong>
         <p>接口类型选择“外部记忆 MCP”，填写服务商提供的 Streamable HTTP 地址，测试并保存。启用连接，并分别授权记忆查询或写入工具。AI 可在聊天中按需使用；查询结果不会自动导入灯塔记忆库。</p>
         <p>记忆读写权限由你决定。服务器只提供加密保存和账号隔离，不需要人工确认连接。</p>
