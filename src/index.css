@@ -12287,3 +12287,13 @@ html[data-dengta-scrolling="1"] *::before,
 html[data-dengta-scrolling="1"] *::after {
   animation-play-state: paused !important;
 }
+
+/* Lyrics sheet: keyboard dialog + 44px close/lyric touch targets. */
+.music-lyrics-sheet header button {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+}
+.music-lyric-line {
+  min-height: 44px;
+}

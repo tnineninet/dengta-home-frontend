@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { FileText, Music2, Pause, Play } from "lucide-react";
 import { fetchMusicLyrics, fetchMusicTrackUrl } from "./music-lyrics-client.js";
 import { activeLyricIndex, parseLrc } from "./music-lyrics.js";
+import { useSettingsSheetNavigation } from "./useSettingsSheetNavigation.js";
 
 const PLAY_EVENT = "dengta:chat-music-play";
 const eventBus = globalThis.window || new EventTarget();
@@ -33,6 +34,13 @@ export default function MusicChatCard({ music, onPlaybackChange, onAudioRefresh 
   const [resolvedAudioUrl, setResolvedAudioUrl] = useState(String(music?.audio_url || ""));
   const [refreshingAudio, setRefreshingAudio] = useState(false);
   const lyricsListRef = useRef(null);
+  const lyricsPanelRef = useRef(null);
+  useSettingsSheetNavigation({
+    isOpen: lyricsOpen,
+    scopeKey: music?.id ? "music-lyrics:" + music.id : "music-lyrics",
+    panelRef: lyricsPanelRef,
+    onClose: () => setLyricsOpen(false),
+  });
   const audioUrl = resolvedAudioUrl;
   const canPlay = /^https:\/\//i.test(audioUrl);
   const positionKey = music?.id ? "dengta_music_position_v1:" + music.id : "";
@@ -245,7 +253,7 @@ export default function MusicChatCard({ music, onPlaybackChange, onAudioRefresh 
     </article>
     {lyricsOpen && (
       <div className="music-lyrics-backdrop" role="presentation" onClick={() => setLyricsOpen(false)}>
-        <section className="music-lyrics-sheet" role="dialog" aria-modal="true" aria-label={"歌词：" + music.title} onClick={(event) => event.stopPropagation()}>
+        <section ref={lyricsPanelRef} tabIndex={-1} className="music-lyrics-sheet" role="dialog" aria-modal="true" aria-label={"歌词：" + music.title} onClick={(event) => event.stopPropagation()}>
           <header>
             <div>
               <strong>{music.title}</strong>
