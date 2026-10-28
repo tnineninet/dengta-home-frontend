@@ -65,6 +65,18 @@ const NETEASE_TOOL_RISKS = Object.freeze({
   cloud_music_artist_info: "公开查询",
   cloud_music_my_subscriptions: "账户隐私读取",
   cloud_music_play: "启动外部应用",
+  song_search: "公开查询",
+  lyric_read: "公开查询",
+  memo_read: "账户隐私读取",
+  her_recent: "账户隐私读取",
+  her_netease: "账户隐私读取",
+  song_comments: "公开查询",
+  playlists: "账户隐私读取",
+  song_share: "写队列/外发卡片",
+  lyric_share: "外发卡片",
+  song_memo: "账户写入",
+  song_listen: "账户写入",
+  playlist_add: "账户写入",
 });
 
 function toolRiskLabel(toolName) {
@@ -95,7 +107,8 @@ function policyLabel(value) {
 }
 
 function userClickOnlyTool(toolName) {
-  return toolName === "cloud_music_login" || toolName === "cloud_music_play";
+  return toolName === "cloud_music_login" || toolName === "cloud_music_play"
+    || toolName === "song_listen" || toolName === "song_share" || toolName === "playlist_add";
 }
 
 function safeToolPolicies(policies = {}) {
@@ -299,7 +312,7 @@ export default function McpDeviceCenter() {
               <article className="mcp-app-card" key={app.id}>
                 <div className="mcp-app-card-title">
                   <strong>{app.name}</strong>
-                  <span>{app.transport} · {app.auth}</span>
+                  <span>{(app.dengta_transport || app.upstream_transport || app.transport || "http")} · {app.auth}</span>
                 </div>
                 <p>{app.summary}</p>
                 <details>
