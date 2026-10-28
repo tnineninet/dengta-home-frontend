@@ -4013,6 +4013,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   async function submitVoiceBlob(blob, durationMs) {
+    const submitRun = voiceCaptureRunRef.current;
+    const cancelled = () => voiceCaptureRunRef.current !== submitRun;
     setVoiceError("");
     setVoiceMode(VOICE_STATES.uploading);
     const turnContextDraftAtRequest = turnContextRef.current;
@@ -4037,9 +4039,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           "最新角色设置还没有保存成功，语音没有发送。请恢复网络后再试一次。",
         );
       }
+      if (cancelled()) return;
       await refreshDeviceActivityContext({ silent: true });
+      if (cancelled()) return;
       if (activeSessionIdRef.current) {
         await sessionModelSaveQueueRef.current;
+        if (cancelled()) return;
       }
 
       if (!sessionId) {
@@ -4047,6 +4052,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           method: "POST",
           body: JSON.stringify({ title: "语音对话" }),
         });
+        if (cancelled()) return;
         sessionId = created.session.id;
         moveSessionDraft(null, sessionId);
         voiceSessionId = sessionId;
@@ -4088,6 +4094,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       });
       voiceRequestRef.current = requestHandle;
       const data = await requestHandle.promise;
+      if (cancelled()) return;
 
       const responseSessionId = data.session_id || sessionId;
       voiceSessionId = responseSessionId;
@@ -4183,6 +4190,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         setVoiceMode(VOICE_STATES.idle);
       }
     } catch (error) {
+      if (cancelled()) return;
       if (requestHandle && voiceRequestRef.current !== requestHandle) return;
       setVoiceFailure(error);
     } finally {

@@ -17,6 +17,8 @@ import {
   requestExpressiveSpeech,
   resolveVoiceCaptureAfterPermission,
   selectRecorderMimeType,
+  speakVoiceText,
+  stopVoiceSpeech,
   validateVoiceDuration,
   voiceCaptureErrorMessage,
   voiceBlocksComposer,
@@ -261,4 +263,55 @@ console.log("voice helper tests passed");
     assert.equal(voiceShouldAbortAfterPermission(false), true);
     assert.equal(voiceShouldAbortAfterPermission(undefined), true);
     assert.equal(voiceShouldAbortAfterPermission(true), false);
+}
+
+// Stopping speech during the network fetch must prevent playback, not pause
+// the previous (or a later) audio object.
+{
+  const originalFetch = globalThis.fetch;
+  const originalAudio = globalThis.Audio;
+  const originalURL = globalThis.URL;
+  let played = 0;
+  globalThis.fetch = async () => {
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    return {
+      ok: true,
+      headers: { get: () => null },
+      blob: async () => new Blob(["audio"]),
+    };
+  };
+  globalThis.Audio = class {
+    constructor() { this.paused = true; }
+    play() { played += 1; this.paused = false; return Promise.resolve(); }
+    pause() { this.paused = true; }
+    set src(_value) {}
+  };
+  globalThis.URL.createObjectURL = () => "blob:fixture";
+  globalThis.URL.revokeObjectURL = () => {};
+  try {
+    const pending = speakVoiceText("测试", {
+      mode: VOICE_PLAYBACK_MODES.expressive,
+      messageId: "m1",
+      sessionId: "s1",
+      speechToken: "t1",
+    }).catch(() => null);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    await stopVoiceSpeech();
+    await pending;
+    assert.equal(played, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.Audio = originalAudio;
+    globalThis.URL = originalURL;
+  }
+}
+
+console.log("voice helper tests passed");
+
+// The voice upload preflight must re-check the capture run after every await,
+// otherwise cancelling during settings refresh still uploads the recording.
+{
+  const appSource = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
+  assert.match(appSource, /const submitRun = voiceCaptureRunRef\.current;/);
+  assert.match(appSource, /if \(cancelled\(\)\) return;/);
 }
