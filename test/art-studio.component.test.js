@@ -28,7 +28,7 @@ after(async () => {
   delete globalThis.__artStudioRequest;
   assert.equal(dirname(resolve(cacheDir)), resolve(tmpdir()));
   assert.ok(basename(cacheDir).startsWith("dengta-art-studio-component-"));
-  await rm(cacheDir, { recursive: true, force: true });
+  await rm(cacheDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 });
 const text = node => typeof node === "string" ? node : (node?.children || []).map(text).join("");
 test("actual navigation includes a searchable independent drawing entry", () => {
