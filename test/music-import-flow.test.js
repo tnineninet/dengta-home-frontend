@@ -126,6 +126,14 @@ try {
   await unmount(); assert.equal(doc.body.style.overflow, 'auto'); assert.ok(restored >= 1);
   console.log('Music import flow passed: one save, parent receipt, refresh failure wording, immediate playlist selection and modal cleanup.');
 } finally {
-  await unmount(); await vite.close();
+  await unmount();
+  // Vite's dev server can leave a lingering watcher/WS handle in this fixture
+  // and `close()` occasionally never settles. Never let a passing test hang the
+  // whole suite because of the test server teardown.
+  await Promise.race([
+    Promise.resolve(vite.close()).catch(() => {}),
+    new Promise((resolve) => setTimeout(resolve, 2_000)),
+  ]);
   for (const [name, value] of descriptors) { if (value) Object.defineProperty(globalThis, name, value); else delete globalThis[name]; }
 }
+process.exit(process.exitCode ?? 0);
