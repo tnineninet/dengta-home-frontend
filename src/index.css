@@ -12355,7 +12355,7 @@ html[data-dengta-scrolling="1"] *::after {
 
 /* Coarse-pointer touch targets: keep every real control at least 44px.
    File inputs stay visually hidden by design and are excluded. */
-@media (pointer: coarse) {
+@media (max-width: 768px), (pointer: coarse) {
   button:not(.visually-hidden-file-input),
   [role="button"],
   select {
