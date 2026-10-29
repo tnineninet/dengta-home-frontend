@@ -18,6 +18,7 @@ import "./interface-polish.css";
 import "./settings-night-contrast.css";
 import "./android-compat.css";
 import "./menu-interactions.css";
+import "./force-mobile.css";
 import LoadedApp from "./LoadedApp.jsx";
 import AuthGate from "./AuthGate.jsx";
 import { authSession } from "./auth-session.js";

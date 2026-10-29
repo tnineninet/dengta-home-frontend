@@ -16,6 +16,25 @@
     <link rel="dns-prefetch" href="https://dengta-home-backend-rkmq.onrender.com" />
     <script>
       try {
+        // Some OEM WebViews (seen on Redmi K30 / MIUI desktop-mode WebViews)
+        // report a 980px layout viewport even though the physical handset is
+        // narrow. Force the handset layout off screen width, not just CSS.
+        const coarsePointer =
+          window.matchMedia?.("(pointer: coarse)")?.matches === true ||
+          Number(navigator.maxTouchPoints) > 0;
+        const shortSide = Math.min(
+          Number(window.screen?.width) || window.innerWidth,
+          Number(window.screen?.height) || window.innerHeight,
+        );
+        const mobileUserAgent = /Android|iPhone|iPad|Mobile|HarmonyOS/i.test(navigator.userAgent || "");
+        const forceMobile = coarsePointer && mobileUserAgent && shortSide > 0 && shortSide <= 1200;
+        document.documentElement.dataset.dengtaForceMobile = forceMobile ? "true" : "false";
+      } catch {
+        document.documentElement.dataset.dengtaForceMobile = "false";
+      }
+    </script>
+    <script>
+      try {
         const stored = localStorage.getItem("dengta.font-mode.v1");
         const mobile =
           typeof window.matchMedia === "function" &&

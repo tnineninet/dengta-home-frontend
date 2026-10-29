@@ -399,6 +399,7 @@ const ExternalMemoryConnections = lazy(
 );
 const McpDeviceCenter = lazy(() => import("./McpDeviceCenter"));
 const XHub = lazy(() => import("./XHub.jsx"));
+const MusicStudio = lazy(() => import("./MusicStudio.jsx"));
 const ChannelHub = lazy(() => import("./ChannelHub.jsx"));
 const Nursery = lazy(() => import("./Nursery"));
 const OmbreMemories = lazy(() => import("./OmbreMemories"));
@@ -886,7 +887,8 @@ const navItems = [
   { id: "cotton", icon: "✿", label: "小棉花" },
   { id: "together", icon: "▻", label: "Together" },
   { id: "cast", icon: "▣", label: "放映厅" },
-  { id: "music", icon: "🎵", label: "一起听" },
+  { id: "music-studio", icon: "🎧", label: "音乐工作室" },
+  { id: "music", icon: "🎵", label: "一起听 · 同步" },
   { id: "x", icon: "𝕏", label: "X / Twitter" },
   { id: "wechat", icon: "微", label: "微信" },
   { id: "qq", icon: "Q", label: "QQ" },
@@ -11115,7 +11117,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             </Suspense>
           )}
           {activeView === "together" && renderTogether("together")}
-          {activeView === "music" && renderTogether("music")}
+          {activeView === "music-studio" && (
+        <Suspense fallback={<DeferredFeature label="正在打开音乐工作室…" />}>
+          <MusicStudio onOpenSync={() => changeView("music")} />
+        </Suspense>
+      )}
+      {activeView === "music" && renderTogether("music")}
           {activeView === "x" && (
             <Suspense fallback={<DeferredFeature label="正在连接 X…" />}>
               <XHub
