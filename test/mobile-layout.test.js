@@ -124,6 +124,7 @@ assert.deepEqual(
     "settings-night-contrast.css",
     "android-compat.css",
     "menu-interactions.css",
+    "force-mobile.css",
   ],
   "layout tests must use the same stylesheet order as the application entrypoint",
 );
@@ -158,6 +159,7 @@ assert.deepEqual(
     "settings-night-contrast.css",
     "android-compat.css",
     "menu-interactions.css",
+    "force-mobile.css",
   ],
   "the 280px regression must use the complete application stylesheet cascade",
 );

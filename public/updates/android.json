@@ -5,14 +5,14 @@
   "latest": {
     "version_code": 305,
     "version": "2.13.47",
-    "apk_url": "https://www.dengtahome.com/downloads/DengTa-2.13.47.apk",
+    "apk_url": "https://nyyqizwrlmejpfdhgrnd.supabase.co/storage/v1/object/public/dengta-updates/apk/DengTa-2.13.47.apk",
     "sha256": "e38c464f47c61ba896dbb81312f50668859d8fb8598d9807487bb024b2d1f051",
     "size_bytes": 36536695,
     "published_at": "2026-10-29T23:05:00.000Z",
     "notes": [
-      "2.13.47（305） · Redmi K30 布局兜底与音乐工作室",
-      "修复部分 MIUI/Redmi WebView 把布局视口报成 980px 导致的桌面双栏、侧栏挤压和菜单不可见。",
-      "新增独立「音乐工作室」栏目；旧版动态天空与实时天空可切换。"
+      "2.13.47（305）· Redmi K30 布局兜底、音乐工作室、旧版动态天空",
+      "Redmi/MIUI WebView 把布局视口报 980px 时强制手机单列外壳，恢复菜单/关闭按钮。",
+      "从 2.13.43 升级若提示签名不一致，请卸载旧版一次再安装；2.13.44 起可直接覆盖。"
     ]
   }
 }
