@@ -182,6 +182,12 @@
   .mobile-command-dock {
     display: grid;
   }
+
+  /* The floating dock is the mobile command entry; keep the topbar for the
+     title, new chat and settings instead of duplicating a 44px key button. */
+  .topbar-actions .command-palette-trigger {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

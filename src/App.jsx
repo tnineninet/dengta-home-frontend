@@ -11153,13 +11153,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         </nav>
       </div>
 
-      {activeView === "chat" && (
-        <FloatingCommandTrigger
-          ref={mobileCommandButtonRef}
-          open={commandPaletteOpen}
-          onOpen={() => setCommandPaletteOpen(true)}
-        />
-      )}
+      <FloatingCommandTrigger
+        ref={mobileCommandButtonRef}
+        open={commandPaletteOpen}
+        onOpen={() => setCommandPaletteOpen(true)}
+      />
 
       {isSettingsOpen && (
         <div

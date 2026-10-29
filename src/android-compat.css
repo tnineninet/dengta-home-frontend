@@ -542,3 +542,27 @@ html.dengta-flat-paint .status-flow-field {
     box-sizing: border-box;
   }
 }
+
+/* Music import dialog embeds the full music settings form in a portal. Keep
+   long provider/select labels inside the dialog instead of clipping or
+   horizontally scrolling a hidden 405px select. */
+.music-import-dialog,
+.music-import-dialog-body {
+  max-width: 100%;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.music-import-dialog select,
+.music-import-dialog input,
+.music-import-dialog textarea {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.music-import-dialog :is(label, .music-import-entry, .music-import-grid, .music-provider-connect, .music-cookie-operations) {
+  min-width: 0;
+  max-width: 100%;
+}
