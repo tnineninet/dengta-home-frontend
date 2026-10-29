@@ -1,6 +1,6 @@
-/* Old DengTa coast background: a full-bleed still with a soft painted sun,
-   drifting cloud haze and a quiet star field. It is intentionally softer and
-   flatter than the newer live sky, matching the older screenshots. */
+/* The old coast sky. Unlike a wallpaper picker, this is driven by the same
+   solar model as the original sun-glass backdrop: sun/moon height, five sky
+   colour stops, sunrise/sunset warmth and starlight all follow the clock. */
 
 .legacy-coast-backdrop {
   position: fixed;
@@ -12,171 +12,146 @@
   animation: legacy-coast-fade 520ms ease both;
 }
 
-.legacy-coast-photo,
-.legacy-coast-wash,
-.legacy-coast-sun,
-.legacy-coast-cloud,
-.legacy-coast-moon,
-.legacy-coast-stars,
-.legacy-coast-haze,
-.legacy-coast-vignette {
+.legacy-coast-backdrop > * {
   position: absolute;
   pointer-events: none;
 }
 
 .legacy-coast-photo {
+  z-index: 0;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
   object-position: center 43%;
-  filter: saturate(1.03) contrast(1.01);
+  filter: saturate(0.96) contrast(1.015) brightness(0.99);
   user-select: none;
+  transition: opacity 1.2s ease;
 }
 
-.legacy-coast-wash {
+/* Five live colour stops from getSunGlassSky(). */
+.legacy-coast-sky-tint {
+  z-index: 1;
   inset: 0;
-  background:
-    linear-gradient(180deg, rgb(255 246 238 / 0.16), transparent 36%, rgb(255 242 230 / 0.1) 74%, rgb(255 255 255 / 0.04));
+  opacity: var(--legacy-tint-opacity, 0.25);
   mix-blend-mode: soft-light;
+  transition: opacity 1.8s ease;
 }
 
-[data-scene="twilight"] .legacy-coast-wash {
+.legacy-coast-warm-glow {
+  z-index: 2;
+  inset: -10%;
+  opacity: calc(var(--legacy-warm-opacity, 0) * 0.55);
   background:
-    linear-gradient(180deg, rgb(255 217 201 / 0.26), transparent 38%, rgb(255 188 157 / 0.12) 76%, rgb(255 223 202 / 0.08));
+    radial-gradient(ellipse 65% 55% at 18% 82%, rgb(255 172 115 / 0.62), transparent 68%),
+    radial-gradient(ellipse 55% 45% at 88% 64%, rgb(255 141 104 / 0.3), transparent 68%);
+  mix-blend-mode: screen;
+  transition: opacity 1.8s ease;
 }
 
-[data-scene="night"] .legacy-coast-wash {
+.legacy-coast-blue-glow {
+  z-index: 2;
+  inset: 0;
+  opacity: calc(var(--legacy-blue-opacity, 0) * 0.42);
   background:
-    linear-gradient(180deg, rgb(8 16 38 / 0.2), rgb(17 29 57 / 0.08) 42%, rgb(15 28 54 / 0.24));
-  mix-blend-mode: multiply;
+    radial-gradient(ellipse 75% 56% at 50% 2%, rgb(150 194 238 / 0.44), transparent 72%),
+    radial-gradient(ellipse 46% 50% at 82% 16%, rgb(155 172 224 / 0.24), transparent 70%);
+  mix-blend-mode: screen;
+  transition: opacity 1.8s ease;
 }
 
-/* ---- sun ---- */
+/* The sun and moon are placed with the same sunX/sunY and moonX/moonY values
+   the original backdrop used. Their height changes continuously with time. */
 .legacy-coast-sun {
-  left: 18%;
-  top: 12%;
-  width: clamp(112px, 28vw, 290px);
+  z-index: 3;
+  left: var(--legacy-sun-x, 50%);
+  top: var(--legacy-sun-y, 24%);
+  width: clamp(84px, 22vw, 248px);
   aspect-ratio: 1;
   border-radius: 50%;
+  opacity: var(--legacy-sun-opacity, 0);
+  transform: translate(-50%, -50%);
   background:
     radial-gradient(
-      circle at 48% 46%,
-      rgb(255 255 250 / 0.98) 0 17%,
-      rgb(255 250 230 / 0.94) 27%,
-      rgb(255 237 190 / 0.72) 47%,
-      rgb(255 218 153 / 0.22) 67%,
+      circle at 48% 45%,
+      rgb(255 255 250 / 0.99) 0 16%,
+      rgb(255 252 235 / 0.94) 25%,
+      rgb(255 238 190 / 0.78) 43%,
+      rgb(255 214 146 / 0.28) 62%,
       transparent 75%
     );
   box-shadow:
-    0 0 42px 12px rgb(255 239 202 / 0.5),
-    0 0 120px 50px rgb(255 220 160 / 0.22);
-  opacity: 0.94;
-  filter: blur(0.4px);
+    0 0 38px 12px rgb(255 239 202 / 0.55),
+    0 0 120px 46px rgb(255 220 160 / 0.24);
+  filter: blur(0.3px);
+  transition:
+    left 1.8s linear,
+    top 1.8s linear,
+    opacity 1.8s ease;
 }
 
-[data-scene="twilight"] .legacy-coast-sun {
-  left: 8%;
-  top: 30%;
-  width: clamp(110px, 26vw, 260px);
-  background:
-    radial-gradient(
-      circle at 50% 50%,
-      rgb(255 250 238 / 0.98) 0 15%,
-      rgb(255 235 202 / 0.9) 28%,
-      rgb(255 194 139 / 0.55) 52%,
-      transparent 72%
-    );
-  box-shadow:
-    0 0 50px 16px rgb(255 202 154 / 0.5),
-    0 0 140px 60px rgb(255 154 124 / 0.22);
-  opacity: 0.94;
-}
-
-[data-scene="night"] .legacy-coast-sun {
-  opacity: 0;
-}
-
-/* ---- moon ---- */
 .legacy-coast-moon {
-  right: 13%;
-  top: 12%;
-  width: clamp(42px, 8vw, 76px);
+  z-index: 3;
+  left: var(--legacy-moon-x, 30%);
+  top: var(--legacy-moon-y, 30%);
+  width: clamp(34px, 7vw, 76px);
   aspect-ratio: 1;
   border-radius: 50%;
+  opacity: var(--legacy-moon-opacity, 0);
+  transform: translate(-50%, -50%) rotate(-18deg);
   background:
-    radial-gradient(circle at 39% 35%, #fffdf2 0 32%, #e9e6d7 68%, #c9c8c0 100%);
+    radial-gradient(circle at 37% 34%, #fffdf3 0 30%, #e9e6d8 68%, #c7c7bf 100%);
   box-shadow:
-    0 0 26px 8px rgb(236 238 229 / 0.26),
-    0 0 80px 22px rgb(205 224 255 / 0.18);
-  opacity: 0;
-  transform: rotate(-18deg);
+    0 0 25px 7px rgb(236 238 229 / 0.26),
+    0 0 82px 24px rgb(205 224 255 / 0.18);
+  transition:
+    left 1.8s linear,
+    top 1.8s linear,
+    opacity 1.8s ease;
 }
 
-[data-scene="night"] .legacy-coast-moon {
-  opacity: 0.78;
-}
-
-/* ---- clouds ---- */
 .legacy-coast-cloud {
+  z-index: 4;
   border-radius: 50%;
+  opacity: var(--legacy-cloud-opacity, 0.25);
   background:
     radial-gradient(ellipse at 26% 58%, rgb(255 252 246 / 0.92), transparent 60%),
     radial-gradient(ellipse at 52% 38%, rgb(255 247 240 / 0.86), transparent 62%),
     radial-gradient(ellipse at 76% 62%, rgb(255 239 230 / 0.72), transparent 62%);
   filter: blur(15px);
-  opacity: 0.42;
   transform: rotate(-5deg);
+  transition: opacity 1.8s ease;
 }
 
 .legacy-coast-cloud-a {
-  left: -7%;
-  top: 17%;
-  width: 54%;
+  left: -5%;
+  top: 15%;
+  width: 52%;
   height: 10%;
   animation: legacy-cloud-drift 34s ease-in-out infinite alternate;
 }
 
 .legacy-coast-cloud-b {
-  right: -12%;
-  top: 28%;
-  width: 46%;
+  right: -10%;
+  top: 26%;
+  width: 45%;
   height: 8%;
-  opacity: 0.25;
   animation: legacy-cloud-drift 44s ease-in-out -12s infinite alternate-reverse;
 }
 
 .legacy-coast-cloud-c {
-  left: 20%;
-  top: 36%;
-  width: 38%;
+  left: 17%;
+  top: 35%;
+  width: 37%;
   height: 6%;
-  opacity: 0.16;
   filter: blur(20px);
   animation: legacy-cloud-drift 52s ease-in-out -22s infinite alternate;
 }
 
-[data-scene="twilight"] .legacy-coast-cloud {
-  background:
-    radial-gradient(ellipse at 26% 58%, rgb(255 221 207 / 0.9), transparent 60%),
-    radial-gradient(ellipse at 54% 40%, rgb(255 235 225 / 0.84), transparent 62%),
-    radial-gradient(ellipse at 78% 62%, rgb(255 196 174 / 0.68), transparent 62%);
-  opacity: 0.3;
-}
-
-[data-scene="night"] .legacy-coast-cloud {
-  background:
-    radial-gradient(ellipse at 26% 58%, rgb(130 158 193 / 0.52), transparent 60%),
-    radial-gradient(ellipse at 54% 40%, rgb(159 181 211 / 0.44), transparent 62%),
-    radial-gradient(ellipse at 78% 62%, rgb(104 133 173 / 0.4), transparent 62%);
-  opacity: 0.28;
-  filter: blur(19px);
-}
-
-/* ---- stars ---- */
 .legacy-coast-stars {
+  z-index: 5;
   inset: 0;
-  opacity: 0;
+  opacity: var(--legacy-stars-opacity, 0);
   background-image:
     radial-gradient(circle at 11% 9%, rgb(255 255 255 / 0.9) 0 0.8px, transparent 1.8px),
     radial-gradient(circle at 18% 17%, rgb(255 249 226 / 0.7) 0 0.7px, transparent 1.7px),
@@ -196,15 +171,12 @@
   background-size: cover;
   background-repeat: no-repeat;
   mix-blend-mode: screen;
-}
-
-[data-scene="night"] .legacy-coast-stars {
-  opacity: 0.82;
+  transition: opacity 1.8s ease;
   animation: legacy-stars-breathe 7s ease-in-out infinite alternate;
 }
 
-/* ---- atmosphere ---- */
 .legacy-coast-haze {
+  z-index: 6;
   inset: 0;
   background:
     radial-gradient(ellipse at 50% 10%, rgb(255 249 238 / 0.18), transparent 48%),
@@ -218,6 +190,7 @@
 }
 
 .legacy-coast-vignette {
+  z-index: 7;
   inset: 0;
   background:
     radial-gradient(ellipse 120% 96% at 50% 40%, transparent 67%, rgb(28 37 48 / 0.14) 100%),
@@ -246,18 +219,13 @@
 }
 
 @keyframes legacy-stars-breathe {
-  from { opacity: 0.63; }
-  to { opacity: 0.9; }
+  from { opacity: calc(var(--legacy-stars-opacity, 0) * 0.7); }
+  to { opacity: var(--legacy-stars-opacity, 0); }
 }
 
 @media (min-aspect-ratio: 4 / 3) {
   .legacy-coast-photo {
     object-position: center 36%;
-  }
-
-  .legacy-coast-sun {
-    left: 11%;
-    top: 10%;
   }
 
   .legacy-coast-cloud-a {
@@ -271,35 +239,30 @@
     top: 24%;
     width: 30%;
   }
-
-  .legacy-coast-moon {
-    right: 10%;
-    top: 9%;
-  }
 }
 
 @media (max-width: 600px) {
   .legacy-coast-cloud {
     filter: blur(12px);
   }
-
-  .legacy-coast-sun {
-    width: 26vw;
-    min-width: 84px;
-    max-width: 142px;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .legacy-coast-backdrop,
   .legacy-coast-cloud,
-  .legacy-coast-stars {
+  .legacy-coast-stars,
+  .legacy-coast-sun,
+  .legacy-coast-moon {
     animation: none !important;
+    transition: none !important;
   }
 }
 
 :root[data-dengta-reduced-motion="true"] .legacy-coast-backdrop,
 :root[data-dengta-reduced-motion="true"] .legacy-coast-cloud,
-:root[data-dengta-reduced-motion="true"] .legacy-coast-stars {
+:root[data-dengta-reduced-motion="true"] .legacy-coast-stars,
+:root[data-dengta-reduced-motion="true"] .legacy-coast-sun,
+:root[data-dengta-reduced-motion="true"] .legacy-coast-moon {
   animation: none !important;
+  transition: none !important;
 }

@@ -12,37 +12,16 @@ const BACKGROUND_OPTIONS = [
   {
     id: "auto",
     label: "实时天空",
-    hint: "天气、光线与云层实时变化",
+    hint: "新版天气、云层与光线实时变化",
     preview: "linear-gradient(155deg, #8ec8e2 0%, #b7dde1 42%, #f8d99c 100%)",
     appearance: "auto",
   },
   {
     id: "legacy",
-    label: "旧版海岸",
-    hint: "经典晨昏色，跟着时间自动变",
-    image: "/assets/coast-video/coast-twilight.webp",
-    appearance: "auto",
-  },
-  {
-    id: "legacy-day",
-    label: "晨光海岸",
-    hint: "固定明亮，奶油色海风",
+    label: "旧版动态天空",
+    hint: "太阳月亮高度、日出日落五段色彩随时变化",
     image: "/assets/coast-video/coast-day.webp",
-    appearance: "day",
-  },
-  {
-    id: "legacy-dusk",
-    label: "暮色海岸",
-    hint: "粉橘晚霞，旧版黄昏感",
-    image: "/assets/coast-video/coast-twilight.webp",
-    appearance: "day",
-  },
-  {
-    id: "legacy-night",
-    label: "星夜灯塔",
-    hint: "固定夜晚，星星和月亮",
-    image: "/assets/coast-video/coast-night.webp",
-    appearance: "night",
+    appearance: "auto",
   },
 ];
 

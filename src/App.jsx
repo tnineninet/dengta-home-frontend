@@ -10652,11 +10652,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           weatherModeOverride={weatherPreviewMode}
         />
       ) : (
-        <LegacyCoastBackdrop
-          mode={themePreferences.background}
-          snapshot={celestialSnapshot}
-          appearance={themePreferences.appearance}
-        />
+        <LegacyCoastBackdrop snapshot={celestialSnapshot} />
       )}
 
       {isSidebarOpen && (
