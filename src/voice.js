@@ -343,12 +343,22 @@ export function createVoiceTurnRequest(
           resolve(data);
           return;
         }
-        reject(
-          new Error(
-            cleanDisplayText(data.message || data.detail, 300) ||
-              `语音请求失败（${xhr.status || "网络错误"}）。`,
-          ),
+        const error = new Error(
+          cleanDisplayText(data.message || data.detail, 300) ||
+            `语音请求失败（${xhr.status || "网络错误"}）。`,
         );
+        error.status = Number(xhr.status) || 0;
+        error.code = cleanDisplayText(data.code, 80) || "";
+        const retryAfterHeader = Number(
+          xhr.getResponseHeader?.("Retry-After") || 0,
+        );
+        error.retryAfterSeconds =
+          Number(data.retry_after_seconds) > 0
+            ? Number(data.retry_after_seconds)
+            : retryAfterHeader > 0
+              ? retryAfterHeader
+              : 0;
+        reject(error);
       },
       { once: true },
     );

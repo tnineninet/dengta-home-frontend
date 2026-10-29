@@ -369,10 +369,60 @@ console.log("voice helper tests passed");
   assert.equal(fake.opened, false, "aborted request must not open XHR");
   assert.equal(fake.sent, false, "aborted request must not upload audio");
 }
+// HTTP failures must preserve status/code/retry metadata for the retry UI.
+{
+  class FakeXHR {
+    constructor() {
+      this.listeners = new Map();
+      this.upload = { addEventListener() {} };
+      this.status = 409;
+      this.response = {
+        message: "这条语音正在处理中，请稍后刷新。",
+        code: "VOICE_TURN_IN_PROGRESS",
+        retry_after_seconds: 7,
+      };
+      this.responseText = JSON.stringify(this.response);
+    }
+    addEventListener(type, handler) {
+      this.listeners.set(type, handler);
+    }
+    open() {}
+    setRequestHeader() {}
+    send() {}
+    abort() {}
+    getResponseHeader(name) {
+      return String(name).toLowerCase() === "retry-after" ? "7" : null;
+    }
+    dispatch(type) {
+      this.listeners.get(type)?.();
+    }
+  }
+  const fake = new FakeXHR();
+  const request = createVoiceTurnRequest({}, {
+    XMLHttpRequestImpl: class {
+      constructor() {
+        return fake;
+      }
+    },
+    authSession: { getRequestContext: () => Promise.resolve({}) },
+  });
+  const caught = request.promise.catch((error) => error);
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  fake.dispatch("load");
+  const error = await caught;
+  assert.equal(error.status, 409);
+  assert.equal(error.code, "VOICE_TURN_IN_PROGRESS");
+  assert.equal(error.retryAfterSeconds, 7);
+  assert.match(error.message, /正在处理中/);
+}
 console.log("Voice upload cancellation tests passed");
 
 
 const voiceAppSource = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
+assert.match(voiceAppSource, /lastVoiceAttemptRef/);
+assert.match(voiceAppSource, /voiceRetryAvailable/);
+assert.match(voiceAppSource, /retryVoiceTurn/);
+assert.match(voiceAppSource, /function submitVoiceBlob\(blob, durationMs, options = \{\}\)/);
 assert.match(voiceAppSource, /function cancelVoicePointer\(event\)/);
 assert.match(voiceAppSource, /onPointerCancel=\{cancelVoicePointer\}/);
 assert.match(voiceAppSource, /cancelVoiceCapture\(\{ message: "已取消这次录音。" \}\)/);

@@ -4088,8 +4088,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
   }
 
-  async function submitVoiceBlob(blob, durationMs) {
+  async function submitVoiceBlob(blob, durationMs, options = {}) {
     const submitRun = voiceCaptureRunRef.current;
+    const clientMessageId =
+      options.clientMessageId || createVoiceClientMessageId();
+    lastVoiceAttemptRef.current = { blob, durationMs, clientMessageId };
     const cancelled = () => voiceCaptureRunRef.current !== submitRun;
     setVoiceError("");
     setVoiceMode(VOICE_STATES.uploading);
@@ -4149,7 +4152,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       const formData = buildVoiceTurnFormData({
         blob,
         sessionId,
-        clientMessageId: createVoiceClientMessageId(),
+        clientMessageId,
         clientTime: shanghaiClientTime(),
         timezone: SHANGHAI_TIME_ZONE,
         model: voiceModel,
@@ -4244,6 +4247,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         turnContextRef.current = "";
         setTurnContext("");
       }
+      lastVoiceAttemptRef.current = null;
+      setVoiceRetryAvailable(false);
       setLastVoiceAnalysis(voiceAnalysis);
       setNotice(
         voiceAnalysis
@@ -4270,6 +4275,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     } catch (error) {
       if (cancelled()) return;
       if (requestHandle && voiceRequestRef.current !== requestHandle) return;
+      setVoiceRetryAvailable(Boolean(lastVoiceAttemptRef.current));
       setVoiceFailure(error);
     } finally {
       if (voiceRequestRef.current === requestHandle) {
@@ -4286,6 +4292,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         setVoiceMode(VOICE_STATES.idle);
       }
     }
+  }
+
+  async function retryVoiceTurn() {
+    const attempt = lastVoiceAttemptRef.current;
+    if (!attempt) return;
+    setVoiceError("");
+    setNotice("");
+    await submitVoiceBlob(attempt.blob, attempt.durationMs, {
+      clientMessageId: attempt.clientMessageId,
+    });
   }
 
   async function finishVoiceCapture({ send = true } = {}) {
@@ -8459,6 +8475,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               {voiceError && (
                 <div className="voice-inline-error" role="alert">
                   {voiceError}
+                  {voiceRetryAvailable && (
+                    <button
+                      type="button"
+                      className="voice-retry-button"
+                      onClick={retryVoiceTurn}
+                    >
+                      重试这条语音
+                    </button>
+                  )}
                 </div>
               )}
               {lastVoiceAnalysis && (
