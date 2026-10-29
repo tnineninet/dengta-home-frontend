@@ -118,6 +118,8 @@ test("dynamic chat surfaces share the versioned DengTa CJK family", () => {
 test("the web shell keeps the font optional instead of preloading the 7.4MB face", () => {
   assert.match(html, /dengta\.font-mode\.v1/);
   assert.match(html, /document\.documentElement\.dataset\.dengtaFontMode = mode/);
+  assert.match(html, /matchMedia\("\(max-width: 820px\)"\)/);
+  assert.match(html, /mobile \? "system" : "standard"/);
   assert.doesNotMatch(html, /preload\.href = "\/fonts\/DengTaSans-cjk-v2\.woff2"/);
   assert.doesNotMatch(html, /preload\.as = "font"/);
   assert.match(sw, /CACHE_NAME = "dengta-home-v38-immersive-chat"/);
