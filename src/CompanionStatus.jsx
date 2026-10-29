@@ -484,7 +484,9 @@ function CompanionStatus({
             aria-expanded={xinchaoDetailsOpen || expanded}
             onClick={(event) => {
               event.preventDefault();
-              const mobile = window.matchMedia?.("(max-width: 820px)")?.matches === true;
+              const mobile = window.matchMedia?.(
+                "(max-width: 820px), (orientation: landscape) and (max-height: 560px) and (max-width: 960px)"
+              )?.matches === true;
               if (mobile || !xinchaoState) {
                 setXinchaoDetailsOpen(false);
                 togglePanel();
