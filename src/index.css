@@ -6310,7 +6310,7 @@ button:disabled {
   display: none;
 }
 
-@media (max-width: 820px), (max-height: 500px) and (max-width: 960px) {
+@media (max-width: 820px), (max-height: 560px) and (max-width: 960px) {
   .app-shell {
     display: block;
     height: var(--app-height);
@@ -6800,7 +6800,7 @@ button:disabled {
   }
 }
 
-@media (max-height: 500px) and (max-width: 960px) {
+@media (max-height: 560px) and (max-width: 960px) {
   .companion-status.expanded {
     max-height: 45vh;
   }
@@ -7860,7 +7860,7 @@ body,
   background: #191719;
 }
 
-@media (max-width: 820px), (max-height: 500px) and (max-width: 960px) {
+@media (max-width: 820px), (max-height: 560px) and (max-width: 960px) {
   .companion-status.expanded {
     max-height: min(48vh, 460px);
   }
