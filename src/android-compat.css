@@ -688,3 +688,35 @@ html.dengta-flat-paint .status-flow-field {
 .channel-hub-empty-line {
   color: #5c545d;
 }
+
+
+/* Very short landscape viewports (e.g. 844x390) must keep the chat readable.
+   Collapse the presence ribbon and inline suggestion row, then give the
+   message list a guaranteed minimum height instead of leaving a 64px slit. */
+@media (orientation: landscape) and (max-height: 560px) {
+  .main-panel.view-chat .chat-presence-stack {
+    display: none !important;
+  }
+
+  .main-panel.view-chat .reply-suggestions,
+  .main-panel.view-chat .cotton-chat-dock {
+    display: none !important;
+  }
+
+  .main-panel.view-chat .composer-wrap {
+    padding: 4px 10px max(4px, env(safe-area-inset-bottom));
+  }
+
+  .main-panel.view-chat .composer {
+    min-height: 44px;
+  }
+
+  .main-panel.view-chat .topbar {
+    min-height: 44px;
+    height: 44px;
+  }
+
+  .main-panel.view-chat .message-list {
+    min-height: 200px;
+  }
+}

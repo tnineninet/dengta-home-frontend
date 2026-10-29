@@ -3737,3 +3737,14 @@
   font-size: 12px;
   cursor: pointer;
 }
+
+
+/* reduced-motion must stop the mobile rainbow, not just the global loop */
+@media (prefers-reduced-motion: reduce) {
+  .main-panel.view-chat .sun-glass-liquid-color-flow {
+    animation: none !important;
+  }
+}
+:root[data-dengta-reduced-motion="true"] .main-panel.view-chat .sun-glass-liquid-color-flow {
+  animation: none !important;
+}

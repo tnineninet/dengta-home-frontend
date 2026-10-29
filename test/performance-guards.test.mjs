@@ -25,6 +25,9 @@ test("hidden/scroll pause contract and low-data font fallback stay wired", () =>
     const main = read("src/main.jsx");
     assert.match(main, /dengtaHidden =/);
     assert.match(main, /dengtaScrolling = "1"/);
+    assert.match(main, /lastUserScrollAt/);
+    assert.match(main, /addEventListener\("wheel", markUserScroll/);
+    assert.match(main, /addEventListener\("touchmove", markUserScroll/);
     assert.match(main, /dengtaLowData/);
     const css = read("src/index.css");
     assert.match(css, /data-dengta-hidden="1"/);

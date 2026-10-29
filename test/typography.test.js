@@ -49,7 +49,8 @@ test("font preference defaults to the stable complete CJK face", () => {
 });
 
 test("the inline boot script really applies the phone/desktop font preference", () => {
-  const script = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/i.exec(html)?.[1] || "";
+  const scripts = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)].map((match) => match[1]);
+  const script = scripts.find((source) => source.includes("dengta.font-mode")) || "";
   assert.ok(script.length > 50, "inline font boot script must exist");
   const run = ({ stored = null, mobile = true, hasMatchMedia = true } = {}) => {
     const dataset = {};

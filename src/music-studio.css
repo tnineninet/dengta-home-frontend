@@ -190,9 +190,9 @@
   .music-studio-kicker { font-size: 8px; }
 
   .music-studio-actions { width: 100%; gap: 5px; }
-  .music-studio-actions button { min-height: 34px; padding: 0 8px; font-size: 10px; }
+  .music-studio-actions button { min-height: 44px; min-width: 44px; padding: 0 10px; font-size: 10px; }
   .music-studio-actions button span { display: none; }
-  .music-studio-actions .music-studio-sync { min-height: 34px; padding-inline: 10px; }
+  .music-studio-actions .music-studio-sync { min-height: 44px; padding-inline: 12px; }
   .music-studio-actions .music-studio-sync::after { content: "同步"; font-size: 10px; }
   .music-studio-actions .music-studio-sync { font-size: 0; }
 

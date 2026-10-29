@@ -428,7 +428,7 @@ export function AuthScreen({
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   onKeyDown={(event) => {
-                    if (event.key !== "Enter" || mode === "forgot" || !passwordInputRef.current) return;
+                    if (event.key !== "Enter" || event.nativeEvent?.isComposing || mode === "forgot" || !passwordInputRef.current) return;
                     event.preventDefault();
                     passwordInputRef.current.focus();
                   }}

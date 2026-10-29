@@ -12301,3 +12301,30 @@ html[data-dengta-scrolling="1"] *::after {
     backdrop-filter: none !important;
   }
 }
+
+
+/* Voice must be one tap from the composer, not buried in the secondary menu.
+   Keep a full 44x44 hit area on touch devices. */
+.composer .composer-voice-button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  min-width: 44px;
+  height: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid rgb(var(--theme-line-rgb, 120 110 100) / 0.18);
+  border-radius: 14px;
+  background: rgb(var(--theme-card-rgb, 255 255 255) / 0.72);
+  color: rgb(var(--theme-ink-rgb, 45 40 35));
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.composer .composer-voice-button[aria-pressed="true"] {
+  background: rgb(var(--theme-accent-rgb, 169 104 84) / 0.22);
+  color: rgb(var(--theme-accent-rgb, 169 104 84));
+}
+.composer .composer-voice-button:disabled {
+  opacity: 0.45;
+}

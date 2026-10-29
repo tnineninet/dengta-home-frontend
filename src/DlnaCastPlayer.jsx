@@ -800,7 +800,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
                 </button>
                 {!mediaUrl && <p className="cast-room-error" style={{ color: "#666" }}>先投屏或粘贴视频链接，才能创建放映厅</p>}
                 <div className="cast-room-join-row">
-                  <input className="cast-room-join-input" type="text" maxLength={20} placeholder="输入邀请码加入…" value={joinCodeInput} onChange={(e) => setJoinCodeInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleJoinRoom()} />
+                  <input className="cast-room-join-input" type="text" maxLength={20} placeholder="输入邀请码加入…" value={joinCodeInput} onChange={(e) => setJoinCodeInput(e.target.value)} onKeyDown={(e) => { if (e.key !== "Enter" || e.nativeEvent?.isComposing) return; e.preventDefault(); handleJoinRoom(); }} />
                   <button className="cast-room-join-btn" type="button" onClick={handleJoinRoom} disabled={roomBusy || inviteBusy || !joinCodeInput.trim()}>
                     {roomBusy ? "加入中…" : "加入"}
                   </button>
@@ -847,7 +847,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
             <div className="cast-waiting-hint">在 B站 等视频 App 中点击投屏，选择「灯塔」。</div>
 
             <div className="cast-waiting-url-row">
-              <input className="cast-waiting-url-input" type="url" placeholder="粘贴视频地址…" value={urlInput} onChange={(e) => setUrlInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleExtract()} />
+              <input className="cast-waiting-url-input" type="url" placeholder="粘贴视频地址…" value={urlInput} onChange={(e) => setUrlInput(e.target.value)} onKeyDown={(e) => { if (e.key !== "Enter" || e.nativeEvent?.isComposing) return; e.preventDefault(); handleExtract(); }} />
               <button className="cast-waiting-extract-btn" type="button" onClick={handleExtract} disabled={extracting || !urlInput.trim()}>
                 {extracting ? "提取中…" : "提取"}
               </button>
@@ -1051,7 +1051,7 @@ export default function DlnaCastPlayer({ info, userName = "你", aiName = "伴�
             placeholder="输入消息…"
             value={chatInput}
             onChange={(e) => setChatInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSendMessage()}
+            onKeyDown={(e) => { if (e.key !== "Enter" || e.nativeEvent?.isComposing) return; e.preventDefault(); handleSendMessage(); }}
           />
           <button className="cast-send-btn" type="button" onClick={handleSendMessage} disabled={chatBusy || !chatInput.trim()}>
             {chatBusy ? "回复中…" : "发送"}

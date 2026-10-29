@@ -369,3 +369,11 @@ console.log("voice helper tests passed");
   assert.equal(fake.sent, false, "aborted request must not upload audio");
 }
 console.log("Voice upload cancellation tests passed");
+
+
+const voiceAppSource = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
+assert.match(voiceAppSource, /function cancelVoicePointer\(event\)/);
+assert.match(voiceAppSource, /onPointerCancel=\{cancelVoicePointer\}/);
+assert.match(voiceAppSource, /cancelVoiceCapture\(\{ message: "已取消这次录音。" \}\)/);
+assert.doesNotMatch(voiceAppSource, /onPointerCancel=\{endVoiceCapture\}/);
+console.log("Voice pointer-cancel semantics test passed");

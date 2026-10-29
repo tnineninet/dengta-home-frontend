@@ -74,7 +74,7 @@ import {
 import CompanionStatus from "./CompanionStatus";
 import CompanionGenderFields from "./CompanionGenderFields";
 import ReplyOptionsSheet from "./ReplyOptionsSheet.jsx";
-import { shouldAutoOpenReplyOptions } from "./reply-options-trigger.js";
+import { canAutoOpenReplyOptions, shouldAutoOpenReplyOptions } from "./reply-options-trigger.js";
 import ChatContextSettings from "./ChatContextSettings.jsx";
 import VisionSettings from "./VisionSettings.jsx";
 import ChatErrorLog from "./ChatErrorLog.jsx";
@@ -1583,6 +1583,21 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [imageViewer, setImageViewer] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [compactSidebar, setCompactSidebar] = useState(() => {
+    if (typeof window === "undefined") return false;
+    return document.documentElement.dataset.dengtaForceMobile === "true" ||
+      Boolean(window.matchMedia?.("(max-width: 820px), (pointer: coarse)")?.matches);
+  });
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return undefined;
+    const media = window.matchMedia("(max-width: 820px), (pointer: coarse)");
+    const sync = () => setCompactSidebar(
+      document.documentElement.dataset.dengtaForceMobile === "true" || media.matches
+    );
+    sync();
+    media.addEventListener?.("change", sync);
+    return () => media.removeEventListener?.("change", sync);
+  }, []);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   useEffect(() => {
@@ -1676,8 +1691,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [recentAssistantMessageId, setRecentAssistantMessageId] = useState("");
   const replyOptionsRequestRef = useRef(0);
   const replyOptionsAutoRef = useRef("");
+  const replyAutoOpenEligibleRef = useRef(false);
   useEffect(() => {
     setRecentAssistantMessageId("");
+    replyAutoOpenEligibleRef.current = false;
   }, [activeSessionId]);
   useEffect(() => {
     const latest = messages[messages.length - 1];
@@ -1692,6 +1709,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       return undefined;
     }
     const text = String(latest.content || "").trim();
+    // Only auto-open for a reply to a message sent in this browsing session.
+    // Existing history must never trigger a model-generated reply-options call.
+    if (!replyAutoOpenEligibleRef.current) return undefined;
     if (!text || !shouldAutoOpenReplyOptions(latest)) return undefined;
     // Never interrupt an in-progress draft: opening a popover while the user
     // is typing would steal the first input event and close the sheet.
@@ -1701,17 +1721,29 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       return undefined;
     }
     const timer = window.setTimeout(() => {
-      // Don't open a reply popover behind a status panel/settings/sidebar;
-      // it would become visible only after the overlay closes.
-      if (
-        document.activeElement === messageInputRef.current ||
+      // Focus alone must not block "帮你选": the composer stays focused after
+      // Enter-send. Only a real draft, IME composition, or another overlay
+      // should hold it back.
+      const composing = messageInputRef.current?.matches?.(":focus") &&
+        messageInputRef.current?.getAttribute?.("data-composing") === "true";
+      const overlayOpen = Boolean(
         document.querySelector(".sun-glass-floating-status-panel.is-open") ||
         document.querySelector(".settings-sheet") ||
-        document.querySelector(".sidebar.open")
-      ) {
+        document.querySelector(".sidebar.open") ||
+        document.querySelector(".command-palette") ||
+        document.querySelector(".image-viewer") ||
+        document.querySelector(".dialog-card") ||
+        document.querySelector(".composer-tool-menu")
+      );
+      if (!canAutoOpenReplyOptions({
+        draft: String(messageInputRef.current?.value || ""),
+        composing,
+        overlayOpen,
+      })) {
         return;
       }
       replyOptionsAutoRef.current = messageId;
+      replyAutoOpenEligibleRef.current = false;
       void openReplyOptions();
     }, 900);
     return () => window.clearTimeout(timer);
@@ -2641,16 +2673,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             )
           : {}),
       });
-      if (available) {
-        void apiRequest("/voice/warmup", {
-          ...requestOptions,
-          method: "POST",
-          timeoutMs: 5_000,
-          retry: false,
-        }).catch(() => {
-          // Prewarming is optional; voice upload still reports its own error.
-        });
-      }
       setServiceHealth({
         checking: false,
         data,
@@ -3188,6 +3210,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       companionStatusRef.current !== companionStatus ||
       companionInteractionStatsRef.current !== companionInteractionStats
     ) {
+      return undefined;
+    }
+    // Never push a state write on page load; wait until this browsing session
+    // has had an explicit user gesture. Local state still persists locally.
+    if (globalThis.navigator?.userActivation && !globalThis.navigator.userActivation.hasBeenActive) {
       return undefined;
     }
     const controller = new AbortController();
@@ -4306,6 +4333,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       return;
     }
 
+    // Prewarm only after an explicit voice gesture, never on page load.
+    void apiRequest("/voice/warmup", {
+      method: "POST",
+      timeoutMs: 5_000,
+      retry: false,
+    }).catch(() => {
+      // Prewarming is optional; voice upload still reports its own error.
+    });
+
     if (
       isSendingRef.current ||
       companionInteractionInFlightRef.current ||
@@ -4454,6 +4490,22 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       setVoiceTapToSendMode(false);
       setNotice("麦克风权限确认后请重新按住说话。");
     }
+  }
+
+  function cancelVoicePointer(event) {
+    if (
+      voicePointerIdRef.current !== null &&
+      voicePointerIdRef.current !== event.pointerId
+    ) {
+      return;
+    }
+    event.preventDefault?.();
+    try {
+      event.currentTarget?.releasePointerCapture?.(event.pointerId);
+    } catch {
+      // The WebView may have already released the pointer.
+    }
+    cancelVoiceCapture({ message: "已取消这次录音。" });
   }
 
   function updateVoicePlaybackMode(value) {
@@ -5561,6 +5613,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   async function sendMessage() {
     statusRefreshAbortRef.current?.abort();
     setReplyOptionsOpen(false);
+    replyAutoOpenEligibleRef.current = true;
     const publicReasoningSummaryAtRequest = publicReasoningSummaryEnabled && settings.provider === "openai-responses";
     const options =
       arguments[0] && typeof arguments[0] === "object" ? arguments[0] : {};
@@ -8113,6 +8166,27 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 <RainbowAgentMark />
               </button>
               <button
+                className="composer-voice-button"
+                type="button"
+                aria-label={voiceServiceAvailable ? "长按说话，松开发送" : "语音服务暂不可用"}
+                title={voiceServiceAvailable ? "按住说话" : "语音服务暂不可用"}
+                aria-pressed={voiceState === VOICE_STATES.recording}
+                disabled={
+                  !voiceServiceAvailable ||
+                  isSending ||
+                  isCompanionResponding ||
+                  [VOICE_STATES.uploading, VOICE_STATES.thinking].includes(voiceState)
+                }
+                onPointerDown={beginVoiceCapture}
+                onPointerUp={endVoiceCapture}
+                onPointerCancel={cancelVoicePointer}
+                onContextMenu={(event) => event.preventDefault()}
+                onKeyDown={handleVoiceKeyDown}
+                onKeyUp={handleVoiceKeyUp}
+              >
+                <Mic2 size={18} aria-hidden="true" />
+              </button>
+              <button
                 className="composer-reply-options-button"
                 type="button"
                 aria-label="让 TA 帮你想更多回复"
@@ -8289,7 +8363,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   }
                   onPointerDown={beginVoiceCapture}
                   onPointerUp={endVoiceCapture}
-                  onPointerCancel={endVoiceCapture}
+                  onPointerCancel={cancelVoicePointer}
                   onContextMenu={(event) => event.preventDefault()}
                   onKeyDown={handleVoiceKeyDown}
                   onKeyUp={handleVoiceKeyUp}
@@ -8589,10 +8663,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                       }))
                     }
                     onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        postComment(item.id);
-                      }
+                      if (event.key !== "Enter" || event.nativeEvent?.isComposing) return;
+                      event.preventDefault();
+                      postComment(item.id);
                     }}
                     placeholder="写一条评论"
                   />
@@ -10665,7 +10738,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         />
       )}
 
-      <aside className={`sidebar ${isSidebarOpen ? "open" : ""}`}>
+      <aside
+          className={`sidebar ${isSidebarOpen ? "open" : ""}`}
+          inert={!isSidebarOpen && compactSidebar ? true : undefined}
+          aria-hidden={!isSidebarOpen && compactSidebar ? "true" : undefined}
+        >
         <div className="brand">
           <span className="brand-icon">D</span>
           <div>

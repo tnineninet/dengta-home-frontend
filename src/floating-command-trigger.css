@@ -203,3 +203,12 @@
     cursor: default;
   }
 }
+
+
+@media (max-width: 380px) {
+  .app-shell:has(.reply-options-popover) .mobile-command-dock {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+  }
+}

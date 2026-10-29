@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
-import { shouldAutoOpenReplyOptions } from "../src/reply-options-trigger.js";
+import { canAutoOpenReplyOptions, shouldAutoOpenReplyOptions } from "../src/reply-options-trigger.js";
 
 const message = (content, extra = {}) => ({
   role: "assistant",
@@ -58,7 +58,15 @@ test("plain statements and streaming rows stay quiet", () => {
 test("typing does not dismiss the reply options sheet", () => {
   const app = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
   assert.doesNotMatch(app, /addEventListener\("input",\s*closeOnType\)/);
-  assert.match(app, /document\.activeElement === messageInputRef\.current/);
+  assert.match(app, /canAutoOpenReplyOptions\(\{/);
+    assert.doesNotMatch(app, /document\.activeElement === messageInputRef\.current/);
   const sheet = readFileSync(new URL("../src/ReplyOptionsSheet.jsx", import.meta.url), "utf8");
   assert.match(sheet, /输入不会收起，发送或点收起后才关闭/);
+});
+
+test("focus alone must not block auto-open after Enter send", () => {
+  assert.equal(canAutoOpenReplyOptions({ draft: "", composing: false, overlayOpen: false }), true);
+  assert.equal(canAutoOpenReplyOptions({ draft: "在写", composing: false, overlayOpen: false }), false);
+  assert.equal(canAutoOpenReplyOptions({ draft: "", composing: true, overlayOpen: false }), false);
+  assert.equal(canAutoOpenReplyOptions({ draft: "", composing: false, overlayOpen: true }), false);
 });

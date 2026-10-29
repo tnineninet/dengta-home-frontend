@@ -156,9 +156,44 @@ function syncDocumentHidden() {
 syncDocumentHidden();
 document.addEventListener("visibilitychange", syncDocumentHidden);
 let scrollPauseTimer = 0;
+let lastUserScrollAt = 0;
+const markUserScroll = () => {
+  lastUserScrollAt = performance.now();
+};
+document.addEventListener("wheel", markUserScroll, {
+  capture: true,
+  passive: true,
+});
+document.addEventListener("touchmove", markUserScroll, {
+  capture: true,
+  passive: true,
+});
+document.addEventListener(
+  "keydown",
+  (event) => {
+    if (
+      [
+        "ArrowUp",
+        "ArrowDown",
+        "PageUp",
+        "PageDown",
+        "Home",
+        "End",
+        " ",
+      ].includes(event.key)
+    ) {
+      markUserScroll();
+    }
+  },
+  { capture: true },
+);
 document.addEventListener(
   "scroll",
   () => {
+    // Programmatic chat auto-scroll (streaming, scrollIntoView, route changes)
+    // must not pause decorative animations. Only treat scroll as a user
+    // gesture when a wheel/touch/keyboard gesture happened just before it.
+    if (performance.now() - lastUserScrollAt > 260) return;
     htmlRoot.dataset.dengtaScrolling = "1";
     window.clearTimeout(scrollPauseTimer);
     scrollPauseTimer = window.setTimeout(() => {

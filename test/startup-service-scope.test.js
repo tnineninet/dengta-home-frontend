@@ -149,34 +149,26 @@ test("current voice 404 fallback preserves scoped context and applies its succes
   } finally { h.finish(); }
 });
 
-for (const switchKind of ["companion", "account"]) {
-  test(`late voice warmup 401 cannot invalidate the current ${switchKind} scope`, async () => {
-    const h = await serviceHarness();
-    try {
-      const run = h.context.refreshServiceHealth();
-      await tick();
-      assert.equal(h.requests[0]?.path, "/health");
-      h.requests[0].resolve(200, { features: { hervoice_proxy_configured: true } }, "");
-      await run;
-      await tick();
-      const warmup = h.requests.find(request => request.path === "/voice/warmup");
-      assert.ok(warmup);
-      h.dispose();
-      if (switchKind === "account") h.switchAccount();
-      else h.switchCompanion();
-      const stateCount = h.ui.length;
-      warmup.resolve(401, { code: "invalid_session" });
-      await tick();
-      assert.equal(h.manager.getSnapshot().user?.id, switchKind === "account" ? ACCOUNT_B : ACCOUNT_A);
-      assert.equal(h.manager.getSnapshot().activeCompanionId, COMPANION_B);
-      assert.equal(h.manager.getSnapshot().status, AUTH_STATUS.authenticated);
-      assert.equal(h.signOutCount(), 0);
-      assert.equal(warmup.signal?.aborted, true);
-      assert.equal(h.ui.length, stateCount);
-      assert.equal(h.timers.size, 0);
-    } finally { h.finish(); }
-  });
-}
+test("health refresh never prewarms voice before an explicit user gesture", async () => {
+  const h = await serviceHarness();
+  try {
+    const run = h.context.refreshServiceHealth();
+    await tick();
+    assert.equal(h.requests[0]?.path, "/health");
+    h.requests[0].resolve(200, { features: { hervoice_proxy_configured: true } }, "");
+    await run;
+    await tick();
+    assert.equal(
+      h.requests.filter((request) => request.path === "/voice/warmup").length,
+      0,
+      "page load must not POST /voice/warmup; warmup is gesture-only",
+    );
+    h.dispose();
+    h.switchAccount();
+    assert.equal(h.manager.getSnapshot().activeCompanionId, COMPANION_B);
+    assert.equal(h.timers.size, 0);
+  } finally { h.finish(); }
+});
 
 test("a disposed health result never starts voice warmup or updates the discarded page", async () => {
   const h = await serviceHarness();

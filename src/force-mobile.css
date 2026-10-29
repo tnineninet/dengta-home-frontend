@@ -31,7 +31,8 @@ html[data-dengta-force-mobile="true"] .sidebar.open {
 
 html[data-dengta-force-mobile="true"] .sidebar-close {
   position: absolute !important;
-  z-index: 4 !important;
+  z-index: 2147483002 !important;
+  pointer-events: auto !important;
   top: max(10px, env(safe-area-inset-top)) !important;
   right: 10px !important;
   display: grid !important;
@@ -122,4 +123,40 @@ html[data-dengta-force-mobile="true"] .menu-button {
 html[data-dengta-force-mobile="true"] .topbar {
   gap: 8px !important;
   padding-inline: max(12px, env(safe-area-inset-left)) max(12px, env(safe-area-inset-right)) !important;
+}
+
+
+/* Desktop-mode WebViews otherwise keep expensive desktop glass. Use the same
+   low-cost treatment as the regular <=820px mobile layout. */
+html[data-dengta-force-mobile="true"] .sidebar,
+html[data-dengta-force-mobile="true"] .topbar,
+html[data-dengta-force-mobile="true"] .composer,
+html[data-dengta-force-mobile="true"] .composer-wrap,
+html[data-dengta-force-mobile="true"] .companion-status,
+html[data-dengta-force-mobile="true"] .status-panel,
+html[data-dengta-force-mobile="true"] .settings-sheet,
+html[data-dengta-force-mobile="true"] .command-palette,
+html[data-dengta-force-mobile="true"] .music-studio-header,
+html[data-dengta-force-mobile="true"] .music-studio-frame-shell {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html[data-dengta-force-mobile="true"] .settings-sheet {
+  width: min(100vw, 100%) !important;
+  max-width: 100vw !important;
+  border-radius: 22px 22px 0 0 !important;
+}
+
+html[data-dengta-force-mobile="true"] .music-studio-page {
+  height: calc(100dvh - 86px) !important;
+  padding-bottom: calc(64px + env(safe-area-inset-bottom)) !important;
+}
+
+html[data-dengta-force-mobile="true"] .music-studio-frame-shell {
+  min-height: 0 !important;
+}
+
+html[data-dengta-force-mobile="true"] .music-studio-frame {
+  min-height: 0 !important;
 }

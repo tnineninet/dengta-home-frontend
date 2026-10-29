@@ -26,3 +26,14 @@ export function shouldAutoOpenReplyOptions(message) {
   if (OPEN_ENDED_PATTERN.test(text)) return true;
   return false;
 }
+
+/** Focus alone must not block "帮你选": the composer stays focused after Enter send.
+ * Only a real draft, IME composition, or another open overlay should hold it back.
+ */
+export function canAutoOpenReplyOptions({
+  draft = "",
+  composing = false,
+  overlayOpen = false,
+} = {}) {
+  return !String(draft).trim() && composing !== true && overlayOpen !== true;
+}
