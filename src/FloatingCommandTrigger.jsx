@@ -93,7 +93,7 @@ function initialDockState() {
   }
   return {
     x: width - SIZE - EDGE_MARGIN,
-    y: Math.min(84, height * 0.28),
+    y: Math.min(190, Math.max(120, height * 0.3)),
     collapsed: false,
     edge: "",
   };
