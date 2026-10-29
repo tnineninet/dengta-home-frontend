@@ -7,6 +7,7 @@ import {
   applyThemePreferences,
   DENGTA_FONT_MODE_STORAGE_KEY,
   DEFAULT_THEME_PREFERENCES,
+  defaultThemePreferences,
   getCelestialSnapshot,
   normalizeThemePreferences,
   readThemePreferences,
@@ -44,6 +45,13 @@ test("font preference defaults to the stable complete CJK face", () => {
   assert.equal(normalizeThemePreferences({ fontMode: "unknown" }).fontMode, "standard");
   assert.match(studio, /DengTa 标准/);
   assert.match(studio, /跟随系统/);
+});
+
+test("first visit on a phone defaults to the system font instead of the 7.4MB face", () => {
+  const phone = { matchMedia: () => ({ matches: true }) };
+  const desktop = { matchMedia: () => ({ matches: false }) };
+  assert.equal(defaultThemePreferences(phone).fontMode, "system");
+  assert.equal(defaultThemePreferences(desktop).fontMode, "standard");
 });
 
 test("font preference persists per account and reaches the document root", () => {

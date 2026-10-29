@@ -70,6 +70,16 @@ export const DEFAULT_THEME_PREFERENCES = {
   fontMode: "standard",
 };
 
+// Phones default to the system CJK font: the branded face is 7.4MB and its
+// download/decode is visible on first paint. Desktop keeps the brand font.
+export function defaultThemePreferences(environment = globalThis) {
+  const mobile =
+    environment?.matchMedia?.("(max-width: 820px)")?.matches === true;
+  return mobile
+    ? { ...DEFAULT_THEME_PREFERENCES, fontMode: "system" }
+    : DEFAULT_THEME_PREFERENCES;
+}
+
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 const APPEARANCE_MODES = new Set(["auto", "day", "night"]);
 const FONT_MODES = new Set(["standard", "system"]);
@@ -131,7 +141,7 @@ export function readThemePreferences(
       accountScope,
       { migrateLegacy: true },
     );
-    if (!legacy) return DEFAULT_THEME_PREFERENCES;
+    if (!legacy) return defaultThemePreferences();
     const parsed = JSON.parse(legacy);
     return normalizeThemePreferences({
       ...parsed,
@@ -141,7 +151,7 @@ export function readThemePreferences(
           : parsed?.cardOpacity,
     });
   } catch {
-    return DEFAULT_THEME_PREFERENCES;
+    return defaultThemePreferences();
   }
 }
 
