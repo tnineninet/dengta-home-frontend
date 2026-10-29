@@ -23,7 +23,7 @@ function StatusChip({ task }) {
   return <span className={`takeout-status ${tone}`}><i aria-hidden="true" />{task ? takeoutTaskLabel(task) : "待开始"}</span>;
 }
 
-export function TakeoutTaskCard({ task, onOpen }) {
+export function TakeoutTaskCard({ task, onOpen, onDismiss }) {
   if (!task) return null;
   const stepIndex = takeoutStepIndex(task);
   const step = TAKEOUT_STEPS[stepIndex] || null;
@@ -35,7 +35,19 @@ export function TakeoutTaskCard({ task, onOpen }) {
   const subtitle = [task.shop, task.product].filter(Boolean).join(" · ")
     || (task.requirement ? `想点：${task.requirement}` : "点一下查看进度");
   const amount = price ? `实付 ${price}` : budget ? `预算 ${budget}` : "";
-  return <button type="button" className="takeout-task-card" onClick={onOpen} aria-label={`查看外卖点餐进度：${takeoutTaskLabel(task)}${subtitle ? `，${subtitle}` : ""}${amount ? `，${amount}` : ""}`}>
+  const activate = (event) => {
+    if (event?.type === "keydown" && !["Enter", " "].includes(event.key)) return;
+    event?.preventDefault?.();
+    onOpen?.();
+  };
+  return <div
+    role="button"
+    tabIndex={0}
+    className="takeout-task-card"
+    onClick={activate}
+    onKeyDown={activate}
+    aria-label={`查看外卖点餐进度：${takeoutTaskLabel(task)}${subtitle ? `，${subtitle}` : ""}${amount ? `，${amount}` : ""}`}
+  >
     <span className={`takeout-task-icon ${tone}`}><ShoppingBag size={19} aria-hidden="true" /></span>
     <span className="takeout-task-copy">
       <span className="takeout-task-title-row">
@@ -50,7 +62,13 @@ export function TakeoutTaskCard({ task, onOpen }) {
       <span className="takeout-task-track" aria-hidden="true">{[0, 1, 2, 3].map(index => <i key={index} className={index <= stepIndex ? "is-on" : ""} />)}</span>
     </span>
     <ChevronRight size={18} aria-hidden="true" />
-  </button>;
+    {typeof onDismiss === "function" && <button
+      type="button"
+      className="takeout-task-dismiss"
+      aria-label="关闭外卖任务卡片"
+      onClick={(event) => { event.stopPropagation(); onDismiss(); }}
+    ><X size={14} aria-hidden="true" /></button>}
+  </div>;
 }
 
 export default function TakeoutAssistant(props) {

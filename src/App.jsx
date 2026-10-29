@@ -7865,7 +7865,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             onOpen={returnToActivity}
             onDismiss={() => setActivityReturn(null)}
           />
-          <TakeoutTaskCard task={takeoutTask?.scope === privateMediaScope ? takeoutTask : null} onOpen={() => setIsTakeoutOpen(true)} />
+          <TakeoutTaskCard
+            task={takeoutTask?.scope === privateMediaScope ? takeoutTask : null}
+            onOpen={() => setIsTakeoutOpen(true)}
+            onDismiss={() => {
+              if (takeoutTask?.status === "working") void pauseTakeoutFromChat();
+              setIsTakeoutOpen(false);
+              setTakeoutTask(null);
+            }}
+          />
           {providerSetup && !providerSetupDismissed && (
             <div
               className={`provider-setup-banner provider-setup-${providerSetup.kind}`}

@@ -149,3 +149,39 @@
 :root[data-dengta-appearance="night"] .takeout-task-icon.is-ready { background: #2f3a2a; color: #a9d18f; }
 :root[data-dengta-appearance="night"] .takeout-task-icon.is-attention { background: #3d3025; color: #f0b47f; }
 :root[data-dengta-appearance="night"] .takeout-task-icon.is-error { background: #432a2a; color: #ffb4b4; }
+
+/* Task card gets an explicit dismiss control; the card itself stays a
+   keyboard/click target for opening the live progress sheet. */
+.takeout-task-card {
+  position: relative;
+  padding-right: 48px;
+}
+
+.takeout-task-card > svg:last-child {
+  display: none;
+}
+
+.takeout-task-dismiss {
+  position: absolute;
+  top: 50%;
+  right: 2px;
+  display: grid;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  color: inherit;
+  background: transparent;
+  transform: translateY(-50%);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.takeout-task-dismiss:hover,
+.takeout-task-dismiss:focus-visible {
+  background: rgba(0, 0, 0, 0.06);
+}

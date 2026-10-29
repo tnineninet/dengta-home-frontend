@@ -284,18 +284,23 @@ test("real takeout assistant preserves drafts, task scope and payment truth whil
       } finally { await h.close(); }
     });
     await t.test("task card exposes only current state and opens the task without starting another order", async () => {
-      let opens = 0, tree;
+      let opens = 0, dismisses = 0, tree;
       const task = apply(apply(null, "order", "start"), "order", "done", { outcome: paymentReceipt });
+      const card = () => tree.root.find(node => node.props.className === "takeout-task-card");
       try {
-        await act(async () => { tree = TestRenderer.create(React.createElement(TakeoutTaskCard, { task, onOpen: () => { opens++; } })); });
+        await act(async () => { tree = TestRenderer.create(React.createElement(TakeoutTaskCard, { task, onOpen: () => { opens++; }, onDismiss: () => { dismisses++; } })); });
         assert.ok(words(tree.toJSON()).includes("等你核对付款"));
         assert.ok(words(tree.toJSON()).includes("¥28.50"), "a ready card shows the real total");
         assert.ok(words(tree.toJSON()).includes("4/4 · 你来付款"), "a ready card shows the current stage");
-        await act(async () => tree.update(React.createElement(TakeoutTaskCard, { task: { ...task, total: null, budget: 42 }, onOpen: () => {} })));
+        await act(async () => tree.update(React.createElement(TakeoutTaskCard, { task: { ...task, total: null, budget: 42 }, onOpen: () => {}, onDismiss: () => { dismisses++; } })));
         assert.ok(words(tree.toJSON()).includes("预算 ¥42.00"), "a working card can expose the local budget without pretending it is a total");
-        assert.match(tree.root.findByType("button").props["aria-label"], /预算 ¥42\.00/);
-        await act(async () => tree.update(React.createElement(TakeoutTaskCard, { task, onOpen: () => { opens++; } })));
-        await act(async () => tree.root.findByType("button").props.onClick()); assert.equal(opens, 1);
+        assert.match(card().props["aria-label"], /预算 ¥42\.00/);
+        await act(async () => tree.update(React.createElement(TakeoutTaskCard, { task, onOpen: () => { opens++; }, onDismiss: () => { dismisses++; } })));
+        await act(async () => card().props.onClick()); assert.equal(opens, 1);
+        const dismiss = tree.root.find(node => node.props.className === "takeout-task-dismiss");
+        await act(async () => dismiss.props.onClick({ stopPropagation() {} }));
+        assert.equal(dismisses, 1);
+        assert.equal(opens, 1, "dismiss must not open the task");
         await act(async () => tree.update(React.createElement(TakeoutTaskCard, { task: null }))); assert.equal(tree.toJSON(), null);
       } finally { if (tree) await act(async () => tree.unmount()); }
     });
