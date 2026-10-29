@@ -89,11 +89,12 @@ function initialDockState() {
     if (stored.collapsed && stored.edge) {
       return { ...collapsedPosition(stored.edge, stored.x, stored.y, width, height), collapsed: true };
     }
-    return { ...expandedPosition("", stored.x, stored.y, width, height), collapsed: false, edge: "" };
+    const restored = expandedPosition("", stored.x, stored.y, width, height);
+    return { ...restored, y: Math.max(220, restored.y), collapsed: false, edge: "" };
   }
   return {
     x: width - SIZE - EDGE_MARGIN,
-    y: Math.min(190, Math.max(120, height * 0.3)),
+    y: Math.min(height - 110, Math.max(220, height * 0.52)),
     collapsed: false,
     edge: "",
   };
