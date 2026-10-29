@@ -4263,6 +4263,29 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     await submitVoiceBlob(blob, durationMs);
   }
 
+  function handleVoiceKeyDown(event) {
+    if (event.key !== " " && event.key !== "Enter") return;
+    if (event.repeat) return;
+    event.preventDefault();
+    void beginVoiceCapture({
+      pointerType: "keyboard",
+      pointerId: 0,
+      button: 0,
+      preventDefault() {},
+      currentTarget: event.currentTarget,
+    });
+  }
+
+  function handleVoiceKeyUp(event) {
+    if (event.key !== " " && event.key !== "Enter") return;
+    event.preventDefault();
+    endVoiceCapture({
+      pointerId: 0,
+      preventDefault() {},
+      currentTarget: event.currentTarget,
+    });
+  }
+
   async function beginVoiceCapture(event) {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     event.preventDefault();
@@ -8253,6 +8276,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   onPointerUp={endVoiceCapture}
                   onPointerCancel={endVoiceCapture}
                   onContextMenu={(event) => event.preventDefault()}
+                  onKeyDown={handleVoiceKeyDown}
+                  onKeyUp={handleVoiceKeyUp}
                 >
                   <span className="voice-mic-icon" aria-hidden="true">
                     {voiceState === VOICE_STATES.recording ? "●" : "🎙"}
