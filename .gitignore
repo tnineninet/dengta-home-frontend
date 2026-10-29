@@ -26,3 +26,12 @@ dist-ssr
 .env*
 !.env.example
 screenshots/
+
+# One-off UI debugging captures (not shipped assets)
+/*.xml
+/.codex-*.png
+/screen-now.png
+/bili-screen.png
+/phone-screen.png
+/install-screen.png
+
