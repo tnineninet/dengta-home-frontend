@@ -427,6 +427,14 @@ assert.match(
   /const lastVoiceAttemptRef = useRef\(null\)/,
 );
 assert.match(voiceAppSource, /options\.sessionId/);
+assert.match(
+  voiceAppSource,
+  /lastVoiceAttemptRef\.current = \{ blob, durationMs, clientMessageId \};/,
+);
+assert.match(
+  voiceAppSource,
+  /lastVoiceAttemptRef\.current\.sessionId = sessionId;/,
+);
 assert.match(voiceAppSource, /sessionId: attempt\.sessionId/);
 assert.match(voiceAppSource, /voiceRetryWaitSeconds/);
 assert.match(voiceAppSource, /voiceRetryInFlight/);
