@@ -165,8 +165,25 @@ html.dengta-flat-paint .status-flow-field {
    composer below the fold. Keep the composer reachable and every primary
    control at 44px on this constrained orientation. */
 @media (orientation: landscape) and (max-height: 560px) {
+  /* Keep the state capsule reachable after rotation; collapse only the tall
+     ribbon/ambient card so the composer still fits. */
   .chat-presence-stack {
+    display: grid !important;
+    max-height: 76px;
+    height: 76px;
+    overflow: visible;
+  }
+
+  .chat-presence-stack .sun-glass-status-ribbon,
+  .chat-presence-stack .ambient-context-badge {
     display: none !important;
+  }
+
+  .chat-presence-stack .companion-status {
+    height: 72px;
+    min-height: 72px;
+    margin: 2px 10px 0;
+    overflow: visible;
   }
 
   .main-panel.view-chat .view-content {
