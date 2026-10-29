@@ -69,6 +69,7 @@ export default function CommandPalette({
   onCreateSession,
   onOpenSettings,
   onReturnActivity,
+  onSetBackground,
   features = [],
   settingsCategories = [],
   sessions = [],
@@ -88,8 +89,12 @@ export default function CommandPalette({
     const result = [{ id: "new-chat", label: "新建对话", hint: "打开一个新的聊天", kind: "action", run: onCreateSession, icon: <Plus aria-hidden="true" /> }];
     result.push({ id: "open-settings", label: "打开设置", hint: "模型、外观、语音与数据", kind: "action", run: onOpenSettings, icon: <Settings aria-hidden="true" /> });
     if (onReturnActivity) result.push({ id: "return-activity", label: "回到本次活动", hint: "返回一起看或一起听", kind: "action", run: onReturnActivity, icon: <CornerDownLeft aria-hidden="true" /> });
+    if (onSetBackground) {
+      result.push({ id: "background:legacy", label: "背景 · 旧版海岸", hint: "切回你喜欢的经典海岸背景", kind: "action", run: () => onSetBackground("legacy"), icon: <Brush aria-hidden="true" /> });
+      result.push({ id: "background:auto", label: "背景 · 实时天空", hint: "恢复天气与时间变化的动态天空", kind: "action", run: () => onSetBackground("auto"), icon: <Sparkles aria-hidden="true" /> });
+    }
     return result;
-  }, [onCreateSession, onOpenSettings, onReturnActivity]);
+  }, [onCreateSession, onOpenSettings, onReturnActivity, onSetBackground]);
 
   const entries = useMemo(() => {
     const rows = features.map(item => ({

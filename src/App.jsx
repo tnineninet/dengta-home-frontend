@@ -126,6 +126,7 @@ import MusicChatCard from "./MusicChatCard.jsx";
 import { fetchEarlyMusicCard, extractMusicRequest } from "./music-chat-preview.js";
 import { isRandomMusicRequest } from "./music-request-intent.js";
 import CelestialBackdrop from "./CelestialBackdrop";
+import LegacyCoastBackdrop from "./LegacyCoastBackdrop";
 import SunGlassTimeDeck from "./SunGlassTimeDeck";
 import FeatureAtmosphere from "./FeatureAtmosphere";
 import RainbowAgentMark from "./RainbowAgentMark";
@@ -10644,11 +10645,19 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         onStart={startTakeoutFromChat} onStop={() => void pauseTakeoutFromChat()} onReview={() => void openTakeoutPlatform()}
         loginPanel={<TakeoutLoginPanel key={diagnosticScopeKey(accountStorageScope, companionScope)}
           scope={diagnosticScopeKey(accountStorageScope, companionScope)} feedback={takeoutLoginFeedback} />} />
-      <CelestialBackdrop
-        snapshot={celestialSnapshot}
-        weather={ambientWeather}
-        weatherModeOverride={weatherPreviewMode}
-      />
+      {themePreferences.background === "auto" ? (
+        <CelestialBackdrop
+          snapshot={celestialSnapshot}
+          weather={ambientWeather}
+          weatherModeOverride={weatherPreviewMode}
+        />
+      ) : (
+        <LegacyCoastBackdrop
+          mode={themePreferences.background}
+          snapshot={celestialSnapshot}
+          appearance={themePreferences.appearance}
+        />
+      )}
 
       {isSidebarOpen && (
         <button

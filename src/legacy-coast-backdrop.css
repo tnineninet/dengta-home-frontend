@@ -1,0 +1,305 @@
+/* Old DengTa coast background: a full-bleed still with a soft painted sun,
+   drifting cloud haze and a quiet star field. It is intentionally softer and
+   flatter than the newer live sky, matching the older screenshots. */
+
+.legacy-coast-backdrop {
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: #b9d9e6;
+  animation: legacy-coast-fade 520ms ease both;
+}
+
+.legacy-coast-photo,
+.legacy-coast-wash,
+.legacy-coast-sun,
+.legacy-coast-cloud,
+.legacy-coast-moon,
+.legacy-coast-stars,
+.legacy-coast-haze,
+.legacy-coast-vignette {
+  position: absolute;
+  pointer-events: none;
+}
+
+.legacy-coast-photo {
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 43%;
+  filter: saturate(1.03) contrast(1.01);
+  user-select: none;
+}
+
+.legacy-coast-wash {
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgb(255 246 238 / 0.16), transparent 36%, rgb(255 242 230 / 0.1) 74%, rgb(255 255 255 / 0.04));
+  mix-blend-mode: soft-light;
+}
+
+[data-scene="twilight"] .legacy-coast-wash {
+  background:
+    linear-gradient(180deg, rgb(255 217 201 / 0.26), transparent 38%, rgb(255 188 157 / 0.12) 76%, rgb(255 223 202 / 0.08));
+}
+
+[data-scene="night"] .legacy-coast-wash {
+  background:
+    linear-gradient(180deg, rgb(8 16 38 / 0.2), rgb(17 29 57 / 0.08) 42%, rgb(15 28 54 / 0.24));
+  mix-blend-mode: multiply;
+}
+
+/* ---- sun ---- */
+.legacy-coast-sun {
+  left: 18%;
+  top: 12%;
+  width: clamp(112px, 28vw, 290px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background:
+    radial-gradient(
+      circle at 48% 46%,
+      rgb(255 255 250 / 0.98) 0 17%,
+      rgb(255 250 230 / 0.94) 27%,
+      rgb(255 237 190 / 0.72) 47%,
+      rgb(255 218 153 / 0.22) 67%,
+      transparent 75%
+    );
+  box-shadow:
+    0 0 42px 12px rgb(255 239 202 / 0.5),
+    0 0 120px 50px rgb(255 220 160 / 0.22);
+  opacity: 0.94;
+  filter: blur(0.4px);
+}
+
+[data-scene="twilight"] .legacy-coast-sun {
+  left: 8%;
+  top: 30%;
+  width: clamp(110px, 26vw, 260px);
+  background:
+    radial-gradient(
+      circle at 50% 50%,
+      rgb(255 250 238 / 0.98) 0 15%,
+      rgb(255 235 202 / 0.9) 28%,
+      rgb(255 194 139 / 0.55) 52%,
+      transparent 72%
+    );
+  box-shadow:
+    0 0 50px 16px rgb(255 202 154 / 0.5),
+    0 0 140px 60px rgb(255 154 124 / 0.22);
+  opacity: 0.94;
+}
+
+[data-scene="night"] .legacy-coast-sun {
+  opacity: 0;
+}
+
+/* ---- moon ---- */
+.legacy-coast-moon {
+  right: 13%;
+  top: 12%;
+  width: clamp(42px, 8vw, 76px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 39% 35%, #fffdf2 0 32%, #e9e6d7 68%, #c9c8c0 100%);
+  box-shadow:
+    0 0 26px 8px rgb(236 238 229 / 0.26),
+    0 0 80px 22px rgb(205 224 255 / 0.18);
+  opacity: 0;
+  transform: rotate(-18deg);
+}
+
+[data-scene="night"] .legacy-coast-moon {
+  opacity: 0.78;
+}
+
+/* ---- clouds ---- */
+.legacy-coast-cloud {
+  border-radius: 50%;
+  background:
+    radial-gradient(ellipse at 26% 58%, rgb(255 252 246 / 0.92), transparent 60%),
+    radial-gradient(ellipse at 52% 38%, rgb(255 247 240 / 0.86), transparent 62%),
+    radial-gradient(ellipse at 76% 62%, rgb(255 239 230 / 0.72), transparent 62%);
+  filter: blur(15px);
+  opacity: 0.42;
+  transform: rotate(-5deg);
+}
+
+.legacy-coast-cloud-a {
+  left: -7%;
+  top: 17%;
+  width: 54%;
+  height: 10%;
+  animation: legacy-cloud-drift 34s ease-in-out infinite alternate;
+}
+
+.legacy-coast-cloud-b {
+  right: -12%;
+  top: 28%;
+  width: 46%;
+  height: 8%;
+  opacity: 0.25;
+  animation: legacy-cloud-drift 44s ease-in-out -12s infinite alternate-reverse;
+}
+
+.legacy-coast-cloud-c {
+  left: 20%;
+  top: 36%;
+  width: 38%;
+  height: 6%;
+  opacity: 0.16;
+  filter: blur(20px);
+  animation: legacy-cloud-drift 52s ease-in-out -22s infinite alternate;
+}
+
+[data-scene="twilight"] .legacy-coast-cloud {
+  background:
+    radial-gradient(ellipse at 26% 58%, rgb(255 221 207 / 0.9), transparent 60%),
+    radial-gradient(ellipse at 54% 40%, rgb(255 235 225 / 0.84), transparent 62%),
+    radial-gradient(ellipse at 78% 62%, rgb(255 196 174 / 0.68), transparent 62%);
+  opacity: 0.3;
+}
+
+[data-scene="night"] .legacy-coast-cloud {
+  background:
+    radial-gradient(ellipse at 26% 58%, rgb(130 158 193 / 0.52), transparent 60%),
+    radial-gradient(ellipse at 54% 40%, rgb(159 181 211 / 0.44), transparent 62%),
+    radial-gradient(ellipse at 78% 62%, rgb(104 133 173 / 0.4), transparent 62%);
+  opacity: 0.28;
+  filter: blur(19px);
+}
+
+/* ---- stars ---- */
+.legacy-coast-stars {
+  inset: 0;
+  opacity: 0;
+  background-image:
+    radial-gradient(circle at 11% 9%, rgb(255 255 255 / 0.9) 0 0.8px, transparent 1.8px),
+    radial-gradient(circle at 18% 17%, rgb(255 249 226 / 0.7) 0 0.7px, transparent 1.7px),
+    radial-gradient(circle at 25% 7%, rgb(255 255 255 / 0.75) 0 0.9px, transparent 1.9px),
+    radial-gradient(circle at 31% 22%, rgb(238 246 255 / 0.65) 0 0.6px, transparent 1.6px),
+    radial-gradient(circle at 37% 12%, rgb(255 255 255 / 0.8) 0 1px, transparent 2px),
+    radial-gradient(circle at 44% 27%, rgb(255 245 220 / 0.6) 0 0.7px, transparent 1.7px),
+    radial-gradient(circle at 52% 8%, rgb(255 255 255 / 0.85) 0 0.8px, transparent 1.8px),
+    radial-gradient(circle at 61% 19%, rgb(228 244 255 / 0.7) 0 0.6px, transparent 1.6px),
+    radial-gradient(circle at 68% 5%, rgb(255 255 255 / 0.7) 0 0.9px, transparent 1.9px),
+    radial-gradient(circle at 74% 25%, rgb(255 251 228 / 0.6) 0 0.7px, transparent 1.7px),
+    radial-gradient(circle at 82% 11%, rgb(255 255 255 / 0.8) 0 0.8px, transparent 1.8px),
+    radial-gradient(circle at 89% 21%, rgb(229 241 255 / 0.6) 0 0.6px, transparent 1.6px),
+    radial-gradient(circle at 9% 31%, rgb(255 255 255 / 0.5) 0 0.6px, transparent 1.6px),
+    radial-gradient(circle at 58% 35%, rgb(255 255 255 / 0.45) 0 0.5px, transparent 1.5px),
+    radial-gradient(circle at 92% 35%, rgb(255 246 231 / 0.4) 0 0.5px, transparent 1.5px);
+  background-size: cover;
+  background-repeat: no-repeat;
+  mix-blend-mode: screen;
+}
+
+[data-scene="night"] .legacy-coast-stars {
+  opacity: 0.82;
+  animation: legacy-stars-breathe 7s ease-in-out infinite alternate;
+}
+
+/* ---- atmosphere ---- */
+.legacy-coast-haze {
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 10%, rgb(255 249 238 / 0.18), transparent 48%),
+    linear-gradient(180deg, transparent 55%, rgb(255 244 227 / 0.06) 75%, rgb(255 255 255 / 0.05));
+}
+
+[data-scene="night"] .legacy-coast-haze {
+  background:
+    radial-gradient(ellipse at 50% -4%, rgb(88 135 208 / 0.2), transparent 52%),
+    linear-gradient(180deg, transparent 46%, rgb(20 36 62 / 0.14) 76%, rgb(10 21 43 / 0.26));
+}
+
+.legacy-coast-vignette {
+  inset: 0;
+  background:
+    radial-gradient(ellipse 120% 96% at 50% 40%, transparent 67%, rgb(28 37 48 / 0.14) 100%),
+    linear-gradient(90deg, rgb(255 255 255 / 0.04), transparent 12%, transparent 88%, rgb(255 255 255 / 0.04));
+}
+
+[data-scene="night"] .legacy-coast-vignette {
+  background:
+    radial-gradient(ellipse 120% 96% at 50% 38%, transparent 62%, rgb(4 12 26 / 0.36) 100%),
+    linear-gradient(90deg, rgb(5 14 28 / 0.18), transparent 16%, transparent 84%, rgb(5 14 28 / 0.2));
+}
+
+/* A private chat wallpaper still owns the chat page. */
+.app-shell:has(.private-chat-background) .legacy-coast-backdrop {
+  visibility: hidden;
+}
+
+@keyframes legacy-coast-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes legacy-cloud-drift {
+  from { transform: translate3d(-1.5%, 0, 0) rotate(-5deg); }
+  to { transform: translate3d(2.5%, -0.6%, 0) rotate(-4deg); }
+}
+
+@keyframes legacy-stars-breathe {
+  from { opacity: 0.63; }
+  to { opacity: 0.9; }
+}
+
+@media (min-aspect-ratio: 4 / 3) {
+  .legacy-coast-photo {
+    object-position: center 36%;
+  }
+
+  .legacy-coast-sun {
+    left: 11%;
+    top: 10%;
+  }
+
+  .legacy-coast-cloud-a {
+    left: 6%;
+    top: 16%;
+    width: 38%;
+  }
+
+  .legacy-coast-cloud-b {
+    right: 10%;
+    top: 24%;
+    width: 30%;
+  }
+
+  .legacy-coast-moon {
+    right: 10%;
+    top: 9%;
+  }
+}
+
+@media (max-width: 600px) {
+  .legacy-coast-cloud {
+    filter: blur(12px);
+  }
+
+  .legacy-coast-sun {
+    width: 26vw;
+    min-width: 84px;
+    max-width: 142px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .legacy-coast-backdrop,
+  .legacy-coast-cloud,
+  .legacy-coast-stars {
+    animation: none !important;
+  }
+}
+
+:root[data-dengta-reduced-motion="true"] .legacy-coast-backdrop,
+:root[data-dengta-reduced-motion="true"] .legacy-coast-cloud,
+:root[data-dengta-reduced-motion="true"] .legacy-coast-stars {
+  animation: none !important;
+}

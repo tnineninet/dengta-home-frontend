@@ -1,10 +1,49 @@
 import { THEME_PRESETS } from "./dengta-theme.js";
 import { useGlassScrubber } from "./use-glass-scrubber";
+import "./theme-background-switcher.css";
 
 const APPEARANCE_OPTIONS = [
   { id: "auto", label: "Auto" },
   { id: "day", label: "Day" },
   { id: "night", label: "Night" },
+];
+
+const BACKGROUND_OPTIONS = [
+  {
+    id: "auto",
+    label: "实时天空",
+    hint: "天气、光线与云层实时变化",
+    preview: "linear-gradient(155deg, #8ec8e2 0%, #b7dde1 42%, #f8d99c 100%)",
+    appearance: "auto",
+  },
+  {
+    id: "legacy",
+    label: "旧版海岸",
+    hint: "经典晨昏色，跟着时间自动变",
+    image: "/assets/coast-video/coast-twilight.webp",
+    appearance: "auto",
+  },
+  {
+    id: "legacy-day",
+    label: "晨光海岸",
+    hint: "固定明亮，奶油色海风",
+    image: "/assets/coast-video/coast-day.webp",
+    appearance: "day",
+  },
+  {
+    id: "legacy-dusk",
+    label: "暮色海岸",
+    hint: "粉橘晚霞，旧版黄昏感",
+    image: "/assets/coast-video/coast-twilight.webp",
+    appearance: "day",
+  },
+  {
+    id: "legacy-night",
+    label: "星夜灯塔",
+    hint: "固定夜晚，星星和月亮",
+    image: "/assets/coast-video/coast-night.webp",
+    appearance: "night",
+  },
 ];
 
 export default function ThemeStudio({
@@ -56,6 +95,44 @@ export default function ThemeStudio({
             <small>{preset.label}</small>
           </button>
         ))}
+      </div>
+
+      <div className="theme-background-control">
+        <span>
+          <strong>背景</strong>
+          <small>换回你喜欢的旧版海岸，或继续用实时天空</small>
+        </span>
+        <div className="theme-background-grid" role="group" aria-label="背景模式">
+          {BACKGROUND_OPTIONS.map((option) => (
+            <button
+              type="button"
+              className={preferences.background === option.id ? "active" : ""}
+              aria-pressed={preferences.background === option.id}
+              key={option.id}
+              onClick={() =>
+                updateTheme({
+                  background: option.id,
+                  ...(option.appearance ? { appearance: option.appearance } : {}),
+                })
+              }
+            >
+              <span
+                className="theme-background-swatch"
+                style={
+                  option.image
+                    ? { backgroundImage: `url(${option.image})` }
+                    : { background: option.preview }
+                }
+                aria-hidden="true"
+              />
+              <span className="theme-background-copy">
+                <strong>{option.label}</strong>
+                <small>{option.hint}</small>
+              </span>
+              {preferences.background === option.id ? <em aria-hidden="true">✓</em> : null}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="theme-control-list">
