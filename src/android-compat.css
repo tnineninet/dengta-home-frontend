@@ -285,3 +285,52 @@ html.dengta-flat-paint .status-flow-field {
     animation: none !important;
   }
 }
+
+/* Removing blur on phones must not leave a see-through drawer or glass cards.
+   Use the resolved theme card color as an opaque surface so the sidebar and
+   settings remain readable over the wallpaper. */
+@media (max-width: 820px), (pointer: coarse) {
+  .sidebar {
+    background: rgb(var(--theme-card-rgb)) !important;
+    color: var(--theme-ink) !important;
+  }
+
+  .sidebar .brand-icon {
+    color: var(--theme-ink);
+    background: color-mix(in srgb, var(--theme-ink) 8%, transparent);
+    border-color: color-mix(in srgb, var(--theme-ink) 14%, transparent);
+  }
+
+  .sidebar-footer,
+  .sidebar-account-slot {
+    color: var(--theme-muted) !important;
+  }
+
+  .settings-page .settings-card,
+  .settings-sheet .settings-card,
+  .settings-page .settings-folder {
+    background: rgb(var(--theme-card-rgb)) !important;
+  }
+}
+
+/* The opaque mobile drawer needs dark-on-light brand text and a readable
+   settings surface instead of the wallpaper showing through copy. */
+@media (max-width: 820px), (pointer: coarse) {
+  .sidebar .brand strong {
+    color: var(--theme-ink) !important;
+  }
+
+  .sidebar .brand small {
+    color: var(--theme-muted) !important;
+  }
+
+  .sidebar .brand {
+    border-bottom-color: color-mix(in srgb, var(--theme-ink) 14%, transparent);
+  }
+
+  .settings-sheet,
+  .settings-sheet-scroll,
+  .settings-page {
+    background: var(--theme-background, #f7f2ed) !important;
+  }
+}

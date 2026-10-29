@@ -9258,8 +9258,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             promptLabel="⤓ 安装到手机/电脑"
             guidanceLabel="⤓ 安装到手机/电脑"
             onFeedback={setNotice}
-            showFeedback={false}
           />
+          <a className="install-button" href="/download" target="_blank" rel="noreferrer">⤓ 下载安卓安装包</a>
           <button type="button" className="install-button" onClick={() => window.dispatchEvent(new Event("dengta:check-app-updates"))}>检查应用更新</button>
           <button type="button" className="install-button" onClick={() => window.dispatchEvent(new Event("dengta:app-update-preferences"))}>更新提醒设置</button>
           </div>
@@ -10683,6 +10683,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         {accountControl && (
           <div className="sidebar-account-slot">{accountControl}</div>
         )}
+
+        <a
+          className="sidebar-settings-button"
+          href="/download"
+          target="_blank"
+          rel="noreferrer"
+          style={{ textDecoration: "none" }}
+        >
+          <span aria-hidden="true">⤓</span>
+          下载 Android App
+        </a>
 
         <button
           type="button"

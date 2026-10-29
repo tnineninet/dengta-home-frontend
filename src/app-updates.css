@@ -19,3 +19,9 @@
 }
 
 .app-update-notes-title { margin: 14px 0 6px; font-size: 13px; letter-spacing: .04em; color: #7c6758; }
+
+/* Download/install entries use anchor tags; keep them looking like the
+   surrounding settings buttons, not underlined text links. */
+.settings-app-actions .install-button {
+  text-decoration: none;
+}
