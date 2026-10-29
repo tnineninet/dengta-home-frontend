@@ -234,3 +234,25 @@ html.dengta-flat-paint .status-flow-field {
   position: absolute;
   inset: -11px -6px;
 }
+
+/* Landscape + software keyboard: only while the app marks the keyboard open,
+   shrink/hide the floating stack and anchor the composer to the visual viewport. */
+@media (orientation: landscape) and (max-height: 330px) {
+  :root[data-keyboard-open="true"] .chat-presence-stack {
+    display: none !important;
+  }
+
+  :root[data-keyboard-open="true"] .composer-wrap {
+    padding-top: 2px;
+  }
+
+  :root[data-keyboard-open="true"] .main-panel.view-chat .composer-wrap {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+  }
+}
+
+
