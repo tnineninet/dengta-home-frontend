@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import vm from "node:vm";
 import { fileURLToPath } from "node:url";
 import {
   applyThemePreferences,
@@ -45,6 +46,28 @@ test("font preference defaults to the stable complete CJK face", () => {
   assert.equal(normalizeThemePreferences({ fontMode: "unknown" }).fontMode, "standard");
   assert.match(studio, /DengTa 标准/);
   assert.match(studio, /跟随系统/);
+});
+
+test("the inline boot script really applies the phone/desktop font preference", () => {
+  const script = /<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/i.exec(html)?.[1] || "";
+  assert.ok(script.length > 50, "inline font boot script must exist");
+  const run = ({ stored = null, mobile = true, hasMatchMedia = true } = {}) => {
+    const dataset = {};
+    const windowObject = {};
+    if (hasMatchMedia) {
+      windowObject.matchMedia = () => ({ matches: mobile });
+    }
+    vm.runInNewContext(script, {
+      window: windowObject,
+      localStorage: { getItem: () => stored },
+      document: { documentElement: { dataset } },
+    });
+    return dataset.dengtaFontMode;
+  };
+  assert.equal(run({ mobile: true }), "system");
+  assert.equal(run({ mobile: false }), "standard");
+  assert.equal(run({ mobile: true, stored: "standard" }), "standard");
+  assert.equal(run({ mobile: false, hasMatchMedia: false }), "standard");
 });
 
 test("first visit on a phone defaults to the system font instead of the 7.4MB face", () => {
