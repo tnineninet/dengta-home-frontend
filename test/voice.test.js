@@ -8,6 +8,7 @@ import {
   VOICE_STATE_LABELS,
   VOICE_TURN_TIMEOUT_MS,
   buildVoiceTurnFormData,
+  createVoiceTurnRequest,
   formatVoiceConfidence,
   hydrateStoredVoiceAnalysis,
   hydrateStoredVoiceMessages,
@@ -338,3 +339,33 @@ console.log("voice helper tests passed");
     globalThis.fetch = originalFetch;
   }
 }
+
+
+// Aborting before authSession resolves must never open/send the request.
+{
+  class FakeXHR {
+    constructor() {
+      this.opened = false; this.sent = false; this.aborted = false;
+      this.upload = { addEventListener() {} };
+    }
+    addEventListener() {}
+    open() { this.opened = true; }
+    setRequestHeader() {}
+    send() { this.sent = true; }
+    abort() { this.aborted = true; }
+  }
+  const fake = new FakeXHR();
+  const request = createVoiceTurnRequest({}, {
+    XMLHttpRequestImpl: class { constructor() { return fake; } },
+    authSession: { getRequestContext: () => new Promise((resolve) => setTimeout(() => resolve({}), 40)) },
+  });
+  const caught = request.promise.catch((error) => error);
+  request.abort();
+  request.abort();
+  const error = await caught;
+  await new Promise((resolve) => setTimeout(resolve, 70));
+  assert.equal(error.name, "AbortError");
+  assert.equal(fake.opened, false, "aborted request must not open XHR");
+  assert.equal(fake.sent, false, "aborted request must not upload audio");
+}
+console.log("Voice upload cancellation tests passed");

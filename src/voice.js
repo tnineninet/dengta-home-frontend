@@ -294,8 +294,10 @@ export function createVoiceTurnRequest(
   );
   let settled = false;
   let uploadReported = false;
+  let rejectTurn = null;
 
   const promise = new Promise((resolve, reject) => {
+    rejectTurn = reject;
     function finishUpload() {
       if (uploadReported) return;
       uploadReported = true;
@@ -392,7 +394,16 @@ export function createVoiceTurnRequest(
   return {
     promise,
     abort() {
-      if (!settled) xhr.abort();
+      if (settled) return;
+      const error = new Error("本次语音请求已取消。");
+      error.name = "AbortError";
+      settled = true;
+      rejectTurn?.(error);
+      try {
+        xhr.abort();
+      } catch {
+        // Some WebViews throw when aborting an XHR that never opened.
+      }
     },
   };
 }
