@@ -107,6 +107,7 @@ assert.deepEqual(
   cssCascade.stylesheets.map((stylesheet) => stylesheet.name),
   [
     "index.css",
+    "refusal-banner.css",
     "cozy-theme.css",
     "auth.css",
     "native-feel.css",
@@ -140,6 +141,7 @@ assert.deepEqual(
   narrowCssCascade.stylesheets.map((stylesheet) => stylesheet.name),
   [
     "index.css",
+    "refusal-banner.css",
     "cozy-theme.css",
     "auth.css",
     "native-feel.css",
