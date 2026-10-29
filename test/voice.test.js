@@ -170,7 +170,7 @@ assert.equal(formData.get("file").type, "audio/webm");
 assert.equal(VOICE_STATES.recording, "recording");
 assert.match(VOICE_STATE_LABELS.recording, /松开发送/);
 assert.match(VOICE_STATE_LABELS.speaking, /播放/);
-assert.ok(VOICE_TURN_TIMEOUT_MS <= 120_000);
+assert.ok(VOICE_TURN_TIMEOUT_MS <= 150_000);
 assert.equal(voiceBlocksComposer(VOICE_STATES.requesting), true);
 assert.equal(voiceBlocksComposer(VOICE_STATES.recording), true);
 assert.equal(voiceBlocksComposer(VOICE_STATES.uploading), true);

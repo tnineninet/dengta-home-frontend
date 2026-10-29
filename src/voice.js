@@ -3,7 +3,7 @@ import { authSession as defaultAuthSession } from "./auth-session.js";
 
 export const VOICE_MAX_DURATION_MS = 60_000;
 export const VOICE_MIN_DURATION_MS = 650;
-export const VOICE_TURN_TIMEOUT_MS = 120_000;
+export const VOICE_TURN_TIMEOUT_MS = 150_000;
 
 export const VOICE_STATES = Object.freeze({
   idle: "idle",
