@@ -1,8 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
-  ArrowDown, ArrowUp, BookOpen, Brain, Brush, Clapperboard, Compass,
-  CornerDownLeft, FolderKanban, Heart, Map, MessageCircle, Music, PawPrint,
-  Plus, Search, Settings, Sparkles, Swords, Trophy, Tv, Utensils, X,
+  ArrowDown, ArrowUp, AtSign, BookOpen, Brain, Brush, Clapperboard, Compass,
+  CornerDownLeft, FolderKanban, Heart, Map, MessageCircle, MessagesSquare, Music,
+  PawPrint, Plus, Search, Settings, Sparkles, Swords, Trophy, Tv, Utensils, X,
 } from "lucide-react";
 import "./command-palette.css";
 import { FEATURE_DETAILS, FEATURE_LABELS } from "./feature-navigation.js";
@@ -24,6 +24,9 @@ const VIEW_ICONS = {
   discover: Compass,
   takeout: Utensils,
   workspace: FolderKanban,
+  x: AtSign,
+  wechat: MessageCircle,
+  qq: MessagesSquare,
 };
 
 function normalize(value) {
@@ -37,6 +40,26 @@ function matches(entry, terms) {
 function focusTarget(selector) {
   const node = globalThis.document?.querySelector?.(selector);
   if (node && typeof node.focus === "function") node.focus({ preventScroll: true });
+}
+
+const RECENT_KEY = "dengta.command.recent.v1";
+
+function readRecentIds() {
+  try {
+    const raw = globalThis.localStorage?.getItem?.(RECENT_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string").slice(0, 6) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeRecentIds(ids) {
+  try {
+    globalThis.localStorage?.setItem?.(RECENT_KEY, JSON.stringify(ids.slice(0, 6)));
+  } catch {
+    // Private mode/storage denial shouldn't break the palette.
+  }
 }
 
 export default function CommandPalette({
@@ -53,6 +76,7 @@ export default function CommandPalette({
 }) {
   const [query, setQuery] = useState("");
   const [highlighted, setHighlighted] = useState(0);
+  const [recentIds, setRecentIds] = useState(readRecentIds);
   const inputRef = useRef(null);
   const dialogRef = useRef(null);
   const previouslyFocused = useRef(null);
@@ -110,6 +134,19 @@ export default function CommandPalette({
     if (!terms.length) return entries;
     return entries.filter(entry => matches(entry, terms));
   }, [entries, query]);
+
+  const recentEntries = useMemo(
+    () => recentIds.map((id) => entries.find((entry) => entry.id === id)).filter(Boolean).slice(0, 4),
+    [entries, recentIds],
+  );
+
+  const remember = (id) => {
+    setRecentIds((current) => {
+      const next = [id, ...current.filter((item) => item !== id)].slice(0, 6);
+      writeRecentIds(next);
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (!open) {
@@ -173,6 +210,7 @@ export default function CommandPalette({
 
   function execute(entry) {
     if (!entry) return;
+    remember(entry.id);
     if (entry.kind === "view") {
       shouldRestoreRef.current = false;
       onNavigate?.(entry.view);
@@ -233,7 +271,19 @@ export default function CommandPalette({
             aria-activedescendant={filtered[highlighted] ? `${listId}-${filtered[highlighted].id}` : undefined}
             autoComplete="off"
           />
+          {query ? <button type="button" className="command-palette-clear" aria-label="清空搜索" onClick={() => { setQuery(""); setHighlighted(0); inputRef.current?.focus(); }}><X aria-hidden="true" /></button> : null}
         </div>
+        {!query && recentEntries.length ? (
+          <div className="command-palette-recent" aria-label="最近使用">
+            <span>最近</span>
+            {recentEntries.map((entry) => (
+              <button type="button" key={`recent-${entry.id}`} onClick={() => execute(entry)}>
+                <span aria-hidden="true">{entry.icon}</span>
+                {entry.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <ul id={listId} className="command-palette-results" role="listbox" aria-label="命令结果">
           {filtered.length ? filtered.map((entry, index) => (
             <li key={entry.id}>
@@ -252,7 +302,7 @@ export default function CommandPalette({
             </li>
           )) : <li className="command-palette-empty" role="status">没有找到匹配的入口，换个词试试</li>}
         </ul>
-        <footer className="command-palette-footer"><span><ArrowUp aria-hidden="true" /><ArrowDown aria-hidden="true" />选择</span><span><CornerDownLeft aria-hidden="true" />确认</span><span>Esc 关闭</span></footer>
+        <footer className="command-palette-footer"><span className="command-palette-count">{filtered.length} 项</span><span><ArrowUp aria-hidden="true" /><ArrowDown aria-hidden="true" />选择</span><span><CornerDownLeft aria-hidden="true" />确认</span><span>Esc 关闭</span></footer>
       </section>
     </div>
   );

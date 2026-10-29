@@ -1,10 +1,11 @@
 export const FEATURE_GROUPS = [
   { label: "日常陪伴", ids: ["chat", "cotton", "moments", "diary", "art"] },
-  { label: "一起体验", ids: ["together", "cast", "music", "duel", "nursery"] },
+  { label: "一起体验", ids: ["together", "cast", "duel", "nursery"] },
+  { label: "一起听与连接", ids: ["music", "x", "wechat", "qq"] },
   { label: "记录与探索", ids: ["memories", "treasure", "achievements", "discover", "takeout", "workspace"] },
 ];
-export const FEATURE_LABELS = { chat: "聊天", moments: "动态", diary: "日记", art: "涂鸦画室", nursery: "家庭", cotton: "小棉花", together: "一起看", cast: "放映厅", music: "听歌", duel: "互动挑战", memories: "记忆", treasure: "藏宝地图", achievements: "成就", discover: "发现", takeout: "外卖", workspace: "工作区" };
-export const QUICK_FEATURES = ["chat", "together", "cast", "cotton"];
+export const FEATURE_LABELS = { chat: "聊天", moments: "动态", diary: "日记", art: "涂鸦画室", nursery: "家庭", cotton: "小棉花", together: "一起看", cast: "放映厅", music: "一起听", x: "X / Twitter", wechat: "微信", qq: "QQ", duel: "互动挑战", memories: "记忆", treasure: "藏宝地图", achievements: "成就", discover: "发现", takeout: "外卖", workspace: "工作区" };
+export const QUICK_FEATURES = ["chat", "music", "wechat", "x"];
 
 export const FEATURE_DETAILS = {
   chat: { hint: "接着聊，也能一起编故事", keywords: "对话 消息 故事 接龙 游戏 语音" },
@@ -14,7 +15,10 @@ export const FEATURE_DETAILS = {
   art: { hint: "画张涂鸦，或收到一份小礼物", keywords: "绘画 图片 画册 创作 自主 惊喜 头像 表情包" },
   together: { hint: "选个视频，一起看", keywords: "电影 视频 观影 放映厅 投屏 哔哩哔哩 B站" },
   cast: { hint: "投屏到这里，和别人一起看", keywords: "放映厅 投屏 DLNA 一起看 房间 邀请码 电视" },
-  music: { hint: "放一首歌，一起听", keywords: "音乐 歌单 网易云 一起听" },
+  music: { hint: "歌单、网易云、一起听同步播放", keywords: "音乐 歌单 网易云 一起听 播放器" },
+  x: { hint: "X / Twitter 发帖、搜索与私信", keywords: "X Twitter 推特 发帖 推文 搜索 私信" },
+  wechat: { hint: "微信绑定与人设/记忆同步", keywords: "微信 wechat 绑定 通道 同步 人设 记忆" },
+  qq: { hint: "QQ 绑定与人设/记忆同步", keywords: "QQ 绑定 通道 同步 人设 记忆 SnowLuma" },
   duel: { hint: "来一场互动挑战", keywords: "对决 比赛 游戏 duel" },
   nursery: { hint: "看看你们的小家庭", keywords: "养成 家人 孩子 宝宝 family" },
   memories: { hint: "查看和管理聊天记忆", keywords: "长期记忆 MCP Ombre ombrrbrain Kiwi 回忆" },

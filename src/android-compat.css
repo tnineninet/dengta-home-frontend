@@ -566,3 +566,125 @@ html.dengta-flat-paint .status-flow-field {
   min-width: 0;
   max-width: 100%;
 }
+
+/* Floating command dock and palette always use a cream surface, so text must
+   stay dark even when the app is in night appearance. */
+.mobile-command-dock {
+  color: #2d2530;
+}
+
+.mobile-command-dock-key {
+  color: #2d2530;
+}
+
+.command-palette {
+  color: #2d2530;
+}
+
+.command-palette-header h2 {
+  color: #2d2530;
+}
+
+.command-palette-search input {
+  color: #2d2530;
+}
+
+.command-palette-row {
+  color: #2d2530;
+}
+
+.command-palette-row-copy strong {
+  color: #2d2530;
+}
+
+.command-palette-row-copy small,
+.command-palette-empty,
+.command-palette-footer {
+  color: #776d78;
+}
+
+.commit-palette-close,
+.command-palette-close {
+  color: #2d2530;
+}
+
+/* Goldfish tablet/desktop pass: Together-*.css is lazy-loaded after this file
+   (same specificity), so force the one-column layout at tablet widths and stop
+   the quick-start row from squeezing its copy to one or two characters. */
+@media (max-width: 820px) {
+  .main-panel .together-page .together-layout {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .main-panel .together-page,
+  .main-panel .together-page > *,
+  .main-panel .together-page .together-layout > * {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+}
+
+@media (min-width: 821px) {
+  .together-page .music-quick-start {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .together-page .music-quick-start-copy {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .together-page .music-quick-start-copy strong {
+    overflow: visible;
+    white-space: normal;
+    text-overflow: clip;
+  }
+
+  .together-page .music-quick-start-actions {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .together-page .music-quick-start-actions select {
+    flex: 1 1 180px;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .together-page .music-quick-start-actions .together-primary {
+    flex: 0 1 auto;
+    min-width: 0;
+    white-space: normal;
+  }
+}
+
+@media (max-width: 820px), (max-height: 560px) and (max-width: 960px) {
+  .main-panel {
+    overflow-x: clip;
+  }
+
+  .notice {
+    width: auto;
+    max-width: calc(100% - 24px);
+    margin-inline: 12px;
+    box-sizing: border-box;
+  }
+}
+
+/* Channel hub tabs and rows are cream surfaces; keep their labels dark in the
+   night theme instead of inheriting a light page ink. */
+.channel-hub-tabs button {
+  color: #5c545d;
+}
+.channel-hub-tabs button.is-active {
+  color: #2d2530;
+}
+.channel-hub-sections,
+.channel-hub-section-group h4,
+.channel-hub-field,
+.channel-hub-copy,
+.channel-hub-note,
+.channel-hub-empty-line {
+  color: #5c545d;
+}

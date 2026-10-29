@@ -397,6 +397,8 @@ const ExternalMemoryConnections = lazy(
   () => import("./ExternalMemoryConnections"),
 );
 const McpDeviceCenter = lazy(() => import("./McpDeviceCenter"));
+const XHub = lazy(() => import("./XHub.jsx"));
+const ChannelHub = lazy(() => import("./ChannelHub.jsx"));
 const Nursery = lazy(() => import("./Nursery"));
 const OmbreMemories = lazy(() => import("./OmbreMemories"));
 const LocalMemorySummaries = lazy(() => import("./LocalMemorySummaries.jsx"));
@@ -883,7 +885,10 @@ const navItems = [
   { id: "cotton", icon: "✿", label: "小棉花" },
   { id: "together", icon: "▻", label: "Together" },
   { id: "cast", icon: "▣", label: "放映厅" },
-  { id: "music", icon: "🎵", label: "听歌" },
+  { id: "music", icon: "🎵", label: "一起听" },
+  { id: "x", icon: "𝕏", label: "X / Twitter" },
+  { id: "wechat", icon: "微", label: "微信" },
+  { id: "qq", icon: "Q", label: "QQ" },
   { id: "memories", icon: "◇", label: "Memory" },
   { id: "treasure", icon: "✉", label: "藏宝地图" },
   { id: "takeout", icon: "🛵", label: "外卖" },
@@ -11106,6 +11111,26 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           )}
           {activeView === "together" && renderTogether("together")}
           {activeView === "music" && renderTogether("music")}
+          {activeView === "x" && (
+            <Suspense fallback={<DeferredFeature label="正在连接 X…" />}>
+              <XHub
+                onOpenDeviceCenter={() => {
+                  openProviderRecovery();
+                  setSettingsFocusTarget("mcp-device-center");
+                }}
+              />
+            </Suspense>
+          )}
+          {activeView === "wechat" && (
+            <Suspense fallback={<DeferredFeature label="正在打开微信通道…" />}>
+              <ChannelHub channel="wechat" aiName={effectiveAiName} />
+            </Suspense>
+          )}
+          {activeView === "qq" && (
+            <Suspense fallback={<DeferredFeature label="正在打开 QQ 通道…" />}>
+              <ChannelHub channel="qq" aiName={effectiveAiName} />
+            </Suspense>
+          )}
           {activeView === "cast" && renderDlnaCastPlayer()}
           {activeView === "memories" && renderMemories()}
           {activeView === "treasure" && <Suspense fallback={<DeferredFeature label="正在寻找沿途来信…" />}><SurpriseMap key={privateMediaScope} scopeKey={privateMediaScope} aiName={effectiveAiName} /></Suspense>}

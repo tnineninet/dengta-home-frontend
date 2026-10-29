@@ -237,3 +237,75 @@
     animation: none;
   }
 }
+
+.command-palette-search {
+  position: relative;
+}
+
+.command-palette-clear {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  color: #77717a;
+  background: rgb(var(--theme-ink-rgb, 45 37 48) / 0.06);
+  cursor: pointer;
+}
+
+.command-palette-clear svg { width: 15px; height: 15px; }
+
+.command-palette-recent {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin: 0 16px 8px;
+}
+
+.command-palette-recent > span {
+  color: #8b8389;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.command-palette-recent button {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 4px;
+  max-width: 180px;
+  padding: 0 9px;
+  overflow: hidden;
+  border: 1px solid rgb(var(--theme-ink-rgb, 45 37 48) / 0.08);
+  border-radius: 999px;
+  color: #4f4750;
+  background: rgb(255 255 255 / 0.6);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.command-palette-recent button > span {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  opacity: 0.7;
+}
+
+.command-palette-recent button svg { width: 12px; height: 12px; }
+.command-palette-count { margin-right: auto; color: #8b8389; }
+
+@media (max-width: 600px), (max-height: 560px) and (max-width: 960px) {
+  .command-palette-recent {
+    margin-inline: 14px;
+  }
+}
