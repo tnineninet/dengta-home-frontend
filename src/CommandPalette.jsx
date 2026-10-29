@@ -1,7 +1,30 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { ArrowDown, ArrowUp, CornerDownLeft, Search, X } from "lucide-react";
+import {
+  ArrowDown, ArrowUp, BookOpen, Brain, Brush, Clapperboard, Compass,
+  CornerDownLeft, FolderKanban, Heart, Map, MessageCircle, Music, PawPrint,
+  Plus, Search, Settings, Sparkles, Swords, Trophy, Tv, Utensils, X,
+} from "lucide-react";
 import "./command-palette.css";
 import { FEATURE_DETAILS, FEATURE_LABELS } from "./feature-navigation.js";
+
+const VIEW_ICONS = {
+  chat: MessageCircle,
+  cotton: PawPrint,
+  moments: Sparkles,
+  diary: BookOpen,
+  art: Brush,
+  together: Clapperboard,
+  cast: Tv,
+  music: Music,
+  duel: Swords,
+  nursery: Heart,
+  memories: Brain,
+  treasure: Map,
+  achievements: Trophy,
+  discover: Compass,
+  takeout: Utensils,
+  workspace: FolderKanban,
+};
 
 function normalize(value) {
   return String(value || "").normalize("NFKC").toLowerCase().trim();
@@ -38,9 +61,9 @@ export default function CommandPalette({
   const listId = useId();
 
   const actions = useMemo(() => {
-    const result = [{ id: "new-chat", label: "新建对话", hint: "打开一个新的聊天", kind: "action", run: onCreateSession, icon: "＋" }];
-    result.push({ id: "open-settings", label: "打开设置", hint: "模型、外观、语音与数据", kind: "action", run: onOpenSettings, icon: "⚙" });
-    if (onReturnActivity) result.push({ id: "return-activity", label: "回到本次活动", hint: "返回一起看或一起听", kind: "action", run: onReturnActivity, icon: "↩" });
+    const result = [{ id: "new-chat", label: "新建对话", hint: "打开一个新的聊天", kind: "action", run: onCreateSession, icon: <Plus aria-hidden="true" /> }];
+    result.push({ id: "open-settings", label: "打开设置", hint: "模型、外观、语音与数据", kind: "action", run: onOpenSettings, icon: <Settings aria-hidden="true" /> });
+    if (onReturnActivity) result.push({ id: "return-activity", label: "回到本次活动", hint: "返回一起看或一起听", kind: "action", run: onReturnActivity, icon: <CornerDownLeft aria-hidden="true" /> });
     return result;
   }, [onCreateSession, onOpenSettings, onReturnActivity]);
 
@@ -51,7 +74,7 @@ export default function CommandPalette({
       hint: FEATURE_DETAILS[item.id]?.hint || "打开页面",
       kind: "view",
       view: item.id,
-      icon: item.icon || "•",
+      icon: VIEW_ICONS[item.id] ? (() => { const Icon = VIEW_ICONS[item.id]; return <Icon aria-hidden="true" />; })() : (item.icon || "•"),
       searchText: normalize([FEATURE_LABELS[item.id], item.label, FEATURE_DETAILS[item.id]?.hint, FEATURE_DETAILS[item.id]?.keywords].filter(Boolean).join(" ")),
     }));
     for (const category of settingsCategories) {
@@ -61,7 +84,7 @@ export default function CommandPalette({
         hint: category.description || "打开设置分类",
         kind: "settings",
         category: category.id,
-        icon: "⚙",
+        icon: <Settings aria-hidden="true" />,
         searchText: normalize([category.label, category.description, category.keywords].filter(Boolean).join(" ")),
       });
     }
@@ -72,7 +95,7 @@ export default function CommandPalette({
         hint: "打开最近对话",
         kind: "session",
         sessionId: session.id,
-        icon: "◌",
+        icon: <MessageCircle aria-hidden="true" />,
         searchText: normalize(session.title || ""),
       });
     }
@@ -191,6 +214,7 @@ export default function CommandPalette({
   return (
     <div className="command-palette-backdrop" role="presentation" onPointerDown={event => { if (event.target === event.currentTarget) closeAndRestore(); }}>
       <section ref={dialogRef} className="command-palette" role="dialog" aria-modal="true" aria-labelledby={titleId} onPointerDown={event => event.stopPropagation()}>
+        <span className="command-palette-grabber" aria-hidden="true" />
         <header className="command-palette-header">
           <h2 id={titleId}>命令面板</h2>
           <button type="button" className="command-palette-close" aria-label="关闭命令面板" onClick={closeAndRestore}><X aria-hidden="true" /></button>

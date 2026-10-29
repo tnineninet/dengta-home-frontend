@@ -93,6 +93,7 @@ import { createActivityReturn, resolveActivityReturn } from "./activity-return.j
 import AchievementGuide from "./AchievementGuide.jsx";
 import SlidingIndicator from "./SlidingIndicator.jsx";
 import CommandPalette from "./CommandPalette.jsx";
+import FloatingCommandTrigger from "./FloatingCommandTrigger.jsx";
 import CompanionInspiration from "./CompanionInspiration.jsx";
 import OperationErrorHelp from "./OperationErrorHelp.jsx";
 import { describeOperationError } from "./operation-error-help.js";
@@ -11114,17 +11115,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       </div>
 
       {activeView === "chat" && (
-        <button
+        <FloatingCommandTrigger
           ref={mobileCommandButtonRef}
-          type="button"
-          className="mobile-command-trigger"
-          aria-label="打开命令面板"
-          aria-haspopup="dialog"
-          aria-expanded={commandPaletteOpen}
-          onClick={() => setCommandPaletteOpen(true)}
-        >
-          <span aria-hidden="true">⌘K</span>
-        </button>
+          open={commandPaletteOpen}
+          onOpen={() => setCommandPaletteOpen(true)}
+        />
       )}
 
       {isSettingsOpen && (
