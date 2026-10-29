@@ -116,6 +116,10 @@ export default function CompanionProfile({
 
   const profile = payload.profile;
   const learned = hasLearnedProfileDetails(profile);
+  const latestProfileVersion = payload.versions.find(
+    (version) => version.version === payload.latest_version,
+  );
+  const latestProfileReason = latestProfileVersion?.change_reason?.trim() || "";
 
   return (
     <section className="companion-profile" aria-labelledby="profile-title">
@@ -209,6 +213,14 @@ export default function CompanionProfile({
                 </article>
               ))}
             </div>
+
+            {!learned && latestProfileReason ? (
+              <div className="profile-evidence-note" role="note">
+                <strong>最近从聊天里读到的线索</strong>
+                <p>{latestProfileReason}</p>
+                <small>这些线索已经留档；下次刷新会继续尝试整理成性格与偏好条目。</small>
+              </div>
+            ) : null}
 
             <div className="profile-identity-card">
               <div className="profile-section-heading">

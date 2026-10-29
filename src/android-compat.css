@@ -362,3 +362,70 @@ html.dengta-flat-paint .status-flow-field {
   min-height: 44px;
   place-items: center;
 }
+
+/* Settings now exposes the same memory/profile data that used to live only on
+   the memory page. Keep the feature components inside the settings sheet from
+   inheriting full-page spacing. */
+.settings-memory-profile-card {
+  display: grid;
+  gap: 16px;
+}
+
+.settings-memory-profile-card .settings-card-heading {
+  align-items: flex-start;
+}
+
+.settings-memory-profile-card .companion-profile {
+  margin: 0;
+  padding: 4px 0 0;
+  border-bottom: 0;
+}
+
+.settings-memory-profile-card .local-memory-summaries {
+  margin-top: 0;
+}
+
+.settings-inline-button {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid rgb(var(--theme-accent-rgb, 134 90 105) / 0.28);
+  border-radius: 13px;
+  color: var(--theme-ink);
+  background: rgb(var(--theme-card-rgb, 255 255 255) / 0.72);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.settings-inline-button:hover {
+  background: rgb(var(--theme-card-rgb, 255 255 255) / 0.94);
+}
+
+.profile-evidence-note {
+  display: grid;
+  gap: 5px;
+  margin: 12px 0 16px;
+  padding: 13px 15px;
+  border: 1px dashed rgb(var(--theme-accent-rgb, 134 90 105) / 0.34);
+  border-radius: 14px;
+  color: var(--theme-ink);
+  background: rgb(var(--theme-accent-rgb, 134 90 105) / 0.06);
+}
+
+.profile-evidence-note strong {
+  font-size: 12px;
+}
+
+.profile-evidence-note p {
+  margin: 0;
+  color: var(--theme-ink);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.profile-evidence-note small {
+  color: var(--theme-muted);
+  font-size: 11px;
+}

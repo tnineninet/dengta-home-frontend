@@ -9441,6 +9441,54 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             </div>
           )}
 
+            {settingsCategory === "persona" && (
+              <>
+                <div className="settings-card settings-memory-profile-card">
+                  <div className="settings-card-heading">
+                    <div>
+                      <span className="settings-kicker">MEMORY</span>
+                      <h3>记忆、性格与对话摘要</h3>
+                      <p>伴侣档案、长期记忆和对话摘要都在这里；也可以打开独立记忆页管理。</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="settings-inline-button"
+                      onClick={() => {
+                        closeSettingsPanel();
+                        changeView("memories");
+                      }}
+                    >
+                      打开记忆页
+                    </button>
+                  </div>
+                  <Suspense fallback={<DeferredFeature label="正在打开伴侣档案…" />}>
+                    <CompanionProfile
+                      aiName={effectiveAiName}
+                      onNotice={setNotice}
+                      onOpenCreativeStudio={() => {
+                        closeSettingsPanel();
+                        changeView("art");
+                      }}
+                    />
+                  </Suspense>
+                  <Suspense fallback={<DeferredFeature label="正在打开对话摘要…" />}>
+                    <LocalMemorySummaries
+                      key={privateMediaScope}
+                      scopeKey={privateMediaScope}
+                      conversationId={activeSessionId || ""}
+                      items={memories}
+                      drafts={memoryDrafts}
+                      onItemsChange={setMemories}
+                      onDraftsChange={setMemoryDrafts}
+                      onNotice={setNotice}
+                    />
+                  </Suspense>
+                </div>
+                <Suspense fallback={<DeferredFeature label="正在打开外部记忆连接…" />}>
+                  <ExternalMemoryConnections key={privateMediaScope} scopeKey={privateMediaScope} />
+                </Suspense>
+              </>
+            )}
           {settingsCategory === "persona" && (
             <div className="settings-card prompt-settings-card">
             <div className="prompt-settings-heading">
@@ -10487,11 +10535,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   <CompanionCreativeSettings />
                 </Suspense>
               </>
-            )}
-            {settingsCategory === "persona" && (
-              <Suspense fallback={<DeferredFeature label="正在打开外部记忆连接…" />}>
-                    <ExternalMemoryConnections key={privateMediaScope} scopeKey={privateMediaScope} />
-              </Suspense>
             )}
             {settingsCategory === "devices" && (
               <Suspense fallback={<DeferredFeature label="正在打开设备连接…" />}>
