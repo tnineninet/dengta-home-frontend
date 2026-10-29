@@ -729,8 +729,20 @@ html.dengta-flat-paint .status-flow-field {
     min-height: 120px;
   }
   .main-panel.view-chat:has(.connection-recovery) .composer-wrap {
-    max-height: calc(100dvh - 44px - 120px);
+    /* recovery banner itself is ~68px; it was making multi-line composers
+       overflow the viewport by 16px. Keep the composer usable via internal scroll. */
+    max-height: calc(100dvh - 44px - 120px - 68px);
     overflow-y: auto;
     overscroll-behavior: contain;
+  }
+}
+
+
+/* Short landscape: the draggable command dock can sit over the send button.
+   Command search remains available through the app menu/keyboard; prioritize
+   a fully clickable composer in this constrained orientation. */
+@media (orientation: landscape) and (max-height: 560px) {
+  .mobile-command-dock {
+    display: none !important;
   }
 }
