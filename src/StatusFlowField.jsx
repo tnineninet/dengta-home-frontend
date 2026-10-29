@@ -36,10 +36,10 @@ export default function StatusFlowField({ active }) {
 
   useEffect(() => {
     if (!active || reduceMotion) return undefined;
-    // The fluid field is a large per-frame canvas/WebGL workload. On phones the
-    // status sheet is already the most expensive surface; keep a static glass
-    // background there so opening it does not stall message scrolling.
-    if (globalThis.matchMedia?.("(max-width: 820px)").matches === true) {
+    // CPU/GPU save-data users get the static glass fallback; phones keep the
+    // original photon flow effect. The engine already uses a lower mobile dye
+    // resolution and only animates while the status sheet is open.
+    if (globalThis.navigator?.connection?.saveData === true) {
       canvasRef.current?.parentElement?.classList.add("status-flow-field--fallback");
       return undefined;
     }
