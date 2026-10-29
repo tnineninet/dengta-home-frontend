@@ -492,7 +492,17 @@ export async function requestExpressiveSpeech(
       );
     }
 
-    const blob = await response.blob();
+    let blob;
+    try {
+      blob = await response.blob();
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        const cancelled = new Error("自然语音已停止。", { cause: error });
+        cancelled.code = "speech_cancelled";
+        throw cancelled;
+      }
+      throw new Error("自然语音下载失败。", { cause: error });
+    }
     if (!(blob instanceof Blob) || blob.size === 0) {
       throw new Error("自然语音服务没有返回可播放的声音。");
     }

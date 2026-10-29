@@ -12249,13 +12249,6 @@ body,
 .music-netease-account .settings-card-heading { margin:0; }
 .music-netease-account .settings-card-heading h4 { margin:2px 0 4px; }
 .music-netease-account .settings-card-heading p { margin:0; color:var(--muted,#7a6b70); font-size:12.5px; line-height:1.55; }
-
-/* message-reference-button touch target: keep the visual compact, expand the hit box. */
-.message-reference-button {
-  min-width: 44px;
-  min-height: 44px;
-}
-
 /* Mobile compositing budget: glass blur is the most expensive continuous
    effect on Android WebView. Keep the look, drop the blur on small screens. */
 @media (max-width: 700px) {
@@ -12296,4 +12289,15 @@ html[data-dengta-scrolling="1"] *::after {
 }
 .music-lyric-line {
   min-height: 44px;
+}
+
+/* Android/tablet compositing budget: override even the high-specificity 820px
+   blur caps. 701–820px was still running 22–28px backdrop blur on tablets. */
+@media (max-width: 820px) {
+  html body *[class],
+  html body *[class]::before,
+  html body *[class]::after {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
 }

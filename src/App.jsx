@@ -4178,6 +4178,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       } catch (error) {
         console.warn("语音回复已保存，但刷新会话列表失败：", error.message);
       }
+      if (cancelled()) return;
 
       if (voiceAutoSpeakEnabled) {
         await playAssistantReply(

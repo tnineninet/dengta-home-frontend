@@ -6,10 +6,16 @@ import { useState } from "react";
 export default function RainbowAgentMark() {
   const [animate, setAnimate] = useState(false);
 
-  function startAnimation() {
-    const reduceMotion =
+  function startAnimation(event) {
+    if (event?.pointerType && event.pointerType !== "mouse") return;
+    const hoverPointer =
       typeof window !== "undefined" &&
-      window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+      window.matchMedia?.("(hover: hover) and (pointer: fine)")?.matches;
+    if (!hoverPointer) return;
+    const reduceMotion =
+      (typeof window !== "undefined" &&
+        window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) ||
+      document.documentElement.dataset.dengtaReducedMotion === "1";
     if (reduceMotion) return;
     setAnimate(true);
   }
