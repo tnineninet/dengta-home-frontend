@@ -159,3 +159,34 @@ html.dengta-flat-paint .status-flow-field {
 :root[data-dengta-android="true"] .main-panel.view-chat {
   padding-top: max(30px, env(safe-area-inset-top));
 }
+
+/* Short landscape phones (e.g. 844x390 after rotation): the portrait presence
+   stack and recovery banner can consume the whole viewport, pushing the
+   composer below the fold. Keep the composer reachable and every primary
+   control at 44px on this constrained orientation. */
+@media (orientation: landscape) and (max-height: 560px) {
+  .chat-presence-stack {
+    display: none !important;
+  }
+
+  .main-panel.view-chat .view-content {
+    min-height: 0;
+  }
+
+  .composer-wrap {
+    padding: 6px 12px max(6px, env(safe-area-inset-bottom));
+  }
+
+  .menu-button,
+  .new-chat-top {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .composer .composer-reply-options-button {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+  }
+}
