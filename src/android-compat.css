@@ -186,6 +186,10 @@ html.dengta-flat-paint .status-flow-field {
     overflow: visible;
   }
 
+  .main-panel.view-chat:has(.connection-recovery) .chat-presence-stack {
+    display: none !important;
+  }
+
   .main-panel.view-chat .view-content {
     min-height: 0;
   }
@@ -221,4 +225,12 @@ html.dengta-flat-paint .status-flow-field {
   .settings-home-search-field input {
     min-height: 44px;
   }
+}
+
+/* Message reference chips are visually small; keep the expanded hit area on
+   every width, not only the <=640px media query. */
+.message-reference-button::after {
+  content: "";
+  position: absolute;
+  inset: -11px -6px;
 }
