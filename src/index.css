@@ -12351,3 +12351,17 @@ html[data-dengta-scrolling="1"] *::after {
 .composer .composer-voice-button:disabled {
   opacity: 0.45;
 }
+
+
+/* Coarse-pointer touch targets: keep every real control at least 44px.
+   File inputs stay visually hidden by design and are excluded. */
+@media (pointer: coarse) {
+  button:not(.visually-hidden-file-input),
+  [role="button"],
+  select {
+    min-height: 44px;
+  }
+  button:not(.visually-hidden-file-input) {
+    min-width: 44px;
+  }
+}
