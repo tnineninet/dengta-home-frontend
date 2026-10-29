@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
 import { shouldAutoOpenReplyOptions } from "../src/reply-options-trigger.js";
 
 const message = (content, extra = {}) => ({
@@ -51,4 +52,13 @@ test("plain statements and streaming rows stay quiet", () => {
     false
   );
   assert.equal(shouldAutoOpenReplyOptions(null), false);
+});
+
+
+test("typing does not dismiss the reply options sheet", () => {
+  const app = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
+  assert.doesNotMatch(app, /addEventListener\("input",\s*closeOnType\)/);
+  assert.match(app, /document\.activeElement === messageInputRef\.current/);
+  const sheet = readFileSync(new URL("../src/ReplyOptionsSheet.jsx", import.meta.url), "utf8");
+  assert.match(sheet, /输入不会收起，发送或点收起后才关闭/);
 });

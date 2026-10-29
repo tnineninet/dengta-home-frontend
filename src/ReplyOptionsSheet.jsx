@@ -53,7 +53,7 @@ export default function ReplyOptionsPopover({
             ))}
           </div>
           <small className="reply-options-popover-hint">
-            点一句填进输入框，或者直接自己写；一开始输入就会收起
+            点一句填进输入框，或者直接自己写；输入不会收起，发送或点收起后才关闭
           </small>
         </>
       )}

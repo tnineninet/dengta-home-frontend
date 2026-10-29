@@ -1685,6 +1685,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
     const text = String(latest.content || "").trim();
     if (!text || !shouldAutoOpenReplyOptions(latest)) return undefined;
+    // Never interrupt an in-progress draft: opening a popover while the user
+    // is typing would steal the first input event and close the sheet.
+    if (String(message).trim()) return undefined;
     const messageId = String(latest.id || "");
     if (!messageId || replyOptionsAutoRef.current === messageId) {
       return undefined;
@@ -1693,6 +1696,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       // Don't open a reply popover behind a status panel/settings/sidebar;
       // it would become visible only after the overlay closes.
       if (
+        document.activeElement === messageInputRef.current ||
         document.querySelector(".sun-glass-floating-status-panel.is-open") ||
         document.querySelector(".settings-sheet") ||
         document.querySelector(".sidebar.open")
@@ -1703,7 +1707,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       void openReplyOptions();
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [messages, isSending, isCompanionResponding, activeSessionId]);
+  }, [messages, isSending, isCompanionResponding, activeSessionId, message]);
   const messageListRef = useRef(null);
   const chatScrollControllerRef = useRef(null);
   const settingsScrollRef = useRef(null);
@@ -1718,14 +1722,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   });
   const settingsScrollIdleTimerRef = useRef(null);
   const messageInputRef = useRef(null);
-  useEffect(() => {
-    if (!replyOptionsOpen) return undefined;
-    const input = messageInputRef.current;
-    if (!input) return undefined;
-    const closeOnType = () => setReplyOptionsOpen(false);
-    input.addEventListener("input", closeOnType);
-    return () => input.removeEventListener("input", closeOnType);
-  }, [replyOptionsOpen]);
   useLayoutEffect(() => {
     resizeComposerInput(messageInputRef.current);
   }, [message, activeView]);
