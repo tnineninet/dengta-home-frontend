@@ -1647,7 +1647,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [voiceElapsedMs, setVoiceElapsedMs] = useState(0);
   const [voiceError, setVoiceError] = useState("");
   const [voiceRetryAvailable, setVoiceRetryAvailable] = useState(false);
+  const [voiceRetryWaitSeconds, setVoiceRetryWaitSeconds] = useState(0);
+  const [voiceRetryInFlight, setVoiceRetryInFlight] = useState(false);
   const lastVoiceAttemptRef = useRef(null);
+  useEffect(() => {
+    if (voiceRetryWaitSeconds <= 0) return undefined;
+    const timer = window.setTimeout(
+      () => setVoiceRetryWaitSeconds((current) => Math.max(0, current - 1)),
+      1000,
+    );
+    return () => window.clearTimeout(timer);
+  }, [voiceRetryWaitSeconds]);
   const [lastVoiceAnalysis, setLastVoiceAnalysis] = useState(null);
   const [isComposerMenuOpen, setIsComposerMenuOpen] = useState(false);
   const [isStatusPanelExpanded, setIsStatusPanelExpanded] = useState(false);
@@ -4004,6 +4014,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   function cancelVoiceCapture({ message = "", updateState = true } = {}) {
+    lastVoiceAttemptRef.current = null;
+    setVoiceRetryAvailable(false);
+    setVoiceRetryWaitSeconds(0);
     voiceCaptureRunRef.current += 1;
     voicePointerHeldRef.current = false;
     voicePointerIdRef.current = null;
@@ -4251,6 +4264,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       }
       lastVoiceAttemptRef.current = null;
       setVoiceRetryAvailable(false);
+      setVoiceRetryWaitSeconds(0);
+      setVoiceRetryInFlight(false);
       setLastVoiceAnalysis(voiceAnalysis);
       setNotice(
         voiceAnalysis
@@ -4277,6 +4292,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     } catch (error) {
       if (cancelled()) return;
       if (requestHandle && voiceRequestRef.current !== requestHandle) return;
+      const retryAfterSeconds = Math.max(
+        0,
+        Math.floor(Number(error?.retryAfterSeconds) || 0),
+      );
+      setVoiceRetryWaitSeconds(retryAfterSeconds);
       setVoiceRetryAvailable(Boolean(lastVoiceAttemptRef.current));
       setVoiceFailure(error);
     } finally {
@@ -4298,12 +4318,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   async function retryVoiceTurn() {
     const attempt = lastVoiceAttemptRef.current;
-    if (!attempt) return;
+    if (!attempt || voiceRetryInFlight || voiceRetryWaitSeconds > 0) return;
     setVoiceError("");
     setNotice("");
-    await submitVoiceBlob(attempt.blob, attempt.durationMs, {
-      clientMessageId: attempt.clientMessageId,
-    });
+    setVoiceRetryInFlight(true);
+    try {
+      await submitVoiceBlob(attempt.blob, attempt.durationMs, {
+        clientMessageId: attempt.clientMessageId,
+      });
+    } finally {
+      setVoiceRetryInFlight(false);
+    }
   }
 
   async function finishVoiceCapture({ send = true } = {}) {
@@ -4382,6 +4407,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   async function beginVoiceCapture(event) {
+    lastVoiceAttemptRef.current = null;
+    setVoiceRetryAvailable(false);
+    setVoiceRetryWaitSeconds(0);
     if (event.pointerType === "mouse" && event.button !== 0) return;
     event.preventDefault();
 
@@ -8482,8 +8510,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                       type="button"
                       className="voice-retry-button"
                       onClick={retryVoiceTurn}
+                      disabled={
+                        voiceRetryInFlight || voiceRetryWaitSeconds > 0
+                      }
                     >
-                      重试这条语音
+                      {voiceRetryWaitSeconds > 0
+                        ? `${voiceRetryWaitSeconds} 秒后可重试`
+                        : "重试这条语音"}
                     </button>
                   )}
                 </div>

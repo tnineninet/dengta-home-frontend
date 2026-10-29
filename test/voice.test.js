@@ -427,6 +427,10 @@ assert.match(
   voiceAppSource,
   /const lastVoiceAttemptRef = useRef\(null\)/,
 );
+assert.match(voiceAppSource, /voiceRetryWaitSeconds/);
+assert.match(voiceAppSource, /voiceRetryInFlight/);
+assert.match(voiceAppSource, /秒后可重试/);
+assert.match(voiceAppSource, /retryAfterSeconds/);
 assert.match(voiceAppSource, /lastVoiceAttemptRef/);
 assert.match(voiceAppSource, /voiceRetryAvailable/);
 assert.match(voiceAppSource, /retryVoiceTurn/);
