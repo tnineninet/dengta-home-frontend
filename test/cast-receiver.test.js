@@ -171,7 +171,7 @@ test("receiver route, SW bypass, Vercel rewrite and controller contract are wire
   const androidManifest = JSON.parse(source("../public/updates/android.json"));
   assert.match(
     androidManifest.latest.apk_url,
-    /^https:\/\/nyyqizwrlmejpfdhgrnd\.supabase\.co\/storage\/v1\/object\/public\/dengta-updates\/apk\/DengTa-(?:latest|\d+\.\d+\.\d+(?:\.\d+)?)\.apk$/,
+    /^https:\/\/www\.dengtahome\.com\/supabase\/storage\/v1\/object\/public\/dengta-updates\/apk\/DengTa-(?:latest|\d+\.\d+\.\d+(?:\.\d+)?)\.apk$/,
     "the update feed points at a versioned or latest object-storage APK so Vercel does not store a 41 MB binary per deployment",
   );
 });

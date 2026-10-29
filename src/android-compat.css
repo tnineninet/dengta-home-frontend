@@ -720,3 +720,17 @@ html.dengta-flat-paint .status-flow-field {
     min-height: 200px;
   }
 }
+
+
+/* recovery-banner landscape: keep the dialogue readable and let the taller
+   composer block scroll internally instead of pushing controls below the viewport */
+@media (orientation: landscape) and (max-height: 560px) {
+  .main-panel.view-chat:has(.connection-recovery) .message-list {
+    min-height: 120px;
+  }
+  .main-panel.view-chat:has(.connection-recovery) .composer-wrap {
+    max-height: calc(100dvh - 44px - 120px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}

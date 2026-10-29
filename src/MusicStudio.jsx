@@ -7,6 +7,8 @@ import "./music-studio.css";
 export default function MusicStudio({ onOpenSync }) {
   const [state, setState] = useState({ loading: true, url: "", error: "" });
   const [reloadKey, setReloadKey] = useState(0);
+  const [frameReady, setFrameReady] = useState(false);
+  const [frameSlow, setFrameSlow] = useState(false);
   const iframeRef = useRef(null);
 
   useEffect(() => {
@@ -17,6 +19,8 @@ export default function MusicStudio({ onOpenSync }) {
         if (cancelled) return;
         if (!data?.url) throw new Error("音乐工作室没有返回访问地址。");
         setState({ loading: false, url: data.url, error: "" });
+          setFrameReady(false);
+          setFrameSlow(false);
       } catch (error) {
         if (cancelled) return;
         setState({
@@ -33,9 +37,17 @@ export default function MusicStudio({ onOpenSync }) {
   }, [reloadKey]);
 
   const reload = () => {
+    setFrameReady(false);
+    setFrameSlow(false);
     setState({ loading: true, url: "", error: "" });
     setReloadKey((current) => current + 1);
   };
+
+  useEffect(() => {
+    if (!state.url || frameReady) return undefined;
+    const timer = window.setTimeout(() => setFrameSlow(true), 12_000);
+    return () => window.clearTimeout(timer);
+  }, [state.url, frameReady]);
 
   const openExternal = () => {
     if (state.url) window.open(state.url, "_blank", "noopener,noreferrer");
@@ -101,6 +113,20 @@ export default function MusicStudio({ onOpenSync }) {
           </div>
         ) : null}
 
+        {!state.loading && state.url && !frameReady ? (
+          <div className="music-studio-frame-overlay" role="status" aria-live="polite">
+            <Loader2 className="is-spinning" aria-hidden="true" />
+            <strong>{frameSlow ? "播放器加载较慢" : "正在连接播放器"}</strong>
+            <small>{frameSlow ? "网络较慢或登录态异常，可以重试或先在浏览器打开。" : "正在加载你的歌单和播放器…"}</small>
+            {frameSlow ? (
+              <div>
+                <button type="button" onClick={reload}>重新连接</button>
+                <button type="button" onClick={openExternal}>浏览器打开</button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
         {!state.loading && state.url ? (
           <iframe
             ref={iframeRef}
@@ -109,7 +135,8 @@ export default function MusicStudio({ onOpenSync }) {
             title="DengTa 音乐工作室"
             allow="autoplay; clipboard-write; fullscreen; microphone; encrypted-media"
             referrerPolicy="strict-origin-when-cross-origin"
-            onLoad={() => {}}
+            onLoad={() => setFrameReady(true)}
+            onError={() => setState({ loading: false, url: "", error: "音乐工作室页面加载失败，请重试或先在浏览器打开。" })}
           />
         ) : null}
       </div>

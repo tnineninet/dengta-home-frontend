@@ -21,7 +21,13 @@ export function validUpdateDownload(value) {
       url.protocol === "https:" &&
       url.hostname === APK_STORAGE_HOST &&
       /^\/storage\/v1\/object\/public\/dengta-updates\/apk\/[-\w.]+\.apk$/.test(url.pathname);
-    return clean && (siteApk || githubApk || storageApk);
+  // The same-origin /supabase rewrite avoids a direct supabase.co TLS path in
+  // networks that reset it; the object path is still the versioned storage key.
+  const siteStorageApk =
+    url.protocol === "https:" &&
+    ["www.dengtahome.com", "dengtahome.com"].includes(url.hostname) &&
+    /^\/supabase\/storage\/v1\/object\/public\/dengta-updates\/apk\/[-\w.]+\.apk$/.test(url.pathname);
+  return clean && (siteApk || githubApk || storageApk || siteStorageApk);
   } catch { return false; }
 }
 

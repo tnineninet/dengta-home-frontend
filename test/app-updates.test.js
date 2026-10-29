@@ -30,6 +30,8 @@ test("untrusted downloads, another package, incomplete release and HTML never be
   assert.equal(validUpdateDownload("https://www.dengtahome.com/downloads/DengTa-latest.apk"), true);
   assert.equal(validUpdateDownload("/downloads/DengTa-latest.apk"), true);
   assert.equal(validUpdateDownload("https://nyyqizwrlmejpfdhgrnd.supabase.co/storage/v1/object/public/dengta-updates/apk/DengTa-2.13.21.apk"), true);
+assert.equal(validUpdateDownload("https://www.dengtahome.com/supabase/storage/v1/object/public/dengta-updates/apk/DengTa-2.13.21.apk"), true);
+assert.equal(validUpdateDownload("https://www.dengtahome.com/supabase/storage/v1/object/public/dengta-updates/apk/sub/DengTa-2.13.21.apk"), false);
   assert.equal(validUpdateDownload("https://nyyqizwrlmejpfdhgrnd.supabase.co/storage/v1/object/public/dengta-updates/apk/sub/DengTa-2.13.21.apk"), false);
   for (const url of ["https://evil.test/downloads/DengTa-latest.apk", "https://www.dengtahome.com/other/DengTa.apk", "https://www.dengtahome.com/downloads/DengTa-latest.apk?x=1"]) assert.equal(validUpdateDownload(url), false);
   for (const patch of [{ sha256: "" }, { sha256: [release.sha256] }, { size_bytes: 0 }, { notes: [] }, { notes: ["x".repeat(501)] }, { published_at: "no" }, { published_at: "2026-10-16" }, { version_code: "122" }, { version_code: 122.1 }, { version_code: 2_147_483_648 }, { version: "" }, { version: [release.version] }, { apk_url: [release.apk_url] }]) assert.throws(() => readUpdateManifest(feed({ ...release, ...patch }), 121), { code: "app_update_manifest_invalid" });

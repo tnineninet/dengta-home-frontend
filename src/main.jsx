@@ -149,6 +149,13 @@ const htmlRoot = document.documentElement;
 if (navigator.connection?.saveData || (Number(navigator.deviceMemory) || 8) <= 4) {
   htmlRoot.dataset.dengtaLowData = "1";
 }
+const reducedMotionMedia = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+function syncReducedMotion() {
+  htmlRoot.dataset.dengtaReducedMotion = reducedMotionMedia?.matches ? "true" : "false";
+}
+syncReducedMotion();
+reducedMotionMedia?.addEventListener?.("change", syncReducedMotion);
+
 function syncDocumentHidden() {
   htmlRoot.dataset.dengtaHidden =
     document.visibilityState === "hidden" ? "1" : "";

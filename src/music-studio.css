@@ -212,3 +212,38 @@
   .music-studio-header { display: none; }
   .music-studio-frame { min-height: 220px; }
 }
+
+
+.music-studio-frame-shell {
+  position: relative;
+}
+
+.music-studio-frame-overlay {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 24px;
+  border-radius: inherit;
+  color: var(--music-studio-ink, #2d3037);
+  background: rgb(var(--theme-card-rgb, 255 255 255) / 0.82);
+  text-align: center;
+}
+
+.music-studio-frame-overlay strong { font-size: 15px; }
+.music-studio-frame-overlay small { max-width: 320px; font-size: 12px; opacity: 0.72; }
+.music-studio-frame-overlay > div { display: flex; gap: 8px; margin-top: 4px; }
+.music-studio-frame-overlay button {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid rgb(var(--theme-line-rgb, 120 110 100) / 0.24);
+  border-radius: 999px;
+  background: rgb(var(--theme-card-rgb, 255 255 255) / 0.9);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}

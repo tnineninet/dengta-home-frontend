@@ -1583,14 +1583,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [imageViewer, setImageViewer] = useState(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const sidebarRef = useRef(null);
+  const sidebarCloseRef = useRef(null);
   const [compactSidebar, setCompactSidebar] = useState(() => {
     if (typeof window === "undefined") return false;
     return document.documentElement.dataset.dengtaForceMobile === "true" ||
-      Boolean(window.matchMedia?.("(max-width: 820px), (pointer: coarse)")?.matches);
+      Boolean(window.matchMedia?.("(max-width: 820px)")?.matches);
   });
   useEffect(() => {
     if (typeof window === "undefined" || !window.matchMedia) return undefined;
-    const media = window.matchMedia("(max-width: 820px), (pointer: coarse)");
+    const media = window.matchMedia("(max-width: 820px)");
     const sync = () => setCompactSidebar(
       document.documentElement.dataset.dengtaForceMobile === "true" || media.matches
     );
@@ -1748,6 +1750,45 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }, 900);
     return () => window.clearTimeout(timer);
   }, [messages, isSending, isCompanionResponding, activeSessionId, message]);
+  useEffect(() => {
+    if (!isSidebarOpen || !compactSidebar) return undefined;
+    const sidebar = sidebarRef.current;
+    const main = document.querySelector(".main-panel");
+    if (!sidebar) return undefined;
+    const previous = document.activeElement;
+    const timer = window.setTimeout(() => sidebarCloseRef.current?.focus?.({ preventScroll: true }), 0);
+    main?.setAttribute("inert", "");
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setIsSidebarOpen(false);
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = [...sidebar.querySelectorAll(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )].filter((node) => node.getClientRects().length > 0);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus({ preventScroll: true });
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus({ preventScroll: true });
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("keydown", onKeyDown);
+      main?.removeAttribute("inert");
+      if (previous && typeof previous.focus === "function") previous.focus({ preventScroll: true });
+    };
+  }, [compactSidebar, isSidebarOpen]);
+
   const messageListRef = useRef(null);
   const chatScrollControllerRef = useRef(null);
   const settingsScrollRef = useRef(null);
@@ -10734,11 +10775,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         <button
           className="sidebar-scrim"
           aria-label="关闭菜单"
+          tabIndex={-1}
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
 
       <aside
+          ref={sidebarRef}
           className={`sidebar ${isSidebarOpen ? "open" : ""}`}
           inert={!isSidebarOpen && compactSidebar ? true : undefined}
           aria-hidden={!isSidebarOpen && compactSidebar ? "true" : undefined}
@@ -10752,6 +10795,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         </div>
 
         <button
+          ref={sidebarCloseRef}
           type="button"
           className="sidebar-close"
           aria-label="关闭菜单"
