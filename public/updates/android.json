@@ -3,15 +3,16 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 301,
-    "version": "2.13.43",
-    "apk_url": "https://nyyqizwrlmejpfdhgrnd.supabase.co/storage/v1/object/public/dengta-updates/apk/DengTa-2.13.43.apk",
-    "sha256": "a4e1e9e69abd92b39d5a70480b0786f875472599d67fa873efbe2e917956b9a1",
-    "size_bytes": 36410799,
-    "published_at": "2026-10-26T12:08:54.520Z",
+    "version_code": 305,
+    "version": "2.13.47",
+    "apk_url": "https://github.com/DengTaHome/dengta-home-frontend/releases/download/v2.13.47/DengTa-2.13.47.apk",
+    "sha256": "e38c464f47c61ba896dbb81312f50668859d8fb8598d9807487bb024b2d1f051",
+    "size_bytes": 36536695,
+    "published_at": "2026-10-29T23:05:00.000Z",
     "notes": [
-      "自动构建 2.13.43（301） · b5c6c23",
-      "包含最新的聊天、界面和 Android 修复。"
+      "2.13.47（305） · Redmi K30 布局兜底与音乐工作室",
+      "修复部分 MIUI/Redmi WebView 把布局视口报成 980px 导致的桌面双栏、侧栏挤压和菜单不可见。",
+      "新增独立「音乐工作室」栏目；旧版动态天空与实时天空可切换。"
     ]
   }
 }
