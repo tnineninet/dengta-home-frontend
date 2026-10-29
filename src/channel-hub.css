@@ -289,3 +289,19 @@
   opacity: 0.65;
   cursor: default;
 }
+
+
+.feature-page.channel-hub h2,
+.feature-page.channel-hub h3,
+.feature-page.channel-hub .channel-hub-card-heading h3,
+.feature-page.channel-hub .channel-hub-hero h2,
+.feature-page.channel-hub .channel-hub-connection-card strong,
+.feature-page.channel-hub .channel-hub-binding strong,
+.feature-page.channel-hub .x-hub-card-heading h3,
+.feature-page.channel-hub .x-hub-hero h2,
+.feature-page.channel-hub .x-hub-connection-card strong {
+  color: #2d2530 !important;
+}
+
+.feature-page.channel-hub .channel-hub-hero p { color: #2d2530 !important; }
+.feature-page.x-hub .x-hub-hero p { color: #2d2530 !important; }

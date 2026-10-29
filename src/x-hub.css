@@ -217,3 +217,18 @@
   .x-hub-inline-form .x-hub-primary { flex: 1 1 100%; }
   .x-hub-connection-card small { white-space: normal; }
 }
+
+
+.feature-page.x-hub h2,
+.feature-page.x-hub h3,
+.feature-page.x-hub .channel-hub-card-heading h3,
+.feature-page.x-hub .channel-hub-hero h2,
+.feature-page.x-hub .channel-hub-connection-card strong,
+.feature-page.x-hub .channel-hub-binding strong,
+.feature-page.x-hub .x-hub-card-heading h3,
+.feature-page.x-hub .x-hub-hero h2,
+.feature-page.x-hub .x-hub-connection-card strong {
+  color: #2d2530 !important;
+}
+
+.feature-page.x-hub .x-hub-hero p { color: #2d2530 !important; }

@@ -140,13 +140,6 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣" }) {
         : prefs.persona_mode === "normal_only"
           ? sections.filter((section) => (section.category || "normal") === "normal").map((section) => section.id)
           : prefs.persona_section_ids);
-      const enabledSections = sections.map((section) => ({ section, enabled: selected.has(section.id) }));
-      await Promise.all(enabledSections
-        .filter(({ section, enabled }) => section.enabled !== enabled)
-        .map(({ section, enabled }) => apiRequest(`/api/v2/channel-sync/persona-sections/${section.id}`, {
-          method: "PATCH",
-          body: JSON.stringify({ enabled }),
-        })));
       const data = await apiRequest("/api/v2/channel-sync/preferences", {
         method: "PUT",
         body: JSON.stringify({
@@ -156,7 +149,7 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣" }) {
         }),
       });
       setPrefs(normalizePrefs(data?.preferences, channel));
-      setSections((current) => current.map((section) => ({ ...section, enabled: selected.has(section.id) })));
+      
       setSaved("已保存，桥接端下一轮会按新勾选组装人设与记忆。");
     } catch (caught) {
       setError(settingsServiceErrorMessage(caught, "通道同步设置没有保存成功。"));

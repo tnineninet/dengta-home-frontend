@@ -204,6 +204,12 @@ export default function CommandPalette({
     setHighlighted(index => Math.min(index, Math.max(0, filtered.length - 1)));
   }, [filtered.length]);
 
+  useEffect(() => {
+    const entry = filtered[highlighted];
+    if (!entry || typeof document === "undefined") return;
+    document.getElementById(`${listId}-${entry.id}`)?.scrollIntoView?.({ block: "nearest" });
+  }, [filtered, highlighted, listId]);
+
   function closeAndRestore() {
     onClose?.();
   }
@@ -273,18 +279,20 @@ export default function CommandPalette({
           />
           {query ? <button type="button" className="command-palette-clear" aria-label="清空搜索" onClick={() => { setQuery(""); setHighlighted(0); inputRef.current?.focus(); }}><X aria-hidden="true" /></button> : null}
         </div>
-        {!query && recentEntries.length ? (
-          <div className="command-palette-recent" aria-label="最近使用">
-            <span>最近</span>
-            {recentEntries.map((entry) => (
-              <button type="button" key={`recent-${entry.id}`} onClick={() => execute(entry)}>
-                <span aria-hidden="true">{entry.icon}</span>
-                {entry.label}
-              </button>
-            ))}
-          </div>
-        ) : null}
         <ul id={listId} className="command-palette-results" role="listbox" aria-label="命令结果">
+          {!query && recentEntries.length ? (
+            <li className="command-palette-recent-item">
+              <div className="command-palette-recent" aria-label="最近使用">
+                <span>最近</span>
+                {recentEntries.map((entry) => (
+                  <button type="button" key={`recent-${entry.id}`} onClick={() => execute(entry)}>
+                    <span aria-hidden="true">{entry.icon}</span>
+                    {entry.label}
+                  </button>
+                ))}
+              </div>
+            </li>
+          ) : null}
           {filtered.length ? filtered.map((entry, index) => (
             <li key={entry.id}>
               <button

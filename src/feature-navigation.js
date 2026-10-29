@@ -15,7 +15,7 @@ export const FEATURE_DETAILS = {
   art: { hint: "画张涂鸦，或收到一份小礼物", keywords: "绘画 图片 画册 创作 自主 惊喜 头像 表情包" },
   together: { hint: "选个视频，一起看", keywords: "电影 视频 观影 放映厅 投屏 哔哩哔哩 B站" },
   cast: { hint: "投屏到这里，和别人一起看", keywords: "放映厅 投屏 DLNA 一起看 房间 邀请码 电视" },
-  music: { hint: "歌单、网易云、一起听同步播放", keywords: "音乐 歌单 网易云 一起听 播放器" },
+  music: { hint: "歌单、网易云、一起听同步播放", keywords: "音乐 歌单 网易云 一起听 听歌 播放器" },
   x: { hint: "X / Twitter 发帖、搜索与私信", keywords: "X Twitter 推特 发帖 推文 搜索 私信" },
   wechat: { hint: "微信绑定与人设/记忆同步", keywords: "微信 wechat 绑定 通道 同步 人设 记忆" },
   qq: { hint: "QQ 绑定与人设/记忆同步", keywords: "QQ 绑定 通道 同步 人设 记忆 SnowLuma" },

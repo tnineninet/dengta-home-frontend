@@ -107,7 +107,7 @@
   min-height: 48px;
   border: 0;
   outline: 0;
-  color: inherit;
+  color: #2d2530;
   background: transparent;
   font: inherit;
   font-size: 15px;
@@ -156,8 +156,8 @@
 .command-palette-row-icon svg { width: 18px; height: 18px; opacity: 0.68; stroke-width: 1.8; }
 .command-palette-row-copy { display: grid; min-width: 0; gap: 2px; flex: 1; }
 .command-palette-row-copy strong { overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
-.command-palette-row-copy small { overflow: hidden; color: var(--theme-muted, #776d78); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
-.command-palette-empty { padding: 24px 14px; color: var(--theme-muted, #776d78); font-size: 13px; text-align: center; }
+.command-palette-row-copy small { overflow: hidden; color: #5f575f; font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+.command-palette-empty { padding: 24px 14px; color: #5f575f; font-size: 13px; text-align: center; }
 
 .command-palette-footer {
   display: flex;
@@ -166,7 +166,7 @@
   gap: 14px;
   padding: 11px 20px calc(13px + env(safe-area-inset-bottom));
   border-top: 1px solid rgb(var(--theme-ink-rgb, 45 37 48) / 0.08);
-  color: var(--theme-muted, #776d78);
+  color: #5f575f;
   font-size: 11px;
 }
 
@@ -302,10 +302,22 @@
 }
 
 .command-palette-recent button svg { width: 12px; height: 12px; }
-.command-palette-count { margin-right: auto; color: #8b8389; }
+.command-palette-count { margin-right: auto; color: #5f575f; }
 
 @media (max-width: 600px), (max-height: 560px) and (max-width: 960px) {
   .command-palette-recent {
     margin-inline: 14px;
+  }
+}
+
+@media (max-width: 600px) {
+  .command-palette-search input {
+    font-size: 16px;
+  }
+
+  .command-palette-recent button {
+    min-height: 44px;
+    padding-inline: 12px;
+    font-size: 12px;
   }
 }
