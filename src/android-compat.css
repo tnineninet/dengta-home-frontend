@@ -731,7 +731,7 @@ html.dengta-flat-paint .status-flow-field {
   .main-panel.view-chat:has(.connection-recovery) .composer-wrap {
     /* recovery banner itself is ~68px; it was making multi-line composers
        overflow the viewport by 16px. Keep the composer usable via internal scroll. */
-    max-height: calc(100dvh - 44px - 120px - 68px);
+    max-height: calc(100dvh - 44px - 120px - 78px);
     overflow-y: auto;
     overscroll-behavior: contain;
   }
