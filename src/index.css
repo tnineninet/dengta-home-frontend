@@ -12359,9 +12359,9 @@ html[data-dengta-scrolling="1"] *::after {
   button:not(.visually-hidden-file-input),
   [role="button"],
   select {
-    min-height: 44px;
+    min-height: 44px !important;
   }
   button:not(.visually-hidden-file-input) {
-    min-width: 44px;
+    min-width: 44px !important;
   }
 }
