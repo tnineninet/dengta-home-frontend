@@ -190,3 +190,18 @@ html.dengta-flat-paint .status-flow-field {
     min-height: 44px;
   }
 }
+
+/* Compact Android/sidebar controls: the session heading "+" and the settings
+   search input must expose a full 44px hit box even when the visual glyph is
+   smaller. The music switch keeps its native 51x31 visual; its label is the
+   hit target. */
+@media (max-width: 820px), (pointer: coarse) {
+  .session-heading button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+
+  .settings-home-search-field input {
+    min-height: 44px;
+  }
+}
