@@ -315,3 +315,26 @@ console.log("voice helper tests passed");
   assert.match(appSource, /const submitRun = voiceCaptureRunRef\.current;/);
   assert.match(appSource, /if \(cancelled\(\)\) return;/);
 }
+
+// Aborting while the audio body is downloading must surface the stable
+// speech_cancelled code instead of a raw AbortError.
+{
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => ({
+    ok: true,
+    headers: { get: () => null },
+    blob: async () => {
+      const error = new Error("aborted");
+      error.name = "AbortError";
+      throw error;
+    },
+  });
+  try {
+    await assert.rejects(
+      requestExpressiveSpeech("m1", { sessionId: "s1", speechToken: "t1" }),
+      (error) => error.code === "speech_cancelled",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
