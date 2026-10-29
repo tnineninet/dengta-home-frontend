@@ -143,6 +143,11 @@ if (!isReceiverRoute) {
 // Pause decorative animations while the app is hidden or the user is actively
 // scrolling. Android WebView keeps compositing animations off-screen otherwise.
 const htmlRoot = document.documentElement;
+// Save the 7.4MB CJK webfont on data-saver / low-memory phones; system fonts
+// already cover Chinese and avoid a large first-load font decode.
+if (navigator.connection?.saveData || (Number(navigator.deviceMemory) || 8) <= 4) {
+  htmlRoot.dataset.dengtaLowData = "1";
+}
 function syncDocumentHidden() {
   htmlRoot.dataset.dengtaHidden =
     document.visibilityState === "hidden" ? "1" : "";

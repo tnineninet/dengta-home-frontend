@@ -28,6 +28,10 @@
   --dengta-font: var(--dengta-font-system);
 }
 
+html[data-dengta-low-data="1"] {
+  --dengta-font: var(--dengta-font-system);
+}
+
 html,
 body,
 #root,
