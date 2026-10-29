@@ -2792,6 +2792,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         authSession: createScopedSettingsSession(authSession, privateMediaScope, signal),
       };
       const settingsRevisionAtRead = settingsWriteRevisionRef.current;
+      // Probe service health alongside bootstrap; the settings sheet can render
+      // the result without serializing a second round trip after first paint.
+      void refreshServiceHealth();
       const bootstrapData = await apiRequest(
         "/api/v2/bootstrap",
         requestOptions,
@@ -2897,7 +2900,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       hasLoadedSettingsRef.current = true;
       setIsLoading(false);
       void loadInitialModels(nextSettings.model, requestOptions, isCurrent);
-      void refreshServiceHealth();
       void refreshVoiceOutputStatus();
       void loadChatSkinPreferences();
       return { settings: nextSettings, sessions: nextSessions };
