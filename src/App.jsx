@@ -337,6 +337,7 @@ import {
   VOICE_STATE_LABELS,
   voiceBlocksComposer,
   buildVoiceTurnFormData,
+  createVoiceClientMessageId,
   createVoiceTurnRequest,
   formatVoiceConfidence,
   normalizeVoiceAnalysis,
@@ -4148,6 +4149,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       const formData = buildVoiceTurnFormData({
         blob,
         sessionId,
+        clientMessageId: createVoiceClientMessageId(),
         clientTime: shanghaiClientTime(),
         timezone: SHANGHAI_TIME_ZONE,
         model: voiceModel,

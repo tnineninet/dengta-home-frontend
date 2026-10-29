@@ -3,7 +3,7 @@ import { authSession as defaultAuthSession } from "./auth-session.js";
 
 export const VOICE_MAX_DURATION_MS = 60_000;
 export const VOICE_MIN_DURATION_MS = 650;
-export const VOICE_TURN_TIMEOUT_MS = 75_000;
+export const VOICE_TURN_TIMEOUT_MS = 120_000;
 
 export const VOICE_STATES = Object.freeze({
   idle: "idle",
@@ -214,9 +214,22 @@ function extensionForMimeType(mimeType) {
   return "webm";
 }
 
+export function createVoiceClientMessageId() {
+  const cryptoObject = globalThis.crypto;
+  if (typeof cryptoObject?.randomUUID === "function") {
+    return cryptoObject.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = char === "x" ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+}
+
 export function buildVoiceTurnFormData({
   blob,
   sessionId = "",
+  clientMessageId = "",
   clientTime = "",
   timezone = "",
   model = "",
@@ -240,6 +253,7 @@ export function buildVoiceTurnFormData({
   const fileName = `dengta-voice-${timestamp}.${extensionForMimeType(mimeType)}`;
   formData.append("file", blob, fileName);
   formData.append("session_id", String(sessionId || ""));
+  formData.append("client_message_id", String(clientMessageId || ""));
   formData.append("client_time", String(clientTime || ""));
   formData.append("timezone", String(timezone || ""));
   formData.append("model", String(model || ""));

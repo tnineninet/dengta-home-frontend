@@ -8,6 +8,7 @@ import {
   VOICE_STATE_LABELS,
   VOICE_TURN_TIMEOUT_MS,
   buildVoiceTurnFormData,
+  createVoiceClientMessageId,
   createVoiceTurnRequest,
   formatVoiceConfidence,
   hydrateStoredVoiceAnalysis,
@@ -169,7 +170,7 @@ assert.equal(formData.get("file").type, "audio/webm");
 assert.equal(VOICE_STATES.recording, "recording");
 assert.match(VOICE_STATE_LABELS.recording, /松开发送/);
 assert.match(VOICE_STATE_LABELS.speaking, /播放/);
-assert.ok(VOICE_TURN_TIMEOUT_MS <= 75_000);
+assert.ok(VOICE_TURN_TIMEOUT_MS <= 120_000);
 assert.equal(voiceBlocksComposer(VOICE_STATES.requesting), true);
 assert.equal(voiceBlocksComposer(VOICE_STATES.recording), true);
 assert.equal(voiceBlocksComposer(VOICE_STATES.uploading), true);
