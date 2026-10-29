@@ -429,3 +429,116 @@ html.dengta-flat-paint .status-flow-field {
   color: var(--theme-muted);
   font-size: 11px;
 }
+
+/* Together / music pages must never establish a wider-than-viewport min-content
+   column. Long option labels and flex headers were forcing the whole page to
+   ~720px inside a 390px phone, clipping every control on the right. */
+@media (max-width: 820px), (max-height: 560px) and (max-width: 960px) {
+  .together-page {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    padding-inline: 8px;
+  }
+
+  .together-page > *,
+  .together-heading,
+  .together-layout,
+  .together-layout > *,
+  .together-controls,
+  .together-setup,
+  .music-quick-start,
+  .music-quick-start-actions,
+  .music-import-entry,
+  .music-provider-connect,
+  .music-cookie-operations {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .together-heading {
+    flex-wrap: wrap;
+  }
+
+  .together-heading > *,
+  .together-heading h2,
+  .together-heading p {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .together-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .together-setup select,
+  .together-setup input,
+  .music-quick-start-actions select {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .music-quick-start-actions {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .music-quick-start-actions select {
+    flex: 1 1 100%;
+  }
+
+  .music-quick-start-actions .together-primary {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .together-controls,
+  .together-setup {
+    overflow-wrap: anywhere;
+  }
+}
+
+/* Settings form controls must shrink with the mobile sheet instead of forcing
+   a horizontal scrollbar with long provider labels. */
+@media (max-width: 820px), (max-height: 560px) and (max-width: 960px) {
+  .settings-sheet select,
+  .settings-sheet input,
+  .settings-sheet textarea {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .settings-sheet select {
+    width: 100%;
+  }
+}
+
+/* The presence capsule is mounted inside a 9px-padded shell. A percentage
+   width resolved against the viewport made it 9px wider than the shell on
+   phones, clipping the rainbow capsule on the right. */
+@media (max-width: 820px), (max-height: 560px) and (max-width: 960px) {
+  .chat-presence-stack {
+    width: calc(100vw - 18px);
+    max-width: calc(100vw - 18px);
+    min-width: 0;
+    margin-inline: 9px;
+    box-sizing: border-box;
+  }
+
+  .chat-presence-stack .companion-status {
+    max-width: calc(100vw - 38px);
+    box-sizing: border-box;
+  }
+}
+
+/* Same presence capsule on wide screens: the flex item keeps its 10px side
+   margins but was sized to the full parent width, causing a 10px right clip. */
+@media (min-width: 821px) and (min-height: 561px) {
+  .chat-presence-stack {
+    width: calc(100% - 20px);
+    max-width: calc(100% - 20px);
+    min-width: 0;
+    box-sizing: border-box;
+  }
+}
