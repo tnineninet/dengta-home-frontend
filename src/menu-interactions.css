@@ -107,3 +107,11 @@
 }
 
 .mobile-nav > button { position: relative; }
+
+/* 320px phones: the floating ⌘K trigger sits on top of the status capsule.
+   Move it below the capsule; wider phones have no horizontal overlap. */
+@media (max-width: 340px) {
+  .mobile-command-trigger {
+    top: calc(max(8px, env(safe-area-inset-top)) + 116px);
+  }
+}
