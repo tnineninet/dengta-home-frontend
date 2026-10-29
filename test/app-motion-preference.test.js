@@ -105,7 +105,7 @@ for (const suffix of ["*", "*::before", "*::after"]) {
 test("the real sky reads the shared preference and passes it through the atmosphere to its loop", () => {
   const sky = fs.readFileSync(new URL("../src/CelestialBackdrop.jsx", import.meta.url), "utf8");
   assert.ok(/const reduceMotion = useReducedVisualMotion\(\)/.test(sky));
-  assert.ok(/usePrototypeAtmosphere\(\{[\s\S]*?reduceMotion,[\s\S]*?\}\);/.test(sky));
+  assert.ok(/usePrototypeAtmosphere\(\{[\s\S]*?reduceMotion:\s*reduceMotion \|\| lowPower,[\s\S]*?\}\);/.test(sky));
   assert.ok(/createVisualLoop\(paint, \{[^}]*reducedMotion:\s*reduceMotion/.test(sky));
 });
 

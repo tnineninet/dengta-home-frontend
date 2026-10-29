@@ -32,3 +32,11 @@ test("hidden/scroll pause contract and low-data font fallback stay wired", () =>
     const typography = read("src/typography.css");
     assert.match(typography, /data-dengta-low-data="1"/);
 });
+
+test("low-power devices freeze celestial canvases and coast video", () => {
+    const celestial = read("src/CelestialBackdrop.jsx");
+    assert.match(celestial, /deviceMemory/);
+    assert.match(celestial, /saveData/);
+    assert.match(celestial, /reduceMotion: reduceMotion \|\| lowPower/);
+    assert.match(celestial, /reducedMotion=\{reduceMotion \|\| lowPower\}/);
+});
