@@ -136,4 +136,4 @@ try {
   ]);
   for (const [name, value] of descriptors) { if (value) Object.defineProperty(globalThis, name, value); else delete globalThis[name]; }
 }
-process.exit(process.exitCode ?? 0);
+globalThis.process?.exit?.(globalThis.process.exitCode ?? 0);

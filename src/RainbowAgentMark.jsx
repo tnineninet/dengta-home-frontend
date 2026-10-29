@@ -15,7 +15,7 @@ export default function RainbowAgentMark() {
     const reduceMotion =
       (typeof window !== "undefined" &&
         window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) ||
-      document.documentElement.dataset.dengtaReducedMotion === "1";
+      document.documentElement.dataset.dengtaReducedMotion === "true";
     if (reduceMotion) return;
     setAnimate(true);
   }

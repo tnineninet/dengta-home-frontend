@@ -351,6 +351,13 @@ function CelestialBackdrop({
   const cloudsRef = useRef(null);
   const weatherRef = useRef(null);
   const reduceMotion = useReducedVisualMotion();
+  const lowPower = useMemo(() => {
+    const nav = globalThis.navigator;
+    return Boolean(
+      nav?.connection?.saveData ||
+      (Number(nav?.deviceMemory) || 8) <= 4,
+    );
+  }, []);
   const minute = Number.isFinite(snapshot.minute)
     ? snapshot.minute
     : snapshot.hour * 60;
@@ -370,7 +377,7 @@ function CelestialBackdrop({
     sky,
     mode: weatherMode,
     rainIntensity,
-    reduceMotion,
+    reduceMotion: reduceMotion || lowPower,
   });
 
   const style = Object.fromEntries([
@@ -402,7 +409,7 @@ function CelestialBackdrop({
       data-solar-minute={Math.round(sky.solarMinute)}
       style={style}
     >
-      <CoastVideoBackdrop sky={sky} weatherMode={weatherMode} reducedMotion={reduceMotion} />
+      <CoastVideoBackdrop sky={sky} weatherMode={weatherMode} reducedMotion={reduceMotion || lowPower} />
       <canvas className="celestial-stars-canvas" ref={starsRef} />
       <div className="celestial-milky-way" />
       <div className="celestial-chromatic-light" />
