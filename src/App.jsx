@@ -10677,7 +10677,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   useLayoutEffect(() => {
     const root = document.documentElement;
     const previous = root.dataset.dengtaReducedMotion;
-    root.dataset.dengtaReducedMotion = String(chatSkinPreferences.reduceMotion);
+    const osReduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches === true;
+    root.dataset.dengtaReducedMotion = String(
+      chatSkinPreferences.reduceMotion === true || osReduceMotion,
+    );
     return () => {
       if (previous === undefined) delete root.dataset.dengtaReducedMotion;
       else root.dataset.dengtaReducedMotion = previous;

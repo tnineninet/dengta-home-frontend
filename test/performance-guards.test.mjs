@@ -43,3 +43,16 @@ test("low-power devices freeze celestial canvases and coast video", () => {
     assert.match(celestial, /reduceMotion: reduceMotion \|\| lowPower/);
     assert.match(celestial, /reducedMotion=\{reduceMotion \|\| lowPower\}/);
 });
+
+
+test("drawer focus trap and OS reduced-motion state stay wired", () => {
+  const app = read("src/App.jsx");
+  const main = read("src/main.jsx");
+  assert.match(app, /sidebarCloseRef/);
+  assert.match(app, /setAttribute\("inert", ""\)/);
+  assert.match(app, /removeAttribute\("inert"\)/);
+  assert.match(app, /event\.key === "Escape"/);
+  assert.match(app, /chatSkinPreferences\.reduceMotion === true \|\| osReduceMotion/);
+  assert.match(main, /prefers-reduced-motion: reduce/);
+  assert.match(main, /dengtaReducedMotion = reducedMotionMedia/);
+});

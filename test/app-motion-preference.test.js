@@ -240,14 +240,14 @@ test("actual shared hook combines app and system changes and releases both subsc
 });
 
 test("actual App dataset publisher restores the previous owner on preference cleanup", () => {
-  const datasetAt = app.indexOf("root.dataset.dengtaReducedMotion = String(chatSkinPreferences.reduceMotion)");
+  const datasetAt = app.indexOf("root.dataset.dengtaReducedMotion = String(");
   const effectStart = app.lastIndexOf("useLayoutEffect(() => {", datasetAt);
   const effectEnd = app.indexOf("}, [chatSkinPreferences.reduceMotion]);", datasetAt);
   assert.ok(datasetAt >= 0 && effectStart >= 0 && effectEnd > effectStart);
   const body = app.slice(effectStart + "useLayoutEffect(() => {".length, effectEnd);
   for (const previous of [undefined, "false", "true"]) {
     const root = { dataset: previous === undefined ? {} : { dengtaReducedMotion: previous } };
-    const cleanup = vm.runInNewContext(`(() => {${body}})()`, { document: { documentElement: root }, chatSkinPreferences: { reduceMotion: true } });
+    const cleanup = vm.runInNewContext(`(() => {${body}})()`, { document: { documentElement: root }, window: { matchMedia: () => ({ matches: false }) }, chatSkinPreferences: { reduceMotion: true } });
     assert.equal(root.dataset.dengtaReducedMotion, "true");
     cleanup();
     assert.equal(root.dataset.dengtaReducedMotion, previous);
