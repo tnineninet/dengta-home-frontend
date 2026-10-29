@@ -426,6 +426,8 @@ assert.match(
   voiceAppSource,
   /const lastVoiceAttemptRef = useRef\(null\)/,
 );
+assert.match(voiceAppSource, /options\.sessionId/);
+assert.match(voiceAppSource, /sessionId: attempt\.sessionId/);
 assert.match(voiceAppSource, /voiceRetryWaitSeconds/);
 assert.match(voiceAppSource, /voiceRetryInFlight/);
 assert.match(voiceAppSource, /秒后可重试/);

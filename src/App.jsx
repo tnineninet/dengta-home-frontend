@@ -4118,7 +4118,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         ? "【表达偏好】回复可以自然使用中文颜文字、emoji 和少量加粗强调；按角色自己的语气来，不要每句都用，也不要为了格式牺牲内容。"
         : "",
     ].filter(Boolean).join("\n");
-    let sessionId = activeSessionIdRef.current;
+    let sessionId = options.sessionId || activeSessionIdRef.current;
     let voiceSessionId = sessionId;
     let requestHandle;
     let voiceModel =
@@ -4163,6 +4163,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         initializeSessionChatModel(sessionId, voiceModel);
       }
 
+      if (
+        lastVoiceAttemptRef.current?.clientMessageId === clientMessageId
+      ) {
+        lastVoiceAttemptRef.current.sessionId = sessionId;
+      }
       streamingSessionIdRef.current = sessionId;
       const formData = buildVoiceTurnFormData({
         blob,
@@ -4325,6 +4330,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     try {
       await submitVoiceBlob(attempt.blob, attempt.durationMs, {
         clientMessageId: attempt.clientMessageId,
+        sessionId: attempt.sessionId,
       });
     } finally {
       setVoiceRetryInFlight(false);
