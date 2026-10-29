@@ -334,3 +334,31 @@ html.dengta-flat-paint .status-flow-field {
     background: var(--theme-background, #f7f2ed) !important;
   }
 }
+
+/* Keep the light mobile drawer legible: account card, group labels and
+   section headings must not keep the old dark-theme white text. */
+@media (max-width: 820px), (pointer: coarse) {
+  .sidebar .account-menu-trigger {
+    color: var(--theme-ink) !important;
+    background: color-mix(in srgb, var(--theme-ink) 6%, transparent);
+    border-color: color-mix(in srgb, var(--theme-ink) 14%, transparent);
+  }
+
+  .sidebar .account-menu-trigger-copy small {
+    color: color-mix(in srgb, var(--theme-ink) 62%, transparent) !important;
+  }
+
+  .sidebar .feature-navigation-group > p,
+  .sidebar .session-heading {
+    color: color-mix(in srgb, var(--theme-ink) 62%, transparent) !important;
+    opacity: 1 !important;
+  }
+}
+
+/* Notice dismiss must be a real touch target. */
+.notice button {
+  display: grid;
+  min-width: 44px;
+  min-height: 44px;
+  place-items: center;
+}

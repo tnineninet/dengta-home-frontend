@@ -66,6 +66,7 @@ export function TakeoutTaskCard({ task, onOpen, onDismiss }) {
       type="button"
       className="takeout-task-dismiss"
       aria-label="关闭外卖任务卡片"
+      onKeyDown={(event) => event.stopPropagation()}
       onClick={(event) => { event.stopPropagation(); onDismiss(); }}
     ><X size={14} aria-hidden="true" /></button>}
   </div>;

@@ -11,8 +11,8 @@
 .app-update-notifications { min-height: 44px; margin-top: 12px; border: 0; background: transparent; color: #42637a; font: inherit; }
 .app-update-feedback { position: fixed; z-index: 1500; bottom: max(25px, env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); width: min(90%, 440px); display: flex; align-items: center; gap: 12px; padding: 14px 18px; border-radius: 18px; background: #fffaf5; color: #263848; box-shadow: 0 6px 30px #10213233; }
 .app-update-feedback button { flex: none; width: 36px; height: 36px; font: inherit; font-size: 24px; color: inherit; background: transparent; border: 0; }
-.settings-app-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; max-width: 100%; }
-.settings-app-actions .install-button { min-height: 40px; white-space: normal; }
+.settings-app-actions { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: flex-end; gap: 8px; max-width: 100%; }
+.settings-app-actions .install-button { min-height: 44px; white-space: normal; }
 @media (max-width: 620px) {
   .settings-app-actions { width: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .settings-app-actions > :first-child { grid-column: 1 / -1; }

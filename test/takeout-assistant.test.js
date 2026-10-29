@@ -301,6 +301,9 @@ test("real takeout assistant preserves drafts, task scope and payment truth whil
         await act(async () => dismiss.props.onClick({ stopPropagation() {} }));
         assert.equal(dismisses, 1);
         assert.equal(opens, 1, "dismiss must not open the task");
+        let stopped = false;
+        await act(async () => dismiss.props.onKeyDown({ stopPropagation() { stopped = true; } }));
+        assert.equal(stopped, true, "dismiss keydown must not reach the card");
         await act(async () => tree.update(React.createElement(TakeoutTaskCard, { task: null }))); assert.equal(tree.toJSON(), null);
       } finally { if (tree) await act(async () => tree.unmount()); }
     });

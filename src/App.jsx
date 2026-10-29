@@ -10960,7 +10960,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         {notice && (
           <div className="notice" role="status">
             <span>{notice}</span>
-            <button onClick={() => setNotice("")}>×</button>
+            <button type="button" aria-label="关闭提示" onClick={() => setNotice("")}>×</button>
           </div>
         )}
 
