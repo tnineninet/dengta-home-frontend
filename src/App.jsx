@@ -1646,6 +1646,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [voiceState, setVoiceState] = useState(VOICE_STATES.idle);
   const [voiceElapsedMs, setVoiceElapsedMs] = useState(0);
   const [voiceError, setVoiceError] = useState("");
+  const [voiceRetryAvailable, setVoiceRetryAvailable] = useState(false);
+  const lastVoiceAttemptRef = useRef(null);
   const [lastVoiceAnalysis, setLastVoiceAnalysis] = useState(null);
   const [isComposerMenuOpen, setIsComposerMenuOpen] = useState(false);
   const [isStatusPanelExpanded, setIsStatusPanelExpanded] = useState(false);

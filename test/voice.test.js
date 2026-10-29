@@ -419,6 +419,14 @@ console.log("Voice upload cancellation tests passed");
 
 
 const voiceAppSource = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
+assert.match(
+  voiceAppSource,
+  /const \[voiceRetryAvailable, setVoiceRetryAvailable\] = useState\(false\)/,
+);
+assert.match(
+  voiceAppSource,
+  /const lastVoiceAttemptRef = useRef\(null\)/,
+);
 assert.match(voiceAppSource, /lastVoiceAttemptRef/);
 assert.match(voiceAppSource, /voiceRetryAvailable/);
 assert.match(voiceAppSource, /retryVoiceTurn/);
