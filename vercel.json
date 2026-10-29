@@ -100,6 +100,10 @@
     {
       "source": "/room/join",
       "destination": "/room-invite.html"
+    },
+    {
+      "source": "/supabase/:path*",
+      "destination": "https://nyyqizwrlmejpfdhgrnd.supabase.co/:path*"
     }
   ]
 }
