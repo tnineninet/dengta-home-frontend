@@ -2492,10 +2492,10 @@
    visible movement without pinning one CPU core. */
 @keyframes sun-glass-rainbow-mobile-slide {
   0% {
-    transform: translateX(-4%);
+    transform: translate3d(-5%, 0, 0);
   }
   100% {
-    transform: translateX(4%);
+    transform: translate3d(5%, 0, 0);
   }
 }
 
@@ -3504,19 +3504,26 @@
   }
 
   .main-panel.view-chat .sun-glass-liquid-color-flow {
-    left: -6% !important;
-    width: 112% !important;
-    opacity: 0.96 !important;
-    background-size: 100% 100% !important;
-    filter: blur(2px) saturate(1.48) brightness(1.08) !important;
-    animation: sun-glass-rainbow-mobile-slide 9s steps(24, end) infinite alternate !important;
+    left: -8% !important;
+    width: 116% !important;
+    opacity: 0.98 !important;
+    background-size: 180% 100% !important;
+    filter: blur(2px) saturate(1.55) brightness(1.08) !important;
+    /* Transform-only, continuous drift keeps the rainbow flowing on the
+       compositor. The old steps(24) animation looked like a slow slideshow. */
+    animation: sun-glass-rainbow-mobile-slide 7s cubic-bezier(0.42, 0.02, 0.58, 0.98) infinite alternate !important;
     animation-play-state: running !important;
-    will-change: auto;
+    will-change: transform;
+    transform: translateZ(0);
   }
 
   .main-panel.view-chat .sun-glass-liquid-color-flow::after {
-    display: none !important;
-    animation: none !important;
+    display: block !important;
+    inset: 4px 12% !important;
+    filter: blur(1.5px) !important;
+    mix-blend-mode: screen !important;
+    animation: sun-glass-rainbow-shimmer 4.8s ease-in-out infinite !important;
+    will-change: transform, opacity;
   }
 }
 
