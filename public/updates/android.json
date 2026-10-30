@@ -3,16 +3,16 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 306,
-    "version": "2.13.48",
-    "apk_url": "https://www.dengtahome.com/supabase/storage/v1/object/public/dengta-updates/apk/DengTa-2.13.48.apk",
-    "sha256": "490ed961b3f42355832813789b95624d12b8b5bbe3b10922ae611bc7e9784232",
-    "size_bytes": 41372480,
-    "published_at": "2026-10-30T04:55:00.000Z",
+    "version_code": 307,
+    "version": "2.13.49",
+    "apk_url": "https://www.dengtahome.com/downloads/DengTa-2.13.49.apk",
+    "sha256": "f63b1e3aab3496254e8a4ff611c900159546ffe2136c4a95f24137ac6bd1e6c3",
+    "size_bytes": 36467047,
+    "published_at": "2026-10-30T05:55:00.000Z",
     "notes": [
-      "2.13.48（306）· 输入框变窄变矮、流式回复不再逐段重打",
-      "微信/QQ 绑定页增加复制绑定码、倒计时与自动检测；长聊天流式打字机持续追字。",
-      "直接从软件内更新即可覆盖 2.13.47；若签名不一致，卸载旧版一次再安装。"
+      "2.13.49（307）· 手机输入框变窄变矮、流式回复更连续",
+      "微信/QQ 绑定页支持复制绑定码、倒计时与自动检测。",
+      "已改为正式包（非 debug 包），可直接从 App 内更新覆盖 2.13.47/2.13.48。"
     ]
   }
 }
