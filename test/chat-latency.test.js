@@ -46,4 +46,14 @@ assert.ok(
   "the visible assistant draft must render before the native device refresh finishes",
 );
 
+const textEventStart = app.indexOf('if (event.type === "text")');
+const textEventEnd = app.indexOf('if (event.type === "error")', textEventStart);
+assert.ok(textEventStart >= 0 && textEventEnd > textEventStart);
+const textEventHandler = app.slice(textEventStart, textEventEnd);
+assert.doesNotMatch(
+  textEventHandler,
+  /flushNow\(/,
+  "streamed text must not force a synchronous flushSync render per token"
+);
+
 console.log("chat latency tests passed");

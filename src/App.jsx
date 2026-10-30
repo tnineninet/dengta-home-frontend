@@ -6106,25 +6106,27 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           }
 
           if (event.type === "text") {
-            // 每个到达的正文分片立即提交；bubble_index 分句直接 push 成独立气泡。
-            flushNow(() => {
-              setMessages((current) =>
-                current.map((item) => {
-                  if (item.id !== localAssistantId) return item;
-                  const nextContent = item.content + event.content;
-                  if (!Number.isInteger(event.bubble_index)) {
-                    return { ...item, content: nextContent };
-                  }
-                  const bubbles = Array.isArray(item.bubbles)
-                    ? [...item.bubbles]
-                    : [];
-                  const index = Math.max(0, event.bubble_index);
-                  while (bubbles.length <= index) bubbles.push("");
-                  bubbles[index] = (bubbles[index] || "") + event.content;
-                  return { ...item, content: nextContent, bubbles, bubbleMode: true };
-                }),
-              );
-            });
+            // Do not force a synchronous render for every streamed token. On
+            // Android WebView a flushSync per character blocks the UI thread
+            // and makes a fast provider stream look like one character every
+            // couple of seconds. React batches these updates; the next paint
+            // shows all text that arrived in the meantime.
+            setMessages((current) =>
+              current.map((item) => {
+                if (item.id !== localAssistantId) return item;
+                const nextContent = item.content + event.content;
+                if (!Number.isInteger(event.bubble_index)) {
+                  return { ...item, content: nextContent };
+                }
+                const bubbles = Array.isArray(item.bubbles)
+                  ? [...item.bubbles]
+                  : [];
+                const index = Math.max(0, event.bubble_index);
+                while (bubbles.length <= index) bubbles.push("");
+                bubbles[index] = (bubbles[index] || "") + event.content;
+                return { ...item, content: nextContent, bubbles, bubbleMode: true };
+              }),
+            );
           }
 
           if (event.type === "error") {
