@@ -60,6 +60,8 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣" }) {
   const [bindingError, setBindingError] = useState("");
   const [bindingRemainingMs, setBindingRemainingMs] = useState(0);
   const [copied, setCopied] = useState(false);
+  const bindingExpired =
+    Boolean(bindingCode?.code) && bindingRemainingMs <= 0;
 
   const selectedSections = useMemo(() => new Set(prefs.persona_section_ids), [prefs.persona_section_ids]);
   const selectedMemories = useMemo(() => new Set(prefs.memory_ids), [prefs.memory_ids]);
@@ -118,7 +120,7 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣" }) {
   }, [bindingCode]);
 
   useEffect(() => {
-    if (!bindingCode?.code) return undefined;
+    if (!bindingCode?.code || bindingExpired) return undefined;
     if (bindings.some((item) => item.status === "active")) {
       return undefined;
     }
@@ -135,7 +137,7 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣" }) {
       }
     }, 4000);
     return () => window.clearInterval(timer);
-  }, [bindingCode, bindings, channel]);
+  }, [bindingCode, bindings, channel, bindingExpired]);
 
   function updatePrefs(patch) {
     setSaved("");
@@ -221,7 +223,7 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣" }) {
 
   async function copyBindingCode() {
     const code = bindingCode?.code;
-    if (!code) return;
+    if (!code || bindingExpired) return;
     try {
       await navigator.clipboard.writeText(code);
       setCopied(true);
@@ -395,14 +397,14 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣" }) {
                 <small>
                   绑定码 ·{" "}
                   {bindingRemainingMs > 0
-                    ? `剩 ${Math.floor(bindingRemainingMs / 60000)}:${String(Math.ceil((bindingRemainingMs % 60000) / 1000)).padStart(2, "0")}`
+                    ? `剩 ${Math.floor(bindingRemainingMs / 60000)}:${String(Math.floor((bindingRemainingMs % 60000) / 1000)).padStart(2, "0")}`
                     : "已过期，请重新生成"}
                 </small>
                 <div className="channel-hub-code-row">
                   <strong>{bindingCode.code}</strong>
-                  <button type="button" className="channel-hub-copy" onClick={() => void copyBindingCode()} aria-label="复制绑定码">
+                  <button type="button" className="channel-hub-copy" onClick={() => void copyBindingCode()} aria-label="复制绑定码" disabled={bindingExpired}>
                     {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-                    {copied ? "已复制" : "复制"}
+                    {bindingExpired ? "已过期" : copied ? "已复制" : "复制"}
                   </button>
                 </div>
                 <span>

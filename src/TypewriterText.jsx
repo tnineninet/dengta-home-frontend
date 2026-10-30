@@ -11,6 +11,8 @@ export default function TypewriterText({ text, stepMs = 22, onDone }) {
   const targetRef = useRef("");
   const shownRef = useRef("");
   const doneRef = useRef(false);
+  const frameRef = useRef(0);
+  const startLoopRef = useRef(() => {});
 
   useEffect(() => {
     onDoneRef.current = onDone;
@@ -35,17 +37,19 @@ export default function TypewriterText({ text, stepMs = 22, onDone }) {
     }
     targetRef.current = full;
     doneRef.current = false;
+    startLoopRef.current();
   }, [text]);
 
   useEffect(() => {
     const interval = Math.max(8, Number(stepMs) || 22);
-    let frame = 0;
     let last = 0;
     const tick = (now) => {
-      if (!last) last = now;
+      frameRef.current = 0;
       const target = targetRef.current;
       const current = shownRef.current;
-      if (target && current !== target) {
+      if (!target) return;
+      if (!last) last = now;
+      if (current !== target) {
         const room = Math.max(1, Math.floor((now - last) / interval));
         const next = target.slice(
           0,
@@ -58,18 +62,20 @@ export default function TypewriterText({ text, stepMs = 22, onDone }) {
         if (next === target && !doneRef.current) {
           doneRef.current = true;
           onDoneRef.current?.();
+          return;
         }
       }
       last = now;
-      frame = globalThis.requestAnimationFrame?.(tick) || 0;
+      frameRef.current = globalThis.requestAnimationFrame?.(tick) || 0;
     };
-    frame = globalThis.requestAnimationFrame?.(tick) || 0;
-    if (!frame && targetRef.current) {
-      shownRef.current = targetRef.current;
-      setShown(targetRef.current);
-    }
+    startLoopRef.current = () => {
+      if (frameRef.current) return;
+      frameRef.current = globalThis.requestAnimationFrame?.(tick) || 0;
+    };
+    startLoopRef.current();
     return () => {
-      if (frame) globalThis.cancelAnimationFrame?.(frame);
+      if (frameRef.current) globalThis.cancelAnimationFrame?.(frameRef.current);
+      frameRef.current = 0;
     };
   }, [stepMs]);
 
