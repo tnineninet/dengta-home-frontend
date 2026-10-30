@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Check, Link2, Loader2, MessageCircle, RefreshCw, ShieldCheck, Trash2, Unlink } from "lucide-react";
+import { Check, Copy, Link2, Loader2, MessageCircle, RefreshCw, ShieldCheck, Trash2, Unlink } from "lucide-react";
 import { apiRequest } from "./api";
 import { settingsServiceErrorMessage } from "./settings-service-errors";
 import "./channel-hub.css";
@@ -58,6 +58,8 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣" }) {
   const [bindingCode, setBindingCode] = useState(null);
   const [bindingBusy, setBindingBusy] = useState("");
   const [bindingError, setBindingError] = useState("");
+  const [bindingRemainingMs, setBindingRemainingMs] = useState(0);
+  const [copied, setCopied] = useState(false);
 
   const selectedSections = useMemo(() => new Set(prefs.persona_section_ids), [prefs.persona_section_ids]);
   const selectedMemories = useMemo(() => new Set(prefs.memory_ids), [prefs.memory_ids]);
@@ -98,6 +100,42 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣" }) {
     }, 0);
     return () => window.clearTimeout(timer);
   }, [channel]);
+
+  // Keep the one-time code honest: count down to expiry and poll the bridge
+  // automatically so the user does not have to guess when binding succeeded.
+  useEffect(() => {
+    if (!bindingCode?.expiresAt) return undefined;
+    const update = () => {
+      const left = new Date(bindingCode.expiresAt).getTime() - Date.now();
+      setBindingRemainingMs(Math.max(0, left));
+    };
+    const initial = window.setTimeout(update, 0);
+    const timer = window.setInterval(update, 1000);
+    return () => {
+      window.clearTimeout(initial);
+      window.clearInterval(timer);
+    };
+  }, [bindingCode]);
+
+  useEffect(() => {
+    if (!bindingCode?.code) return undefined;
+    if (bindings.some((item) => item.status === "active")) {
+      return undefined;
+    }
+    const timer = window.setInterval(async () => {
+      try {
+        const data = await apiRequest(
+          `/api/v2/channel-sync/bind/status?channel=${encodeURIComponent(channel)}`
+        );
+        const next = data?.bindings || [];
+        setBindings(next);
+        if (next.some((item) => item.status === "active")) setBindingCode(null);
+      } catch {
+        // The manual refresh button remains available; keep polling.
+      }
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [bindingCode, bindings, channel]);
 
   function updatePrefs(patch) {
     setSaved("");
@@ -179,6 +217,18 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣" }) {
   async function refreshBindings() {
     const data = await apiRequest(`/api/v2/channel-sync/bind/status?channel=${encodeURIComponent(channel)}`).catch(() => null);
     if (data) setBindings(data.bindings || []);
+  }
+
+  async function copyBindingCode() {
+    const code = bindingCode?.code;
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setBindingError("复制失败，请长按上面的绑定码手动复制。");
+    }
   }
 
   async function removeBinding(id) {
@@ -331,15 +381,35 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣" }) {
               <Link2 aria-hidden="true" />
             </div>
             <p className="channel-hub-copy">先生成一次性绑定码，再用已登录的 {meta.bridge} 给 DengTa 发送这串数字。绑定成功后，桥接端才会按当前账号和伴侣同步人设与记忆。</p>
+            <ol className="channel-hub-steps">
+              <li>在手机或电脑登录 <strong>{meta.label}</strong>（{meta.bridge}）。</li>
+              <li>给 DengTa 机器人发送下面的 6 位绑定码。</li>
+              <li>看到「已绑定」即可返回这里同步人设与记忆。</li>
+            </ol>
             <button type="button" className="channel-hub-primary" disabled={bindingBusy === "start"} onClick={() => void startBinding()}>
               {bindingBusy === "start" ? <Loader2 className="spin" aria-hidden="true" /> : <Link2 aria-hidden="true" />}
-              生成绑定码
+              {bindingCode?.code ? "重新生成绑定码" : "生成绑定码"}
             </button>
             {bindingCode?.code ? (
               <div className="channel-hub-code" role="status">
-                <small>10 分钟内有效</small>
-                <strong>{bindingCode.code}</strong>
-                <span>{bindingCode.expiresAt ? `到期 ${new Date(bindingCode.expiresAt).toLocaleString()}` : ""}</span>
+                <small>
+                  绑定码 ·{" "}
+                  {bindingRemainingMs > 0
+                    ? `剩 ${Math.floor(bindingRemainingMs / 60000)}:${String(Math.ceil((bindingRemainingMs % 60000) / 1000)).padStart(2, "0")}`
+                    : "已过期，请重新生成"}
+                </small>
+                <div className="channel-hub-code-row">
+                  <strong>{bindingCode.code}</strong>
+                  <button type="button" className="channel-hub-copy" onClick={() => void copyBindingCode()} aria-label="复制绑定码">
+                    {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+                    {copied ? "已复制" : "复制"}
+                  </button>
+                </div>
+                <span>
+                  {bindings.some((item) => item.status === "active")
+                    ? "已检测到绑定成功"
+                    : "发送后会自动检测；也可以点下方刷新状态。"}
+                </span>
               </div>
             ) : null}
             {bindingError ? <div className="channel-hub-inline-error" role="alert">{bindingError}</div> : null}
