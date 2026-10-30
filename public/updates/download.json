@@ -4,13 +4,13 @@
     "version_code": 308,
     "version": "2.13.50",
     "apk_url": "https://www.dengtahome.com/downloads/DengTa-2.13.50.apk",
-    "sha256": "ba92ea5d9b2fa1bf8de7f42db4f7b1bdc9bab79ed0a58326c4bd17cd0e0361bb",
-    "size_bytes": 63478583,
+    "sha256": "7fbf1469e45c04e7b95cc2f49f076cfba03720bb5f23bb7f112467852a22498b",
+    "size_bytes": 36467003,
     "published_at": "2026-10-30T06:40:00.000Z",
     "notes": [
       "2.13.50（308）· 聊天流式文字不再逐字强制同步渲染，手机上回复更顺滑",
       "输入框单行紧凑；微信/QQ 绑定页复制绑定码、倒计时与自动检测。",
-      "release 包，可直接从 App 内更新覆盖 2.13.47/2.13.48/2.13.49。"
+      "release 包，可直接从 App 内更新覆盖 2.13.47+。"
     ]
   }
 }

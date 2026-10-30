@@ -104,6 +104,10 @@
     {
       "source": "/supabase/:path*",
       "destination": "https://nyyqizwrlmejpfdhgrnd.supabase.co/:path*"
+    },
+    {
+      "source": "/downloads/DengTa-2.13.50.apk",
+      "destination": "https://nyyqizwrlmejpfdhgrnd.supabase.co/storage/v1/object/public/dengta-updates/apk/DengTa-2.13.50.apk"
     }
   ]
 }
