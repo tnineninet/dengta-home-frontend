@@ -47,7 +47,10 @@ export default function TypewriterText({ text, stepMs = 22, onDone }) {
       frameRef.current = 0;
       const target = targetRef.current;
       const current = shownRef.current;
-      if (!target) return;
+      if (!target) {
+        last = 0;
+        return;
+      }
       if (!last) last = now;
       if (current !== target) {
         const room = Math.max(1, Math.floor((now - last) / interval));
@@ -61,6 +64,7 @@ export default function TypewriterText({ text, stepMs = 22, onDone }) {
         }
         if (next === target && !doneRef.current) {
           doneRef.current = true;
+          last = 0;
           onDoneRef.current?.();
           return;
         }
