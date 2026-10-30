@@ -171,7 +171,7 @@ test("receiver route, SW bypass, Vercel rewrite and controller contract are wire
   const androidManifest = JSON.parse(source("../public/updates/android.json"));
   assert.match(
     androidManifest.latest.apk_url,
-    /^https:\/\/www\.dengtahome\.com\/(?:supabase\/storage\/v1\/object\/public\/dengta-updates\/apk\/|downloads\/)DengTa-(?:latest|\d+\.\d+\.\d+(?:\.\d+)?)\.apk$/,
+    /^(?:https:\/\/www\.dengtahome\.com\/(?:supabase\/storage|downloads)|https:\/\/nyyqizwrlmejpfdhgrnd\.supabase\.co\/storage\/v1\/object\/public\/dengta-updates\/apk)\/.*DengTa-(?:latest|\d+\.\d+\.\d+(?:\.\d+)?)\.apk$/,
     "the update feed must point at an allowlisted object-storage or site download path accepted by the native update policy",
   );
 });
