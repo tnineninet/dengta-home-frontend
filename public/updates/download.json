@@ -1,16 +1,15 @@
 {
   "schema_version": 1,
   "latest": {
-    "version_code": 308,
-    "version": "2.13.50",
-    "apk_url": "https://www.dengtahome.com/downloads/DengTa-2.13.50.apk",
-    "sha256": "7fbf1469e45c04e7b95cc2f49f076cfba03720bb5f23bb7f112467852a22498b",
-    "size_bytes": 36467003,
-    "published_at": "2026-10-30T06:40:00.000Z",
+    "version_code": 309,
+    "version": "2.13.51",
+    "apk_url": "https://nyyqizwrlmejpfdhgrnd.supabase.co/storage/v1/object/public/dengta-updates/apk/DengTa-2.13.51.apk",
+    "sha256": "8ad3942f218ca215a19ed55e9f5ccd91655d964ace44b476da569e65cca75089",
+    "size_bytes": 36466703,
+    "published_at": "2026-11-06T02:12:14.042Z",
     "notes": [
-      "2.13.50（308）· 聊天流式文字不再逐字强制同步渲染，手机上回复更顺滑",
-      "输入框单行紧凑；微信/QQ 绑定页复制绑定码、倒计时与自动检测。",
-      "release 包，可直接从 App 内更新覆盖 2.13.47+。"
+      "自动构建 2.13.51（309） · 80a746013afc",
+      "包含最新的聊天、界面和 Android 修复。"
     ]
   }
 }
