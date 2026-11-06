@@ -65,7 +65,7 @@ jobs:
             -storepass android \
             -alias androiddebugkey \
             -keypass android | sha256sum | awk '{print $1}')"
-          test "$KEYSTORE_CERT_SHA256" = "38a03ab2815c285bef17521d7fc7d4cd6ea4c85d6f14e337ef7391af9b2bb4c6"
+          test "$KEYSTORE_CERT_SHA256" = "0d634aaf6eb10dd4c9042883ddb00fa7c32e01eb6387e1a7238bf96d08a1e0f5"
 
       - name: Install web dependencies
         run: npm ci
@@ -116,7 +116,7 @@ jobs:
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           test -n "$APKSIGNER"
           "$APKSIGNER" verify --verbose --print-certs android/app/build/outputs/apk/release/app-release.apk \
-            | grep -F "certificate SHA-256 digest: 38a03ab2815c285bef17521d7fc7d4cd6ea4c85d6f14e337ef7391af9b2bb4c6"
+            | grep -F "certificate SHA-256 digest: 0d634aaf6eb10dd4c9042883ddb00fa7c32e01eb6387e1a7238bf96d08a1e0f5"
 
       - name: Publish APK and update manifests
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run == true) && !startsWith(github.ref_name, 'android-dryrun-') }}

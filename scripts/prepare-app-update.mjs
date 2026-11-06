@@ -19,7 +19,7 @@ const attribute = name => new RegExp(`${name}='([^']+)'`).exec(packageLine)?.[1]
 const signerJar = path.join(tools, "lib", "apksigner.jar");
 const java = process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", process.platform === "win32" ? "java.exe" : "java") : "java";
 const signature = execFileSync(java, ["-jar", signerJar, "verify", "--print-certs", apk], { encoding: "utf8", windowsHide: true });
-const expectedSigner = "38a03ab2815c285bef17521d7fc7d4cd6ea4c85d6f14e337ef7391af9b2bb4c6";
+const expectedSigner = "0d634aaf6eb10dd4c9042883ddb00fa7c32e01eb6387e1a7238bf96d08a1e0f5";
 const signers = [...signature.matchAll(/Signer #\d+ certificate SHA-256 digest:\s*([a-f\d]+)/gi)].map(value => value[1].toLowerCase());
 if (signers.length !== 1 || signers[0] !== expectedSigner) throw new Error("APK signing certificate differs from the installed release channel; do not publish an incompatible update");
 const output = path.resolve(args.output);

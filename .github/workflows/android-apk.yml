@@ -54,7 +54,7 @@ jobs:
             -storepass android \
             -alias androiddebugkey \
             -keypass android | sha256sum | awk '{print $1}')"
-          test "$KEYSTORE_CERT_SHA256" = "38a03ab2815c285bef17521d7fc7d4cd6ea4c85d6f14e337ef7391af9b2bb4c6"
+          test "$KEYSTORE_CERT_SHA256" = "0d634aaf6eb10dd4c9042883ddb00fa7c32e01eb6387e1a7238bf96d08a1e0f5"
 
       - name: Install web dependencies
         run: npm ci
@@ -110,7 +110,7 @@ jobs:
           test -n "$APKSIGNER"
           SIGNATURE_OUTPUT="$("$APKSIGNER" verify --verbose --print-certs android/app/build/outputs/apk/debug/app-debug.apk)"
           printf '%s\n' "$SIGNATURE_OUTPUT"
-          printf '%s\n' "$SIGNATURE_OUTPUT" | grep -F "certificate SHA-256 digest: 38a03ab2815c285bef17521d7fc7d4cd6ea4c85d6f14e337ef7391af9b2bb4c6"
+          printf '%s\n' "$SIGNATURE_OUTPUT" | grep -F "certificate SHA-256 digest: 0d634aaf6eb10dd4c9042883ddb00fa7c32e01eb6387e1a7238bf96d08a1e0f5"
 
       - name: Keep the APK on the runner
         run: |
