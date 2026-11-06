@@ -94,10 +94,16 @@ export default function AppUpdateCenter({ canPrompt = true }) {
         if (!disposed) setFeedback("正在下载更新 " + Math.max(0, Math.min(100, Number(percent) || 0)) + "%…");
       });
       listenUpdate("downloadComplete", () => {
-        if (!disposed) setFeedback("更新已下载，正在打开系统安装界面…");
+        if (!disposed) {
+          setFeedback("更新已下载，正在打开系统安装界面…");
+          setOpening(false);
+        }
       });
       listenUpdate("downloadFailed", ({ message }) => {
-        if (!disposed) setFeedback(message || "更新包下载失败，请检查网络后重试。");
+        if (!disposed) {
+          setFeedback(message || "更新包下载失败，请检查网络后重试。");
+          setOpening(false);
+        }
       });
       void App.addListener("appStateChange", ({ isActive }) => { if (isActive) resumed(); }).then(value => { if (disposed) void value.remove(); else handle = value; }).catch(() => {});
     }
@@ -119,9 +125,31 @@ export default function AppUpdateCenter({ canPrompt = true }) {
     if (downloadPending.current || !release) return;
     downloadPending.current = true;
     setOpening(true);
-    try { await AppUpdates.openDownload({ url: release.apk_url, sha256: release.sha256, size: String(release.size_bytes) }); if (mounted.current) setFeedback("更新包已开始下载，完成后会打开系统安装界面。"); }
-    catch { if (mounted.current) setFeedback("未能打开下载页面，请稍后再试。错误码：app_update_download_failed"); }
-    finally { downloadPending.current = false; if (mounted.current) setOpening(false); }
+    setFeedback("正在连接更新服务器…");
+    try {
+      await AppUpdates.openDownload({
+        url: release.apk_url,
+        sha256: release.sha256,
+        size: String(release.size_bytes),
+      });
+      if (mounted.current) {
+        setFeedback("已开始下载更新包，进度会显示在这里…");
+      }
+    } catch (error) {
+      if (mounted.current) {
+        const code = String(error?.code || "");
+        setOpening(false);
+        setFeedback(
+          code.includes("install_permission_required")
+            ? "请允许 DengTa 安装应用，然后再次点「立即更新」。"
+            : code.includes("app_update_manifest_invalid")
+              ? "更新信息无效，请稍后重新检查更新。"
+              : "未能开始下载，请检查网络后重试。错误码：app_update_download_failed"
+        );
+      }
+    } finally {
+      downloadPending.current = false;
+    }
   }
   async function allowNotifications() {
     if (notificationPending.current) return;
@@ -168,7 +196,7 @@ export default function AppUpdateCenter({ canPrompt = true }) {
         <h3 className="app-update-notes-title">本次更新</h3>
         <ul>{release.notes.map((note, index) => <li key={index}>{note}</li>)}</ul>
         <p>下载安装后按系统提示更新。无需卸载当前应用，聊天与账号数据会保留。</p>
-        <div className="app-update-actions"><button type="button" onClick={dismiss}>稍后提醒</button><button type="button" disabled={opening} onClick={() => void download()}>{opening ? "正在打开…" : "立即更新"}</button></div>
+        <div className="app-update-actions"><button type="button" onClick={dismiss}>稍后提醒</button><button type="button" disabled={opening} onClick={() => void download()}>{opening ? "正在下载…" : "立即更新"}</button></div>
         <button className="app-update-notifications" type="button" disabled={notificationSaving} onClick={() => void allowNotifications()}>{notificationSaving ? "正在保存…" : "允许后台更新通知"}</button>
       </section>
     </div>}
