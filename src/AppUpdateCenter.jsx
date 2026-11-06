@@ -13,6 +13,7 @@ export default function AppUpdateCenter({ canPrompt = true }) {
   const [feedback, setFeedback] = useState("");
   const [installed, setInstalled] = useState("");
   const [opening, setOpening] = useState(false);
+  const [downloadStarted, setDownloadStarted] = useState(false);
   const [notificationSaving, setNotificationSaving] = useState(false);
   const [manualPrompt, setManualPrompt] = useState(false);
   const [preferencesOpen, setPreferencesOpen] = useState(false);
@@ -96,12 +97,14 @@ export default function AppUpdateCenter({ canPrompt = true }) {
       listenUpdate("downloadComplete", () => {
         if (!disposed) {
           setFeedback("更新已下载，正在打开系统安装界面…");
+          setDownloadStarted(false);
           setOpening(false);
         }
       });
       listenUpdate("downloadFailed", ({ message }) => {
         if (!disposed) {
           setFeedback(message || "更新包下载失败，请检查网络后重试。");
+          setDownloadStarted(false);
           setOpening(false);
         }
       });
@@ -124,6 +127,7 @@ export default function AppUpdateCenter({ canPrompt = true }) {
   async function download() {
     if (downloadPending.current || !release) return;
     downloadPending.current = true;
+    setDownloadStarted(false);
     setOpening(true);
     setFeedback("正在连接更新服务器…");
     try {
@@ -133,11 +137,13 @@ export default function AppUpdateCenter({ canPrompt = true }) {
         size: String(release.size_bytes),
       });
       if (mounted.current) {
+        setDownloadStarted(true);
         setFeedback("已开始下载更新包，进度会显示在这里…");
       }
     } catch (error) {
       if (mounted.current) {
         const code = String(error?.code || "");
+        setDownloadStarted(false);
         setOpening(false);
         setFeedback(
           code.includes("install_permission_required")
@@ -196,7 +202,7 @@ export default function AppUpdateCenter({ canPrompt = true }) {
         <h3 className="app-update-notes-title">本次更新</h3>
         <ul>{release.notes.map((note, index) => <li key={index}>{note}</li>)}</ul>
         <p>下载安装后按系统提示更新。无需卸载当前应用，聊天与账号数据会保留。</p>
-        <div className="app-update-actions"><button type="button" onClick={dismiss}>稍后提醒</button><button type="button" disabled={opening} onClick={() => void download()}>{opening ? "正在下载…" : "立即更新"}</button></div>
+        <div className="app-update-actions"><button type="button" onClick={dismiss}>稍后提醒</button><button type="button" disabled={opening} onClick={() => void download()}>{opening ? (downloadStarted ? "正在下载…" : "正在打开…") : "立即更新"}</button></div>
         <button className="app-update-notifications" type="button" disabled={notificationSaving} onClick={() => void allowNotifications()}>{notificationSaving ? "正在保存…" : "允许后台更新通知"}</button>
       </section>
     </div>}
