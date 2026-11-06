@@ -123,7 +123,7 @@ assert.match(
 );
 assert.match(
   androidWorkflow,
-  /38a03ab2815c285bef17521d7fc7d4cd6ea4c85d6f14e337ef7391af9b2bb4c6/,
+  /0d634aaf6eb10dd4c9042883ddb00fa7c32e01eb6387e1a7238bf96d08a1e0f5/,
   "CI must reject APKs signed by a transient runner certificate",
 );
 assert.equal(
