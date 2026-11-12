@@ -31,7 +31,7 @@ Real fresh-context, read-only reviewers: `goldfish_r3_auth`, `goldfish_r3_native
 - **Rationale:** Scrolling could stop before a control fully reached the rectangle used for acceptance.
 - **AI Suggestion:** PROPOSE FIX.
 - **Proposed Edit / Resolution:** Forward measured native safe top/bottom through xcodebuild/scheme to test setup, validate numeric bounds, and use the same safe rectangle for reveal/visibility and final evidence.
-- **Verification:** Native environment forwarding requires the next macOS run. The earlier `f8b8f51` raw XCTest passed all seven phases, but its overall CI run failed on a separate overstrict keyboard-bottom parser. Revalidation is not a green CI claim.
+- **Verification:** Full run 43279364936 at ca3f0f7 passed native environment forwarding, all seven phases and final geometry parsing. The earlier f8b8f51 raw XCTest passed but its overall run failed on a separate overstrict keyboard-bottom parser; revalidation alone was never counted as green.
 
 ### R3-04 — Compiled API/redirect verification absent [documentation drift] — P2
 
@@ -65,4 +65,4 @@ Real fresh-context, read-only reviewers: `goldfish_r3_auth`, `goldfish_r3_native
 - **AI Suggestion:** PROPOSE FIX.
 - **Resolution:** Distinguish successful historical compilation, current-SHA rebuild and unverified Clipboard interaction.
 
-No finding was contested, declined, escalated or silently reclassified. Native safe-area forwarding remains an explicit runtime evidence gate until a fresh CI run verifies it.
+No finding was contested, declined, escalated or silently reclassified. The native gate is verified by ca3f0f7; compact-device expansion is tracked separately and cannot inherit that result.

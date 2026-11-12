@@ -1,6 +1,6 @@
 # Goldfish Annotated Review Report
 
-Status: fixes applied; current native/XCUITest validation pending.
+Status: fixes verified by actual run 43279364936 at ca3f0f7; authenticated business acceptance remains unverified.
 
 **Target:** `docs/IOS-IMPORT-PLAN.md` and implementation (full files).
 
@@ -42,7 +42,7 @@ Real fresh-context read-only reviewers: `goldfish_r2_auth` (codebase details), `
 - **Rationale:** Login/register/recovery controls might be unreachable on small/keyboard-reduced viewports.
 - **AI Suggestion:** PROPOSE FIX.
 - **Justification / Proposed Edit:** Bound native auth height to --app-height, remove minimum expansion and reduce the decorative mobile offset; preserve actual internal scrolling. Add a genuine anonymous XCUITest for tapping/typing/scrolling seven login/register/forgot phases. Assert complete native frames above the keyboard and within the safe frame.
-- **Verification:** Native execution pending on the next source SHA. DOM/viewport unit tests are not treated as proof of keyboard behavior.
+- **Verification:** Actual XCUITest passed all seven phases at f8b8f51, although the overall run failed on our overstrict keyboard-bottom parser. Full run 43279364936 at ca3f0f7 passed with repaired parser and measured safe-area forwarding. This proves the tested anonymous forms on iPhone 17; no chat composer or private-account inference.
 
 ### R2-05 — Readiness accepts invisible/covered controls [implementation readiness] — P1
 
@@ -51,7 +51,7 @@ Real fresh-context read-only reviewers: `goldfish_r2_auth` (codebase details), `
 - **Rationale:** A splash or clipped form could be accepted as a ready login page.
 - **AI Suggestion:** PROPOSE FIX.
 - **Justification / Proposed Edit:** Evaluate computed/ancestor visibility, visual viewport and clipping, five hit-test points and explicit prelude absence. Require three advancing nonce-bound samples. Share the actual bundled reader with executable fixtures.
-- **Verification:** Eight fixtures against the actual resource reject offscreen/clipped/hidden/transparent/disabled/covered/prelude controls. Passed `round2-evidence-fixes.log`; new native compilation/runtime pending.
+- **Verification:** Eight fixtures against the actual resource reject offscreen/clipped/hidden/transparent/disabled/covered/prelude controls. Passed `round2-evidence-fixes.log`; actual tightened native readiness and stable sampling passed at f8b8f51 and ca3f0f7. The latter full run succeeded.
 
 ### R2-06 — Retired SDK resources can revive [codebase details] — P2
 
@@ -69,10 +69,10 @@ Real fresh-context read-only reviewers: `goldfish_r2_auth` (codebase details), `
 - **Rationale:** CI could publish success with missing visual evidence.
 - **AI Suggestion:** PROPOSE FIX.
 - **Justification / Proposed Edit:** Separate screenshotCaptured; require successful command plus a new bounded PNG/hash. Refuse stale launch receipts after XCTest relaunches. Failure must keep a nonzero result.
-- **Verification:** Command failure, missing/malformed file, failed command with existing PNG and authenticated/unknown state tests pass in `round2-evidence-fixes.log`. Full current native smoke pending.
+- **Verification:** Command failure, missing/malformed file, failed command with existing PNG and authenticated/unknown state tests pass in `round2-evidence-fixes.log`. Actual ca3f0f7 smoke captured/hashed a new PNG, passed keyboard evidence and succeeded. Round 4 also preserves an earlier PNG during failed retry.
 
 ## Related full-suite fixture repairs
 
 The nursery fixture emitted a login through an SDK listener that a preceding real 401 had retired. Its cleanup now initializes a replacement before emitting the next test's login. All 53 nursery lifecycle cases and 115 combined affected tests passed. Music cookie mocks explicitly declare their Android plugin availability, matching the real Capacitor contract; this preserves their original behavior assertions.
 
-No finding was contested/escalated/declined or silently downgraded. Five P1 and two P2 fixes are applied; native validation remains open before marking this round resolved. Authenticated private-account business acceptance remains a separate unverified item.
+No finding was contested/escalated/declined or silently downgraded. Five P1 and two P2 fixes are applied and the native gates passed at ca3f0f7. Authenticated private-account business acceptance remains a separate unverified item.

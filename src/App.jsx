@@ -9474,13 +9474,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               把外观、伴侣和日常陪伴调成你喜欢的样子。
             </p>
           </div>
-          <div className="settings-app-actions"><WebInstallButton
+          <div className="settings-app-actions">
+          {Capacitor.getPlatform() !== "ios" && <>
+          <WebInstallButton
             className="install-button"
             promptLabel="⤓ 安装到手机/电脑"
             guidanceLabel="⤓ 安装到手机/电脑"
             onFeedback={setNotice}
           />
-          {Capacitor.getPlatform() !== "ios" && <>
             <a className="install-button" href="/download" target="_blank" rel="noreferrer">⤓ 下载安卓安装包</a>
             <button type="button" className="install-button" onClick={() => window.dispatchEvent(new Event("dengta:check-app-updates"))}>检查应用更新</button>
             <button type="button" className="install-button" onClick={() => window.dispatchEvent(new Event("dengta:app-update-preferences"))}>更新提醒设置</button>

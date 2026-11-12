@@ -11,7 +11,7 @@
 - 三个稳定键：`dengta_home_auth_v1`、`-code-verifier`、`-user`。iOS 只用设备解锁后可访问且不迁移至新设备的 Keychain。
 - 首次迁移以已存在的 Keychain 为准；只有 Keychain 空时读旧 Preferences/localStorage。写后读回，再清除已知明文副本。失败仍清除旧副本并阻止登录，可能要求重新登录；这不是无损迁移承诺。
 - 每个 SDK 拥有可撤销租约。退出同步封闭旧租约、事件和生命周期，再等待在途存储完成并验证三个键删除。失败保留封闭状态，显式解锁重试后才允许新客户端。
-- 新请求持有私有上下文票据。旧请求的 401 或伴侣响应不能修改新账号/新 token。当前 provider 401 白名单保留。
+- 核心 API/settings/personality/memory scope 持有并转发私有上下文票据；已测旧请求的 401/伴侣响应不能修改新账号/新 token。当前 provider 401 白名单保留。额外只读审查发现既有语音/创作的部分直接转发未带 originating context；这些可选路径不在本轮硬验收，后续需单独补齐，不能声称所有业务调用已完成同等隔离。
 - 保留现有错误分类、连接检测、初始化/登录 20 秒和刷新 15 秒截止时间；超时不能让迟到 SDK 重新登录。
 - 恢复超时只封闭/排空旧租约，保留 durable session 供重试；显式退出可把该排空升级为 verified clear。内部 SDK rotation 不重置身份队列；显式取消使用独立 epoch。真实 GoTrue 的 initialize finally 可能重开监听，因此立即及初始化结束后都执行 dispose。
 - 回滚必须保留安全存储边界，不能恢复旧 Preferences 认证路径。AccountVault 和普通缓存加密后置，不声称全部私人数据已加密。
@@ -34,7 +34,7 @@ iOS native 不获取 Android marker/touch recovery，不显示 APK 操作。共�
 3. Simulator 构建/安装/启动：分别记载；有 `.app` 不等于能启动。
 4. 实际 Keychain 随机探针：独立 service/key，验证 add/read/delete 与字节回读，不导出值。
 5. 匿名 DOM 就绪 + 截图 + 进程存活：证明启动至登录页，不能证明真实账号业务。
-6. 原生 XCUITest 的匿名键盘输入/滚动：只能证明所测登录/注册/找回表单，不证明登录后聊天 composer。`f8b8f51` 原始测试实际通过七阶段，但总体 run 因过严几何 parser 失败；修复 parser/safe-area 传入后的新 SHA 仍须完整 CI。
+6. 原生 XCUITest 的匿名键盘输入/滚动：只能证明所测登录/注册/找回表单，不证明登录后聊天 composer。`f8b8f51` 原始七阶段通过但总体 parser 失败；ca3f0f7 完整 run 43279364936 通过。随后 0431a82 run 43280829367 在 iPhone 17 和 iPhone SE 3 分别通过七阶段、实际 Keychain/就绪与截图。
 7. 本地私有账号业务验收：恢复会话、伴侣、流式聊天、人格保存/恢复、记忆/设置与聊天键盘。执行前保持未验证。
 
 CI 只导出 allowlist schema 的诊断、工具/构建日志和匿名页面截图，带源码 SHA 与本次随机启动标识；未知或认证状态拒绝截图。下载的 CI artifact 只放仓库外并记录哈希。

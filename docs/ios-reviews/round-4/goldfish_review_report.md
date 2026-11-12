@@ -53,6 +53,6 @@ Fresh read-only reviewers: `goldfish_r4_auth` and `round4_native_policy`. Root a
 
 ## Runtime question, not a verified defect
 
-The native reviewer could not establish whether Xcode expands the scheme's safe-area build settings without MacroExpansion. Root added explicit App MacroExpansion. The test rejects unresolved/non-numeric values, so this fails closed. Resolve using actual next macOS test output; do not claim it passed from static review.
+The native reviewer could not establish whether Xcode expands the scheme's safe-area build settings without MacroExpansion. Root added explicit App MacroExpansion. Full run 43279364936 at ca3f0f7 passed the test setup's numeric-inset guards, seven phases and final safe rectangle validator, closing the runtime question for that run. It was not marked passed from static review.
 
 All confirmed findings are PROPOSE FIX. No severity was downgraded or original report treated as executed runtime evidence.

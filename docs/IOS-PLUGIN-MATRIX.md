@@ -4,10 +4,10 @@
 
 | 能力 | 当前实现 | iOS 策略 | 本轮状态 |
 |---|---|---|---|
-| 登录/恢复 | auth-js + 平台存储 | 自定义 Keychain + App 深链；Preferences 只迁移旧凭据 | 已实现，原生实测待 CI |
+| 登录/恢复 | auth-js + 平台存储 | 自定义 Keychain + App 深链；Preferences 只迁移旧凭据 | 原生 Keychain/匿名启动已通过 ca3f0f7；真实账号恢复/邮件回跳未验证 |
 | POST SSE | `fetch` + `ReadableStream`，请求/伴侣 scope | 保持 WKWebView 的浏览器流；不启用 native HTTP interception | JS 协议回归；真实账号链路待验 |
 | 人格/记忆/设置 | 当前 React/API + 保存 scope | 保留业务与大文本/退出前保存保护 | 回归测试；实机操作待验 |
-| 剪贴板 | `@capacitor/clipboard` 8.0.1 | SPM 自动链接 | 原生编译已在 11b08ce/f8b8f51 通过；交互未验证，当前后续 SHA 待重建 |
+| 剪贴板 | `@capacitor/clipboard` 8.0.1 | SPM 自动链接 | 原生编译已在 ca3f0f7 通过；交互未验证，新增小屏 CI 另记 |
 | 生命周期/深链 | `@capacitor/app` 8.1.1 | 精确路由、冷/热启动去重 | JS 测试；邮件回跳待验 |
 | 普通原生偏好 | `@capacitor/preferences` 8.0.1 | 保留普通偏好；认证仅读取/清理旧副本 | 已测试迁移/Proxy thenable 陷阱 |
 | 语音消息 | Web getUserMedia + MediaRecorder | 评估现有 audio/mp4/.m4a 路径；显式麦克风用途说明 | 可行性评估，不是首版硬验收 |
@@ -38,5 +38,7 @@ SPM sync 已发现 App、Clipboard、LocalNotifications、Preferences 四个官�
 | 退出清理 | 外部 P1 线索需独立复现；本轮未完成 iOS pending/delivered 通知统一清理验收 | 调度后退出/切账号/杀进程重启，检查 pending 与 delivered；排查迟到轮询结果 | 后续按账号/会话记录通知 ID，清除 pending/delivered 并封闭旧调度；不能从匿名 CI 推断清理通过 |
 
 WebKit 的[原始 MediaRecorder/WKWebView 说明](https://webkit.org/blog/11353/mediarecorder-api/)说明了 MP4/AAC 与原生采集能力/用户授权前提；这是历史官方能力依据。当前实现仍用运行时 MIME 探测，iOS 26 的录制/播放成功必须另取实际证据。官方页面在 2026-11-12T18:25Z 读取为 HTTP 200，缓存位于仓库外 `webkit-mediarecorder.html`。LocalNotifications 能力以锁定的 8.0.0 README/Swift handler 为本次源码依据。
+
+额外静态审查发现 `voice.js` 和 `CompanionCreativeStudio.jsx` 的既有部分 response capture/invalidation 转发缺少 originating context；没有把这些路径算作已完成全量隔离。语音/创作正式纳入后续验收前需独立修复与账号切换竞态测试，当前核心聊天/人格/记忆/设置的已测 scope 结果不扩展到它们。
 
 依据：本仓库 `src/`、Android 插件与 npm 包 Swift 源；[Capacitor Preferences](https://capacitorjs.com/docs/apis/preferences)、[WebKit MediaRecorder](https://webkit.org/blog/11353/mediarecorder-api/)、[WebKit iOS 文件选择器](https://github.com/WebKit/WebKit/blob/main/Source/WebKit/UIProcess/ios/forms/WKFileUploadPanel.mm)。具体依赖锁定于 package-lock.json。
