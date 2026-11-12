@@ -26,8 +26,6 @@ jobs:
     timeout-minutes: 35
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
-      IOS_EVIDENCE: ${{ runner.temp }}/dengta-ios-evidence
-      IOS_DERIVED_DATA: ${{ runner.temp }}/dengta-ios-derived
       VITE_API_URL: https://dengta-home-backend-rkmq.onrender.com
       VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
       VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
@@ -48,6 +46,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          IOS_EVIDENCE="$RUNNER_TEMP/dengta-ios-evidence"
+          printf 'IOS_EVIDENCE=%s\nIOS_DERIVED_DATA=%s\n' "$IOS_EVIDENCE" "$RUNNER_TEMP/dengta-ios-derived" >> "$GITHUB_ENV"
           mkdir -p "$IOS_EVIDENCE"
           test -d "$DEVELOPER_DIR"
           {
