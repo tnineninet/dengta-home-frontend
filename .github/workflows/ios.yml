@@ -108,7 +108,7 @@ jobs:
             CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- build \
             2>&1 | tee "$IOS_EVIDENCE/xcodebuild.log"
 
-      - name: Real Simulator launch, Keychain and anonymous readiness
+      - name: Real Simulator launch, Keychain and anonymous keyboard UI
         shell: bash
         run: |
           set -euo pipefail

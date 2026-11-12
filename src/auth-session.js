@@ -175,6 +175,7 @@ export function createAuthSessionManager({
   let cleanupRecord = null;
   let cleanupPromise = null;
   let identityQueue = Promise.resolve();
+  let identityEpoch = 0;
   const requestContexts = new WeakMap();
   let initialization = null;
   let authSubscription = null;
@@ -270,10 +271,12 @@ export function createAuthSessionManager({
   function clearRetiredRecord(record, retry = false) {
     if (cleanupPromise) return cleanupPromise;
     if (retry && !record.lease) record.ready = resolveLease(record);
-    const clear = (record.lease
-      ? record.lease.retireAndClear()
-      : record.ready.then(lease => lease?.retireAndClear()))
-      .then(() => {
+    // Seal synchronously; draining the lease also fences a native call that
+    // was already in flight. An explicit exit may upgrade a timeout's
+    // preserve-only retirement to verified deletion before this completes.
+    const drained = record.lease ? record.lease.retire() : record.ready.then(lease => lease?.retire());
+    const clear = drained.then(async () => {
+        if (!record.preserveStorage) await record.lease?.retireAndClear();
         if (cleanupRecord === record) {
           cleanupRecord = null;
           publish({ cleanupState: "" });
@@ -288,19 +291,46 @@ export function createAuthSessionManager({
     return clear;
   }
 
-  function retireCurrent({ status = AUTH_STATUS.anonymous, error = null, revoke = false } = {}) {
-    if (cleanupRecord) return cleanupPromise || Promise.reject(cleanupFailure());
+  function disposeClient(record) {
+    const dispose = () => {
+      try {
+        const auth = record.client?.auth;
+        Promise.resolve(typeof auth?.dispose === "function" ? auth.dispose() : auth?.stopAutoRefresh?.()).catch(() => {});
+      } catch { /* Already detached. */ }
+    };
+    dispose();
+    // GoTrue initialization installs its visibility listener in finally, even
+    // after disposal. Dispose again when that actual initialization settles.
+    if (record.sdkInitialization) void record.sdkInitialization.finally(dispose).catch(() => {});
+  }
+
+  function retireCurrent({ status = AUTH_STATUS.anonymous, error = null, revoke = false, preserveStorage = false, preserveIdentityQueue = false } = {}) {
+    if (cleanupRecord) {
+      if (!preserveIdentityQueue) {
+        lifecycle += 1;
+        identityEpoch += 1;
+        identityQueue = Promise.resolve();
+        initialization = null;
+      }
+      if (!preserveStorage) cleanupRecord.preserveStorage = false;
+      publish({ status, user: null, activeCompanionId: "", error, cleanupState: cleanupPromise ? "pending" : "failed" });
+      return cleanupPromise || Promise.reject(cleanupFailure());
+    }
     const record = clientRecord || newRecord();
     record.retired = true;
+    record.preserveStorage = preserveStorage;
     lifecycle += 1;
     clientRecord = null;
     client = null;
     initialization = null;
-    identityQueue = Promise.resolve();
+    if (!preserveIdentityQueue) {
+      identityEpoch += 1;
+      identityQueue = Promise.resolve();
+    }
     callbackInitializationChecked = false;
     authSubscription?.unsubscribe?.();
     authSubscription = null;
-    try { Promise.resolve(record.client?.auth.stopAutoRefresh?.()).catch(() => {}); } catch { /* Already stopped. */ }
+    disposeClient(record);
     // Revoke directly with the captured token where the SDK supports it. The
     // sealed SDK storage must never be reopened to perform server logout.
     if (revoke && record.client) {
@@ -319,7 +349,7 @@ export function createAuthSessionManager({
     cleanupRecord = record;
     // retireAndClear is called synchronously when the lease already exists.
     const clear = clearRetiredRecord(record);
-    if (!revoke && record.client) {
+    if (!revoke && !preserveStorage && record.client) {
       // Best-effort SDK-local disposal runs through its already sealed lease;
       // it cannot read/write/remove credentials belonging to the next client.
       try { Promise.resolve(record.client.auth.signOut?.({ scope: "local" })).catch(() => {}); } catch { /* Already detached. */ }
@@ -337,10 +367,12 @@ export function createAuthSessionManager({
 
   async function ensureClient() {
     requireConfiguration();
+    const generation = lifecycle;
     if (cleanupRecord) {
       if (!cleanupPromise) throw cleanupFailure();
       await cleanupPromise;
     }
+    if (generation !== lifecycle) throw staleOperation();
     if (!clientRecord) {
       const record = newRecord();
       clientRecord = record;
@@ -356,6 +388,10 @@ export function createAuthSessionManager({
           },
         });
         client = record.client;
+        if (typeof client.auth.initialize === "function") {
+          record.sdkInitialization = Promise.resolve(client.auth.initialize());
+          void record.sdkInitialization.catch(() => {});
+        }
         return client;
       }).catch(error => {
         if (isCurrent(record)) clientRecord = null;
@@ -382,7 +418,7 @@ export function createAuthSessionManager({
       if (!callbackInitializationChecked && authClient.auth.initialize) {
         callbackInitializationChecked = true;
         const { error } = await withAuthTimeout(
-          authClient.auth.initialize(),
+          record.sdkInitialization,
           20_000,
           "登录服务响应超时，请检查网络后重试。",
         );
@@ -436,7 +472,7 @@ export function createAuthSessionManager({
     })().catch((error) => {
       if (generation !== lifecycle) throw staleOperation();
       initialization = null;
-      if (error?.code === "auth_timeout") void retireCurrent().catch(() => {});
+      if (error?.code === "auth_timeout") void retireCurrent({ preserveStorage: true }).catch(() => {});
       publish({
         status: AUTH_STATUS.error,
         error:
@@ -465,20 +501,25 @@ export function createAuthSessionManager({
   }
 
   async function freshIdentityRecord() {
+    const epoch = identityEpoch;
     const record = await initializedRecord();
+    if (epoch !== identityEpoch) throw staleOperation();
     assertCurrent(record);
     if (!session?.user?.id) return record;
     // Changing identity must not share persistence with an in-flight refresh
     // from the previous account, even if that refresh's event is ignored.
-    await retireCurrent();
-    return initializedRecord();
+    await retireCurrent({ preserveIdentityQueue: true });
+    if (epoch !== identityEpoch) throw staleOperation();
+    const replacement = await initializedRecord();
+    if (epoch !== identityEpoch) throw staleOperation();
+    return replacement;
   }
 
   function serializeIdentity(operation) {
     return (...args) => {
-      const generation = lifecycle;
+      const epoch = identityEpoch;
       const run = identityQueue.then(() => {
-        if (generation !== lifecycle) throw staleOperation();
+        if (epoch !== identityEpoch) throw staleOperation();
         return operation(...args);
       });
       identityQueue = run.catch(() => {});
@@ -772,11 +813,12 @@ export function createAuthSessionManager({
 
   function destroy() {
     lifecycle += 1;
+    identityEpoch += 1;
     if (clientRecord) {
       clientRecord.retired = true;
       if (clientRecord.lease) void clientRecord.lease.retire().catch(() => {});
       else void clientRecord.ready.then(lease => lease?.retire()).catch(() => {});
-      try { Promise.resolve(clientRecord.client?.auth.stopAutoRefresh?.()).catch(() => {}); } catch { /* Already stopped. */ }
+      disposeClient(clientRecord);
     }
     clientRecord = null;
     client = null;

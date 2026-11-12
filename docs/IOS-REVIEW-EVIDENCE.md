@@ -23,3 +23,11 @@ Target: `docs/IOS-IMPORT-PLAN.md` (original 63 lines). Reviewers: `goldfish_r1_r
 | Timeout/401 regression files omitted and storage seam unspecified | P1 | PROPOSE FIX; exact commands and injected resolver | Lifetime contract added; tests pending |
 
 All findings accepted as plan gaps; no severity was silently reduced. Round 1 plan resolution is complete; corresponding implementation evidence remains open until executed.
+
+Full annotated artifact: `ios-reviews/round-1/goldfish_review_report.md`.
+
+## Round 2 — authentication, native host and CI
+
+Fresh read-only reviewers `goldfish_r2_auth` and `goldfish_r2_native` delivered 5 P1 and 2 P2 findings. Root reproduced the auth races, applied all fixes and added meaningful API/facade, actual GoTrue disposal, real bundled-readiness and screenshot-evidence tests. Deferred authentication checks pass; native/XCUITest execution of the new source is pending. No contested/escalated/declined items.
+
+Full findings, rationale, exact repair and executed evidence: `ios-reviews/round-2/goldfish_review_report.md`. First actual CI success at `11b08ce` precedes these fixes; it is not used as proof that the new readiness/keyboard changes passed.

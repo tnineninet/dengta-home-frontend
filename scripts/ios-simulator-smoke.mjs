@@ -1,9 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import { randomUUID, createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { setTimeout as pause } from "node:timers/promises";
-import { validateKeychainReceipt, validateUiReceipt, mayCaptureAnonymousScreen } from "./ios-evidence-policy.mjs";
+import { validateKeychainReceipt, validateUiReceipt } from "./ios-evidence-policy.mjs";
+import { captureAnonymousScreenshot } from "./ios-screenshot-evidence.mjs";
+import { validateKeyboardEvidence } from "./ios-keyboard-evidence.mjs";
 
 const [appArgument, outputArgument, sourceSha] = process.argv.slice(2);
 if (process.platform !== "darwin" || !appArgument || !outputArgument || !/^[a-f0-9]{40}$/.test(sourceSha || "")) {
@@ -13,7 +15,7 @@ const appPath = fs.realpathSync(appArgument), output = path.resolve(outputArgume
 fs.mkdirSync(output, { recursive: true });
 const nonce = randomUUID().toUpperCase(), bundle = "home.dengta.app";
 const manifest = { schemaVersion: 1, sourceSha, runNonce: nonce, build: false, launch: false, processAlive: false,
-  keychain: false, loginReady: false, businessFlows: "not-exercised", keyboard: "not-exercised", steps: [] };
+  keychain: false, loginReady: false, screenshotCaptured: false, businessFlows: "not-exercised", keyboard: "not-exercised", steps: [] };
 let createdDevice = "", container = "", uiReceipt = null;
 const save = () => fs.writeFileSync(path.join(output, "manifest.json"), JSON.stringify(manifest, null, 2) + "\n");
 
@@ -37,10 +39,10 @@ function readReceipt(file, validate) {
 }
 
 function captureScreenshot() {
-  if (!createdDevice || !mayCaptureAnonymousScreen(uiReceipt)) return;
-  const name = manifest.loginReady ? "login-ready.png" : "startup-failed.png";
-  const result = command("screenshot", "xcrun", ["simctl", "io", createdDevice, "screenshot", "--type=png", path.join(output, name)], 30_000, false);
-  if (result.status === 0) manifest.screenshot = { file: name, sha256: createHash("sha256").update(fs.readFileSync(path.join(output, name))).digest("hex") };
+  const evidence = captureAnonymousScreenshot({ command, device: createdDevice, output, receipt: uiReceipt,
+    file: manifest.loginReady ? "login-ready.png" : "startup-failed.png" });
+  manifest.screenshotCaptured = Boolean(evidence);
+  if (evidence) manifest.screenshot = evidence;
 }
 
 try {
@@ -75,11 +77,15 @@ try {
   manifest.launch = true;
   container = command("app-container", "xcrun", ["simctl", "get_app_container", createdDevice, bundle, "data"]).stdout.trim();
   if (!path.isAbsolute(container) || !fs.statSync(container).isDirectory()) throw new Error("Invalid Simulator data container.");
+  let stableSamples = 0, lastSample = -1;
   for (let attempt = 0; attempt < 60; attempt += 1) {
     const keychain = readReceipt("dengta-ci-keychain-diagnostics.json", validateKeychainReceipt);
     const ui = readReceipt("dengta-ci-ui-diagnostics.json", validateUiReceipt);
     manifest.keychain = keychain?.passed === true;
-    manifest.loginReady = ui?.passed === true;
+    if (ui?.passed && ui.receipt.sample > lastSample) stableSamples += 1;
+    else if (!ui?.passed) stableSamples = 0;
+    if (ui) lastSample = ui.receipt.sample;
+    manifest.loginReady = stableSamples >= 3;
     if (ui) uiReceipt = ui.receipt;
     if (uiReceipt && ["authenticated", "recovery", "authenticating"].includes(uiReceipt.state)) throw new Error("Unexpected account state; screen capture refused.");
     if (manifest.keychain && manifest.loginReady) break;
@@ -88,13 +94,30 @@ try {
   const processes = command("process-liveness", "xcrun", ["simctl", "spawn", createdDevice, "launchctl", "list"], 30_000, true, false).stdout;
   manifest.processAlive = processes.split("\n").some(line => new RegExp(`^\\s*${pid}\\s`).test(line) && line.includes(bundle));
   captureScreenshot();
-  if (!manifest.keychain || !manifest.loginReady || !manifest.processAlive) throw new Error("Native Keychain/login readiness/process acceptance failed.");
+  if (!manifest.keychain || !manifest.loginReady || !manifest.processAlive || !manifest.screenshotCaptured) throw new Error("Native Keychain/login readiness/process/capture acceptance failed.");
+  const startupUi = uiReceipt;
+  // XCTest relaunches with its own nonce. The previous anonymous receipt may
+  // never authorize a failure screenshot of that new launch.
+  uiReceipt = null;
+  const derivedData = path.resolve(appPath, "../../../..");
+  const keyboardResult = command("keyboard-xctest", "xcodebuild", [
+    "-project", "ios/App/App.xcodeproj", "-scheme", "App", "-configuration", "Debug",
+    "-destination", `id=${createdDevice}`, "-derivedDataPath", derivedData,
+    "-parallel-testing-enabled", "NO", "-maximum-concurrent-test-simulator-destinations", "1",
+    "-only-testing:AppUITests/KeyboardSmokeTests/testAnonymousKeyboardLayout",
+    "-test-timeouts-enabled", "YES", "-default-test-execution-time-allowance", "180",
+    "-maximum-test-execution-time-allowance", "300", "-resultBundlePath", path.join(derivedData, `DengTaKeyboard-${nonce}.xcresult`),
+    "CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_IDENTITY=-", "test",
+  ], 480_000);
+  const keyboardReceipt = validateKeyboardEvidence(keyboardResult.stdout, startupUi);
+  fs.writeFileSync(path.join(output, "keyboard-evidence.json"), JSON.stringify(keyboardReceipt, null, 2) + "\n");
+  manifest.keyboard = "anonymous-login-register-forgot-passed";
   manifest.outcome = "startup-passed";
 } catch (error) {
   manifest.outcome = "failed";
   // Every thrown message here is fixed by this script; no provider errors or
   // page content are emitted. Preserve allowlisted receipts if available.
-  manifest.failure = error instanceof Error && /^(Simulator stage failed: [a-z-]+|Wrong bundle or Simulator platform\.|No installed iOS Simulator runtime\.|No installed iPhone device type\.|Simulator returned an invalid device identifier\.|No valid launch PID\.|Invalid Simulator data container\.|Unexpected account state; screen capture refused\.|Native Keychain\/login readiness\/process acceptance failed\.)$/.test(error.message)
+  manifest.failure = error instanceof Error && /^(Simulator stage failed: [a-z-]+|Wrong bundle or Simulator platform\.|No installed iOS Simulator runtime\.|No installed iPhone device type\.|Simulator returned an invalid device identifier\.|No valid launch PID\.|Invalid Simulator data container\.|Unexpected account state; screen capture refused\.|Native Keychain\/login readiness\/process\/capture acceptance failed\.)$/.test(error.message)
     ? error.message : "Simulator smoke could not complete; inspect stage receipts.";
   if (container) {
     readReceipt("dengta-ci-keychain-diagnostics.json", validateKeychainReceipt);
@@ -110,5 +133,6 @@ try {
   }
   save();
   console.log(JSON.stringify({ outcome: manifest.outcome, build: manifest.build, launch: manifest.launch,
-    keychain: manifest.keychain, loginReady: manifest.loginReady, processAlive: manifest.processAlive }));
+    keychain: manifest.keychain, loginReady: manifest.loginReady, processAlive: manifest.processAlive,
+    screenshotCaptured: manifest.screenshotCaptured, keyboard: manifest.keyboard }));
 }

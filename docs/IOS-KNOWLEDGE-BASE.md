@@ -13,11 +13,14 @@
 - 每个 SDK 拥有可撤销租约。退出同步封闭旧租约、事件和生命周期，再等待在途存储完成并验证三个键删除。失败保留封闭状态，显式解锁重试后才允许新客户端。
 - 新请求持有私有上下文票据。旧请求的 401 或伴侣响应不能修改新账号/新 token。当前 provider 401 白名单保留。
 - 保留现有错误分类、连接检测、初始化/登录 20 秒和刷新 15 秒截止时间；超时不能让迟到 SDK 重新登录。
+- 恢复超时只封闭/排空旧租约，保留 durable session 供重试；显式退出可把该排空升级为 verified clear。内部 SDK rotation 不重置身份队列；显式取消使用独立 epoch。真实 GoTrue 的 initialize finally 可能重开监听，因此立即及初始化结束后都执行 dispose。
 - 回滚必须保留安全存储边界，不能恢复旧 Preferences 认证路径。AccountVault 和普通缓存加密后置，不声称全部私人数据已加密。
 
 ## 平台与传输
 
 POST SSE 使用 WKWebView fetch 流；没有选择 native HTTP 代理。CORS、流是否被上游代理缓冲、登录 allowlist 都要用实际链路验收。native callback 为 `dengta://auth`。冷启动 URL 与事件可能同时发送，处理器订阅后读取冷启动 URL、串行去重并清理监听。
+
+已执行的只读传输检查：2026-11-12T17:24Z，OPTIONS `/chat/stream` 返回 204，允许 capacitor origin/POST/请求 headers；GET `/health` 返回 200、JSON、匹配 allow-origin 与 HSTS。证据 `transport-cors-20261112-1724.json` 在日志目录。后台源码检查发现全局 CORS 先于认证、POST stream 设置 event-stream/no-transform/X-Accel-Buffering 并 flushHeaders；这些不是已登录流式实测。没有执行 POST/业务写入。源码搜索仅限明确 source/config，排除凭据交接文档。
 
 iOS native 不获取 Android marker/touch recovery，不显示 APK 操作。共享 viewport controller 有引用计数；AuthGate 与 App 重叠挂载时只保留一组监听，原来的键盘 scroll 抖动保护仍在。单元测试不能证明设备上的键盘布局。
 
@@ -28,7 +31,8 @@ iOS native 不获取 Android marker/touch recovery，不显示 APK 操作。共�
 3. Simulator 构建/安装/启动：分别记载；有 `.app` 不等于能启动。
 4. 实际 Keychain 随机探针：独立 service/key，验证 add/read/delete 与字节回读，不导出值。
 5. 匿名 DOM 就绪 + 截图 + 进程存活：证明启动至登录页，不能证明真实账号业务。
-6. 本地私有账号业务验收：恢复会话、伴侣、流式聊天、人格保存/恢复、记忆/设置与键盘。执行前保持未验证。
+6. 原生 XCUITest 的匿名键盘输入/滚动：只能证明所测登录/注册/找回表单，不证明登录后聊天 composer。当前新增测试待 CI。
+7. 本地私有账号业务验收：恢复会话、伴侣、流式聊天、人格保存/恢复、记忆/设置与聊天键盘。执行前保持未验证。
 
 CI 只导出 allowlist schema 的诊断、工具/构建日志和匿名页面截图，带源码 SHA 与本次随机启动标识；未知或认证状态拒绝截图。下载的 CI artifact 只放仓库外并记录哈希。
 

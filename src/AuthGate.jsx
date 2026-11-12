@@ -420,6 +420,7 @@ export function AuthScreen({
                   ref={emailInputRef}
                   required
                   type="email"
+                  aria-label="邮箱"
                   inputMode="email"
                   autoCapitalize="none"
                   autoCorrect="off"
@@ -447,6 +448,7 @@ export function AuthScreen({
                     required
                     type={showPassword ? "text" : "password"}
                     name="password"
+                    aria-label={mode === "reset" ? "新密码" : "密码"}
                     minLength={
                       ["register", "reset"].includes(mode) ? 8 : undefined
                     }
@@ -481,6 +483,7 @@ export function AuthScreen({
                   required
                   type="password"
                   name="password_confirmation"
+                  aria-label={mode === "reset" ? "再次输入新密码" : "再次输入密码"}
                   minLength="8"
                   autoComplete="new-password"
                   value={passwordConfirmation}

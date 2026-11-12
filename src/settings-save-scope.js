@@ -21,11 +21,11 @@ export function createScopedSettingsSession(manager, scope, signal) {
       assertCurrent(context);
       return context;
     },
-    captureCompanionFromResponse(response) {
-      if (isCurrent()) manager.captureCompanionFromResponse?.(response);
+    captureCompanionFromResponse(response, context) {
+      if (isCurrent()) manager.captureCompanionFromResponse?.(response, context);
     },
-    invalidateSession(message) {
-      if (isCurrent()) return manager.invalidateSession?.(message);
+    invalidateSession(message, context) {
+      if (isCurrent()) return manager.invalidateSession?.(message, context);
     },
   };
 }

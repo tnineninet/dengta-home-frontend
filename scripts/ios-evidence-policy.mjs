@@ -6,7 +6,7 @@ const STAGES = new Set([
 ]);
 const STATES = new Set(["unconfigured", "loading", "anonymous", "authenticating", "recovery", "authenticated", "expired", "error", "unknown"]);
 const UI_BOOLS = ["ready", "controls", "blocked", "keyboardOpen", "androidMarker", "apkEntry"];
-const UI_NUMBERS = ["viewportHeight", "viewportOffsetTop", "innerHeight", "safeAreaTop", "safeAreaBottom"];
+const UI_NUMBERS = ["sample", "viewportHeight", "viewportOffsetTop", "innerHeight", "safeAreaTop", "safeAreaBottom"];
 const exactKeys = (object, keys) => object && typeof object === "object" && !Array.isArray(object) && Object.keys(object).every(key => keys.includes(key));
 const safeError = () => new Error("Invalid simulator evidence schema or launch identity.");
 
@@ -28,7 +28,7 @@ export function validateKeychainReceipt(value, nonce) {
 
 export function validateUiReceipt(value, nonce) {
   if (!exactKeys(value, ["schemaVersion", "runNonce", "state", ...UI_BOOLS, ...UI_NUMBERS]) ||
-      value.schemaVersion !== 1 || value.runNonce !== nonce || !STATES.has(value.state) ||
+      value.schemaVersion !== 2 || value.runNonce !== nonce || !STATES.has(value.state) ||
       !UI_BOOLS.every(key => typeof value[key] === "boolean") ||
       !UI_NUMBERS.every(key => Number.isInteger(value[key]) && value[key] >= 0 && value[key] <= 10000)) throw safeError();
   const passed = value.state === "anonymous" && value.ready && value.controls && !value.blocked &&

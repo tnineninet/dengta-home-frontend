@@ -18,6 +18,6 @@
 
 Keychain 使用 `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`、`synchronizable=false`，仅允许三个认证键，不使用共享 access group。普通私人缓存尚未纳入 AccountVault；本文件不能代替 App Store 隐私标签/数据流审计。
 
-认证深链：iOS native 使用 `dengta://auth`，精确校验目标/字段/重复项。Supabase 生产 redirect allowlist 及后端 CORS 对 `capacitor://localhost` 的实际允许状态需要另行只读核实/运行证据；本轮不改生产配置。APNs 后续需要真实开发者权限、key 与服务端通道；Simulator 编译无需索要这些材料。
+认证深链：iOS native 使用 `dengta://auth`，精确校验目标/字段/重复项。Supabase 生产 redirect allowlist 仍待实际邮件回跳验证。2026-11-12T17:24Z 未认证 OPTIONS `/chat/stream` 对 `capacitor://localhost` 返回 204，允许 POST 和所需 Authorization/Content-Type/X-DengTa-Companion-Id headers；GET `/health` 返回 200 与同一 allow-origin。这只证明所测预检/HTTPS，不能证明已登录 SSE 或其他所有路径。本轮不改生产配置。APNs 后续需要真实开发者权限、key 与服务端通道；Simulator 编译无需索要这些材料。
 
 依据：[Apple 相机说明](https://developer.apple.com/documentation/bundleresources/information-property-list/nscamerausagedescription)、[麦克风说明](https://developer.apple.com/documentation/bundleresources/information-property-list/nsmicrophoneusagedescription)、[前台位置说明](https://developer.apple.com/documentation/bundleresources/information-property-list/nslocationwheninuseusagedescription)及已安装 Preferences README。上架前重新核对届时规范。

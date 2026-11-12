@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createAuthSessionManager } from "../src/auth-session.js";
 import { apiFetch, apiRequest } from "../src/api.js";
+import { coWatchRequestOptions } from "../src/co-watch-request-scope.js";
+import { createScopedSettingsSession, settingsSaveScope } from "../src/settings-save-scope.js";
+import { createImportRequestClient } from "../src/import-request-scope.js";
 
 const KEY = "dengta_home_auth_v1";
 const A = "11111111-1111-4111-8111-111111111111", B = "22222222-2222-4222-8222-222222222222";
@@ -10,7 +13,7 @@ const sessionFor = (id, token = `fictional-${id}`) => ({ access_token: token, us
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 const settle = async () => { for (let i = 0; i < 40; i++) await Promise.resolve(); };
 
-function fixture({ initial = null, resolveStorage, signIn, getSession } = {}) {
+function fixture({ initial = null, resolveStorage, signIn, getSession, setSession } = {}) {
   const values = new Map(), clients = [], calls = [];
   const storage = {
     getItem: key => values.get(key) ?? null,
@@ -37,7 +40,7 @@ function fixture({ initial = null, resolveStorage, signIn, getSession } = {}) {
             return { data: { session: next, user: next.user }, error: null };
           },
           async setSession(tokens) {
-            const next = sessionFor(A, tokens.access_token);
+            const next = setSession ? await setSession(sdk, tokens) : sessionFor(A, tokens.access_token);
             listener?.("SIGNED_IN", next);
             return { data: { session: next }, error: null };
           },
@@ -207,3 +210,71 @@ test("direct untrusted callback is rejected before resolving native storage", as
   assert.deepEqual(await f.manager.handleAuthCallbackUrl("https://evil.example/auth#access_token=x&refresh_token=y"), { ok: false, reason: "invalid_callback" });
   assert.equal(f.resolutions(), 0); assert.equal(f.clients.length, 0); f.manager.destroy();
 });
+
+test("internal client rotation keeps callback and subsequent password login serialized", async () => {
+  const entered = deferred(), finish = deferred(), sdkCalls = [];
+  const f = fixture({ initial: sessionFor(A),
+    setSession: async () => { sdkCalls.push("callback-start"); entered.resolve(); await finish.promise; sdkCalls.push("callback-end"); return sessionFor(A, "fictional-callback"); },
+    signIn: async () => { sdkCalls.push("password"); return sessionFor(B); },
+  });
+  try {
+    await f.manager.initialize();
+    const callback = f.manager.handleAuthCallbackUrl("dengta://auth#access_token=fictional-access&refresh_token=fictional-refresh");
+    await entered.promise;
+    const login = f.manager.signIn({ email: "b@example.invalid", password: "fictional" });
+    await settle();
+    assert.deepEqual(sdkCalls, ["callback-start"]);
+    finish.resolve(); await callback; await login;
+    assert.deepEqual(sdkCalls, ["callback-start", "callback-end", "password"]);
+    assert.equal(f.manager.getSnapshot().user.id, B);
+    assert.equal(f.clients.length, 3);
+  } finally { finish.resolve(); f.manager.destroy(); }
+});
+
+test("explicit logout during internal client cleanup cancels the queued identity", async () => {
+  const entered = deferred(), finish = deferred(), f = fixture({ initial: sessionFor(A) });
+  const remove = f.storage.removeItem; let first = true;
+  f.storage.removeItem = async key => { if (first) { first = false; entered.resolve(); await finish.promise; } remove(key); };
+  try {
+    await f.manager.initialize();
+    const login = f.manager.signIn({ email: "b@example.invalid", password: "fictional" }); login.catch(() => {});
+    await entered.promise;
+    const staleInitialization = f.manager.initialize(); staleInitialization.catch(() => {});
+    await settle();
+    const exit = f.manager.signOut();
+    finish.resolve(); await exit;
+    await assert.rejects(login, { code: "auth_operation_cancelled" });
+    await assert.rejects(staleInitialization, { code: "auth_operation_cancelled" });
+    assert.equal(f.manager.getSnapshot().user, null);
+    assert.equal(f.clients.length, 1);
+    await f.manager.signIn({ email: "b@example.invalid", password: "fictional" });
+    assert.equal(f.manager.getSnapshot().user.id, B);
+  } finally { finish.resolve(); f.manager.destroy(); }
+});
+
+for (const facade of ["settings", "co-watch", "import"]) {
+  for (const responseKind of ["expired-token", "companion-header"]) test(`${facade} facade preserves originating context for late ${responseKind}`, async t => {
+    const f = fixture({ initial: sessionFor(A, "fictional-a1") }), entered = deferred(), response = deferred();
+    t.mock.method(globalThis, "fetch", async () => { entered.resolve(); return response.promise; });
+    const oldWindow = globalThis.window; globalThis.window = { setTimeout, clearTimeout };
+    try {
+      await f.manager.initialize(); f.manager.setActiveCompanionId(COMPANION);
+      let request;
+      if (facade === "import") {
+        request = createImportRequestClient({ accountScope: A, companionScope: COMPANION, auth: f.manager }).apiFetch("/fixture/scoped", { retry: false });
+      } else {
+        const auth = facade === "settings" ? createScopedSettingsSession(f.manager, settingsSaveScope(f.manager.getSnapshot()))
+          : coWatchRequestOptions({ accountScope: A, companionScope: COMPANION }, f.manager).authSession;
+        request = apiFetch("/fixture/scoped", { retry: false, authSession: auth });
+      }
+      await entered.promise;
+      f.clients[0].emit("TOKEN_REFRESHED", sessionFor(A, "fictional-a2"));
+      response.resolve(responseKind === "expired-token" ? new Response(JSON.stringify({ code: "token_expired" }), { status: 401 })
+        : new Response("{}", { headers: { "X-DengTa-Companion-Id": B } }));
+      await request;
+      assert.equal(f.manager.getSnapshot().status, "authenticated");
+      assert.equal(f.manager.getSnapshot().activeCompanionId, COMPANION);
+      assert.equal((await f.manager.getRequestContext()).accessToken, "fictional-a2");
+    } finally { globalThis.window = oldWindow; f.manager.destroy(); }
+  });
+}

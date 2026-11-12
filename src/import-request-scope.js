@@ -17,7 +17,7 @@ export function createImportRequestClient({ accountScope, companionScope, auth =
       if (context?.companionId !== companionScope) throw Object.assign(new Error("导入请求的伴侣范围未确认。"), { code: "import_scope_changed" });
       return context;
     },
-    captureCompanionFromResponse: response => { if (current()) auth.captureCompanionFromResponse?.(response); },
+    captureCompanionFromResponse: (response, context) => { if (current()) auth.captureCompanionFromResponse?.(response, context); },
     invalidateSession: (...args) => current() ? auth.invalidateSession?.(...args) : undefined,
   };
   const guarded = method => async (path, options = {}) => {

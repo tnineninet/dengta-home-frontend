@@ -8,7 +8,7 @@ const keychain = () => ({ schemaVersion: 1, runNonce: nonce, events: [
   { stage: "probe-add", status: 0 }, { stage: "probe-read", status: 0 }, { stage: "probe-roundtrip", verified: true },
   { stage: "probe-delete", status: 0 }, { stage: "probe-deleted-read", status: -25300 },
 ] });
-const ui = () => ({ schemaVersion: 1, runNonce: nonce, state: "anonymous", ready: true, controls: true, blocked: false,
+const ui = () => ({ schemaVersion: 2, runNonce: nonce, sample: 12, state: "anonymous", ready: true, controls: true, blocked: false,
   keyboardOpen: false, androidMarker: false, apkEntry: false, viewportHeight: 844, viewportOffsetTop: 0, innerHeight: 844, safeAreaTop: 59, safeAreaBottom: 34 });
 
 test("native probe requires real add/read/delete/read-after-delete and verified bytes", () => {
