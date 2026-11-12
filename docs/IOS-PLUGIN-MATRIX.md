@@ -4,11 +4,11 @@
 
 | 能力 | 当前实现 | iOS 策略 | 本轮状态 |
 |---|---|---|---|
-| 登录/恢复 | auth-js + 平台存储 | 自定义 Keychain + App 深链；Preferences 只迁移旧凭据 | 原生 Keychain/匿名启动已通过 ca3f0f7；真实账号恢复/邮件回跳未验证 |
-| POST SSE | `fetch` + `ReadableStream`，请求/伴侣 scope | 保持 WKWebView 的浏览器流；不启用 native HTTP interception | JS 回归与独立 iOS WKWebView 合成 loopback 传输已在 0745558/run 43286170878 通过；产品 origin/生产 TLS/CORS/真实账号链路待验 |
+| 登录/恢复 | auth-js + 平台存储 | 自定义 Keychain + App 深链；Preferences 只迁移旧凭据；隔离验证后仍需明确账号/用途确认 | 原生 Keychain/匿名启动已通过 c84f0a7；真实账号恢复、邮件/原生确认交互未验证 |
+| POST SSE | `fetch` + `ReadableStream`，请求/伴侣 scope | 保持 WKWebView 的浏览器流；不启用 native HTTP interception | JS 回归与独立 iOS WKWebView 合成 loopback 传输已在 c84f0a7/run 43294494055 通过；产品 origin/生产 TLS/CORS/真实账号链路待验 |
 | 人格/记忆/设置 | 当前 React/API + 保存 scope | 保留业务与大文本/退出前保存保护 | 回归测试；实机操作待验 |
 | 剪贴板 | `@capacitor/clipboard` 8.0.1 | SPM 自动链接 | 原生编译已在 ca3f0f7 通过；交互未验证，新增小屏 CI 另记 |
-| 生命周期/深链 | `@capacitor/app` 8.1.1 | 精确路由、冷/热启动去重 | JS 测试；邮件回跳待验 |
+| 生命周期/深链 | `@capacitor/app` 8.1.1 | 精确路由、冷/热启动去重；异步账号/用途确认，取消/超时/退出/销毁拒绝候选 | SDK/组件合成测试通过；实际邮件冷/热启动、确认框与原生选择器共存待验，普通匿名 CI 不覆盖 |
 | 普通原生偏好 | `@capacitor/preferences` 8.0.1 | 保留普通偏好；认证仅读取/清理旧副本 | 已测试迁移/Proxy thenable 陷阱 |
 | 语音消息 | Web getUserMedia + MediaRecorder | 评估现有 audio/mp4/.m4a 路径；显式麦克风用途说明 | 可行性评估，不是首版硬验收 |
 | 语音播报 | 服务端音频，Android DeviceTts fallback | 保留网页音频；DeviceTts 有 Android guard | 未做 iOS 音频运行验证 |

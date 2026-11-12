@@ -25,6 +25,7 @@ The raw handoff and the ZIP member have identical bytes. The ZIP has 1,645 entri
 - Three old iOS login preview images exist; they do not prove current secure startup, real authentication, SSE or settings persistence.
 - No device IPA/archive, credentials or signing identity was supplied.
 - External instructions about a prior signing-tool choice or prior authorization are historical content, not current authority.
+- Additional read-only GitHub [comparison of the claimed code head and package commit](https://github.com/DengTaHome/dengta-home/compare/70b407d2fad356934a85ab8ff28a4527db2b79da...75ad3daa42689bdb48ba46e47b61c494e03d20d7), fetched HTTP 200 at 2026-11-12T20:08Z: 75ad3daa is one commit ahead, zero behind, with merge base 70b407d2. All 23 changed files are documentation/evidence under docs/; no frontend implementation changes occur between the claimed code head and fixed package commit. This supports the stated code-head relationship, not historical test success. Receipt: `D:/GZdeepseek/_audit/ios-longrun-20261113/external-claimed-head-compare.json`.
 
 ## Sensitive-content check
 

@@ -12,7 +12,7 @@
 | Apple Developer / App Store Connect | 本轮未使用或验证 Apple 账号权限；Simulator 无此当前阻塞，不索要账号/证书 |
 | APNs / 真机签名 | 均后置；未配置、未分发 |
 
-已完成外部包核验、逐模块选择、隔离分支、Capacitor iOS host、Keychain/认证生命周期与平台修复、八轮真实 fresh-context 审查。完整 run [43286170878](https://github.com/DengTaHome/dengta-home-frontend/actions/runs/43286170878) 在 `07455585988ead7fd7cff99d8bb638c2c52931f3` 通过 Xcode 构建，并在 iPhone 17 与 iPhone SE 3 各自通过启动、实际 Keychain、匿名就绪/截图及七阶段键盘交互；另有独立 iOS WKWebView 合成 POST SSE 传输通过。此后新增的回跳确认修复仍需新 source CI；合成传输不计为真实业务验收。
+已完成外部包核验、逐模块选择、隔离分支、Capacitor iOS host、Keychain/认证生命周期与平台修复、八轮真实 fresh-context 审查。最新完整 run [43294494055](https://github.com/DengTaHome/dengta-home-frontend/actions/runs/43294494055) 在 `c84f0a7362683450e69aa744d8a08a5d423888cb` 通过 Xcode 构建，并在 iPhone 17 与 iPhone SE 3 各自通过启动、实际 Keychain、匿名就绪/截图及七阶段键盘交互；另有独立 iOS WKWebView 合成 POST SSE 传输通过。该源码已包含回跳确认修复，但普通 CI 不打开确认框，不验收真实邮件/原生面板交互；合成传输不计为真实业务验收。
 
 真实私有账号登录/恢复、伴侣、已认证 POST SSE、人格设置保存/恢复、记忆/设置与聊天输入框尚未执行；没有把密码上传 CI。这些缺项使 Phase 1 保持未完成。
 
@@ -28,6 +28,8 @@
 ZIP 共 1,645 entries / 1,507 文件，展开 46,701,058 字节；Raw 与 ZIP 内交接文档逐字节相同。存在工程/Keychain/Vault/测试候选，但外部业务版本为 2.10.74，历史 run #9 并未通过原生启动。原始 npm/Xcode 日志不在该包，文档摘要不能当作当前证据。
 
 未发现实际环境文件、高置信生产凭据、证书/profile/私钥、node_modules/Pods/DerivedData；环境示例、模拟数据与未做视觉隐私审计的历史二进制/截图不导入。只在仓库外隔离目录解压，没有执行外部脚本。详见 `IOS-EXTERNAL-HANDOFF-REVIEW.md`，清单/扫描记录位于 `D:/GZdeepseek/_audit/ios-stage0-external-20261112-153403955/`。
+
+补充来源核验：GitHub compare API HTTP 200 确认包提交 75ad3daa 比自述代码头 70b407d2 多一个文档/证据提交，23 个变更文件均在 docs/，前端实现未变；详见外部核验文档及 `external-claimed-head-compare.json`。此关系不证明外部自述测试成功。
 
 ## 3. 本地 vs 外部
 
@@ -54,7 +56,7 @@ ZIP 共 1,645 entries / 1,507 文件，展开 46,701,058 字节；Raw 与 ZIP �
 - 配置/CI：ios@8.4.3 与对应锁文件、iOS 配置、Node 24/macOS 26/Xcode 26.6 构建与有界证据；仅 feature/same-repository PR，contents:read。
 - 文档：11 份 IOS 文档、八轮逐条审查报告和文档漂移记录；具体文件以 PR diff 为准。
 
-主要提交：`d0e2a1f` 基础工程；`11b08ce` runner env 修复；`f8b8f51` 第二轮/XCUITest；`ca3f0f7` 认证/证据第三至第五轮修复；`0431a82` 小屏 CI 与可行性文档。未修改原前端 checkout 的用户工作、生产后端/Supabase/Render/Vercel 或 main。无凭据/构建产物/截图提交 Git，无 IPA/TestFlight/上架操作。
+主要提交：`d0e2a1f` 基础工程；`11b08ce` runner env 修复；`f8b8f51` 第二轮/XCUITest；`ca3f0f7` 认证/证据第三至第五轮修复；`0431a82` 小屏 CI；`ffeb441` 安装入口；`0745558` 独立传输；`c84f0a7` 异步回跳确认。最终归档提交仅修改 docs/，使用 `[skip ci]` 避免重复构建相同运行代码；`delivery-boundary-check.json` 核对最终 HEAD 与 c84f0a7 在 docs/ 之外无差异。未修改原前端 checkout 的用户工作、生产后端/Supabase/Render/Vercel 或 main。无凭据/构建产物/截图提交 Git，无 IPA/TestFlight/上架操作。
 
 ## 5. 已执行验证
 
@@ -64,17 +66,18 @@ ZIP 共 1,645 entries / 1,507 文件，展开 46,701,058 字节；Raw 与 ZIP �
 |---|---|---|
 | Windows CLI 生成/sync | 通过 | `cap-add-ios-windows.log`；不是 Swift 编译 |
 | npm run test:ios | round8 当前源代码通过 | `test-ios-round8.log`；真实 SDK/合成存储、回跳确认、scope、平台、SSE/人格/记忆组件回归 |
-| npm test | round5 完整通过；round8 重跑中 | `npm-test-full-round5.log` 为历史 exit 0；`npm-test-full-round8.log` 当前仍在执行，不是生产端到端 |
+| npm test | round8 完整脚本链通过 | `npm-test-full-round8.log` 已结束至末项 test:style-distill；全链脚本日志齐全、无失败标记，独立 exit code 未另存；`round8-complete-test-log-check.json` 核验，不是生产端到端 |
 | npm run build:web | round8 当前源代码通过 | `web-build-round8-async.log`，含 ESLint/CSP/公开认证配置和异步回跳确认 |
 | verify:ios-build-policy | 通过 | 同上；只证明 emitted API/callback literals，另有 redirect 源码测试 |
 | 定向 SDK 竞态 | 57 项通过 | `round5-auth-complete.log`；`round5-refresh-reproduction.log` 保留修复前真实失败 |
 | 真正 Web 多标签页机制 | 五例通过 | `browser-auth-audit.json`：Chromium 156、真实 Web Locks/storage/BroadcastChannel、完全合成 provider、零 pageerrors/外部请求；不是 WKWebView |
 | Web 三标签交错竞争 | 120 轮通过 | `browser-auth-interleaving.json`；固定 seed、并发 A/B 登录/退出/延迟事件/乱序广播/标签重建；收敛身份一致，零 pageerrors/外部请求；不是 iOS |
 | 未认证 HTTPS/CORS | 通过所测请求 | `transport-cors-20261112-1724.json`；OPTIONS /chat/stream=204，GET /health=200；无认证/POST 业务写入 |
-| Xcode/Simulator/Keychain/匿名 UI | 0745558 双设备完整 CI 通过；round8 待新 CI | 见下面 actual run 表、manifest、PNG 和七阶段 receipt；早先 run 不证明回跳确认修改 |
-| iPhone SE 小屏 | 通过，0745558 完整 CI；round8 待新 CI | 单独 nonce/安全区/PNG/七阶段，52.539 秒，0 failures |
-| 独立 iOS WKWebView 合成 POST SSE | 通过，0745558 完整 CI | 当前 api.js + 真正 loopback HTTP；ACK 先于 done、UTF-8、multipart/虚构 headers、截断和取消/响应提前关闭；不等于生产端到端 |
-| 邮件回跳本地确认 | 50 项定向/组件通过；原生待新 CI | `round8-consent-final.log`、`round8-approval-component-fixed.log`；async dialog 保留草稿，拒绝/超时/退出/销毁/陈旧响应不能提交候选 |
+| Xcode/Simulator/Keychain/匿名 UI | c84f0a7 双设备完整 CI 通过 | 见下面 actual run 表、manifest、PNG 和七阶段 receipt；每台真实 Keychain add/read/delete=0，删除后 -25300 |
+| iPhone SE 小屏 | 通过，c84f0a7 完整 CI | 单独 nonce/安全区/PNG/七阶段，50.974 秒，0 failures |
+| 独立 iOS WKWebView 合成 POST SSE | 通过，c84f0a7 完整 CI | 当前 api.js + 真正 loopback HTTP；ACK 先于 done、UTF-8、multipart/虚构 headers、截断和取消/响应提前关闭；不等于生产端到端 |
+| 邮件回跳本地确认 | 50 项定向/组件通过；当前源构建/匿名启动通过；真实邮件/确认框/选择器仍未实测 | `round8-consent-final.log`、`round8-approval-component-fixed.log`；async dialog 保留草稿，拒绝/超时/退出/销毁/陈旧响应不能提交候选。普通匿名 CI 不打开此框，不能验收 showModal/原生面板共存 |
+| Chromium 原生 HTML dialog 交互 | 四例通过，Windows/合成 manager | `browser-native-approval.json`：真实 showModal/背景 inert/焦点/Tab/Escape、明确确认、不可用时拒绝、320×568 长邮箱滚动可达；草稿/节点保持、零页面错误/外部请求。不是 iOS/原生选择器实测 |
 
 ### 实际 CI 历史
 
@@ -87,6 +90,7 @@ ZIP 共 1,645 entries / 1,507 文件，展开 46,701,058 字节；Raw 与 ZIP �
 | [43280829367](https://github.com/DengTaHome/dengta-home-frontend/actions/runs/43280829367) / 0431a82 | **成功** | 两台分别新建的 iPhone 17/SE 3 均通过启动/实际 Keychain/匿名就绪/PNG/七阶段，SE 56.686 秒，0 failures |
 | [43283653297](https://github.com/DengTaHome/dengta-home-frontend/actions/runs/43283653297) / ffeb441 | **成功** | 包含设置安装控件修复；双设备启动/实际 Keychain/匿名就绪/PNG/七阶段均通过 |
 | [43286170878](https://github.com/DengTaHome/dengta-home-frontend/actions/runs/43286170878) / 0745558 | **成功** | 双设备全流程和独立合成 WKWebView POST SSE 通过；早于回跳确认修复 |
+| [43294494055](https://github.com/DengTaHome/dengta-home-frontend/actions/runs/43294494055) / c84f0a7 | **成功** | 含异步确认源码；定向 JS/公开 web build/原生策略/双设备匿名全流程及独立合成传输通过；普通 CI 未打开真实邮件确认框 |
 
 对应 push run 因 push/PR 共用并发组而取消，未冒充成功或另算产品失败。
 
@@ -106,6 +110,10 @@ GitHub artifact 保留 7 天；上述下载与校验已放仓库外。初始和�
 ffeb441 evidence 位于 `ci-43283653297/artifact/`，两份 manifest 均为 `startup-passed` / `businessFlows: not-exercised`；PNG 已实际查看。ZIP 1,038,653 bytes，SHA-256 `6D197B0AB31F880221825E71D4B3C04AA0090F861F9FB1D180755D81D6C9F23C`；job logs ZIP 138,179 bytes，SHA-256 `229A467AA7C9EF3B8395ADC3D3F705578FFDB10FF990B557403D89C66FE59D18`。
 
 0745558 evidence 位于 `ci-43286170878/artifact/`。产品双设备 XCTest 分别为58.052s/52.539s，0 failures；两个 PNG SHA 与已查看的 ffeb441 图完全相同。独立 `webkit-transport/transport-receipt.json` 与 manifest 共享 nonce/source SHA，六个检查布尔值均 true；server 确认3个合法 POST、normal ACK、0 unexpected requests，runtime iOS26.5。ZIP 1,049,888 bytes，SHA-256 `74C167628AC889B3EE74CB2FFBD6F21E58B41D52A968E899AF964D26857E6747`；job logs ZIP 140,969 bytes，SHA-256 `79E4BB7868DC0DEBC26AF1DFA3B2933380F3D15CA4AD59DF5734630AD5BB871A`。
+
+c84f0a7 最新 evidence 在 `ci-43294494055/artifact/`，下载回执在 `download-receipt.json`。iPhone 17/SE 3 的唯一实际 XCTest 分别 59.697s/50.974s，均 0 failures、七阶段且未提交表单；两个 manifest 都明确 `businessFlows: not-exercised`。原生 Keychain 探针成功，PNG 文件哈希与 manifest 一致，且已实际查看。[iPhone 17 匿名截图](D:/GZdeepseek/_audit/ios-longrun-20261113/ci-43294494055/artifact/simulator/login-ready.png)、[iPhone SE 匿名截图](D:/GZdeepseek/_audit/ios-longrun-20261113/ci-43294494055/artifact/simulator-compact/login-ready.png)。独立传输的 native/server nonce 与源码一致，六项检查均 true，3 个合法 POST、0 个意外请求。artifact ZIP 1,050,915 bytes，SHA-256 `3B3D1C60F64D4D46378E4D79C3AABE8F23B8C83EB437BAB7AC8C5A86D53BA789`；logs ZIP 141,898 bytes，SHA-256 `5966E4FEEA85BDBF5CADB585255E7C4CD2D32B9DA57313946F82D77C3E153818`。
+
+便携审查包：`D:/GZdeepseek/_audit/ios-longrun-20261113/review-pack-final.zip`；包内 HASHES.json 与旁边 `.sha256.txt` 核验文件，不包含密码、环境文件、产品 app 或原始 xcresult。
 
 ## 6. 未验证/阻塞
 
@@ -150,7 +158,7 @@ ffeb441 evidence 位于 `ci-43283653297/artifact/`，两份 manifest 均为 `sta
 
 这些已确认代码缺陷已修复；未执行的真实业务验收继续作为交付缺项，不由自审结果替代。
 
-独立 drift agent 顺序读完 11 份文档/对应源码并复核外部哈希，发现两处证据汇总过期（初始记录在 `ios-reviews/drift-initial/2026-11-13_DRIFT_REPORT.md`）；修复后全部 11 份通过复读，结果在 `ios-reviews/drift-final/2026-11-13_DRIFT_REPORT.md`。随后新增独立传输测试仍需在最终证据确定后复核。
+早先独立 drift agent 顺序读完 11 份文档/对应源码并复核外部哈希，发现两处证据汇总过期（初始记录在 `ios-reviews/drift-initial/2026-11-13_DRIFT_REPORT.md`）；修复后的历史复读在 `ios-reviews/drift-final/2026-11-13_DRIFT_REPORT.md`。随后 fresh reviewer `final_drift_after_security` 再次逐份读完 11 份文档、当前确认/传输源码与 0745558 真实 receipts/哈希，未发现 P0/P1 过度承诺，但发现确认契约、最新证据与漂移范围汇总需同步，原文保留在 `ios-reviews/drift-round8-initial/2026-11-13_DRIFT_REPORT.md`。全部按 PROPOSE FIX 处理；在 c84f0a7 原生 CI 仍待执行时逐份复读关闭，结果在 `ios-reviews/drift-round8-final/2026-11-13_DRIFT_REPORT.md`。后续 CI 数字只从实际 receipts 补充，不用普通 CI 推断真实邮件/原生确认框验收。
 
 ## 8. 风险
 

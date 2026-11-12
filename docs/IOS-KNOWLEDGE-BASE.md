@@ -15,7 +15,7 @@
 - 保留现有错误分类、连接检测、初始化/登录 20 秒和刷新 15 秒截止时间；超时不能让迟到 SDK 重新登录。
 - 恢复超时只封闭/排空旧租约，保留 durable session 供重试；显式退出可把该排空升级为 verified clear。内部 SDK rotation 不重置身份队列；显式取消使用独立 epoch。真实 GoTrue 的 initialize finally 可能重开监听，因此立即及初始化结束后都执行 dispose。
 - 回滚必须保留安全存储边界，不能恢复旧 Preferences 认证路径。AccountVault 和普通缓存加密后置，不声称全部私人数据已加密。
-- Native 回跳先由隔离的不持久化 SDK 验证，失败不删除当前登录。验证后仍需异步页面对话框明确确认账号/恢复用途；取消、不可用、超时、退出、销毁或陈旧响应不能提交。只有明确确认后才保留完整 session（包括可能旋转的 refresh token），在退休前预约 seed/recovery 状态，任何胜出的新客户端都先持久化 seed 再构造 SDK。拒绝/超时/退出/部分写入失败和订阅者抢占均有真实 SDK 合成回归；不把无法恢复的 seed 计作成功。对话框保持底层 App/草稿挂载；真实邮件与原生面板交互未验收，当前源代码仍待新 CI；不声称 PKCE。
+- Native 回跳先由隔离的不持久化 SDK 验证，失败不删除当前登录。验证后仍需异步页面对话框明确确认账号/恢复用途；取消、不可用、超时、退出、销毁或陈旧响应不能提交。只有明确确认后才保留完整 session（包括可能旋转的 refresh token），在退休前预约 seed/recovery 状态，任何胜出的新客户端都先持久化 seed 再构造 SDK。拒绝/超时/退出/部分写入失败和订阅者抢占均有真实 SDK 合成回归；不把无法恢复的 seed 计作成功。对话框保持底层 App/草稿挂载；当前源代码的构建/匿名启动已在 c84f0a7/run43294494055 通过，但普通 CI 不打开该框；真实邮件与原生面板交互未验收，不声称 PKCE。
 - Web 仅在实际 window.localStorage 且支持 Web Locks/crypto 时使用非敏感 epoch 和 origin 独占锁。退出、SDK 删除主认证键和身份变化均封闭旧 epoch；事件在持久化比对后才接受。无锁环境只有普通 storage removal 退出传播承诺。新身份只使用匿名 SDK；跨标签页竞争超过有限重试则取消。Android/iOS 不采用这个 Web 协议。
 - SDK 专用退休读取返回空，防止 GoTrue detached INITIAL_SESSION 异常；普通租约读取仍拒绝。存储错误使用 GoTrue 可识别的安全 retryable 类型/原名，避免迟到刷新拒绝无人观察的 Deferred；退休仍由 manager 永久封闭，写/删不开放。当前 provider 错误仍可见。
 
@@ -34,8 +34,8 @@ iOS native 不获取 Android marker/touch recovery，不显示 APK 操作。共�
 3. Simulator 构建/安装/启动：分别记载；有 `.app` 不等于能启动。
 4. 实际 Keychain 随机探针：独立 service/key，验证 add/read/delete 与字节回读，不导出值。
 5. 匿名 DOM 就绪 + 截图 + 进程存活：证明启动至登录页，不能证明真实账号业务。
-6. 原生 XCUITest 的匿名键盘输入/滚动：只能证明所测登录/注册/找回表单，不证明登录后聊天 composer。`f8b8f51` 原始七阶段通过但总体 parser 失败；ca3f0f7 完整 run 43279364936 通过。随后 0431a82 run 43280829367 在 iPhone 17 和 iPhone SE 3 分别通过七阶段、实际 Keychain/就绪与截图。
-7. 独立 WKWebView 合成 loopback 传输：编译真实 api.js、虚构认证上下文、ACK 后才送 done，另测截断与取消；0745558 的 run43286170878 原生通过。不证明产品 origin/生产服务器或真实业务。
+6. 原生 XCUITest 的匿名键盘输入/滚动：只能证明所测登录/注册/找回表单，不证明登录后聊天 composer。`f8b8f51` 原始七阶段通过但总体 parser 失败；ca3f0f7 完整 run 43279364936 通过。随后 0431a82 run 43280829367 与 0745558 run 43286170878 在 iPhone 17 和 iPhone SE 3 分别通过七阶段、实际 Keychain/就绪与截图。0745558 仍早于 round8 确认修复；普通 CI 不打开邮件确认框。
+7. 独立 WKWebView 合成 loopback 传输：编译真实 api.js、虚构认证上下文、ACK 后才送 done，另测截断与取消；0745558 的 run43286170878 首次原生通过，c84f0a7 的 run43294494055 再次通过。不证明产品 origin/生产服务器或真实业务。
 8. 本地私有账号业务验收：恢复会话、伴侣、流式聊天、人格保存/恢复、记忆/设置与聊天键盘。执行前保持未验证。
 
 CI 只导出 allowlist schema 的诊断、工具/构建日志和匿名页面截图，带源码 SHA 与本次随机启动标识；未知或认证状态拒绝截图。下载的 CI artifact 只放仓库外并记录哈希。
