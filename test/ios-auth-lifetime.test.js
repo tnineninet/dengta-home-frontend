@@ -30,7 +30,12 @@ function fixture({ initial = null, resolveStorage, signIn, getSession, setSessio
         lease: options.auth.storage,
         emit(event, next) { session = next; listener?.(event, next); },
         auth: {
-          getSession: async () => getSession ? getSession(sdk) : { data: { session }, error: null },
+          getSession: async () => {
+            if (getSession) return getSession(sdk);
+            let restored;
+            try { restored = JSON.parse(await sdk.lease?.getItem(KEY)); } catch { /* No persisted fixture session. */ }
+            return { data: { session: restored?.user?.id ? restored : session }, error: null };
+          },
           onAuthStateChange(callback) { listener = callback; return { data: { subscription: { unsubscribe() { calls.push(["unsubscribe"]); } } } }; },
           stopAutoRefresh() { calls.push(["stop"]); },
           signOut: async () => { session = null; listener?.("SIGNED_OUT", null); return { error: null }; },
@@ -227,7 +232,7 @@ test("internal client rotation keeps callback and subsequent password login seri
     finish.resolve(); await callback; await login;
     assert.deepEqual(sdkCalls, ["callback-start", "callback-end", "password"]);
     assert.equal(f.manager.getSnapshot().user.id, B);
-    assert.equal(f.clients.length, 3);
+    assert.equal(f.clients.length, 4);
   } finally { finish.resolve(); f.manager.destroy(); }
 });
 

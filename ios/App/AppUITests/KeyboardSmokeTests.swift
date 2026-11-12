@@ -4,10 +4,17 @@ import XCTest
 final class KeyboardSmokeTests: XCTestCase {
     private let app = XCUIApplication(bundleIdentifier: "home.dengta.app")
     private var phases: [[String: Any]] = []
+    private var safeTop: CGFloat = 0
+    private var safeBottom: CGFloat = 0
 
     override func setUpWithError() throws {
         continueAfterFailure = false
         XCUIDevice.shared.orientation = .portrait
+        let environment = ProcessInfo.processInfo.environment
+        let top = try XCTUnwrap(Int(environment["DENGTA_UI_SAFE_TOP"] ?? ""), "Native safe-area metadata is required")
+        let bottom = try XCTUnwrap(Int(environment["DENGTA_UI_SAFE_BOTTOM"] ?? ""), "Native safe-area metadata is required")
+        XCTAssertTrue((0...200).contains(top) && (0...200).contains(bottom))
+        safeTop = CGFloat(top); safeBottom = CGFloat(bottom)
     }
 
     private func launchAnonymous(_ nonce: String) {
@@ -24,9 +31,9 @@ final class KeyboardSmokeTests: XCTestCase {
     private func visible(_ element: XCUIElement, aboveKeyboard: Bool) -> Bool {
         guard element.exists, element.isHittable else { return false }
         let frame = element.frame, window = app.windows.firstMatch.frame
-        let bottom = aboveKeyboard ? app.keyboards.firstMatch.frame.minY : window.maxY
+        let bottom = aboveKeyboard ? min(app.keyboards.firstMatch.frame.minY, window.maxY - safeBottom) : window.maxY - safeBottom
         return frame.width > 0 && frame.height > 0 && frame.minX >= window.minX - 1 &&
-            frame.maxX <= window.maxX + 1 && frame.minY >= window.minY && frame.maxY <= bottom - 2
+            frame.maxX <= window.maxX + 1 && frame.minY >= window.minY + safeTop && frame.maxY <= bottom - 2
     }
 
     private func reveal(_ element: XCUIElement, aboveKeyboard: Bool = false) {
@@ -35,7 +42,7 @@ final class KeyboardSmokeTests: XCTestCase {
             if visible(element, aboveKeyboard: aboveKeyboard) { return }
             let window = app.windows.firstMatch.frame
             let availableBottom = aboveKeyboard ? app.keyboards.firstMatch.frame.minY : window.maxY
-            let top = window.minY + 90, bottom = max(top + 90, availableBottom - 45)
+            let top = window.minY + safeTop + 12, bottom = max(top + 90, availableBottom - 45)
             let down = element.frame.minY < top
             let from = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: window.maxX - 24, dy: down ? top + 10 : bottom))
             let to = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: window.maxX - 24, dy: down ? bottom : top + 10))

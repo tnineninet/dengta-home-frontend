@@ -23,6 +23,7 @@ unset VITE_PUBLIC_AUTH_REDIRECT_URL
 npm ci --no-audit --no-fund
 npm run test:ios
 npm run build:web
+npm run verify:ios-build-policy
 npx --no-install cap sync ios
 bash scripts/test-ios-keychain-native.sh
 xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
@@ -43,13 +44,13 @@ Windows 上 `cap sync ios` 可以复制资源并生成 SPM，但 CLI 会写 Wind
 
 `.github/workflows/ios.yml` 只在指定 feature 分支 push、同仓库对应 PR 或该分支手动运行。没有 `pull_request_target`，checkout 是实际 head SHA，token 只有 contents:read。公开认证配置缺失会明确失败，不构建假配置登录页。
 
-流水线顺序：锁定依赖 → JS 回归 → `build:web`（含 ESLint/CSP/公开认证配置验证）→ sync → 注入 Security 的 Swift 策略测试 → Xcode Simulator 编译 → 新建临时 Simulator → 安装/启动 → Keychain 实际探针与 DOM 就绪 → 匿名截图 → 同一临时设备上的 XCUITest 键盘/滚动。只删除本次新建的 Simulator。证据保存 7 天。原始 xcresult 保留 runner derived-data 下，不上传；仅上传受限几何 receipt 和测试日志。
+流水线顺序：锁定依赖 → JS 回归 → `build:web`（含 ESLint/CSP/公开认证配置验证）→ emitted API/callback literal 检查 → sync → 注入 Security 的 Swift 策略测试 → Xcode Simulator 编译 → 新建临时 Simulator → 安装/启动 → Keychain 实际探针与 DOM 就绪 → 匿名截图 → 同一临时设备上的 XCUITest 键盘/滚动。只删除本次新建的 Simulator。证据保存 7 天。原始 xcresult 保留 runner derived-data 下，不上传；仅上传受限几何 receipt 和测试日志。产物 literal 检查与 redirect 源码行为测试分别执行，均不能证明实际运行时路由、生产 allowlist 或已认证传输。
 
 `manifest.json` 分别记录源码 SHA、构建、启动、进程存活、Keychain、登录页就绪。Keychain 必须实际 add/read/delete 成功、读回字节一致且删除后读为 item-not-found。诊断只在 Debug Simulator 且显式带随机启动标识时启用。诊断输出固定枚举、数值和布尔值，不输出 token、输入框值、页面 HTML、URL 或用户标识。
 
 登录页就绪需要真实匿名状态、三个连续递增采样、完全位于可视 viewport/祖先裁剪区且通过 hit-test 的邮箱/密码/提交控件、无 prelude/错误/加载状态、无 Android marker/APK 入口。命令成功且新生成有效 PNG/hash 才算截图成功。未知/已认证/恢复密码状态拒绝截图；新启动不能沿用旧 nonce 的截图授权。
 
-XCUITest 只输入固定虚构邮箱/密码，逐一检查登录邮箱/密码/提交、注册确认密码/提交、找回邮箱/提交；不按提交/Go、不发送重置邮件。必须实际执行唯一命名 test 并成功，七个阶段的完整控件 native frame 必须在实际键盘上方和启动时 native safe-area 内。它不能证明私人账号登录、SSE、人格保存或聊天输入框。
+XCUITest 只输入固定虚构邮箱/密码，逐一检查登录邮箱/密码/提交、注册确认密码/提交、找回邮箱/提交；不按提交/Go、不发送重置邮件。必须实际执行唯一命名 test 并成功，七个阶段的完整控件 native frame 必须在实际键盘上方和启动时 native safe-area 内。启动 receipt 的实测 safe top/bottom 经 xcodebuild build settings 和明确 App MacroExpansion 的 scheme 传入；缺失或未展开即失败。键盘 accessibility frame 可以不包含底部系统区域，验证其在窗口内并以实际 keyboard.minY 判断遮挡。它不能证明私人账号登录、SSE、人格保存或聊天输入框。
 
 ## 交互验收清单
 

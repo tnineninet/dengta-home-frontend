@@ -21,7 +21,7 @@ export function validateKeyboardEvidence(output, nativeUi) {
     const [x, y, width, height] = phase.control, [wx, wy, ww, wh] = phase.window, [kx, ky, kw, kh] = phase.keyboard;
     if (x < wx - 1 || x + width > wx + ww + 1 || y < wy + nativeUi.safeAreaTop - 1 ||
         y + height > Math.min(ky, wy + wh - nativeUi.safeAreaBottom) - 1 ||
-        kx > wx + 1 || kx + kw < wx + ww - 1 || ky <= wy || ky + kh < wy + wh - 1) throw bad();
+        kx < wx - 1 || kx + kw > wx + ww + 1 || ky <= wy + nativeUi.safeAreaTop || ky + kh > wy + wh + 1) throw bad();
   }
   return receipt;
 }

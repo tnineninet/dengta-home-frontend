@@ -85,6 +85,7 @@ jobs:
         run: |
           set -euo pipefail
           npm run build:web 2>&1 | tee "$IOS_EVIDENCE/web-build.log"
+          npm run verify:ios-build-policy 2>&1 | tee "$IOS_EVIDENCE/ios-build-policy.log"
 
       - name: Synchronize iOS SPM dependencies
         shell: bash

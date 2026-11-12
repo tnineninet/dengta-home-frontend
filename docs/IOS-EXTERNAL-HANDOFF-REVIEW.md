@@ -1,6 +1,6 @@
 # External iOS handoff review
 
-Status: static verification completed; candidate modules are not yet imported or runtime-accepted.
+Status: fixed-package verification completed. This document records the Stage 0 evidence; current selective imports and new native run results are tracked in IOS-IMPORT-MATRIX.md and IOS-PHASE1-REPORT.md. Historical external failures remain separate from this branch's evidence.
 
 ## Acquisition and integrity
 

@@ -41,8 +41,8 @@ function readReceipt(file, validate) {
 function captureScreenshot() {
   const evidence = captureAnonymousScreenshot({ command, device: createdDevice, output, receipt: uiReceipt,
     file: manifest.loginReady ? "login-ready.png" : "startup-failed.png" });
-  manifest.screenshotCaptured = Boolean(evidence);
-  if (evidence) manifest.screenshot = evidence;
+  if (evidence) { manifest.screenshotCaptured = true; manifest.screenshot = evidence; }
+  else if (!manifest.screenshot) manifest.screenshotCaptured = false;
 }
 
 try {
@@ -107,6 +107,7 @@ try {
     "-only-testing:AppUITests/KeyboardSmokeTests/testAnonymousKeyboardLayout",
     "-test-timeouts-enabled", "YES", "-default-test-execution-time-allowance", "180",
     "-maximum-test-execution-time-allowance", "300", "-resultBundlePath", path.join(derivedData, `DengTaKeyboard-${nonce}.xcresult`),
+    `DENGTA_UI_SAFE_TOP=${startupUi.safeAreaTop}`, `DENGTA_UI_SAFE_BOTTOM=${startupUi.safeAreaBottom}`,
     "CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_IDENTITY=-", "test",
   ], 480_000);
   const keyboardReceipt = validateKeyboardEvidence(keyboardResult.stdout, startupUi);

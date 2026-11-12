@@ -15,6 +15,13 @@ test("keyboard evidence requires every real UI phase and safe frame containment"
     assert.throws(() => validateKeyboardEvidence(output(receipt), native));
   }
 });
+test("real Simulator keyboard accessibility frame may exclude the bottom system area", () => {
+  const receipt = fixture();
+  receipt.phases.forEach(phase => { phase.keyboard = [0, 583, 402, 233]; });
+  assert.equal(validateKeyboardEvidence(output(receipt), native).phases.length, 7);
+  receipt.phases[0].control = [20, 560, 360, 48];
+  assert.throws(() => validateKeyboardEvidence(output(receipt), native));
+});
 test("a skipped/empty UI selection, unobserved keyboard or private field never passes", () => {
   assert.throws(() => validateKeyboardEvidence(output(fixture()).replace("Executed 1 test", "Executed 0 tests"), native));
   assert.throws(() => validateKeyboardEvidence(output(fixture()).replace("passed (", "failed ("), native));

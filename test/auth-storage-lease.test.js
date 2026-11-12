@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { GoTrueClient } from "@supabase/auth-js";
 import { createAuthStorageLease } from "../src/auth-storage-lease.js";
 import { IOS_AUTH_STORAGE_KEYS } from "../src/auth-keychain-storage.js";
 
@@ -157,4 +158,37 @@ test("provider errors cannot expose values and do not poison active operations",
   assert.equal(await lease.getItem(KEY), "fictional-session");
   await assert.rejects(lease.getItem("unrelated-secret"), { code: "auth_storage_invalid_key" });
   assert.equal(f.calls.some(([, key]) => key === "unrelated-secret"), false);
+});
+
+test("SDK retirement reads return absence while active storage errors stay visible", async () => {
+  const f = fixture();
+  const lease = createAuthStorageLease(f.storage, undefined, { sdkCompatibleReads: true });
+  await lease.setItem(KEY, "fictional-old-session");
+  await lease.retire();
+  assert.equal(await lease.getItem(KEY), null);
+  await assert.rejects(lease.setItem(KEY, "fictional-late"), error => {
+    assert.equal(error.name, "AuthRetryableFetchError");
+    assert.equal(error.__isAuthError, true);
+    assert.equal(error.code, "auth_storage_retired"); return true;
+  });
+  const failed = createAuthStorageLease({ ...f.storage, getItem: () => { throw new Error("fictional-provider-secret"); } }, undefined, { sdkCompatibleReads: true });
+  await assert.rejects(failed.getItem(KEY), { code: "auth_storage_read_failed" });
+});
+
+test("a detached real SDK INITIAL_SESSION read remains safe when its lease retires", async () => {
+  const f = fixture(), entered = deferred(), finish = deferred(), emitted = deferred();
+  f.values.set(KEY, JSON.stringify({ access_token: "fictional-access", refresh_token: "fictional-refresh", expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id: "fixture" } }));
+  const lease = createAuthStorageLease(f.storage, undefined, { sdkCompatibleReads: true });
+  const auth = new GoTrueClient({ url: "https://fixture.example.test/auth/v1", storage: lease, storageKey: KEY,
+    autoRefreshToken: false, detectSessionInUrl: false, fetch: () => { throw new Error("fixture forbids network"); } });
+  try {
+    await auth.initialize();
+    const read = f.storage.getItem;
+    f.storage.getItem = async key => { entered.resolve(); await finish.promise; return read(key); };
+    auth.onAuthStateChange((event, next) => { if (event === "INITIAL_SESSION") { assert.equal(next, null); emitted.resolve(); } });
+    await entered.promise;
+    const retired = lease.retire(); finish.resolve();
+    await retired; await emitted.promise;
+    await new Promise(resolve => setImmediate(resolve));
+  } finally { finish.resolve(); await auth.dispose(); }
 });

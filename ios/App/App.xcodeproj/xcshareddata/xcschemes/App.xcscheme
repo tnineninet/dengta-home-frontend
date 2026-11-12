@@ -10,7 +10,14 @@
       </BuildActionEntry>
     </BuildActionEntries>
   </BuildAction>
-  <TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="YES">
+  <TestAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.IDEFoundation.Launcher.LLDB" shouldUseLaunchSchemeArgsEnv="NO">
+    <MacroExpansion>
+      <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="504EC3031FED79650016851F" BuildableName="App.app" BlueprintName="App" ReferencedContainer="container:App.xcodeproj" />
+    </MacroExpansion>
+    <EnvironmentVariables>
+      <EnvironmentVariable key="DENGTA_UI_SAFE_TOP" value="$(DENGTA_UI_SAFE_TOP)" isEnabled="YES" />
+      <EnvironmentVariable key="DENGTA_UI_SAFE_BOTTOM" value="$(DENGTA_UI_SAFE_BOTTOM)" isEnabled="YES" />
+    </EnvironmentVariables>
     <Testables>
       <TestableReference skipped="NO" parallelizable="NO">
         <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="D3E100000000000000000001" BuildableName="AppUITests.xctest" BlueprintName="AppUITests" ReferencedContainer="container:App.xcodeproj" />

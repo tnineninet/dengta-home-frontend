@@ -7,7 +7,7 @@
 | 登录/恢复 | auth-js + 平台存储 | 自定义 Keychain + App 深链；Preferences 只迁移旧凭据 | 已实现，原生实测待 CI |
 | POST SSE | `fetch` + `ReadableStream`，请求/伴侣 scope | 保持 WKWebView 的浏览器流；不启用 native HTTP interception | JS 协议回归；真实账号链路待验 |
 | 人格/记忆/设置 | 当前 React/API + 保存 scope | 保留业务与大文本/退出前保存保护 | 回归测试；实机操作待验 |
-| 剪贴板 | `@capacitor/clipboard` 8.0.1 | SPM 自动链接 | 待原生构建 |
+| 剪贴板 | `@capacitor/clipboard` 8.0.1 | SPM 自动链接 | 原生编译已在 11b08ce/f8b8f51 通过；交互未验证，当前后续 SHA 待重建 |
 | 生命周期/深链 | `@capacitor/app` 8.1.1 | 精确路由、冷/热启动去重 | JS 测试；邮件回跳待验 |
 | 普通原生偏好 | `@capacitor/preferences` 8.0.1 | 保留普通偏好；认证仅读取/清理旧副本 | 已测试迁移/Proxy thenable 陷阱 |
 | 语音消息 | Web getUserMedia + MediaRecorder | 评估现有 audio/mp4/.m4a 路径；显式麦克风用途说明 | 可行性评估，不是首版硬验收 |

@@ -37,6 +37,10 @@ Environment B uses GitHub Actions macOS. The repository has Actions enabled and 
 - Add targeted tests for concurrent creation, logout during pending storage initialization, delayed SDK completion, clear failure/retry, old refresh writes and old remove operations. Run the existing authentication and request-scope suites as well.
 - Keep general cache encryption out of scope and document remaining plaintext cache boundaries explicitly.
 
+- Shared Web compatibility: actual localStorage with Web Locks uses a nonsecret origin epoch and exclusive auth-operation lock. Explicit/SDK logout, identity-changing writes and manager-owned storage events fence older clients independently of SDK BroadcastChannel. Session event payloads must match current persistence before publication. Without Web Locks only ordinary removal-event fanout is claimed. Android retains its Preferences resolver and iOS its Keychain resolver; the shared manager lease/cleanup affects all platforms.
+- Validate native callback tokens in an isolated nonpersistent SDK before touching the active identity. Reserve the validated full session/recovery seed before cleanup publication, fence cancellation, commit once through a fresh lease, and reject a failed/anonymous restoration rather than reporting callback success. Require an anonymous replacement SDK for new identity attempts; bounded competing Web restoration cancels safely.
+- SDK-facing retired reads return absence; generic lease reads reject. Retired writes/removes stay sealed. Safe lease errors use the SDK's exported retryable error type/name to resolve refresh waiters without an orphaned rejection; no error/provider value is exposed and no persistence fallback is added.
+
 #### Lifetime and cleanup contract (round 1 resolution)
 
 - Inject `resolveStorageFn` into `createAuthSessionManager`, defaulting to the existing platform resolver. One pending client record owns its generation, resolved storage and revocable lease. Every SDK result/event checks that record before publishing.
@@ -53,7 +57,7 @@ Environment B uses GitHub Actions macOS. The repository has Actions enabled and 
 
 - Include `src/android-compat.js` and Android touch recovery in the platform correction: native iOS gets neither the Android marker nor Android recovery; shared Web viewport adaptation remains. Restrict the two APK download links to platforms other than native iOS.
 - Callback grammar is exactly `dengta://auth` with empty or `/` path, no credentials/port/query, and a fragment containing one nonempty access token, one refresh token and optional recognized Supabase metadata. Reject duplicate fields and invalid types before initialization, including direct manager calls. `type=recovery` retains password recovery semantics. Cold/hot duplicate dispatch shares the pending callback; failed dispatch may be retried.
-- Add an explicit `platform` redirect parameter. Native iOS always selects `dengta://auth`; preserve the existing configured HTTPS precedence for Android/Web. CI sets no HTTPS redirect override and verifies the compiled API/redirect policy.
+- Add an explicit `platform` redirect parameter. Native iOS always selects `dengta://auth`; preserve the existing configured HTTPS precedence for Android/Web. CI sets no HTTPS redirect override, checks the emitted reviewed API/native callback literals and separately runs source redirect behavior tests. Literal presence is not a runtime request or production allowlist assertion.
 
 ### 5. CI and evidence
 
