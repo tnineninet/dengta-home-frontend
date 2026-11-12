@@ -10,10 +10,11 @@ const session = id => ({ access_token: jwt(id), refresh_token: "fictional-refres
   expires_at: Math.floor(Date.now() / 1000) + 3600, user: { id } });
 function deferred() { let resolve; const promise = new Promise(yes => { resolve = yes; }); return { promise, resolve }; }
 
-function fixture(fetchUser) {
+function fixture(fetchUser, options = {}) {
   const values = new Map([[KEY, JSON.stringify(session(A))]]), clients = [], requests = [];
   const storage = { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)), removeItem: key => values.delete(key) };
   const manager = createAuthSessionManager({
+    approveNativeAuthCallback: async () => true, ...options,
     supabaseUrl: "https://fixture.example.test", supabaseAnonKey: "fictional-public-key", storage,
     createClientFn: (_url, _key, options) => {
       const auth = new GoTrueClient({ ...options.auth, url: "https://fixture.example.test/auth/v1", fetch: async (url, init) => {
@@ -27,6 +28,109 @@ function fixture(fetchUser) {
   return { manager, storage, values, clients, requests, async dispose() { manager.destroy(); await Promise.all(clients.map(c => c.auth.dispose())); } };
 }
 const callback = token => `dengta://auth#access_token=${token}&refresh_token=fictional-refresh`;
+
+test("unapproved valid B never replaces durable A, even with a recovery link", async () => {
+  const f = fixture(async () => new Response(JSON.stringify({ id: B, email: "b@example.invalid" }), { status: 200 }),
+    { approveNativeAuthCallback: undefined, windowObject: { confirm: () => false } });
+  try {
+    await f.manager.initialize(); const before = f.values.get(KEY);
+    f.manager.subscribe(snapshot => { if (snapshot.nativeCallbackApproval) f.manager.resolveNativeAuthCallbackApproval(snapshot.nativeCallbackApproval.id, false); });
+    assert.deepEqual(await f.manager.handleAuthCallbackUrl(callback(jwt(B)) + "&type=recovery"), { ok: false, reason: "callback_not_approved" });
+    assert.equal(f.manager.getSnapshot().user.id, A);
+    assert.equal(f.manager.getSnapshot().status, "authenticated");
+    assert.equal(f.values.get(KEY), before); assert.equal(f.clients.length, 2);
+  } finally { await f.dispose(); }
+});
+
+test("anonymous valid callback cannot persist before an explicit local decision", async () => {
+  const f = fixture(async () => new Response(JSON.stringify({ id: B, email: "b@example.invalid" }), { status: 200 }),
+    { approveNativeAuthCallback: undefined, windowObject: {} });
+  try {
+    f.values.delete(KEY); await f.manager.initialize();
+    const pending = f.manager.handleAuthCallbackUrl(callback(jwt(B)));
+    for (let i = 0; i < 100 && !f.manager.getSnapshot().nativeCallbackApproval; i++) await new Promise(resolve => setTimeout(resolve, 0));
+    const approval = f.manager.getSnapshot().nativeCallbackApproval;
+    assert.equal(approval.email, "b@example.invalid"); assert.equal(f.values.has(KEY), false);
+    assert.equal(f.manager.resolveNativeAuthCallbackApproval(approval.id + 1, true), false);
+    assert.equal(f.manager.resolveNativeAuthCallbackApproval(approval.id, "true"), true);
+    assert.deepEqual(await pending, { ok: false, reason: "callback_not_approved" });
+    assert.equal(f.manager.getSnapshot().user, null); assert.equal(f.values.has(KEY), false);
+  } finally { await f.dispose(); }
+});
+
+test("default approval displays the validated identity and only affirmative consent commits", async () => {
+  let displayed;
+  const f = fixture(async () => new Response(JSON.stringify({ id: B, email: "b@example.invalid" }), { status: 200 }),
+    { approveNativeAuthCallback: undefined, windowObject: { confirm: message => { displayed = message; return true; } } });
+  try {
+    await f.manager.initialize();
+    f.manager.subscribe(snapshot => { if (snapshot.nativeCallbackApproval) {
+      displayed = snapshot.nativeCallbackApproval;
+      f.manager.resolveNativeAuthCallbackApproval(displayed.id, true);
+    } });
+    assert.deepEqual(await f.manager.handleAuthCallbackUrl(callback(jwt(B)) + "&type=recovery"), { ok: true });
+    assert.equal(displayed.email, "b@example.invalid"); assert.equal(displayed.recovery, true);
+    assert.ok(!JSON.stringify(displayed).includes(jwt(B)) && !JSON.stringify(displayed).includes("fictional-refresh") && !JSON.stringify(displayed).includes(B));
+    assert.equal(f.manager.getSnapshot().user.id, B); assert.equal(f.manager.getSnapshot().status, "recovery");
+    assert.equal(f.requests.filter(path => path.endsWith("/user")).length, 1);
+  } finally { await f.dispose(); }
+});
+
+test("pending local approval holds only public identity metadata and logout cancels it", async () => {
+  const entered = deferred(), decision = deferred(); let details;
+  const f = fixture(async () => new Response(JSON.stringify({ id: B, email: "b@example.invalid" }), { status: 200 }),
+    { approveNativeAuthCallback: value => { details = value; entered.resolve(); return decision.promise; } });
+  try {
+    await f.manager.initialize(); const before = f.values.get(KEY);
+    const pending = f.manager.handleAuthCallbackUrl(callback(jwt(B))); pending.catch(() => {});
+    await entered.promise;
+    assert.equal(f.values.get(KEY), before); assert.equal(f.manager.getSnapshot().user.id, A);
+    assert.deepEqual(Object.keys(details).sort(), ["currentUser", "recovery", "user"]);
+    assert.equal(details.user.email, "b@example.invalid");
+    assert.ok(!JSON.stringify(details).includes("fictional-refresh") && !JSON.stringify(details).includes("access_token"));
+    await f.manager.signOut(); decision.resolve(true);
+    await assert.rejects(pending, { code: "auth_operation_cancelled" });
+    assert.equal(f.manager.getSnapshot().user, null); assert.equal(f.values.has(KEY), false);
+  } finally { decision.resolve(false); await f.dispose(); }
+});
+
+test("expired local approval preserves A and a late approval cannot seed B", async t => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const entered = deferred(), decision = deferred();
+  const f = fixture(async () => new Response(JSON.stringify({ id: B, email: "b@example.invalid" }), { status: 200 }),
+    { approveNativeAuthCallback: () => { entered.resolve(); return decision.promise; } });
+  try {
+    await f.manager.initialize(); const before = f.values.get(KEY);
+    const pending = f.manager.handleAuthCallbackUrl(callback(jwt(B))); pending.catch(() => {});
+    await entered.promise; t.mock.timers.tick(60_000);
+    await assert.rejects(pending, { code: "auth_timeout" });
+    decision.resolve(true); for (let i = 0; i < 30; i++) await Promise.resolve();
+    assert.equal(f.manager.getSnapshot().user.id, A); assert.equal(f.values.get(KEY), before);
+  } finally { decision.resolve(false); await f.dispose(); }
+});
+
+for (const action of ["timeout", "logout", "destroy"]) {
+  test(`default in-page approval ${action} clears the prompt and cannot later commit`, async t => {
+    if (action === "timeout") t.mock.timers.enable({ apis: ["setTimeout"] });
+    const entered = deferred(); let approval;
+    const f = fixture(async () => new Response(JSON.stringify({ id: B, email: "b@example.invalid" }), { status: 200 }),
+      { approveNativeAuthCallback: undefined });
+    try {
+      await f.manager.initialize(); const before = f.values.get(KEY);
+      f.manager.subscribe(snapshot => { if (snapshot.nativeCallbackApproval) { approval = snapshot.nativeCallbackApproval; entered.resolve(); } });
+      const pending = f.manager.handleAuthCallbackUrl(callback(jwt(B))); pending.catch(() => {});
+      await entered.promise;
+      if (action === "timeout") t.mock.timers.tick(60_000);
+      if (action === "logout") await f.manager.signOut();
+      if (action === "destroy") f.manager.destroy();
+      await assert.rejects(pending, { code: action === "timeout" ? "auth_timeout" : "auth_operation_cancelled" });
+      assert.equal(f.manager.getSnapshot().nativeCallbackApproval, null);
+      assert.equal(f.manager.resolveNativeAuthCallbackApproval(approval.id, true), false);
+      if (action === "logout") assert.equal(f.values.has(KEY), false);
+      else assert.equal(f.values.get(KEY), before);
+    } finally { await f.dispose(); }
+  });
+}
 
 test("real SDK rejects malformed native tokens without erasing the active account", async () => {
   const f = fixture(() => { throw new Error("malformed JWT must not contact provider"); });

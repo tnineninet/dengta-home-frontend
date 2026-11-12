@@ -16,3 +16,9 @@ The ACK is emitted from streamChat's real text callback; terminal event/EOF is w
 The separate host uses nonpersistent website data, same-origin CSP, a distinct bundle ID, only loopback navigation and its own newly created Simulator UUID. Its generated test-only ATS exception never enters the product Info.plist. Standard ad hoc codesigning applies only to this disposable Simulator fixture; no Developer Team/certificate identity is invented.
 
 Native execution is pending. A passing fixture would not prove actual account login, production TLS/CORS, Capacitor interception/configuration, upstream buffering or chat UI. The previously successful product run remains separate evidence.
+
+## Closure reread
+
+At `07455585988ead7fd7cff99d8bb638c2c52931f3`, the reviewer confirmed all four findings closed. The EGM review/review-loop skills and exact `../../docs/codex.md` reference were read, with implementation_readiness/codebase_details/style personas and the implementation-readiness standard. Two additional `fork_turns=none` reviewers, `round7_protocol_readiness` and `round7_protocol_evidence`, independently returned no further concrete findings. All were read-only; no reviewer ran native builds or accessed credentials. Native CI evidence remains a separate pending step.
+
+Subsequent runtime evidence: complete run43286170878 at0745558 passed the isolated iOS26.5 WKWebView transport and both product Simulator paths. Bound native/server receipts and downloaded ZIP hashes are recorded in the Phase report. The earlier pending language describes review time; authenticated business remains unexercised.

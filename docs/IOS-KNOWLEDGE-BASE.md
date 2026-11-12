@@ -15,7 +15,7 @@
 - 保留现有错误分类、连接检测、初始化/登录 20 秒和刷新 15 秒截止时间；超时不能让迟到 SDK 重新登录。
 - 恢复超时只封闭/排空旧租约，保留 durable session 供重试；显式退出可把该排空升级为 verified clear。内部 SDK rotation 不重置身份队列；显式取消使用独立 epoch。真实 GoTrue 的 initialize finally 可能重开监听，因此立即及初始化结束后都执行 dispose。
 - 回滚必须保留安全存储边界，不能恢复旧 Preferences 认证路径。AccountVault 和普通缓存加密后置，不声称全部私人数据已加密。
-- Native 回跳先由隔离的不持久化 SDK 验证，失败不删除当前登录。成功后保留完整 session（包括可能旋转的 refresh token），在退休前预约 seed/recovery 状态，任何胜出的新客户端都先持久化 seed 再构造 SDK。拒绝/超时/退出/部分写入失败和订阅者抢占均有真实 SDK 合成回归；不把无法恢复的 seed 计作成功。
+- Native 回跳先由隔离的不持久化 SDK 验证，失败不删除当前登录。验证后仍需异步页面对话框明确确认账号/恢复用途；取消、不可用、超时、退出、销毁或陈旧响应不能提交。只有明确确认后才保留完整 session（包括可能旋转的 refresh token），在退休前预约 seed/recovery 状态，任何胜出的新客户端都先持久化 seed 再构造 SDK。拒绝/超时/退出/部分写入失败和订阅者抢占均有真实 SDK 合成回归；不把无法恢复的 seed 计作成功。对话框保持底层 App/草稿挂载；真实邮件与原生面板交互未验收，当前源代码仍待新 CI；不声称 PKCE。
 - Web 仅在实际 window.localStorage 且支持 Web Locks/crypto 时使用非敏感 epoch 和 origin 独占锁。退出、SDK 删除主认证键和身份变化均封闭旧 epoch；事件在持久化比对后才接受。无锁环境只有普通 storage removal 退出传播承诺。新身份只使用匿名 SDK；跨标签页竞争超过有限重试则取消。Android/iOS 不采用这个 Web 协议。
 - SDK 专用退休读取返回空，防止 GoTrue detached INITIAL_SESSION 异常；普通租约读取仍拒绝。存储错误使用 GoTrue 可识别的安全 retryable 类型/原名，避免迟到刷新拒绝无人观察的 Deferred；退休仍由 manager 永久封闭，写/删不开放。当前 provider 错误仍可见。
 
@@ -35,11 +35,26 @@ iOS native 不获取 Android marker/touch recovery，不显示 APK 操作。共�
 4. 实际 Keychain 随机探针：独立 service/key，验证 add/read/delete 与字节回读，不导出值。
 5. 匿名 DOM 就绪 + 截图 + 进程存活：证明启动至登录页，不能证明真实账号业务。
 6. 原生 XCUITest 的匿名键盘输入/滚动：只能证明所测登录/注册/找回表单，不证明登录后聊天 composer。`f8b8f51` 原始七阶段通过但总体 parser 失败；ca3f0f7 完整 run 43279364936 通过。随后 0431a82 run 43280829367 在 iPhone 17 和 iPhone SE 3 分别通过七阶段、实际 Keychain/就绪与截图。
-7. 本地私有账号业务验收：恢复会话、伴侣、流式聊天、人格保存/恢复、记忆/设置与聊天键盘。执行前保持未验证。
+7. 独立 WKWebView 合成 loopback 传输：编译真实 api.js、虚构认证上下文、ACK 后才送 done，另测截断与取消；0745558 的 run43286170878 原生通过。不证明产品 origin/生产服务器或真实业务。
+8. 本地私有账号业务验收：恢复会话、伴侣、流式聊天、人格保存/恢复、记忆/设置与聊天键盘。执行前保持未验证。
 
 CI 只导出 allowlist schema 的诊断、工具/构建日志和匿名页面截图，带源码 SHA 与本次随机启动标识；未知或认证状态拒绝截图。下载的 CI artifact 只放仓库外并记录哈希。
 
 Windows Chromium 的真实 Web Locks/storage/BroadcastChannel 合成 provider 检查是另一类兼容证据，不能替代 WKWebView 或私有账号验收。`browser-auth-audit.json` 及 harness 位于仓库外证据目录。
+
+另有 `browser-auth-interleaving.json` / harness：固定 seed `0xD3A6105`、120 个三标签竞争轮次；并发登录/退出、延迟存储事件、乱序广播与标签重建后收敛身份一致，零 pageerrors/外部请求。36 次旧租约/竞争身份操作被取消，不当作业务成功计数。
+
+## 后续审核的官方资料快照
+
+2026-11-12T19:11Z，以下官方页面直接 HTTP 200 读取；网页搜索工具当时返回服务错误，因此使用本机 HTTP 客户端。HTML 保留在仓库外证据根目录，未作为产品代码或审核结果使用。
+
+| 页面 | 本地文件 | 字节 | SHA-256 |
+|---|---|---:|---|
+| [App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/) | apple-review-guidelines.html | 240818 | `31EA529B57226A76978AEFA5F814BEFDA515B46DA5E2E7F79434B36D73A9AFAB` |
+| [TestFlight](https://developer.apple.com/testflight/) | apple-testflight.html | 112344 | `1170E1875A1A398F234D5076EBBA5D9AF71E4D0E63A25180BDD2548A738540F4` |
+| [Account deletion](https://developer.apple.com/support/offering-account-deletion-in-your-app/) | apple-account-deletion.html | 134554 | `49CB3BDC633D5F985CE0BE4CBBAF41ADE3BDFFA8D3480C649585347792545012` |
+
+具体 SFW/生成内容、第三方 AI 数据分享、账号删除、数字付费和原生实用性评估见 IOS-DECISIONS.md；不从这些规则推断已经符合或保证过审。
 
 ## 后续依赖
 

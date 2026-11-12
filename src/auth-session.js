@@ -2,6 +2,7 @@ import { GoTrueClient } from "@supabase/auth-js";
 import { resolveAuthStorage } from "./auth-native-storage.js";
 import { createAuthStorageLease } from "./auth-storage-lease.js";
 import { parseNativeAuthCallback } from "./native-app-runtime.js";
+import { nativeAuthApprovalDetails } from "./native-auth-approval.js";
 import { AUTH_WEB_LIFETIME_KEY, createWebAuthLifetime } from "./auth-web-lifetime.js";
 
 const UUID_PATTERN =
@@ -166,6 +167,7 @@ export function createAuthSessionManager({
   createClientFn = createAuthOnlyClient,
   resolveStorageFn = resolveAuthStorage,
   windowObject = globalThis.window,
+  approveNativeAuthCallback,
 } = {}) {
   const normalizedUrl = String(supabaseUrl || "").trim().replace(/\/$/, "");
   const normalizedKey = String(supabaseAnonKey || "").trim();
@@ -180,6 +182,8 @@ export function createAuthSessionManager({
   let identityQueue = Promise.resolve();
   let identityEpoch = 0;
   let pendingIdentitySeed = null;
+  let callbackApproval = null;
+  let callbackApprovalSequence = 0;
   const requestContexts = new WeakMap();
   let initialization = null;
   let authSubscription = null;
@@ -196,6 +200,7 @@ export function createAuthSessionManager({
     activeCompanionId: "",
     error: null,
     cleanupState: "",
+    nativeCallbackApproval: null,
   });
 
   function publish(next) {
@@ -204,6 +209,21 @@ export function createAuthSessionManager({
     if (previous.user?.id !== snapshot.user?.id || previous.activeCompanionId !== snapshot.activeCompanionId) scopeRevision += 1;
     listeners.forEach((listener) => listener(snapshot));
     return snapshot;
+  }
+
+  function finishCallbackApproval(entry, approved = false) {
+    if (!entry || callbackApproval !== entry) return false;
+    callbackApproval = null;
+    entry.resolve(approved === true);
+    if (!destroyed) publish({ nativeCallbackApproval: null });
+    else snapshot = Object.freeze({ ...snapshot, nativeCallbackApproval: null });
+    return true;
+  }
+
+  function resolveNativeAuthCallbackApproval(id, approved) {
+    const entry = callbackApproval;
+    if (!entry || entry.id !== id || entry.epoch !== identityEpoch || destroyed) return false;
+    return finishCallbackApproval(entry, approved);
   }
 
   function applySession(nextSession, status) {
@@ -311,6 +331,7 @@ export function createAuthSessionManager({
   }
 
   function retireCurrent({ status = AUTH_STATUS.anonymous, error = null, revoke = false, preserveStorage = false, preserveIdentityQueue = false } = {}) {
+    if (!preserveIdentityQueue) finishCallbackApproval(callbackApproval);
     if (cleanupRecord) {
       if (!preserveIdentityQueue) {
         lifecycle += 1;
@@ -886,6 +907,7 @@ export function createAuthSessionManager({
 
   function destroy() {
     destroyed = true;
+    finishCallbackApproval(callbackApproval);
     lifecycle += 1;
     identityEpoch += 1;
     pendingIdentitySeed = null;
@@ -943,6 +965,7 @@ export function createAuthSessionManager({
     if (epoch !== identityEpoch || destroyed) throw staleOperation();
     let candidate;
     let commit;
+    let approval;
     try {
       // A native URL is untrusted. Validate in SDK-owned memory before
       // touching the current account, durable storage or recovery state.
@@ -962,6 +985,25 @@ export function createAuthSessionManager({
       if (error || !data?.session?.user?.id || !data.session.access_token) {
         throw authFailure(error || { code: "invalid_session" }, "回跳登录失败，请重新登录。");
       }
+      // Provider validity proves identity, not the user's intent to use it.
+      // Keep the candidate only in SDK memory until explicit local approval.
+      const approvalStarted = Date.now();
+      const details = { user: publicUser(data.session), currentUser: publicUser(session), recovery: callback.recovery };
+      const approve = () => {
+        if (epoch !== identityEpoch || destroyed) throw staleOperation();
+        if (approveNativeAuthCallback) return approveNativeAuthCallback(details);
+        const prompt = nativeAuthApprovalDetails(details);
+        if (!prompt) return false;
+        return new Promise(resolve => {
+          approval = { id: ++callbackApprovalSequence, epoch, resolve };
+          callbackApproval = approval;
+          publish({ nativeCallbackApproval: Object.freeze({ ...prompt, id: approval.id }) });
+        });
+      };
+      const approved = await withAuthTimeout(Promise.resolve().then(approve), 60_000, "邮件操作确认已过期，请重新打开链接。");
+      if (epoch !== identityEpoch || destroyed) throw staleOperation();
+      if (Date.now() - approvalStarted > 60_000) throw new AuthSessionError("邮件操作确认已过期，请重新打开链接。", { code: "auth_timeout" });
+      if (approved !== true) return { ok: false, reason: "callback_not_approved" };
       // Reserve the validated seed before publishing retirement/cleanup. A
       // subscriber's concurrent initialize must build the same candidate,
       // rather than occupy the new client slot with an empty SDK.
@@ -993,6 +1035,7 @@ export function createAuthSessionManager({
       });
       throw error;
     } finally {
+      finishCallbackApproval(approval);
       if (candidate) disposeClient(candidate);
       if (pendingIdentitySeed === commit) pendingIdentitySeed = null;
     }
@@ -1040,6 +1083,7 @@ export function createAuthSessionManager({
     requestPasswordReset,
     updatePassword: serializeIdentity(updatePassword),
     handleAuthCallbackUrl: serializeIdentity(handleAuthCallbackUrl),
+    resolveNativeAuthCallbackApproval,
     checkConnectivity,
     getRequestContext,
     setActiveCompanionId,

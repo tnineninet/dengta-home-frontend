@@ -13,7 +13,26 @@ const sessionFor = (id, token = `fictional-${id}`) => ({ access_token: token, us
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 const settle = async () => { for (let i = 0; i < 40; i++) await Promise.resolve(); };
 
-function fixture({ initial = null, resolveStorage, signIn, getSession, setSession } = {}) {
+test("retirement between candidate validation and deferred approval cannot publish a stale prompt", async () => {
+  let f, reads = 0, approvalCalls = 0;
+  const candidate = { access_token: "fictional-candidate", refresh_token: "fictional-refresh" };
+  Object.defineProperty(candidate, "user", { get() {
+    reads += 1;
+    if (reads === 2) queueMicrotask(() => f.manager.destroy());
+    return { id: B, email: "b@example.invalid" };
+  } });
+  f = fixture({ initial: sessionFor(A), setSession: async () => candidate,
+    approveNativeAuthCallback: () => { approvalCalls += 1; return true; } });
+  try {
+    await f.manager.initialize();
+    await assert.rejects(f.manager.handleAuthCallbackUrl("dengta://auth#access_token=fictional&refresh_token=fictional"), { code: "auth_operation_cancelled" });
+    assert.equal(f.manager.getSnapshot().nativeCallbackApproval, null);
+    assert.equal(f.clients.length, 2);
+    assert.equal(approvalCalls, 0);
+  } finally { f.manager.destroy(); }
+});
+
+function fixture({ initial = null, resolveStorage, signIn, getSession, setSession, approveNativeAuthCallback = async () => true } = {}) {
   const values = new Map(), clients = [], calls = [];
   const storage = {
     getItem: key => values.get(key) ?? null,
@@ -22,6 +41,7 @@ function fixture({ initial = null, resolveStorage, signIn, getSession, setSessio
   };
   let resolutions = 0;
   const manager = createAuthSessionManager({
+    approveNativeAuthCallback,
     supabaseUrl: "https://fictional.example.test", supabaseAnonKey: "fictional-public-key", storage,
     resolveStorageFn: async () => { resolutions++; return resolveStorage ? resolveStorage(storage, resolutions) : storage; },
     createClientFn: (_url, _key, options) => {

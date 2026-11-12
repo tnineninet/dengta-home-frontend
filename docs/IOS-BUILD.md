@@ -14,6 +14,14 @@
 
 从当前前端仓库的 feature 分支开始。以下环境变量仅为本地/CI 的公开前端配置；不使用数据库 service-role key，不复制凭据文件。
 
+新 Mac 没有 checkout 时，先 clone 到一个不存在的新目录；使用正常 GitHub 登录方式，不把 PAT 放在 URL：
+
+```bash
+git clone --branch feat/ios-import-75ad3da --single-branch \
+  https://github.com/DengTaHome/dengta-home-frontend.git dengta-home-frontend-ios
+cd dengta-home-frontend-ios
+```
+
 ```bash
 git switch feat/ios-import-75ad3da
 export DEVELOPER_DIR=/Applications/Xcode_26.6.app/Contents/Developer
@@ -26,17 +34,19 @@ npm run build:web
 npm run verify:ios-build-policy
 npx --no-install cap sync ios
 bash scripts/test-ios-keychain-native.sh
+IOS_LOCAL_DERIVED="$(mktemp -d "${TMPDIR:-/tmp}/dengta-ios-derived.XXXXXX")"
+IOS_LOCAL_EVIDENCE="$(mktemp -d "${TMPDIR:-/tmp}/dengta-ios-evidence.XXXXXX")"
 xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
   -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-  -derivedDataPath /tmp/dengta-ios-derived \
+  -derivedDataPath "$IOS_LOCAL_DERIVED" \
   CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- build
 bash scripts/ios-simulator-smoke.sh \
-  /tmp/dengta-ios-derived/Build/Products/Debug-iphonesimulator/App.app \
-  /tmp/dengta-ios-evidence "$(git rev-parse HEAD)"
+  "$IOS_LOCAL_DERIVED/Build/Products/Debug-iphonesimulator/App.app" \
+  "$IOS_LOCAL_EVIDENCE" "$(git rev-parse HEAD)"
 npx --no-install cap open ios
 ```
 
-先确认 `/tmp/dengta-ios-derived` 和 evidence 目录属于本次任务；不要删除别人的已有目录。交互式 Xcode 中选择 App scheme 和 iPhone Simulator，保持 `home.dengta.app`。当前不填写虚构 Team，不做设备签名，不手工重新签整个 `.app`。
+上述 derived-data/evidence 使用 mktemp 新建独立目录；保留证据，不要删除别人的已有目录。交互式 Xcode 中选择 App scheme 和 iPhone Simulator，保持 `home.dengta.app`。当前不填写虚构 Team，不做设备签名，不手工重新签整个 `.app`。
 
 Windows 上 `cap sync ios` 可以复制资源并生成 SPM，但 CLI 会写 Windows 分隔符。提交的 `CapApp-SPM/Package.swift` 本地依赖路径已规范为 `/`；在 Mac 上 sync 会自动生成正确路径。Windows 的 sync 成功不代表 Swift/Xcode 编译成功。
 
@@ -95,9 +105,11 @@ CI 另建 `home.dengta.transport-fixture` 临时 UIKit/WKWebView 宿主，编译
 node scripts/ios-webkit-transport.mjs "$TMPDIR/dengta-transport-evidence" "$(git rev-parse HEAD)"
 ```
 
-真实 text 回调须先发 ACK，服务端才发送 done/EOF；另测 UTF-8 正文、POST multipart/虚构 headers、缺失 done 拒绝、取消后无后续事件且服务端响应提前关闭。TCP 可能合并写入，因此不声称每次服务端写入对应独立 reader chunk。产出绑定 nonce/source SHA 的原生 receipt 和 server 计数；自建 Simulator 在 finally 中清理。首次原生运行尚待 CI。
+真实 text 回调须先发 ACK，服务端才发送 done/EOF；另测 UTF-8 正文、POST multipart/虚构 headers、缺失 done 拒绝、取消后无后续事件且服务端响应提前关闭。TCP 可能合并写入，因此不声称每次服务端写入对应独立 reader chunk。产出绑定 nonce/source SHA 的原生 receipt 和 server 计数；finally 尝试清理自建 Simulator。首次原生运行已在0745558的完整run43286170878通过。
 
 该宿主只证明合成 loopback WKWebView 传输；不覆盖产品 capacitor origin、生产 TLS/CORS/上游缓冲、真实认证、聊天 UI 或业务验收。
+
+原生邮件回跳先在隔离 SDK 内验证服务端身份，再通过异步页面对话框显示账号/恢复密码用途。只有明确确认才替换会话；取消/60秒超时/退出/销毁保留当前状态或明确退出结果。对话框不可用则拒绝，底层 App 与未保存草稿保持挂载；这不等于 PKCE 绑定。实际 Mac 验收还需测试真实邮件、冷/热启动以及打开原生文件选择器时的确认/取消；不得把真实回跳 URL 或邮箱截图上传 CI。
 
 ## 失败处理
 

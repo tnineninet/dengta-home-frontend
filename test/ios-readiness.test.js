@@ -11,11 +11,12 @@ function fixture() {
   const elements = [100, 200, 300].map(top => ({ disabled: false, parentElement: page, rect: box(20, top, 360, 48),
     style: {}, contains: () => false, getBoundingClientRect() { return this.rect; } }));
   const selectors = ['input[type="email"]', 'input[type="password"]', 'button[type="submit"]'];
-  const f = { prelude: false, covered: false, elements, page, box };
+  const f = { prelude: false, covered: false, approval: false, elements, page, box };
   const document = {
     documentElement: { dataset: { authStatus: "anonymous" } },
     querySelector(selector) {
       if (selector === ".auth-form") return { querySelector: key => elements[selectors.indexOf(key)] };
+      if (selector === "[data-native-auth-approval]") return f.approval ? {} : null;
       if (selector.startsWith(".dengta-prelude")) return f.prelude ? {} : null;
       return null;
     },
@@ -31,6 +32,11 @@ function fixture() {
 
 test("actual bundled readiness script accepts a fully visible anonymous login form", () => {
   const f = fixture(); assert.equal(f.read().ready, true);
+});
+
+test("pending identity approval is never anonymous screenshot/readiness authority", () => {
+  const f = fixture(); f.approval = true;
+  assert.equal(f.read().state, "authenticating"); assert.equal(f.read().ready, false);
 });
 
 for (const condition of ["offscreen", "clipped", "hidden", "transparent-ancestor", "disabled", "covered", "prelude"]) {

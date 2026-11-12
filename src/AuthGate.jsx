@@ -5,6 +5,7 @@ import { startBackgroundNotificationIdentitySync } from "./background-notificati
 import { resolveEmailRedirectUrl } from "./auth-redirect.js";
 import { installVisualViewportController } from "./mobile-viewport.js";
 import WebInstallButton from "./WebInstallButton.jsx";
+import NativeAuthApprovalDialog from "./NativeAuthApprovalDialog.jsx";
 import { flushSettingsBeforeAccountExit, releaseSettingsAccountExit, settingsSaveScope } from "./settings-save-scope.js";
 
 function browserEmailRedirectUrl() {
@@ -731,6 +732,7 @@ export default function AuthGate({
     [sessionManager],
   );
 
+  function renderContent() {
   if (!sessionManager.isConfigured()) return <ConfigurationScreen />;
   if (snapshot.cleanupState) {
     return (
@@ -787,4 +789,11 @@ export default function AuthGate({
   return typeof children === "function"
     ? children({ accountControl, snapshot })
     : children;
+  }
+
+  return <>
+    {renderContent()}
+    {snapshot.nativeCallbackApproval && <NativeAuthApprovalDialog
+      approval={snapshot.nativeCallbackApproval} onDecision={sessionManager.resolveNativeAuthCallbackApproval} />}
+  </>;
 }

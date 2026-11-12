@@ -5,7 +5,7 @@
 | 能力 | 当前实现 | iOS 策略 | 本轮状态 |
 |---|---|---|---|
 | 登录/恢复 | auth-js + 平台存储 | 自定义 Keychain + App 深链；Preferences 只迁移旧凭据 | 原生 Keychain/匿名启动已通过 ca3f0f7；真实账号恢复/邮件回跳未验证 |
-| POST SSE | `fetch` + `ReadableStream`，请求/伴侣 scope | 保持 WKWebView 的浏览器流；不启用 native HTTP interception | JS 协议回归；真实账号链路待验 |
+| POST SSE | `fetch` + `ReadableStream`，请求/伴侣 scope | 保持 WKWebView 的浏览器流；不启用 native HTTP interception | JS 回归与独立 iOS WKWebView 合成 loopback 传输已在 0745558/run 43286170878 通过；产品 origin/生产 TLS/CORS/真实账号链路待验 |
 | 人格/记忆/设置 | 当前 React/API + 保存 scope | 保留业务与大文本/退出前保存保护 | 回归测试；实机操作待验 |
 | 剪贴板 | `@capacitor/clipboard` 8.0.1 | SPM 自动链接 | 原生编译已在 ca3f0f7 通过；交互未验证，新增小屏 CI 另记 |
 | 生命周期/深链 | `@capacitor/app` 8.1.1 | 精确路由、冷/热启动去重 | JS 测试；邮件回跳待验 |

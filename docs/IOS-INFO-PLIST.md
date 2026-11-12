@@ -26,7 +26,7 @@ Keychain 使用 `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`、`synchronizable
 
 | 项目 | 当前已做 | 未验证/后续动作 | 是否需要本轮生产修改 |
 |---|---|---|---|
-| 自定义 scheme | Info.plist 注册 `dengta`；exact callback parser、冷/热去重、隔离 token 验证与安全 seed commit | 在本地 Mac 打开真正注册/恢复邮件，检查生产 redirect allowlist 与恢复语义；不把 URL/token 写日志 | 否；若 allowlist 不匹配，仅提后续变更 |
+| 自定义 scheme | Info.plist 注册 `dengta`；exact parser、冷/热去重、隔离 token 验证、明确账号确认后安全 seed commit | 本地 Mac 验证真实邮件、确认/取消/超时、原生 picker 并存、allowlist 与恢复语义；后续 PKCE，URL/token 不写日志 | 否；若 allowlist 不匹配，仅提后续变更 |
 | HTTPS/API 产物 | 显式已有 API URL、cleartext=false；build literal/source redirect 分别验证 | WKWebView 已认证请求实际目的地、Authorization/伴侣 header 和多段 SSE 的延迟/终止/取消 | 否 |
 | CORS | 所测 OPTIONS/health 通过，含 capacitor origin、POST 与三种请求 headers | 实际 POST/SSE 和其他 endpoint；有问题时提交独立后端配置方案 | 否 |
 | 前台本地通知 | 已安装官方 LocalNotifications；iOS 启动不主动弹授权 | 真机/模拟器显式授权、banner、点击路由和退出清理验收 | 否；不使用 APNs |

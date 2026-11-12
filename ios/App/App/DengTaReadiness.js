@@ -2,7 +2,8 @@
 (() => {
   const d = document, r = d.documentElement, v = window.visualViewport;
   const states = ['unconfigured', 'loading', 'anonymous', 'authenticating', 'recovery', 'authenticated', 'expired', 'error'];
-  const state = states.includes(r.dataset.authStatus) ? r.dataset.authStatus : 'unknown';
+  const state = d.querySelector('[data-native-auth-approval]') ? 'authenticating' :
+    states.includes(r.dataset.authStatus) ? r.dataset.authStatus : 'unknown';
   const viewport = { left: v?.offsetLeft || 0, top: v?.offsetTop || 0,
     width: v?.width || innerWidth, height: v?.height || innerHeight };
   const contains = (outer, inner) => inner.left >= outer.left - 1 && inner.top >= outer.top - 1 &&
