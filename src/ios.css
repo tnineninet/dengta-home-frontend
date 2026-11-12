@@ -1,0 +1,17 @@
+/* Apply only inside the native iOS host. Browser/Android styles stay shared. */
+html[data-native-platform="ios"] .auth-page {
+  min-height: var(--app-height, 100dvh);
+  padding-top: max(20px, env(safe-area-inset-top));
+  padding-bottom: max(20px, env(safe-area-inset-bottom));
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+html[data-native-platform="ios"] :is(input, textarea, select) {
+  /* WebKit otherwise zooms focused controls below 16px. */
+  font-size: max(16px, 1em);
+}
+
+html[data-native-platform="ios"][data-keyboard-open="true"] .auth-page {
+  align-items: flex-start;
+}

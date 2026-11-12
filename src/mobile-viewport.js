@@ -8,7 +8,28 @@ function editableElementIsFocused(documentObject) {
   );
 }
 
+const viewportLeases = new WeakMap();
+
 export function installVisualViewportController({ windowObject = globalThis.window, documentObject = globalThis.document } = {}) {
+  if (!windowObject || !documentObject?.documentElement) return () => {};
+  let entry = viewportLeases.get(documentObject);
+  if (!entry) {
+    entry = { users: 0, dispose: createVisualViewportController({ windowObject, documentObject }) };
+    viewportLeases.set(documentObject, entry);
+  }
+  entry.users += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    if (--entry.users === 0) {
+      entry.dispose();
+      viewportLeases.delete(documentObject);
+    }
+  };
+}
+
+function createVisualViewportController({ windowObject, documentObject }) {
   const viewport = windowObject.visualViewport;
   if (!viewport) return installInnerHeightViewportFallback({ windowObject, documentObject });
   const root = documentObject.documentElement;

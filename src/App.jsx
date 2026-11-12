@@ -792,7 +792,7 @@ const initialNotificationPermissionState = {
   message: "开启主动消息后，Android App 会自动准备通知权限和后台检查。",
 };
 
-async function prepareLocalNotificationPermission() {
+async function prepareLocalNotificationPermission({ requestPermission = true } = {}) {
   if (!Capacitor.isNativePlatform()) {
     return {
       status: "web",
@@ -810,6 +810,9 @@ async function prepareLocalNotificationPermission() {
 
   try {
     let permission = await LocalNotifications.checkPermissions();
+    if (permission.display !== "granted" && !requestPermission) {
+      return { status: "prompt", message: "iOS 前台提醒尚未授权。需要时可在此页主动开启；后台推送尚未接入。" };
+    }
     if (permission.display !== "granted") {
       permission = await LocalNotifications.requestPermissions();
     }
@@ -844,7 +847,9 @@ async function prepareLocalNotificationPermission() {
     return {
       status: "success",
       message:
-        "主动通知已准备好。App 退到后台后会由手机系统定期检查，不需要再点测试按钮。",
+        Capacitor.getPlatform() === "ios"
+          ? "前台本地提醒已授权；后台推送尚未接入。"
+          : "主动通知已准备好。App 退到后台后会由手机系统定期检查，不需要再点测试按钮。",
     };
   } catch (error) {
     return {
@@ -1368,7 +1373,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     },
   });
   useEffect(() => {
-    if (!Capacitor.isNativePlatform() || visualPreview || !accountStorageScope || !companionScope) return;
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android" || !Capacitor.isPluginAvailable("NeteasePlayback") || visualPreview || !accountStorageScope || !companionScope) return;
     const consumer = createAiMusicConsumer({ scope: aiMusicScope, list: listAiMusicPlayRequests, claim: claimAiMusicPlayRequest, commit: commitAiMusicPlayRequest, report: reportAiMusicPlayResult, open: playNeteaseSilent, storage: globalThis.sessionStorage, onFeedback: message => setNotice(message) });
     void consumer.drain();
     const timer = window.setInterval(() => {
@@ -3495,7 +3500,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       status: "checking",
       message: "正在自动检查手机通知权限…",
     });
-    void prepareLocalNotificationPermission().then((result) => {
+    void prepareLocalNotificationPermission({ requestPermission: Capacitor.getPlatform() !== "ios" }).then((result) => {
       if (!cancelled) setNotificationPermissionState(result);
     });
 
@@ -9475,9 +9480,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             guidanceLabel="⤓ 安装到手机/电脑"
             onFeedback={setNotice}
           />
-          <a className="install-button" href="/download" target="_blank" rel="noreferrer">⤓ 下载安卓安装包</a>
-          <button type="button" className="install-button" onClick={() => window.dispatchEvent(new Event("dengta:check-app-updates"))}>检查应用更新</button>
-          <button type="button" className="install-button" onClick={() => window.dispatchEvent(new Event("dengta:app-update-preferences"))}>更新提醒设置</button>
+          {Capacitor.getPlatform() !== "ios" && <>
+            <a className="install-button" href="/download" target="_blank" rel="noreferrer">⤓ 下载安卓安装包</a>
+            <button type="button" className="install-button" onClick={() => window.dispatchEvent(new Event("dengta:check-app-updates"))}>检查应用更新</button>
+            <button type="button" className="install-button" onClick={() => window.dispatchEvent(new Event("dengta:app-update-preferences"))}>更新提醒设置</button>
+          </>}
           </div>
         </div>
 
@@ -10164,6 +10171,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               >
                 {notificationPermissionState.message}
               </p>
+              {Capacitor.getPlatform() === "ios" && (
+                <button type="button" disabled={notificationPermissionState.status === "checking"} onClick={() => {
+                  setNotificationPermissionState({ status: "checking", message: "正在请求前台提醒权限…" });
+                  void prepareLocalNotificationPermission().then(setNotificationPermissionState);
+                }}>开启前台本地提醒</button>
+              )}
               {reminderChannelSettingsAvailable() && (
                 <div className="device-activity-actions">
                   <button
@@ -10959,7 +10972,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           <div className="sidebar-account-slot">{accountControl}</div>
         )}
 
-        <a
+        {Capacitor.getPlatform() !== "ios" && <a
           className="sidebar-settings-button"
           href="/download"
           target="_blank"
@@ -10968,7 +10981,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         >
           <span aria-hidden="true">⤓</span>
           下载 Android App
-        </a>
+        </a>}
 
         <button
           type="button"

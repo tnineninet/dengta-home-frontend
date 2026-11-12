@@ -3,12 +3,14 @@ import { Capacitor } from "@capacitor/core";
 import { AUTH_STATUS, authSession } from "./auth-session.js";
 import { startBackgroundNotificationIdentitySync } from "./background-notification-identity.js";
 import { resolveEmailRedirectUrl } from "./auth-redirect.js";
+import { installVisualViewportController } from "./mobile-viewport.js";
 import WebInstallButton from "./WebInstallButton.jsx";
 import { flushSettingsBeforeAccountExit, releaseSettingsAccountExit, settingsSaveScope } from "./settings-save-scope.js";
 
 function browserEmailRedirectUrl() {
   return resolveEmailRedirectUrl({
     nativePlatform: Capacitor.isNativePlatform(),
+    platform: Capacitor.getPlatform(),
     location: globalThis.location,
   });
 }
@@ -509,6 +511,7 @@ export function AuthScreen({
               )}
 
             <button
+              type="submit"
               className="auth-primary-button"
               disabled={Boolean(busy)}
             >
@@ -691,6 +694,14 @@ export default function AuthGate({
   const [initRetry, setInitRetry] = useState(0);
   const [initTimedOut, setInitTimedOut] = useState(false);
 
+  useEffect(() => installVisualViewportController(), []);
+  useEffect(() => {
+    const root = globalThis.document?.documentElement;
+    if (!root) return undefined;
+    root.dataset.authStatus = snapshot.status;
+    return () => { delete root.dataset.authStatus; };
+  }, [snapshot.status]);
+
   useEffect(() => {
     let active = true;
     const unsubscribe = sessionManager.subscribe(setSnapshot);
@@ -718,6 +729,19 @@ export default function AuthGate({
   );
 
   if (!sessionManager.isConfigured()) return <ConfigurationScreen />;
+  if (snapshot.cleanupState) {
+    return (
+      <main className="auth-page auth-secure-cleanup-page">
+        <section className="auth-message-panel" role="alert">
+          <h1>正在保护登录信息</h1>
+          <p>{snapshot.cleanupState === "pending" ? "正在清理本机登录信息，请稍候。" : "安全登录存储尚未清理。请解锁设备后重试。"}</p>
+          <button type="button" disabled={snapshot.cleanupState === "pending"} onClick={() => {
+            void sessionManager.retryAuthCleanup().then(() => setInitRetry(value => value + 1)).catch(() => {});
+          }}>重试清理登录信息</button>
+        </section>
+      </main>
+    );
+  }
   if (snapshot.status === AUTH_STATUS.loading) {
     return (
       <LoadingScreen

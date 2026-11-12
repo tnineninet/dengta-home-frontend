@@ -22,13 +22,14 @@ function storage() {
 test("auth initialize times out instead of leaving the app in loading forever", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   const pending = deferred();
+  const entered = deferred();
   const manager = createAuthSessionManager({
     supabaseUrl: "https://fictional.example.test",
     supabaseAnonKey: "fictional-public-placeholder",
     storage: storage(),
     createClientFn: () => ({
       auth: {
-        getSession: () => pending.promise,
+        getSession: () => { entered.resolve(); return pending.promise; },
         onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }),
       },
     }),
@@ -36,7 +37,7 @@ test("auth initialize times out instead of leaving the app in loading forever", 
   try {
     const initializing = manager.initialize();
     initializing.catch(() => {});
-    for (let index = 0; index < 8; index += 1) await Promise.resolve();
+    await entered.promise;
     t.mock.timers.tick(20_000);
     await assert.rejects(initializing, (error) => error.code === "auth_timeout");
     assert.equal(manager.getSnapshot().status, AUTH_STATUS.error);

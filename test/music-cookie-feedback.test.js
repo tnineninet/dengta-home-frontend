@@ -58,7 +58,7 @@ const vite = await createServer({ root: fileURLToPath(new URL("..", import.meta.
     if (normalized.endsWith("/src/api.js")) return "export const apiRequest=(...args)=>globalThis.__cookieFeedback.request(...args);export const apiFetch=apiRequest;";
     if (normalized.endsWith("/src/auth-session.js")) return "export const authSession=globalThis.__cookieFeedback.auth;";
     if (normalized.endsWith("/src/browser-launcher.js")) return "export const browserLauncherAvailable=()=>globalThis.__cookieFeedback.available();export const openBuiltInBrowser=(...args)=>globalThis.__cookieFeedback.browser(...args);export const readBrowserCookie=(...args)=>globalThis.__cookieFeedback.readCookie(...args);";
-    if (id === "\0virtual:cookie-native") return "export const Capacitor={isNativePlatform:()=>true};export const registerPlugin=()=>({open:(...args)=>globalThis.__cookieFeedback.native(...args)});";
+    if (id === "\0virtual:cookie-native") return "export const Capacitor={isNativePlatform:()=>true,isPluginAvailable:name=>name==='NeteasePlayback'};export const registerPlugin=()=>({open:(...args)=>globalThis.__cookieFeedback.native(...args)});";
   },
 }] });
 const nodeText = node => typeof node === "string" ? node : (node?.children || []).map(nodeText).join("");

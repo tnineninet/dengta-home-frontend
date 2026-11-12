@@ -1,5 +1,7 @@
 import { GoTrueClient } from "@supabase/auth-js";
 import { resolveAuthStorage } from "./auth-native-storage.js";
+import { createAuthStorageLease } from "./auth-storage-lease.js";
+import { parseNativeAuthCallback } from "./native-app-runtime.js";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -161,12 +163,19 @@ export function createAuthSessionManager({
   supabaseAnonKey = DEFAULT_SUPABASE_ANON_KEY,
   storage = globalThis.localStorage,
   createClientFn = createAuthOnlyClient,
+  resolveStorageFn = resolveAuthStorage,
 } = {}) {
   const normalizedUrl = String(supabaseUrl || "").trim().replace(/\/$/, "");
   const normalizedKey = String(supabaseAnonKey || "").trim();
   const persistentStorage = storageForBrowser(storage);
   const listeners = new Set();
   let client = null;
+  let clientRecord = null;
+  let lifecycle = 0;
+  let cleanupRecord = null;
+  let cleanupPromise = null;
+  let identityQueue = Promise.resolve();
+  const requestContexts = new WeakMap();
   let initialization = null;
   let authSubscription = null;
   let session = null;
@@ -181,6 +190,7 @@ export function createAuthSessionManager({
     user: null,
     activeCompanionId: "",
     error: null,
+    cleanupState: "",
   });
 
   function publish(next) {
@@ -227,29 +237,144 @@ export function createAuthSessionManager({
     }
   }
 
+  function staleOperation() {
+    return new AuthSessionError("账号操作已取消，请重新操作。", { code: "auth_operation_cancelled" });
+  }
+
+  function isCurrent(record) {
+    return record && clientRecord === record && !record.retired && record.generation === lifecycle;
+  }
+
+  function assertCurrent(record) {
+    if (!isCurrent(record)) throw staleOperation();
+  }
+
+  function resolveLease(record) {
+    return Promise.resolve().then(() => resolveStorageFn({ storage: persistentStorage }))
+      .then(storage => {
+        record.lease = createAuthStorageLease(storage);
+        return record.lease;
+      });
+  }
+
+  function newRecord() {
+    const record = { generation: lifecycle, retired: false, lease: null, client: null };
+    record.ready = resolveLease(record);
+    return record;
+  }
+
+  function cleanupFailure() {
+    return new AuthSessionError("安全登录存储尚未清理。请解锁设备后重试清理，再重新登录。", { code: "auth_cleanup_failed" });
+  }
+
+  function clearRetiredRecord(record, retry = false) {
+    if (cleanupPromise) return cleanupPromise;
+    if (retry && !record.lease) record.ready = resolveLease(record);
+    const clear = (record.lease
+      ? record.lease.retireAndClear()
+      : record.ready.then(lease => lease?.retireAndClear()))
+      .then(() => {
+        if (cleanupRecord === record) {
+          cleanupRecord = null;
+          publish({ cleanupState: "" });
+        }
+      }).catch(() => {
+        if (cleanupRecord === record) publish({ status: AUTH_STATUS.error, cleanupState: "failed", error: cleanupFailure() });
+        throw cleanupFailure();
+      }).finally(() => {
+        if (cleanupPromise === clear) cleanupPromise = null;
+      });
+    cleanupPromise = clear;
+    return clear;
+  }
+
+  function retireCurrent({ status = AUTH_STATUS.anonymous, error = null, revoke = false } = {}) {
+    if (cleanupRecord) return cleanupPromise || Promise.reject(cleanupFailure());
+    const record = clientRecord || newRecord();
+    record.retired = true;
+    lifecycle += 1;
+    clientRecord = null;
+    client = null;
+    initialization = null;
+    identityQueue = Promise.resolve();
+    callbackInitializationChecked = false;
+    authSubscription?.unsubscribe?.();
+    authSubscription = null;
+    try { Promise.resolve(record.client?.auth.stopAutoRefresh?.()).catch(() => {}); } catch { /* Already stopped. */ }
+    // Revoke directly with the captured token where the SDK supports it. The
+    // sealed SDK storage must never be reopened to perform server logout.
+    if (revoke && record.client) {
+      try {
+        const auth = record.client.auth;
+        const operation = auth.admin?.signOut && session?.access_token
+          ? auth.admin.signOut(session.access_token, "global")
+          : auth.signOut?.();
+        Promise.resolve(operation).catch(() => {});
+      } catch { /* Local revocation is authoritative when offline. */ }
+    }
+    passwordRecovery = false;
+    session = null;
+    sessionRevision += 1;
+    scopeRevision += 1;
+    cleanupRecord = record;
+    // retireAndClear is called synchronously when the lease already exists.
+    const clear = clearRetiredRecord(record);
+    if (!revoke && record.client) {
+      // Best-effort SDK-local disposal runs through its already sealed lease;
+      // it cannot read/write/remove credentials belonging to the next client.
+      try { Promise.resolve(record.client.auth.signOut?.({ scope: "local" })).catch(() => {}); } catch { /* Already detached. */ }
+    }
+    publish({ status, user: null, activeCompanionId: "", error, cleanupState: "pending" });
+    return clear;
+  }
+
+  async function retryAuthCleanup() {
+    if (!cleanupRecord) return snapshot;
+    publish({ cleanupState: "pending", error: null });
+    await clearRetiredRecord(cleanupRecord, true);
+    return publish({ status: AUTH_STATUS.anonymous, error: null });
+  }
+
   async function ensureClient() {
     requireConfiguration();
-    if (client) return client;
-    // 缺陷 2 修复：原生端优先使用 @capacitor/preferences 持久化会话
-    const resolvedStorage = await resolveAuthStorage({ storage: persistentStorage });
-    client = createClientFn(normalizedUrl, normalizedKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-        storage: resolvedStorage || persistentStorage,
-        storageKey: AUTH_STORAGE_KEY,
-      },
-    });
-    return client;
+    if (cleanupRecord) {
+      if (!cleanupPromise) throw cleanupFailure();
+      await cleanupPromise;
+    }
+    if (!clientRecord) {
+      const record = newRecord();
+      clientRecord = record;
+      record.creation = record.ready.then(lease => {
+        assertCurrent(record);
+        record.client = createClientFn(normalizedUrl, normalizedKey, {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true,
+            storage: lease,
+            storageKey: AUTH_STORAGE_KEY,
+          },
+        });
+        client = record.client;
+        return client;
+      }).catch(error => {
+        if (isCurrent(record)) clientRecord = null;
+        throw error;
+      });
+    }
+    return clientRecord.creation;
   }
 
   async function initialize() {
     if (!configured(normalizedUrl, normalizedKey)) return snapshot;
     if (initialization) return initialization;
 
+    const generation = lifecycle;
     initialization = (async () => {
-      const authClient = await ensureClient();
+      const authClient = await withAuthTimeout(ensureClient(), 20_000, "登录服务响应超时，请检查网络后重试。");
+      if (generation !== lifecycle) throw staleOperation();
+      const record = clientRecord;
+      assertCurrent(record);
       publish({ status: AUTH_STATUS.loading, error: null });
 
       // getSession() awaits SDK initialization but does not return its callback error.
@@ -261,12 +386,14 @@ export function createAuthSessionManager({
           20_000,
           "登录服务响应超时，请检查网络后重试。",
         );
+        assertCurrent(record);
         if (error) {
           const restored = await withAuthTimeout(
             authClient.auth.getSession(),
             20_000,
             "登录服务响应超时，请检查网络后重试。",
           );
+          assertCurrent(record);
           if (!restored.data?.session?.user?.id) {
             throw authFailure(error, "邮箱链接验证失败，请重新发送验证邮件，或使用已验证的邮箱和密码登录。");
           }
@@ -276,6 +403,8 @@ export function createAuthSessionManager({
       if (!authSubscription) {
         const result = authClient.auth.onAuthStateChange(
           (event, nextSession) => {
+            if (!isCurrent(record)) return;
+            if (["TOKEN_REFRESHED", "USER_UPDATED", "INITIAL_SESSION"].includes(event) && session?.user?.id && nextSession?.user?.id && session.user.id !== nextSession.user.id) return;
             if (event === "PASSWORD_RECOVERY") {
               applyRecoverySession(nextSession);
               return;
@@ -290,11 +419,14 @@ export function createAuthSessionManager({
         authSubscription = result?.data?.subscription || null;
       }
 
+      const restoreRevision = sessionRevision;
       const { data, error } = await withAuthTimeout(
         authClient.auth.getSession(),
         20_000,
         "登录服务响应超时，请检查网络后重试。",
       );
+      assertCurrent(record);
+      if (restoreRevision !== sessionRevision) return snapshot;
       if (error) {
         throw authFailure(error, "无法恢复登录状态，请重新登录。");
       }
@@ -302,7 +434,9 @@ export function createAuthSessionManager({
         ? applyRecoverySession(data?.session || null)
         : applySession(data?.session || null);
     })().catch((error) => {
+      if (generation !== lifecycle) throw staleOperation();
       initialization = null;
+      if (error?.code === "auth_timeout") void retireCurrent().catch(() => {});
       publish({
         status: AUTH_STATUS.error,
         error:
@@ -316,6 +450,53 @@ export function createAuthSessionManager({
     return initialization;
   }
 
+  async function initializedRecord() {
+    const generation = lifecycle;
+    await initialize();
+    if (generation !== lifecycle) throw staleOperation();
+    const record = clientRecord;
+    assertCurrent(record);
+    return record;
+  }
+
+  function invokeAuth(record, method, ...args) {
+    assertCurrent(record);
+    return record.client.auth[method](...args);
+  }
+
+  async function freshIdentityRecord() {
+    const record = await initializedRecord();
+    assertCurrent(record);
+    if (!session?.user?.id) return record;
+    // Changing identity must not share persistence with an in-flight refresh
+    // from the previous account, even if that refresh's event is ignored.
+    await retireCurrent();
+    return initializedRecord();
+  }
+
+  function serializeIdentity(operation) {
+    return (...args) => {
+      const generation = lifecycle;
+      const run = identityQueue.then(() => {
+        if (generation !== lifecycle) throw staleOperation();
+        return operation(...args);
+      });
+      identityQueue = run.catch(() => {});
+      return run;
+    };
+  }
+
+  async function identityDeadline(record, operation, milliseconds, message) {
+    try {
+      return await withAuthTimeout(operation, milliseconds, message);
+    } catch (error) {
+      if (isCurrent(record) && error?.code === "auth_timeout") {
+        void retireCurrent({ status: AUTH_STATUS.error, error }).catch(() => {});
+      }
+      throw error;
+    }
+  }
+
   async function signUp({
     email,
     password,
@@ -323,7 +504,7 @@ export function createAuthSessionManager({
     emailRedirectTo,
   } = {}) {
     requireConfiguration();
-    await initialize();
+    const record = await freshIdentityRecord();
     publish({ status: AUTH_STATUS.authenticating, error: null });
     const options = {};
     const normalizedDisplayName = String(displayName || "").trim().slice(0, 80);
@@ -333,11 +514,12 @@ export function createAuthSessionManager({
     if (emailRedirectTo) {
       options.emailRedirectTo = String(emailRedirectTo);
     }
-    const { data, error } = await (await ensureClient()).auth.signUp({
+    const { data, error } = await invokeAuth(record, "signUp", {
       email: cleanEmail(email),
       password: String(password || ""),
       ...(Object.keys(options).length ? { options } : {}),
     });
+    assertCurrent(record);
     if (error) {
       const failure = authFailure(error, "注册失败，请稍后再试。");
       publish({ status: AUTH_STATUS.anonymous, error: failure });
@@ -378,17 +560,18 @@ export function createAuthSessionManager({
 
   async function signIn({ email, password } = {}) {
     requireConfiguration();
-    await initialize();
+    const record = await freshIdentityRecord();
     publish({ status: AUTH_STATUS.authenticating, error: null });
-    const { data, error } = await withAuthTimeout(
-      (await ensureClient()).auth.signInWithPassword({
+    const { data, error } = await identityDeadline(record,
+      invokeAuth(record, "signInWithPassword", {
         email: cleanEmail(email),
         password: String(password || ""),
       }),
       20_000,
       "登录请求超时，请检查网络后重试。",
     );
-    if (error || !data?.session) {
+    assertCurrent(record);
+    if (error || !data?.session?.user?.id || !data.session.access_token) {
       const failure = authFailure(
         error || { code: "invalid_session" },
         "登录失败，请检查邮箱和密码。",
@@ -402,15 +585,16 @@ export function createAuthSessionManager({
 
   async function resendVerification({ email, emailRedirectTo } = {}) {
     requireConfiguration();
-    await initialize();
+    const record = await initializedRecord();
     const options = emailRedirectTo
       ? { emailRedirectTo: String(emailRedirectTo) }
       : undefined;
-    const { error } = await (await ensureClient()).auth.resend({
+    const { error } = await invokeAuth(record, "resend", {
       type: "signup",
       email: cleanEmail(email),
       ...(options ? { options } : {}),
     });
+    assertCurrent(record);
     if (error) {
       throw authFailure(error, "验证邮件发送失败，请稍后再试。");
     }
@@ -418,14 +602,15 @@ export function createAuthSessionManager({
 
   async function requestPasswordReset({ email, redirectTo } = {}) {
     requireConfiguration();
-    await initialize();
+    const record = await initializedRecord();
     const options = redirectTo
       ? { redirectTo: String(redirectTo) }
       : undefined;
-    const { error } = await (await ensureClient()).auth.resetPasswordForEmail(
+    const { error } = await invokeAuth(record, "resetPasswordForEmail",
       cleanEmail(email),
       options,
     );
+    assertCurrent(record);
     if (error) {
       throw authFailure(error, "密码重置邮件发送失败，请稍后再试。");
     }
@@ -446,8 +631,9 @@ export function createAuthSessionManager({
     } catch {
       throw new AuthSessionError("请粘贴本次灯塔注册邮件中“Confirm email address”按钮的原始链接；不要粘贴网页地址、其他网站或重置密码链接。", { code: "invalid_registration_link" });
     }
-    await initialize();
-    const { data, error } = await (await ensureClient()).auth.verifyOtp({ token_hash: tokenHash, type });
+    const record = await freshIdentityRecord();
+    const { data, error } = await identityDeadline(record, invokeAuth(record, "verifyOtp", { token_hash: tokenHash, type }), 20_000, "邮箱验证响应超时，请重新登录。");
+    assertCurrent(record);
     if (error || !data?.session?.user?.id) {
       throw authFailure(error || { code: "invalid_session" }, "邮箱验证未完成，请重新发送验证邮件并复制最新链接。");
     }
@@ -457,16 +643,17 @@ export function createAuthSessionManager({
 
   async function updatePassword({ password } = {}) {
     requireConfiguration();
-    await initialize();
+    const record = await initializedRecord();
     if (!session?.user?.id || !passwordRecovery) {
       throw new AuthSessionError("密码重置链接已失效，请重新申请。", {
         code: "password_recovery_required",
         status: 401,
       });
     }
-    const { data, error } = await (await ensureClient()).auth.updateUser({
+    const { data, error } = await invokeAuth(record, "updateUser", {
       password: String(password || ""),
     });
+    assertCurrent(record);
     if (error) {
       throw authFailure(error, "新密码保存失败，请重新申请重置邮件。");
     }
@@ -476,39 +663,12 @@ export function createAuthSessionManager({
   }
 
   async function signOut() {
-    passwordRecovery = false;
-    if (!configured(normalizedUrl, normalizedKey)) {
-      applySession(null);
-      return;
-    }
-    // A dead network must not trap the user in a signed-in shell. Try the
-    // server revoke first, then always clear local auth storage + snapshot.
-    try {
-      await withAuthTimeout(
-        initialize(),
-        10_000,
-        "退出登录服务响应超时。",
-      );
-      const { error } = await withAuthTimeout(
-        (await ensureClient()).auth.signOut(),
-        10_000,
-        "退出登录服务响应超时。",
-      );
-      if (error) throw authFailure(error, "退出登录失败，请稍后再试。");
-    } catch {
-      // best-effort server revoke; local sign-out below is authoritative
-    }
-    try {
-      const storage = await resolveAuthStorage({ storage: persistentStorage });
-      await storage?.removeItem?.(AUTH_STORAGE_KEY);
-    } catch {
-      // ignore storage failures; the in-memory session still clears
-    }
-    applySession(null);
+    await retireCurrent({ revoke: true });
   }
 
   async function getRequestContext() {
     if (!configured(normalizedUrl, normalizedKey)) return {};
+    if (!session && [AUTH_STATUS.anonymous, AUTH_STATUS.expired].includes(snapshot.status)) return {};
     const startingScope = snapshot.user?.id ? scopeRevision : null;
     await initialize();
     const requestScope = startingScope ?? scopeRevision;
@@ -549,10 +709,12 @@ export function createAuthSessionManager({
       }
     }
     assertRequestScope();
-    return {
+    const context = {
       accessToken: session.access_token,
       companionId: snapshot.activeCompanionId,
     };
+    requestContexts.set(context, { generation: lifecycle, scope: scopeRevision, revision: sessionRevision });
+    return context;
   }
 
   function setActiveCompanionId(companionId) {
@@ -573,7 +735,13 @@ export function createAuthSessionManager({
     return normalized;
   }
 
-  function captureCompanionFromResponse(response) {
+  function contextIsCurrent(context) {
+    const ticket = requestContexts.get(context);
+    return Boolean(ticket && ticket.generation === lifecycle && ticket.scope === scopeRevision && ticket.revision === sessionRevision);
+  }
+
+  function captureCompanionFromResponse(response, context) {
+    if (context !== undefined && !contextIsCurrent(context)) return "";
     const companionId = String(
       response?.headers?.get?.("X-DengTa-Companion-Id") || "",
     ).trim();
@@ -585,17 +753,10 @@ export function createAuthSessionManager({
     return companionId;
   }
 
-  async function invalidateSession(message = "登录状态已经失效，请重新登录。") {
-    if (client) {
-      await client.auth.signOut({ scope: "local" }).catch(() => {});
-    }
-    passwordRecovery = false;
-    session = null;
-    sessionRevision += 1;
-    publish({
+  async function invalidateSession(message = "登录状态已经失效，请重新登录。", context) {
+    if (context !== undefined && !contextIsCurrent(context)) return snapshot;
+    await retireCurrent({
       status: AUTH_STATUS.expired,
-      user: null,
-      activeCompanionId: "",
       error: new AuthSessionError(message, {
         code: "invalid_session",
         status: 401,
@@ -610,6 +771,16 @@ export function createAuthSessionManager({
   }
 
   function destroy() {
+    lifecycle += 1;
+    if (clientRecord) {
+      clientRecord.retired = true;
+      if (clientRecord.lease) void clientRecord.lease.retire().catch(() => {});
+      else void clientRecord.ready.then(lease => lease?.retire()).catch(() => {});
+      try { Promise.resolve(clientRecord.client?.auth.stopAutoRefresh?.()).catch(() => {}); } catch { /* Already stopped. */ }
+    }
+    clientRecord = null;
+    client = null;
+    initialization = null;
     authSubscription?.unsubscribe?.();
     authSubscription = null;
     listeners.clear();
@@ -619,31 +790,29 @@ export function createAuthSessionManager({
   // 用户点击邮箱验证/密码重置链接后回跳到 App，把 fragment 里的 token
   // 交给 GoTrueClient 换成正式会话。
   async function handleAuthCallbackUrl(rawUrl) {
+    const callback = parseNativeAuthCallback(rawUrl);
+    if (!callback) return { ok: false, reason: "invalid_callback" };
     requireConfiguration();
-    await initialize();
+    const record = await freshIdentityRecord();
     try {
-      const parsed = new URL(String(rawUrl || ""));
-      const fragment = parsed.hash?.replace(/^#/, "") || "";
-      const params = new URLSearchParams(fragment);
-      const accessToken = params.get("access_token");
-      const refreshToken = params.get("refresh_token");
-      if (!accessToken || !refreshToken) {
-        return { ok: false, reason: "missing_tokens" };
+      passwordRecovery = callback.recovery;
+      const { data, error } = await identityDeadline(record, invokeAuth(record, "setSession", {
+        access_token: callback.accessToken,
+        refresh_token: callback.refreshToken,
+      }), 20_000, "回跳登录响应超时，请重新登录。");
+      assertCurrent(record);
+      if (error || !data?.session?.user?.id || !data.session.access_token) {
+        throw authFailure(error || { code: "invalid_session" }, "回跳登录失败，请重新登录。");
       }
-      const { data, error } = await (await ensureClient()).auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      });
-      if (error) {
-        throw authFailure(error, "回跳登录失败，请重新登录。");
-      }
-      passwordRecovery = params.get("type") === "recovery";
+      passwordRecovery = callback.recovery;
       applySession(
         data?.session || null,
         passwordRecovery ? AUTH_STATUS.recovery : undefined,
       );
       return { ok: true };
     } catch (error) {
+      if (!isCurrent(record)) throw error;
+      passwordRecovery = false;
       publish({
         status: AUTH_STATUS.error,
         error:
@@ -688,14 +857,15 @@ export function createAuthSessionManager({
 
   return Object.freeze({
     initialize,
-    signUp,
-    signIn,
+    signUp: serializeIdentity(signUp),
+    signIn: serializeIdentity(signIn),
     signOut,
+    retryAuthCleanup,
     resendVerification,
-    verifyRegistrationLink,
+    verifyRegistrationLink: serializeIdentity(verifyRegistrationLink),
     requestPasswordReset,
-    updatePassword,
-    handleAuthCallbackUrl,
+    updatePassword: serializeIdentity(updatePassword),
+    handleAuthCallbackUrl: serializeIdentity(handleAuthCallbackUrl),
     checkConnectivity,
     getRequestContext,
     setActiveCompanionId,

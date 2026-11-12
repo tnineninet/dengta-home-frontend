@@ -16,6 +16,15 @@ function fixture() {
   return { root, viewport, windowObject, documentObject, writes, flags, frames, listeners, fire, flush };
 }
 const editable = { matches: () => true };
+test("AuthGate and App share viewport ownership until the final release", () => {
+  const f = fixture(), first = installVisualViewportController(f), initial = f.writes.length;
+  const second = installVisualViewportController(f);
+  assert.equal(f.writes.length, initial);
+  first(); first(); assert.notEqual(f.listeners.size, 0);
+  f.documentObject.activeElement = editable; f.viewport.height = 500;
+  f.fire("viewport", "resize"); f.flush(); assert.equal(f.root.dataset.keyboardOpen, "true");
+  second(); assert.equal(f.listeners.size, 0); assert.equal(f.root.dataset.keyboardOpen, undefined);
+});
 test("focusout during keyboard dismissal cannot flash the full-height page and capsule", () => {
   const f = fixture(), stop = installVisualViewportController(f);
   f.documentObject.activeElement = editable; f.viewport.height = 500;

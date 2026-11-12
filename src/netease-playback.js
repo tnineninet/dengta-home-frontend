@@ -21,7 +21,10 @@ export function validateNeteaseResource(resourceType, resourceId) {
 
 export async function openNeteasePlayback(resourceType, resourceId) {
   const resource = validateNeteaseResource(resourceType, resourceId);
-  if (Capacitor.isNativePlatform()) return NeteasePlayback.open(resource);
+  if (Capacitor.isNativePlatform()) {
+    if (!Capacitor.isPluginAvailable("NeteasePlayback")) throw Object.assign(new Error("当前平台尚未支持调起网易云播放。"), { code: "music_native_unsupported" });
+    return NeteasePlayback.open(resource);
+  }
   const path = resource.resourceType === "song" ? "song" : "playlist";
   const url = `https://music.163.com/#/${path}?id=${resource.resourceId}`;
   return openWebResource(url);
@@ -33,7 +36,10 @@ export async function playNeteaseSilent(resourceType, resourceId) {
   if (resource.resourceType !== "song") {
     throw new Error("AI 放歌只支持单曲。");
   }
-  if (Capacitor.isNativePlatform()) return NeteasePlayback.playSilent(resource);
+  if (Capacitor.isNativePlatform()) {
+    if (!Capacitor.isPluginAvailable("NeteasePlayback")) throw Object.assign(new Error("当前平台尚未支持调起网易云播放。"), { code: "music_native_unsupported" });
+    return NeteasePlayback.playSilent(resource);
+  }
   const url = `https://music.163.com/#/song?id=${resource.resourceId}`;
   return openWebResource(url);
 }
