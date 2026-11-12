@@ -4,7 +4,7 @@
 
 **部分完成；尚未通过 Phase 1 核心业务验收。** 环境 B（GitHub Actions macOS）、范围 A 保持。Windows 本地没有 Xcode；原生结论全部来自真实 CI，不把静态准备或合成账号测试算作私人账号实测。
 
-已完成外部包核验、逐模块选择、隔离分支、Capacitor iOS host、Keychain/认证生命周期与平台修复、六轮真实 fresh-context 审查。完整 run [43280829367](https://github.com/DengTaHome/dengta-home-frontend/actions/runs/43280829367) 在 `0431a8227519181d14a6cb5074279871f6ccbcb2` 通过 Xcode 构建，并在 iPhone 17 与 iPhone SE 3 各自通过启动、实际 Keychain、匿名就绪/截图及七阶段键盘交互。随后修正的设置页安装控件需随下一 source SHA 复测。
+已完成外部包核验、逐模块选择、隔离分支、Capacitor iOS host、Keychain/认证生命周期与平台修复、七轮真实 fresh-context 审查。完整 run [43283653297](https://github.com/DengTaHome/dengta-home-frontend/actions/runs/43283653297) 在 `ffeb4415876e2580392e21ae270ba4e1c9a2d16b` 通过 Xcode 构建，并在 iPhone 17 与 iPhone SE 3 各自通过启动、实际 Keychain、匿名就绪/截图及七阶段键盘交互，已包含设置页安装控件修复。此后新增的独立合成 WKWebView 传输宿主需另经原生 CI，不计为业务验收。
 
 真实私有账号登录/恢复、伴侣、已认证 POST SSE、人格设置保存/恢复、记忆/设置与聊天输入框尚未执行；没有把密码上传 CI。这些缺项使 Phase 1 保持未完成。
 
@@ -44,7 +44,7 @@ ZIP 共 1,645 entries / 1,507 文件，展开 46,701,058 字节；Raw 与 ZIP �
 - 认证：原生迁移清理、每 SDK 租约/生命周期/cleanup retry、请求上下文票据、候选回跳验证/预约 seed、SDK dispose/迟到刷新防护；Web Locks 可用时另有非敏感 origin epoch 和持久化比对。
 - 平台：iOS 不继承 Android marker/touch recovery，隐藏 APK 操作，网易原生播放缺能力返回 unsupported；共享 viewport 保留原抖动保护。
 - 配置/CI：ios@8.4.3 与对应锁文件、iOS 配置、Node 24/macOS 26/Xcode 26.6 构建与有界证据；仅 feature/same-repository PR，contents:read。
-- 文档：11 份 IOS 文档、六轮逐条审查报告和文档漂移记录；具体文件以 PR diff 为准。
+- 文档：11 份 IOS 文档、七轮逐条审查报告和文档漂移记录；具体文件以 PR diff 为准。
 
 主要提交：`d0e2a1f` 基础工程；`11b08ce` runner env 修复；`f8b8f51` 第二轮/XCUITest；`ca3f0f7` 认证/证据第三至第五轮修复；`0431a82` 小屏 CI 与可行性文档。未修改原前端 checkout 的用户工作、生产后端/Supabase/Render/Vercel 或 main。无凭据/构建产物/截图提交 Git，无 IPA/TestFlight/上架操作。
 
@@ -74,6 +74,7 @@ ZIP 共 1,645 entries / 1,507 文件，展开 46,701,058 字节；Raw 与 ZIP �
 | [43269692016](https://github.com/DengTaHome/dengta-home-frontend/actions/runs/43269692016) / f8b8f51 | **失败** | 构建/Keychain/收紧就绪/PNG 与原始七阶段 XCUITest通过；总体因错误要求 keyboard accessibility frame 到窗口底部失败。修复后重读旧 log 不把该 run 改记成功 |
 | [43279364936](https://github.com/DengTaHome/dengta-home-frontend/actions/runs/43279364936) / ca3f0f7 | **成功** | 全流程通过，含修复 parser、实测安全区参数/明确 MacroExpansion、required PNG 和七阶段 XCUITest，53.742 秒，0 failures |
 | [43280829367](https://github.com/DengTaHome/dengta-home-frontend/actions/runs/43280829367) / 0431a82 | **成功** | 两台分别新建的 iPhone 17/SE 3 均通过启动/实际 Keychain/匿名就绪/PNG/七阶段，SE 56.686 秒，0 failures |
+| [43283653297](https://github.com/DengTaHome/dengta-home-frontend/actions/runs/43283653297) / ffeb441 | **成功** | 包含设置安装控件修复；双设备启动/实际 Keychain/匿名就绪/PNG/七阶段均通过 |
 
 对应 push run 因 push/PR 共用并发组而取消，未冒充成功或另算产品失败。
 
@@ -89,6 +90,8 @@ ca3f0f7 工具链：macOS 26.7.2、Xcode 26.6（17F113）、SDK/iOS 26.5、Node 
 GitHub artifact 保留 7 天；上述下载与校验已放仓库外。初始和失败 run 的 ZIP/哈希也保留在对应 ci-* 目录，旧日志不删除或重写为成功。
 
 0431a82 双设备 evidence 位于 `ci-43280829367/artifact/simulator/` 和 `simulator-compact/`。iPhone SE 3 窗口 375×667，实测安全区 20/0，键盘 [0,451,375,216]；七阶段完整控件均在键盘上方/安全区内，两份 PNG 已查看。ZIP 为 1,037,690 bytes，SHA-256 `C45F6FCA15D8FAC87AE1D140764852886E53E982DD4328894BA4400220C32A5D`；job logs ZIP 为 138,035 bytes，SHA-256 `340130E412E5BCFFBFEE8D069141D04BD8A14EC4EBB345829C0BC2B0F57E2879`。
+
+ffeb441 evidence 位于 `ci-43283653297/artifact/`，两份 manifest 均为 `startup-passed` / `businessFlows: not-exercised`；PNG 已实际查看。ZIP 1,038,653 bytes，SHA-256 `6D197B0AB31F880221825E71D4B3C04AA0090F861F9FB1D180755D81D6C9F23C`；job logs ZIP 138,179 bytes，SHA-256 `229A467AA7C9EF3B8395ADC3D3F705578FFDB10FF990B557403D89C66FE59D18`。
 
 ## 6. 未验证/阻塞
 
@@ -118,10 +121,11 @@ GitHub artifact 保留 7 天；上述下载与校验已放仓库外。初始和�
 | 4 | 2 P1 + 3 P2 | 延迟身份消息、匿名身份边界、seed 抢占、SDK 自行退出、截图重试保存；已修复 |
 | 5 | 1 P1 + 2 P2 | 新身份不得复用恢复 A 的 SDK、迟到刷新/初始读取的孤立拒绝；真实 SDK 复现后修复，审查者复读无未解决 P0/P1 |
 | 6 | 1 P3；未发现新增核心 P1/P2 | 已登录插件/传输只读检查；修正设置页 PWA 安装入口，定向检查通过；真实业务不由源码审查推断 |
+| 7 | 独立测试宿主 1 P1 + 2 P2，另有配置加固 | 修复 IIFE 顶层 await（先实际复现）、取消响应关闭误判、失败 receipt 丢弃；Vite 不读环境文件/继承前缀；原生验证待 CI |
 
 逐条原文、理由、PROPOSE FIX 与证据在 `ios-reviews/round-*/goldfish_review_report.md`；汇总 `IOS-REVIEW-EVIDENCE.md`。没有静默降级、虚构多 agent 或把审查当构建。
 
-独立 drift agent 顺序读完 11 份文档/对应源码并复核外部哈希，发现两处证据汇总过期（初始记录在 `ios-reviews/drift-initial/2026-11-13_DRIFT_REPORT.md`）；本报告和 review summary 已同步，最终每文档漂移结果另行保存。
+独立 drift agent 顺序读完 11 份文档/对应源码并复核外部哈希，发现两处证据汇总过期（初始记录在 `ios-reviews/drift-initial/2026-11-13_DRIFT_REPORT.md`）；修复后全部 11 份通过复读，结果在 `ios-reviews/drift-final/2026-11-13_DRIFT_REPORT.md`。随后新增独立传输测试仍需在最终证据确定后复核。
 
 ## 8. 风险
 

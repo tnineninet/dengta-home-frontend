@@ -85,6 +85,20 @@ CI 依次创建 iPhone 17 和 iPhone SE（第 3 代）临时设备，分别保�
 
 不要把 Safari Web Inspector 的完整 Network/HAR、Authorization headers、回跳 URL 或真实表单值放进报告。可在本地查看分块时序，但交付只保留上述计数/状态和主动选择的 SFW 图。完成后恢复测试字段、退出账号并确认重开匿名；未完成的项目继续标为未验证。
 
+## 独立合成 WKWebView 传输测试
+
+CI 另建 `home.dengta.transport-fixture` 临时 UIKit/WKWebView 宿主，编译当前 `src/api.js`，使用显式虚构认证上下文和仅监听 `127.0.0.1` 的 Node 服务。它不进入产品 bundle，不改产品 ATS/Keychain/Capacitor 配置，不使用私人账号。
+
+在已安装上述工具链的 Mac，从 feature checkout 执行：
+
+```bash
+node scripts/ios-webkit-transport.mjs "$TMPDIR/dengta-transport-evidence" "$(git rev-parse HEAD)"
+```
+
+真实 text 回调须先发 ACK，服务端才发送 done/EOF；另测 UTF-8 正文、POST multipart/虚构 headers、缺失 done 拒绝、取消后无后续事件且服务端响应提前关闭。TCP 可能合并写入，因此不声称每次服务端写入对应独立 reader chunk。产出绑定 nonce/source SHA 的原生 receipt 和 server 计数；自建 Simulator 在 finally 中清理。首次原生运行尚待 CI。
+
+该宿主只证明合成 loopback WKWebView 传输；不覆盖产品 capacitor origin、生产 TLS/CORS/上游缓冲、真实认证、聊天 UI 或业务验收。
+
 ## 失败处理
 
 - `-34018`：保留原始受限探针状态，检查 Xcode 产生的签名/entitlements 与嵌入框架；不要虚构 Team/access group。
