@@ -52,6 +52,8 @@ Windows 上 `cap sync ios` 可以复制资源并生成 SPM，但 CLI 会写 Wind
 
 XCUITest 只输入固定虚构邮箱/密码，逐一检查登录邮箱/密码/提交、注册确认密码/提交、找回邮箱/提交；不按提交/Go、不发送重置邮件。必须实际执行唯一命名 test 并成功，七个阶段的完整控件 native frame 必须在实际键盘上方和启动时 native safe-area 内。启动 receipt 的实测 safe top/bottom 经 xcodebuild build settings 和明确 App MacroExpansion 的 scheme 传入；缺失或未展开即失败。键盘 accessibility frame 可以不包含底部系统区域，验证其在窗口内并以实际 keyboard.minY 判断遮挡。它不能证明私人账号登录、SSE、人格保存或聊天输入框。
 
+CI 依次创建 iPhone 17 和 iPhone SE（第 3 代）临时设备，分别保留 `simulator/` 与 `simulator-compact/` evidence；每次都重新启动、取实测安全区并执行七阶段。手工 smoke 默认 iPhone 17，可设置 `DENGTA_SIMULATOR_DEVICE_NAME='iPhone SE (3rd generation)'` 选择小屏。设备类型缺失会失败，不静默替换屏幕尺寸。新增小屏路径是否通过以报告的实际 run 为准。
+
 ## 交互验收清单
 
 在用户提供的 Mac 或获准的本地测试设备上使用私有账号；密码只在本地使用，不写入仓库、日志或云 CI。

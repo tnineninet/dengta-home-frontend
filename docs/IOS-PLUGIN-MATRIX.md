@@ -25,4 +25,18 @@
 
 SPM sync 已发现 App、Clipboard、LocalNotifications、Preferences 四个官方插件；自定义 Keychain 显式在 bridge 注册。不注册外部 AccountVault，不把缓存加密描述成已完成。
 
+## 语音与前台通知可行性评估
+
+以下是范围 A 的后续工作评估，不是本轮硬验收或已运行功能。
+
+| 路径 | 已核对源码/能力 | 需要实际验证 | 后续选择 |
+|---|---|---|---|
+| 录音 | `voice.js` 探测 MediaRecorder/getUserMedia 与 MIME；含 `audio/mp4`，上传扩展名映射 `.m4a`；已有 650ms–60s 限制 | 真机麦克风授权/拒绝、AAC 音频上传与服务端解码、切后台/打断后停止 tracks | 先复用当前 WebKit 路径；失败后再评估原生录音插件 |
+| 播放 | Blob/ObjectURL + Audio；play 拒绝显示触碰后重试，结束/错误释放 URL | 真机自动播放限制、静音/蓝牙/电话打断、回前台恢复 | 保留当前服务器音频；不承诺后台播放，不添加后台音频模式 |
+| 本机 TTS | Android DeviceTts 使用平台 guard | iOS 没有原生 DeviceTts 替代方案实测 | 当前保持服务器音频；原生 TTS 后置 |
+| 前台本地提醒 | LocalNotifications 已链接；iOS 启动仅 checkPermissions，用户点按钮才 requestPermissions；安装包 handler 的 willPresent 支持 badge/sound/alert | 授权/拒绝后恢复、前台实际 banner、点击路由及账号切换；当前 schedule 未提供 iOS sound 文件，不能承诺有声音 | 不需要 APNs；保持可选能力，补真实 iOS 交互后再验收 |
+| 退出清理 | 外部 P1 线索需独立复现；本轮未完成 iOS pending/delivered 通知统一清理验收 | 调度后退出/切账号/杀进程重启，检查 pending 与 delivered；排查迟到轮询结果 | 后续按账号/会话记录通知 ID，清除 pending/delivered 并封闭旧调度；不能从匿名 CI 推断清理通过 |
+
+WebKit 的[原始 MediaRecorder/WKWebView 说明](https://webkit.org/blog/11353/mediarecorder-api/)说明了 MP4/AAC 与原生采集能力/用户授权前提；这是历史官方能力依据。当前实现仍用运行时 MIME 探测，iOS 26 的录制/播放成功必须另取实际证据。官方页面在 2026-11-12T18:25Z 读取为 HTTP 200，缓存位于仓库外 `webkit-mediarecorder.html`。LocalNotifications 能力以锁定的 8.0.0 README/Swift handler 为本次源码依据。
+
 依据：本仓库 `src/`、Android 插件与 npm 包 Swift 源；[Capacitor Preferences](https://capacitorjs.com/docs/apis/preferences)、[WebKit MediaRecorder](https://webkit.org/blog/11353/mediarecorder-api/)、[WebKit iOS 文件选择器](https://github.com/WebKit/WebKit/blob/main/Source/WebKit/UIProcess/ios/forms/WKFileUploadPanel.mm)。具体依赖锁定于 package-lock.json。

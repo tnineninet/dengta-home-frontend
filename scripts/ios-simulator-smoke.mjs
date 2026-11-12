@@ -12,6 +12,8 @@ if (process.platform !== "darwin" || !appArgument || !outputArgument || !/^[a-f0
   throw new Error("Usage on macOS: node scripts/ios-simulator-smoke.mjs <App.app> <evidence-directory> <source-sha>");
 }
 const appPath = fs.realpathSync(appArgument), output = path.resolve(outputArgument);
+const requestedPhone = process.env.DENGTA_SIMULATOR_DEVICE_NAME || "iPhone 17";
+if (!["iPhone 17", "iPhone SE (3rd generation)"].includes(requestedPhone)) throw new Error("Unsupported reviewed Simulator device selection.");
 fs.mkdirSync(output, { recursive: true });
 const nonce = randomUUID().toUpperCase(), bundle = "home.dengta.app";
 const manifest = { schemaVersion: 1, sourceSha, runNonce: nonce, build: false, launch: false, processAlive: false,
@@ -57,7 +59,7 @@ try {
     .sort((a, b) => b.version.localeCompare(a.version, undefined, { numeric: true }))[0];
   if (!runtime) throw new Error("No installed iOS Simulator runtime.");
   const types = JSON.parse(command("device-types", "xcrun", ["simctl", "list", "devicetypes", "--json"]).stdout).devicetypes;
-  const phone = types.find(item => item.name === "iPhone 17") || types.filter(item => /^iPhone /.test(item.name)).at(-1);
+  const phone = types.find(item => item.name === requestedPhone);
   if (!phone) throw new Error("No installed iPhone device type.");
   manifest.runtime = { name: runtime.name, identifier: runtime.identifier, version: runtime.version };
   manifest.deviceType = { name: phone.name, identifier: phone.identifier };
