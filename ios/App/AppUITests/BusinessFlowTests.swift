@@ -189,6 +189,11 @@ final class BusinessFlowTests: XCTestCase {
     private func openPersona() throws {
         dismissKeyboard()
         if !settingsOpen {
+            // On a phone the desktop gear lives in a closed, offscreen sidebar.
+            // Use the same status-sheet entry a person can actually tap.
+            if !button("打开设置").isHittable {
+                try tap("查看状态")
+            }
             try tap("打开设置")
             try require(button("Done").waitForExistence(timeout: 15), "Settings sheet did not open.")
             settingsOpen = true
@@ -440,7 +445,12 @@ final class BusinessFlowTests: XCTestCase {
         } catch {
             // The fixture contains synthetic data only. Live never captures a
             // failure screen, entered credentials, or a logout screen.
-            if mode == "synthetic" { try? captureSyntheticScreenIfRequested() }
+            if mode == "synthetic" {
+                try? captureSyntheticScreenIfRequested()
+                // Synthetic accounts and messages only. The accessibility tree
+                // explains WebKit text grouping without inspecting page state.
+                print("DENGTA_SYNTHETIC_AX_FAILURE:\n" + app.debugDescription)
+            }
             if personaTouched {
                 // Restoring is bounded to the exact values this test wrote.
                 // A mismatched value stops cleanup rather than overwriting it.
