@@ -10624,12 +10624,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           {settingsCategory === "persona" && settingsSaveReceipt && (
             <div className="settings-save-receipt" role="status">
               <strong>✓ 服务器已保存并回读</strong>
-              <span>
-                个性化指令 {settingsSaveReceipt.customInstructionsLength} 字
-              </span>
-              <span>
-                你的详情 {settingsSaveReceipt.userDetailsLength} 字
-              </span>
+              <span>{`个性化指令 ${settingsSaveReceipt.customInstructionsLength} 字`}</span>
+              <span>{`你的详情 ${settingsSaveReceipt.userDetailsLength} 字`}</span>
               <span>
                 统一提示词模式 · 亲密与成人表达
                 {settingsSaveReceipt.intimateExpressionEnabled
