@@ -36,6 +36,8 @@ Safari 聚焦草稿时会把页面平移到光标位置。聊天面板原先只�
 
 本次真机截图位于本地审计目录的 `iphone-web-evidence/` 中，包括 `safari-composer-panned-before.jpg`、`safari-composer-panned-after.jpg`、`safari-keyboard-search-result.jpg`、`safari-settings-ios.jpg` 和 `safari-memory-card.jpg`。环境为 390×844pt 竖屏、手机 Safari 和局域网合成 API。单独的公开 Android 下载页及外部邀请页不在这次 App 内设置检查范围内。
 
+随后用 Chromium 将可用高度从 844px 缩到 430px，复核了三种布局。390px 窄屏与上报 980px 的手机单栏模式都会固定聊天面板。980px 双栏平板模式保留左侧 264px 侧栏，聊天面板维持 716px 宽。最后这次选择器调整覆盖了宽屏触控设备，390px 真机测过的定位声明相同。
+
 ## 仍需验证
 
 新的 Android APK、iPhoneOS IPA 和原生设备构建尚未执行，现有手机上安装的旧版 App 不会自动更新。需要新构建后在实际 Android WebView/iOS Capacitor host 再验收键盘、安全区、横屏、不同输入法和长消息。GitHub 云端重跑保持用户此前跳过的状态；AllSign 仅在有真实 iPhoneOS 候选时使用。新增审查代理此次因工具 provider 不可用未能启动，不计为独立审查完成。
