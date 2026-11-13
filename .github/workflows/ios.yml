@@ -210,6 +210,7 @@ jobs:
             ${{ runner.temp }}/dengta-ios-business-evidence/business-evidence.json
             ${{ runner.temp }}/dengta-ios-business-evidence/fixture-evidence.json
             ${{ runner.temp }}/dengta-ios-business-evidence/synthetic-chat.png
+            ${{ runner.temp }}/dengta-ios-business-evidence/synthetic-failed.png
             ${{ runner.temp }}/dengta-ios-business-evidence/*-synthetic.log
             ${{ runner.temp }}/dengta-ios-business-evidence/toolchain.log
           if-no-files-found: warn
@@ -247,14 +248,9 @@ jobs:
           cache: npm
       - name: Install locked dependencies without account secrets
         run: npm ci --no-audit --no-fund
-      - name: Dedicated account runtime only
+      - name: Live driver remains unavailable pending safety acceptance
         env:
           DENGTA_BUSINESS_MODE: live
-          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-          DENGTA_IOS_E2E_EMAIL: ${{ secrets.DENGTA_IOS_E2E_EMAIL }}
-          DENGTA_IOS_E2E_PASSWORD: ${{ secrets.DENGTA_IOS_E2E_PASSWORD }}
-          DENGTA_IOS_E2E_USER_ID: ${{ secrets.DENGTA_IOS_E2E_USER_ID }}
         run: node scripts/ios-business-smoke.mjs "$RUNNER_TEMP/dengta-ios-live-evidence" "$GITHUB_SHA"
       - name: Remove private live outputs and Simulator data
         if: always()

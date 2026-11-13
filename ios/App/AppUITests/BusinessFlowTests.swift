@@ -155,7 +155,13 @@ final class BusinessFlowTests: XCTestCase {
 
     private func recordGeometry(_ phase: String, control: XCUIElement) throws {
         let keyboard = app.keyboards.firstMatch
-        try require(keyboard.waitForExistence(timeout: 10) && keyboard.isHittable, "A real native keyboard is required.")
+        try require(keyboard.waitForExistence(timeout: 10), "A real native keyboard is required.")
+        let windowBeforeReveal = app.windows.firstMatch.frame
+        // Keyboard is an AX container and may have no hit point even when its
+        // keys are on screen. Require real keys and its visible native frame.
+        try require(keyboard.keys.count > 0 && keyboard.frame.height > 100 &&
+                    keyboard.frame.intersection(windowBeforeReveal).height > 100,
+                    "A visible native keyboard with real keys is required.")
         try reveal(control, aboveKeyboard: true)
         let window = app.windows.firstMatch.frame
         for frame in [window, keyboard.frame, control.frame] {
@@ -377,7 +383,10 @@ final class BusinessFlowTests: XCTestCase {
             try require(wait(90) { self.button("发送").exists && !self.button("停止等待").exists },
                         "Chat did not return to the successful terminal UI state.")
             try require(text(question).exists, "The submitted acceptance message is missing from the transcript.")
-            evidence["chatSent"] = true; evidence["streamComplete"] = true
+            evidence["chatSent"] = true
+            // Live remains unavailable until a successful assistant reply and
+            // its restoration are independently proven. Idle Send is insufficient.
+            evidence["streamComplete"] = mode == "synthetic"
             dismissKeyboard()
             try captureSyntheticScreenIfRequested()
 
@@ -426,6 +435,9 @@ final class BusinessFlowTests: XCTestCase {
                 evidence["logout"] = true
             }
         } catch {
+            // The fixture contains synthetic data only. Live never captures a
+            // failure screen, entered credentials, or a logout screen.
+            if mode == "synthetic" { try? captureSyntheticScreenIfRequested() }
             if personaTouched {
                 // Restoring is bounded to the exact values this test wrote.
                 // A mismatched value stops cleanup rather than overwriting it.

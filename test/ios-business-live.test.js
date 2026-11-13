@@ -139,6 +139,15 @@ test("private baseline input and fresh restored readback are guarded, and accept
   assert.throws(() => f.guard.runtimeBaseline(), code("live_preflight_required"));
 });
 
+test("an unusable guard token cannot prove global revocation of the native login", async () => {
+  const accepted = fixture({ revokeStatus: 401 });
+  await accepted.guard.preflight();
+  await assert.rejects(accepted.guard.close(), code("auth_revoke_failed"));
+  const rejected = fixture({ settings: { account_role: "owner" }, revokeStatus: 401 });
+  await assert.rejects(rejected.guard.preflight(), code("dedicated_member_required"));
+  assert.equal((await rejected.guard.close()).sessionRevoked, true);
+});
+
 test("rejects another user and existing sessions without changing account data", async () => {
   const mismatch = fixture({ loginId: OTHER });
   await assert.rejects(mismatch.guard.preflight(), code("dedicated_identity_mismatch"));

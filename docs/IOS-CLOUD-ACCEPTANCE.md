@@ -17,12 +17,16 @@ Apple Developer, APNs, device signing and distribution remain outside this task.
    to read them, restores them, reads memory, and logs out. Its screenshots and
    raw XCTest logs contain synthetic data only. This is not production business
    acceptance.
-3. Live business is manual and requires a separate, approved automation account.
+3. Live business execution is currently disabled, including manual dispatch. A
+   dispatch returns `live-driver-safety-incomplete` before reading credentials,
+   building or contacting a service. A future live run requires a separate,
+   approved automation account.
    The guard requires the exact expected account UUID, active member role,
    stable companion, and no initial conversations. No fallback to the existing
    owner account is allowed. The current live test does not deterministically
    observe a partial reply before the real server's terminal event; it must
-   report partial acceptance and exit nonzero until that gap is resolved.
+   fail until that gap is resolved. It also needs a successful assistant-reply
+   assertion and interruption-safe remote cleanup before this gate can open.
 
 ## Implementation boundary
 
@@ -49,9 +53,10 @@ injection or native callback approval bypass is used.
 
 ## Private live execution
 
-The live step alone may receive `DENGTA_IOS_E2E_EMAIL`,
+After those readiness gaps are resolved, only the live step may receive `DENGTA_IOS_E2E_EMAIL`,
 `DENGTA_IOS_E2E_PASSWORD`, and `DENGTA_IOS_E2E_USER_ID`. They are removed from
-the process environment before invoking the build. All raw live subprocess
+the process environment before invoking the build. The present workflow passes
+no account secrets to any step. All raw live subprocess
 output, test plans, xcresult and Simulator containers remain private. No live
 screenshots, video, HAR, accessibility/DOM dumps or raw logs may be uploaded,
 including on failure. Published live evidence has a strict allowlist: source
@@ -65,7 +70,12 @@ Stop the app before fallback restoration so its 800 ms autosave cannot race
 cleanup. Restore and reread the complete baseline, delete only the sole session
 created since the empty baseline, verify cleanup, revoke test sessions and delete
 the created Simulator. Cleanup failure fails the run. Runs sharing the dedicated
-account must be serialized and cannot cancel each other.
+account must be serialized and cannot cancel each other. On rejected preflight,
+revoke only the guard's local auth session. After accepting the dedicated account,
+global revocation must succeed to cover the UI login too; HTTP 401 cannot prove it.
+The present helper implements normal completion cleanup only. Forced cancellation
+can skip its `finally`, so interruption recovery is an explicit open blocker and
+the live execution gate stays closed.
 
 ## Current account boundary
 

@@ -26,6 +26,7 @@ test("the temporary native localhost ATS origin reaches the same loopback fixtur
   const response = await fetch(`${origin}/auth/v1/token?grant_type=password`, jsonOptions(BUSINESS_FIXTURE_IDENTITY));
   assert.equal(response.status, 200);
   assert.equal(fixture.snapshot().violations.nonLoopbackRequests, 0);
+  assert.equal((await fetch(`${origin}/`)).status, 200);
 });
 
 function authed(fixture, session) {
@@ -47,6 +48,7 @@ test("loopback App startup and persona/memory reads have real receipt shapes", a
   assert.equal(bootstrap.settings.push_enabled, false);
   assert.equal(bootstrap.sessions.length, 1);
   const responses = new Map([
+    ["/api/v2/xinchao/state", data => assert.deepEqual(data, { configured: false, state: null })],
     ["/health", data => assert.equal(data.features.hervoice_proxy_configured, false)],
     ["/models", data => assert.equal(data.models[0].id, bootstrap.settings.model)],
     ["/api/v2/private-media/catalog", data => assert.deepEqual(data, { assets: [], preferences: {} })],

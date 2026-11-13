@@ -13,6 +13,12 @@ import { validateUiReceipt } from "./ios-evidence-policy.mjs";
 
 const [outputArgument, sourceSha] = process.argv.slice(2);
 const mode = process.env.DENGTA_BUSINESS_MODE || "synthetic";
+// The live UI's terminal-reply proof and cancellation recovery are not complete.
+// Keep this path unavailable even if someone later configures account secrets.
+if (mode === "live") {
+  console.log(JSON.stringify({ mode: "live", outcome: "unavailable", reason: "live-driver-safety-incomplete" }));
+  process.exit(1);
+}
 if (process.platform !== "darwin" || !outputArgument || !/^[a-f\d]{40}$/.test(sourceSha || "") || !["synthetic", "live"].includes(mode)) {
   throw new Error("Usage on macOS: DENGTA_BUSINESS_MODE=synthetic|live node scripts/ios-business-smoke.mjs <evidence-directory> <source-sha>");
 }
@@ -79,6 +85,18 @@ function safeFixtureReceipt() {
       Object.values(value.observed).some(n => typeof n !== "boolean") ||
       Object.values(value.violations).some(n => !Number.isInteger(n) || n < 0 || n > 10000)) throw new Error("fixture-receipt-invalid");
   return value;
+}
+
+async function copySyntheticScreen(fileName) {
+  if (mode !== "synthetic" || !device) return false;
+  const result = await command("test-runner-container", "xcrun", ["simctl", "get_app_container", device, "home.dengta.app.uitests.xctrunner", "data"], { required: false });
+  if (!result.passed || !path.isAbsolute(result.text)) return false;
+  try {
+    const png = fs.readFileSync(path.join(result.text, "tmp/dengta-ci-business.png"));
+    if (png.length < 5000 || png.length > 8 * 1024 * 1024 || png.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a") return false;
+    fs.writeFileSync(path.join(output, fileName), png);
+    return true;
+  } catch { return false; }
 }
 
 try {
@@ -181,7 +199,11 @@ try {
     "-only-testing:AppUITests/BusinessFlowTests/testCoreBusinessFlow", "-test-timeouts-enabled", "YES",
     "-default-test-execution-time-allowance", "360", "-maximum-test-execution-time-allowance", "480",
     "-resultBundlePath", path.join(privateRoot, "business.xcresult"), "test-without-building"], { timeout: 600_000, required: false });
-  if (!tested.passed) throw new Error("business-ui-test-failed");
+  if (!tested.passed) {
+    manifest.syntheticFailureScreenshot = await copySyntheticScreen("synthetic-failed.png");
+    currentStage = "business-xctest";
+    throw new Error("business-ui-test-failed");
+  }
   currentStage = "receipt-validation";
   const receipt = parseBusinessEvidence(tested.text, { runNonce: nonce, mode, safeAreaTop: readiness.safeAreaTop, safeAreaBottom: readiness.safeAreaBottom });
   fs.writeFileSync(path.join(output, "business-evidence.json"), JSON.stringify(receipt, null, 2) + "\n");
@@ -190,10 +212,7 @@ try {
     if (Object.values(server.violations).some(n => n !== 0) ||
         !["settingsAtBaseline", "settingsChanged", "settingsRestored", "streamAcknowledged", "terminalSent", "userMessagePersisted", "assistantMessagePersisted", "loggedOut"].every(key => server.observed[key])) throw new Error("fixture-acceptance-failed");
     fs.writeFileSync(path.join(output, "fixture-evidence.json"), JSON.stringify(server, null, 2) + "\n");
-    const runnerContainer = (await command("test-runner-container", "xcrun", ["simctl", "get_app_container", device, "home.dengta.app.uitests.xctrunner", "data"])).text;
-    const png = fs.readFileSync(path.join(runnerContainer, "tmp/dengta-ci-business.png"));
-    if (png.length < 5000 || png.length > 8 * 1024 * 1024 || png.subarray(0, 8).toString("hex") !== "89504e470d0a1a0a") throw new Error("synthetic-screenshot-invalid");
-    fs.writeFileSync(path.join(output, "synthetic-chat.png"), png);
+    if (!await copySyntheticScreen("synthetic-chat.png")) throw new Error("synthetic-screenshot-invalid");
     manifest.outcome = "synthetic-native-business-passed";
   } else {
     // Current live UI cannot deterministically prove partial rendering before

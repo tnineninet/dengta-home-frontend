@@ -126,7 +126,9 @@ export function createLiveGuard({ authUrl, anonKey, apiUrl, email, password, exp
         signal: AbortSignal.timeout(20_000),
       });
     } catch { throw failure("auth_revoke_failed"); }
-    if (![200, 204, 401].includes(response?.status)) throw failure("auth_revoke_failed");
+    // A rejected local token is already unusable; it says nothing about the
+    // separately created UI session, so global revocation must actually succeed.
+    if (!(ready ? [200, 204] : [200, 204, 401]).includes(response?.status)) throw failure("auth_revoke_failed");
     accessToken = ""; revoked = true;
     return receipt({ sessionRevoked: true });
   }

@@ -157,7 +157,7 @@ export async function createBusinessFixture({ runNonce } = {}) {
     if (!noQuery && !(pathname === "/api/v2/fun-labs/recommend" && method === "GET"
       && query.size === 1 && query.get("limit") === "4")) return "";
     const reads = new Map([
-      ["/health", "health"], ["/models", "models"], ["/api/v2/bootstrap", "bootstrap"],
+      ["/", "prewarm"], ["/health", "health"], ["/models", "models"], ["/api/v2/bootstrap", "bootstrap"],
       ["/api/v2/settings", "settings"], ["/api/v2/sessions", "sessions"],
       ["/api/v2/private-media/catalog", "media"], ["/api/v2/voice-output/status", "voice"],
       ["/api/v2/chat-skin/preferences", "skin"], ["/api/ai-providers/status", "providers"],
@@ -167,6 +167,7 @@ export async function createBusinessFixture({ runNonce } = {}) {
       ["/api/v2/companion-profile", "profile"], ["/api/v2/memories", "memories"],
       ["/api/external-memory/connections", "connections"], ["/api/ombre/config", "ombreConfig"],
       ["/api/ombre/mcp/status", "ombreStatus"], ["/api/v2/memory/health", "memoryHealth"],
+      ["/api/v2/xinchao/state", "xinchao"],
     ]);
     if (method === "GET" && reads.has(pathname)) return reads.get(pathname);
     if (method === "PUT" && pathname === "/api/v2/settings") return "saveSettings";
@@ -226,6 +227,7 @@ export async function createBusinessFixture({ runNonce } = {}) {
         return json(response, { ok: true });
       }
       if (route === "authSettings") return json(response, { external: { email: true }, disable_signup: true, mailer_autoconfirm: true });
+      if (route === "prewarm") return json(response, { ok: true });
       if (route === "token") {
         const body = await jsonBody(request);
         if (parsed.searchParams.get("grant_type") === "password") {
@@ -240,6 +242,7 @@ export async function createBusinessFixture({ runNonce } = {}) {
         return json(response, issueSession());
       }
       if (!isAuthenticated(request)) return error(response, 401, "authentication_required", "unauthorizedRequests");
+      if (route === "xinchao") return json(response, { configured: false, state: null });
       if (request.headers["x-dengta-companion-id"] !== undefined && request.headers["x-dengta-companion-id"] !== COMPANION_ID) {
         return error(response, 403, "fixture_companion_invalid", "unauthorizedRequests");
       }

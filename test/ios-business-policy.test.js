@@ -1,5 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { parseBusinessEvidence, runtimeXctestrun, validateBusinessEvidence } from "../scripts/ios-business-policy.mjs";
 
 const runNonce = "b47eb9ef-34c0-4d5f-8ef5-cdca48b27e80";
@@ -49,4 +54,16 @@ test("runtime-only XCTest injection leaves app environment and original document
   assert.equal(JSON.stringify(doc).includes("fixture-secret"), false);
   assert.throws(() => runtimeXctestrun(doc, { VITE_PASSWORD: "no" }));
   assert.throws(() => runtimeXctestrun({}, {}));
+});
+
+test("unfinished live driver refuses before writing files, launching native tools or using account secrets", () => {
+  const output = path.join(os.tmpdir(), `dengta-live-refusal-${randomUUID()}`);
+  const canary = "fictional-private-refusal-canary";
+  const result = spawnSync(process.execPath, ["scripts/ios-business-smoke.mjs", output, "f".repeat(40)], {
+    encoding: "utf8", env: { ...process.env, DENGTA_BUSINESS_MODE: "live", DENGTA_IOS_E2E_PASSWORD: canary }, timeout: 20_000,
+  });
+  assert.equal(result.status, 1);
+  assert.deepEqual(JSON.parse(result.stdout.trim()), { mode: "live", outcome: "unavailable", reason: "live-driver-safety-incomplete" });
+  assert.equal((result.stdout + result.stderr).includes(canary), false);
+  assert.equal(fs.existsSync(output), false);
 });
