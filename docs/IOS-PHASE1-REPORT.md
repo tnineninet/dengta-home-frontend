@@ -6,6 +6,8 @@
 
 最新已执行原生源码为 `1ba7e3a`：标准双设备 job 通过，合成核心流程通过至人格恢复/记忆页，最后退出导航失败。修复提交 `ca121ae` 已推送，但 Actions 在启动 runner 前因付款/支出上限拒绝，尚无该补丁的原生结果。需要恢复 GitHub 计费后重跑；无需个人 Mac。
 
+用户随后选择跳过云端重跑并继续本地工作。本轮仅加固未启用的 live 辅助脚本及定向测试，保留原生/真实账号未验收状态；不申请新 runner、不调整支出、不启用 live 或上传账号 Secrets。
+
 | 环境检查 | 实际结果 |
 |---|---|
 | 本机 | Windows 11 Pro x64，10.0.22621；xcodebuild/xcrun 均不存在 |
@@ -168,11 +170,31 @@ ffeb441 evidence 位于 `ci-43283653297/artifact/`，两份 manifest 均为 `sta
 另一个 capacity 提示仅为 notice。需管理员检查 Billing & plans 后重跑该 SHA；
 本轮没有调整支出或付款设置。
 
-本轮便携审查包：`D:/GZdeepseek/_audit/ios-cloud-acceptance-20261113/review-pack-cloud.zip`，
+上一轮 `12aa9a6` 便携审查包：`D:/GZdeepseek/_audit/ios-cloud-acceptance-20261113/review-pack-cloud.zip`，
 附逐文件 `HASHES.json` 和 ZIP 旁置 SHA-256。仅含匿名/合成证据、只读审查及报告；
 不包含账号凭据、app、xcresult、测试计划或真实账号原始输出。源码已按本地八个
 私有值模式扫描117个变更文件（含本轮文档），零命中。最终五篇文档/PR描述
 独立复读无剩余漂移，记录为仓库外 `cloud-doc-drift-final.md`；不冒充额外完整审查轮次。
+
+### 跳过云端重跑后的本地加固
+
+`test:ios-business` 现在46/46、exit 0（日志 `test-ios-business-guard-next.log`）。
+全部新增行为通过 fake fetch 验证，没有对生产服务执行这些操作：
+
+- helper 始终 local 撤销自己的会话；回执区分 guard 与 native 登录，401不当作撤销成功。产品正常退出仍有 global 行为，本轮不改共享认证语义。
+- 只记录 helper 自己普通 POST 成功返回并读回的精确 session ID/nonce 标记。陌生唯一会话不认领；创建响应丢失不重试、不猜测删除，清理失败；重命名不删除。
+- 人格修改前必须等待计划登记并新读基线；恢复时只接受原值或确切计划值，有冲突不发设置 PUT。只发本次改动字段，保留新读的其他设置，排除服务端ID/时间戳，避免旧全量请求触发账号/伴侣身份写入。
+
+只读后端核验发现：普通 API 无 CAS/幂等创建，服务端设置仍有内部读写窗口；
+会话 DELETE 不撤销所有记忆/伴侣状态副作用，也不保证附件存储清除。
+因此不声称原子恢复或账号完整复原。owner/history 预检限制仍在；
+driver 未接入计划/精确会话选择，持久恢复日志、强制中断恢复、成功回复判定、
+native 登录单独撤销和实际 macOS验证仍未完成。总 live 入口继续在读取账号、
+写文件、构建或请求网络之前拒绝。
+
+本轮本地审查包：`D:/GZdeepseek/_audit/ios-cloud-acceptance-20261113/review-pack-live-guard-local.zip`，
+含提交快照/补丁、46项日志、独立方案/攻击/文档审查、逐文件哈希与敏感扫描，
+不含新的原生结果或截图；上一轮云端包保持历史快照不覆盖。
 
 ## 6. 未验证/阻塞
 
@@ -189,7 +211,7 @@ ffeb441 evidence 位于 `ci-43283653297/artifact/`，两份 manifest 均为 `sta
 | 邮件回跳/生产 allowlist | 未执行 | 本地 Mac 实际注册/恢复邮件，核对账号确认/取消/超时与原生 picker 并存；配置不符时另提生产变更 |
 | 语音/前台提醒 | 仅可行性评估 | 不纳入首版硬验收；见插件矩阵 |
 
-Actions 计费恢复后可继续云端自动化；个人 Mac 只是在需要人工交互调试时的另一条路径。真实账号 live driver 因成功回复判定与强制中断后的远端恢复尚未完整实现而硬关闭，手动 dispatch 也会在读取账号或请求网络之前失败。用户提供的账号经本地预检为有会话的 owner，不符合目前为全新 member 账号编写的 guard；这是实现限制，后续还需精确拥有本次测试会话、局部撤销和设置冲突保护，无 CAS 不能声称原子恢复。没有上传凭据、没有修改生产聊天或人格。Apple Developer、APNs key、真机签名不阻塞现有 Simulator 流程，均留到后续真机/分发工作，不在本轮索要。
+用户已跳过当前云端重跑；计费恢复后仍可继续该路径，个人 Mac 是人工交互调试的另一选择。真实账号 live driver 因成功回复判定、持久远端恢复及 native 登录局部撤销等未完成而硬关闭，手动 dispatch 也会在读取账号或请求网络之前失败。用户指定的有会话 owner 仍被当前空 member 策略拒绝；这是实现限制。helper 的局部加固没有完成真实账号支持；无 CAS 不能声称原子恢复。没有上传凭据、没有修改生产聊天或人格。Apple Developer、APNs key、真机签名均后置，不在本轮索要。
 
 ## 7. 大象/金鱼审查
 
@@ -234,4 +256,4 @@ Actions 计费恢复后可继续云端自动化；个人 Mac 只是在需要人�
 
 现行环境 B/范围 A 不重问；外部逐模块导入 A、凭据 Keychain 采纳而 Vault 后置均已按推荐方案实施。PR 保持 Draft，等待用户/Lead 审查，不合并。
 
-继续按已确认的 **环境 B / 范围 A** 推进；无需个人 Mac。恢复 GitHub Actions 计费后先验证 ca121ae 云端合成业务整条流程，再完成 live 成功回复判定/强制中断恢复和既有账号隔离，之后才能执行真实账号原生验收。若将来有个人 Mac，可按 IOS-BUILD.md 做人工交互补充；这不是当前自动化的必备条件。PR 继续等待审查，Apple Developer/APNs/设备签名及 TestFlight 留到独立后续阶段。
+继续按已确认的 **环境 B / 范围 A** 推进；按用户选择跳过本次云端重跑。后续需把 helper 的计划/精确会话接入 driver，完成持久恢复、native 单会话撤销及成功回复判定，再做独立审查与实际 macOS 验证。计费恢复时仍需补验 ca121ae 的退出/记忆可见性修复；本地测试不替代。PR 保持 Draft，不合并；Apple Developer/APNs/设备签名及 TestFlight 留到后续阶段。

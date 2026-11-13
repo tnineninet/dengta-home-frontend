@@ -122,10 +122,11 @@ Each later native source still requires its own result.
 Read-only `live_followup_design` confirmed empty-member is the helper's own
 policy, not a platform requirement. The specified existing owner needs exact
 test-session ownership, conflict-aware settings restoration, independent
-interruption recovery and local authentication cleanup: both the current guard
-and product signOut can revoke globally. No further account or Apple credential
-request is implied. Proposal `live-followup-design.md` remains outside Git; none
-of those mechanisms is falsely marked implemented.
+interruption recovery and local authentication cleanup: both the then-current
+guard and product signOut could revoke globally at that historical checkpoint.
+No further account or Apple credential request is implied. Proposal
+`live-followup-design.md` remains outside Git as a historical design; the local
+follow-up below implements only part of it and does not enable native live use.
 
 Final supplemental native run 43361811216 / 1ba7e3a passes the earlier scrolling
 issue: login/chat/stream-first ACK/terminal/history and native-session restore,
@@ -148,3 +149,35 @@ both enabled jobs. The capacity note is not the failure. No new native build or
 screen exists; the patch remains unverified pending administrator action. The
 read-only document reviewer independently checked these downloaded API records
 and 1ba receipts; this is supplemental review, not another complete EGM round.
+
+## Local helper follow-up after cloud rerun was skipped
+
+Read-only `live_guard_plan_review` checked the ordinary backend routes and
+reported the old sole-session adoption/global-revoke/full-baseline restoration
+defects. It also found that real settings carry volatile server metadata absent
+from the earlier fixture. Root implemented acknowledged POST ID/nonce ownership,
+one-shot uncertain creation, local guard-only revoke receipts, and awaited
+fresh-baseline personalization planning with exact-value conflict checks.
+Restoration PUT sends only touched fields; server metadata is excluded from
+comparisons. Current business regressions pass46/46, including the closed live
+entry point. Evidence is local fake-fetch behavior, not cloud/production proof.
+
+The reviewer confirmed partial PUTs avoid unnecessary account/companion writes,
+but the backend internally reads/writes without CAS and has no idempotent create.
+Conversation DELETE does not undo all chat side effects or prove attachment
+storage cleanup. Those constraints remain explicit, and existing-owner support,
+durable recovery, native-session revocation and reply proof remain unimplemented.
+No production file, credential, data or CI billing setting was changed.
+
+Fresh adversarial `live_guard_patch_attack` reproduced one P2: after a failed
+fresh bootstrap or successful deletion, runtimeSession could still expose its
+previously verified selection target. Root invalidates that target before every
+new session read and cleanup, again before DELETE, and rejects it during an
+operation. The regression covers failed read, later explicit revalidation and
+post-cleanup rejection. Local business46/46 passes. Lost PUT/DELETE replies also
+have explicit retry/readback cases without repeating writes or changing owned
+IDs. The review and resolution are supplemental, not a new complete EGM round.
+Additional reviewer-identified coverage gaps now exercise malformed/baseline
+returned IDs, missing/wrong POST companion binding, missing PUT/DELETE binding,
+and an acknowledged POST followed by failed first readback. These added cases
+pass in the final46/46 local group; the production gate is unchanged.

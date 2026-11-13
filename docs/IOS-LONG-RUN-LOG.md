@@ -160,3 +160,40 @@
   exact test-session ownership/local-only auth cleanup and conflict-aware
   settings restoration. Account availability and personal Mac are not the
   current implementation blockers. Draft PR remains unmerged.
+
+## Supplemental checkpoint — 2026-11-13 13:05 +08:00
+
+- User skipped the billing/rerun request, then asked to continue. Continue local
+  helper implementation/testing only; no new cloud run or spending adjustment.
+- Repaired disabled live helper: local-only guard revocation with explicit
+  nativeSessionRevoked=false; acknowledged POST ID/nonce ownership, no sole/diff
+  adoption or retry after uncertain creation; fresh-baseline personalization
+  planning, exact-value conflict checks and touched-only restoration PUTs.
+  Stable comparisons exclude real server IDs/timestamps. Unknown/renamed
+  conversations and unrelated settings are preserved.
+- Read-only backend review confirms partial PUT support, no CAS/idempotency and
+  noncomprehensive conversation-delete effects. Source report is
+  live-guard-plan-review-next.md. Keep these limits explicit; do not claim full
+  account restoration or owner readiness. Existing empty-member policy remains.
+- Local business39/39 exit0 in test-ios-business-guard-next.log, including early
+  live refusal. No production request or account write. Independent patch review
+  is in progress. The older native/ca121ae evidence is not extended to this code.
+- Driver still lacks plan/owned-conversation integration, durable recovery,
+  successful assistant proof and separate native local revocation. Live remains
+  hard-disabled; code commits will skip CI per the user's choice.
+
+### Local review resolution — 2026-11-13 13:11 +08:00
+
+- Fresh attacker reproduced stale runtime selection after a failed session
+  readback or completed deletion (P2). Invalidated the selection before fresh
+  reads/cleanup and before DELETE; concurrent runtime selection is rejected.
+  Failed-read/revalidation/post-cleanup cases now pass. Added lost PUT/DELETE
+  reply cases proving retries do not repeat writes or adopt a foreign session.
+- Current local business43/43 exit0; node syntax and git diff checks pass.
+  No src/, ios/, package/config or workflow changes in this follow-up. Native
+  and real-account status remain unchanged. Independent closure reread follows.
+
+- Final local group advanced to46/46 exit0 after reviewer-requested POST
+  ID/header/failed-first-read and PUT/DELETE response-binding cases. The source
+  helper is unchanged by these final test additions. P2 independent replay is
+  closed; cloud/user-account evidence has not advanced.

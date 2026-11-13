@@ -125,6 +125,10 @@ synthetic-only 截图、日志和失败辅助功能树可交付，均为虚构�
 `DENGTA_BUSINESS_MODE=live` 当前会输出固定失败原因
 `live-driver-safety-incomplete`，在读取账号、写文件、构建或网络请求前退出。
 成功 assistant 回复的独立判定、强制取消后的远端恢复仍是开放事项。
+后续本地加固只覆盖 helper 的精确会话所有权、预登记人格计划/冲突检查、
+partial 恢复 PUT 与 guard 局部撤销；driver 接入、持久恢复和 native 登录
+单独撤销尚未完成。`test:ios-business` 的46项本地测试不解锁 live。
+用户已选择跳过当前云端重跑，代码提交使用 skip ci 保留此选择。
 本轮没有上传账号 Secrets。细节与已执行/失败记录见
 `IOS-CLOUD-ACCEPTANCE.md` 和 `IOS-PHASE1-REPORT.md`。
 

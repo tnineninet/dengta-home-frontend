@@ -10,6 +10,10 @@ const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-
 const PERSONALIZATION_FIELDS = new Set([
   "unified_system_prompt", "user_details", "prompt_mode", "intimate_expression_enabled",
 ]);
+const SERVER_METADATA = new Set(["id", "user_id", "companion_id", "created_at", "updated_at"]);
+const editableSettings = settings => Object.fromEntries(
+  Object.entries(createSettingsPayload(settings)).filter(([key]) => !SERVER_METADATA.has(key)),
+);
 const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
 const receipt = value => Object.freeze({ schemaVersion: 1, ...value });
 const failure = (code, progress) => Object.assign(new Error(code), {
@@ -31,8 +35,9 @@ function productionOrigin(value, expected) {
  * for the pinned companion, not claimed as proof that all account stores are
  * empty. The caller must use the approved dedicated account and serialize runs.
  * Stop the app before restoreAndCleanup: its autosave must not race restoration.
+ * This helper is not a durable recovery service. The live driver stays closed.
  */
-export function createLiveGuard({ authUrl, anonKey, apiUrl, email, password, expectedUserId, fetchImpl = fetch } = {}) {
+export function createLiveGuard({ authUrl, anonKey, apiUrl, email, password, expectedUserId, runNonce, fetchImpl = fetch } = {}) {
   const auth = productionOrigin(authUrl, AUTH_ORIGIN);
   const api = productionOrigin(apiUrl, API_ORIGIN);
   if (typeof expectedUserId !== "string" || !UUID.test(expectedUserId)) throw failure("dedicated_user_id_required");
@@ -40,7 +45,9 @@ export function createLiveGuard({ authUrl, anonKey, apiUrl, email, password, exp
       typeof fetchImpl !== "function") throw failure("dedicated_credentials_required");
 
   let accessToken = "", companionId = "", baseline = null, ready = false;
-  let ownedSessionId = "", revoked = false, closed = false, busy = false;
+  let ownedSessionId = "", ownedSessionTitle = "", sessionCreationAttempted = false, sessionCreationUncertain = false;
+  let ownedSessionVerified = false;
+  let plannedSettings = null, revoked = false, closed = false, busy = false;
   const expectedId = expectedUserId.toLowerCase();
 
   // Prevent a cleanup and a verification from racing within this guard.
@@ -113,24 +120,21 @@ export function createLiveGuard({ authUrl, anonKey, apiUrl, email, password, exp
   }
 
   async function revoke() {
-    if (!accessToken) return receipt({ sessionRevoked: revoked });
-    // Before acceptance, only this guard's session may be revoked. After the
-    // dedicated-account checks, revoke all test sessions, including the native
-    // UI login that cannot be revoked by deleting its Simulator alone.
-    // A 401 means this token has already been revoked/expired.
+    if (!accessToken) return receipt({ guardSessionRevoked: revoked, nativeSessionRevoked: false });
+    // This token belongs only to this guard. It cannot authorize revoking the
+    // owner's other sessions or prove revocation of the separate native login.
     let response;
     try {
-      response = await fetchImpl(`${auth}/auth/v1/logout?scope=${ready ? "global" : "local"}`, {
+      response = await fetchImpl(`${auth}/auth/v1/logout?scope=local`, {
         method: "POST", headers: { apikey: anonKey, Authorization: `Bearer ${accessToken}` },
         redirect: "error", credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer",
         signal: AbortSignal.timeout(20_000),
       });
     } catch { throw failure("auth_revoke_failed"); }
-    // A rejected local token is already unusable; it says nothing about the
-    // separately created UI session, so global revocation must actually succeed.
-    if (!(ready ? [200, 204] : [200, 204, 401]).includes(response?.status)) throw failure("auth_revoke_failed");
+    // A 401 proves neither server-side session revocation nor native cleanup.
+    if (![200, 204].includes(response?.status)) throw failure("auth_revoke_failed");
     accessToken = ""; revoked = true;
-    return receipt({ sessionRevoked: true });
+    return receipt({ guardSessionRevoked: true, nativeSessionRevoked: false });
   }
 
   async function preflight() {
@@ -152,8 +156,8 @@ export function createLiveGuard({ authUrl, anonKey, apiUrl, email, password, exp
         // changing/default companion or changing baseline during preflight.
         const second = await bootstrap();
         if (second.sessions.length !== 0) throw failure("dedicated_history_not_empty");
-        const original = createSettingsPayload(first.settings);
-        if (!isDeepStrictEqual(original, createSettingsPayload(second.settings))) throw failure("baseline_unstable");
+        const original = editableSettings(first.settings);
+        if (!isDeepStrictEqual(original, editableSettings(second.settings))) throw failure("baseline_unstable");
         baseline = structuredClone(original);
         ready = true;
         return receipt({ dedicatedIdentityMatched: true, memberActive: true, companionPinned: true, emptySessionBaseline: true });
@@ -165,16 +169,55 @@ export function createLiveGuard({ authUrl, anonKey, apiUrl, email, password, exp
     });
   }
 
-  function captureSessions(data) {
-    if (data.sessions.length > 1 || (ownedSessionId && data.sessions.some(session => session.id !== ownedSessionId))) {
-      throw failure("created_session_ambiguous");
+  function checkOwnedSession(data) {
+    if (sessionCreationUncertain) throw failure("owned_session_creation_uncertain");
+    if (ownedSessionId) {
+      ownedSessionVerified = false;
+      const session = data.sessions.find(item => item.id === ownedSessionId);
+      if (!session) throw failure("owned_session_missing");
+      if (session.title !== ownedSessionTitle) throw failure("owned_session_conflict");
+      ownedSessionVerified = true;
     }
-    if (!ownedSessionId && data.sessions.length === 1) ownedSessionId = data.sessions[0].id;
     return receipt({ createdSessionRecorded: Boolean(ownedSessionId), createdSessionCount: ownedSessionId ? 1 : 0 });
   }
 
+  async function createOwnedSession() {
+    return exclusive(async () => {
+      requireReady();
+      if (!UUID.test(runNonce || "")) throw failure("owned_session_nonce_required");
+      if (sessionCreationAttempted) throw failure("owned_session_creation_already_attempted");
+      ownedSessionTitle = `[iOS CI ${runNonce.toLowerCase()}]`;
+      const before = await bootstrap();
+      if (before.sessions.some(session => session.title === ownedSessionTitle)) throw failure("owned_session_marker_conflict");
+      // The ordinary API has no idempotency key. A lost response must not cause
+      // another POST or an inferred claim over a matching/unfamiliar session.
+      sessionCreationAttempted = true; sessionCreationUncertain = true;
+      const response = await apiRequest("/api/v2/sessions", {
+        method: "POST", body: { title: ownedSessionTitle }, requireCompanionHeader: true,
+      });
+      const data = await json(response, "owned_session_receipt_invalid");
+      if (response.status !== 201 || !object(data.session) || !UUID.test(data.session.id || "") ||
+          data.session.title !== ownedSessionTitle || before.sessions.some(session => session.id === data.session.id)) {
+        throw failure("owned_session_receipt_invalid");
+      }
+      ownedSessionId = data.session.id; sessionCreationUncertain = false;
+      return checkOwnedSession(await bootstrap());
+    });
+  }
+
   async function recordCreatedSessions() {
-    return exclusive(async () => { requireReady(); return captureSessions(await bootstrap()); });
+    // Verification only; never infer ownership from count, ordering or a diff.
+    return exclusive(async () => {
+      requireReady(); ownedSessionVerified = false;
+      return checkOwnedSession(await bootstrap());
+    });
+  }
+
+  function runtimeSession() {
+    requireReady();
+    if (busy) throw failure("live_operation_in_progress");
+    if (!ownedSessionId || !ownedSessionVerified || sessionCreationUncertain) throw failure("owned_session_required");
+    return { id: ownedSessionId, title: ownedSessionTitle };
   }
 
   // Private runtime input only: never serialize this into published evidence.
@@ -187,25 +230,50 @@ export function createLiveGuard({ authUrl, anonKey, apiUrl, email, password, exp
     return exclusive(async () => {
       requireReady();
       const data = await bootstrap();
-      if (!isDeepStrictEqual(createSettingsPayload(data.settings), baseline)) throw failure("settings_baseline_mismatch");
+      if (!isDeepStrictEqual(editableSettings(data.settings), baseline)) throw failure("settings_baseline_mismatch");
       return receipt({ settingsRestored: true, settingsReadback: true, unrelatedSettingsUnchanged: true });
+    });
+  }
+
+  function personalizationTarget(expected) {
+    if (!object(expected) || Object.keys(expected).length === 0 ||
+          Object.keys(expected).some(key => !PERSONALIZATION_FIELDS.has(key)) ||
+          Object.entries(expected).some(([key, value]) => key === "intimate_expression_enabled"
+            ? typeof value !== "boolean"
+            : key === "prompt_mode" ? !["legacy", "unified"].includes(value) : typeof value !== "string")) {
+        throw failure("personalization_expectation_invalid");
+    }
+    const target = structuredClone(expected);
+    if (Object.hasOwn(expected, "unified_system_prompt") && !Object.hasOwn(expected, "prompt_mode")) target.prompt_mode = "unified";
+    if (Object.entries(target).every(([key, value]) => isDeepStrictEqual(value, baseline[key]))) throw failure("settings_change_missing");
+    return target;
+  }
+
+  async function planPersonalization(expected) {
+    return exclusive(async () => {
+      requireReady();
+      const target = personalizationTarget(expected);
+      if (plannedSettings) {
+        if (!isDeepStrictEqual(plannedSettings, target)) throw failure("personalization_plan_already_set");
+        return receipt({ personalizationPlanned: true });
+      }
+      const current = editableSettings((await bootstrap()).settings);
+      if ([...PERSONALIZATION_FIELDS].some(key => !isDeepStrictEqual(current[key], baseline[key]))) {
+        throw failure("personalization_baseline_changed");
+      }
+      plannedSettings = target;
+      return receipt({ personalizationPlanned: true });
     });
   }
 
   async function verifySettings(expected) {
     return exclusive(async () => {
       requireReady();
-      if (!object(expected) || Object.keys(expected).length === 0 ||
-          Object.keys(expected).some(key => !PERSONALIZATION_FIELDS.has(key)) ||
-          Object.entries(expected).some(([key, value]) => key === "intimate_expression_enabled"
-            ? typeof value !== "boolean"
-            : key === "prompt_mode" ? !["legacy", "unified"].includes(value) : typeof value !== "string")) {
-        throw failure("personalization_expectation_invalid");
-      }
-      const target = { ...baseline, ...expected };
-      if (Object.hasOwn(expected, "unified_system_prompt") && !Object.hasOwn(expected, "prompt_mode")) target.prompt_mode = "unified";
+      const edits = personalizationTarget(expected);
+      if (!plannedSettings || !isDeepStrictEqual(plannedSettings, edits)) throw failure("personalization_plan_required");
+      const target = { ...baseline, ...edits };
       const data = await bootstrap();
-      const actual = createSettingsPayload(data.settings);
+      const actual = editableSettings(data.settings);
       if (!Object.entries(expected).every(([key, value]) => isDeepStrictEqual(actual[key], value)) ||
           actual.prompt_mode !== target.prompt_mode) throw failure("settings_readback_mismatch");
       if (!isDeepStrictEqual(actual, target)) throw failure("settings_unexpected_change");
@@ -218,37 +286,61 @@ export function createLiveGuard({ authUrl, anonKey, apiUrl, email, password, exp
     return exclusive(async () => {
       requireReady();
       if (appStopped !== true) throw failure("app_stop_required");
-      const progress = { settingsRestored: false, sessionsCleaned: false, createdSessionDeleted: false, cleanupVerified: false };
+      ownedSessionVerified = false;
+      const progress = { settingsRestored: false, ownedSessionAbsent: false, createdSessionDeleted: false, cleanupVerified: false, settingsConflict: false };
       let current;
       // Recheck the role, status, and pinned companion before any write.
       try { current = await bootstrap(); }
       catch { throw failure("cleanup_preflight_failed", progress); }
-      let capturePassed = true;
-      try { captureSessions(current); } catch { capturePassed = false; }
+      const fresh = editableSettings(current.settings);
+      const restore = {};
+      // Register exact edits before UI mutation. Without that plan, a changed
+      // personalization value cannot be attributed to this test.
+      for (const key of PERSONALIZATION_FIELDS) {
+        const value = fresh[key];
+        if (isDeepStrictEqual(value, baseline[key])) continue;
+        if (!plannedSettings || !Object.hasOwn(plannedSettings, key)) {
+          progress.settingsConflict = true;
+        } else if (isDeepStrictEqual(value, plannedSettings[key])) {
+          restore[key] = baseline[key];
+        } else {
+          progress.settingsConflict = true;
+        }
+      }
+      const expectedRestored = { ...fresh, ...restore };
       try {
-        if (!isDeepStrictEqual(createSettingsPayload(current.settings), baseline)) {
-          const response = await apiRequest("/api/v2/settings", { method: "PUT", body: baseline });
+        if (progress.settingsConflict) throw failure("cleanup_conflict");
+        if (Object.keys(restore).length > 0) {
+          // The API accepts partial bodies. Never send stale identity/provider
+          // fields or server metadata. Its server-side read/write has no CAS.
+          const response = await apiRequest("/api/v2/settings", { method: "PUT", body: restore, requireCompanionHeader: true });
           const saved = await json(response, "settings_restore_failed");
-          if (!object(saved.settings) || !isDeepStrictEqual(createSettingsPayload(saved.settings), baseline)) {
+          if (!object(saved.settings) || !isDeepStrictEqual(editableSettings(saved.settings), expectedRestored)) {
             throw failure("settings_restore_failed");
           }
         }
-        progress.settingsRestored = isDeepStrictEqual(createSettingsPayload((await bootstrap()).settings), baseline);
+        progress.settingsRestored = isDeepStrictEqual(editableSettings((await bootstrap()).settings), expectedRestored);
       } catch { /* Session cleanup still runs; publish only bounded progress. */ }
-      if (capturePassed) {
+      if (!sessionCreationUncertain) {
         try {
-          if (ownedSessionId && current.sessions.some(session => session.id === ownedSessionId)) {
-            const response = await apiRequest(`/api/v2/sessions/${encodeURIComponent(ownedSessionId)}`, { method: "DELETE" });
+          const latest = await bootstrap();
+          const owned = latest.sessions.find(session => session.id === ownedSessionId);
+          if (owned) {
+            checkOwnedSession(latest);
+            ownedSessionVerified = false;
+            const response = await apiRequest(`/api/v2/sessions/${encodeURIComponent(ownedSessionId)}`, { method: "DELETE", requireCompanionHeader: true });
             if (response.status !== 204) throw failure("created_session_delete_failed");
             progress.createdSessionDeleted = true;
           }
           const final = await bootstrap();
-          progress.sessionsCleaned = final.sessions.length === 0;
-          progress.settingsRestored = progress.settingsRestored && isDeepStrictEqual(createSettingsPayload(final.settings), baseline);
+          progress.ownedSessionAbsent = ownedSessionId
+            ? !final.sessions.some(session => session.id === ownedSessionId)
+            : final.sessions.length === 0;
+          progress.settingsRestored = progress.settingsRestored && isDeepStrictEqual(editableSettings(final.settings), expectedRestored);
         } catch { /* A failed delete/readback never counts as cleanup. */ }
       }
-      progress.cleanupVerified = progress.settingsRestored && progress.sessionsCleaned;
-      if (!progress.cleanupVerified) throw failure("cleanup_incomplete", progress);
+      progress.cleanupVerified = progress.settingsRestored && progress.ownedSessionAbsent;
+      if (!progress.cleanupVerified) throw failure(progress.settingsConflict ? "cleanup_conflict" : "cleanup_incomplete", progress);
       return receipt(progress);
     });
   }
@@ -256,10 +348,12 @@ export function createLiveGuard({ authUrl, anonKey, apiUrl, email, password, exp
   async function close() {
     return exclusive(async () => {
       const result = await revoke();
-      closed = true; ready = false; baseline = null; companionId = ""; ownedSessionId = "";
+      closed = true; ready = false; baseline = null; plannedSettings = null; companionId = "";
+      ownedSessionId = ""; ownedSessionTitle = ""; ownedSessionVerified = false;
       return result;
     });
   }
 
-  return Object.freeze({ preflight, runtimeBaseline, verifyBaseline, verifySettings, recordCreatedSessions, restoreAndCleanup, close, revoke: close });
+  return Object.freeze({ preflight, runtimeBaseline, runtimeSession, planPersonalization, verifyBaseline, verifySettings,
+    createOwnedSession, recordCreatedSessions, restoreAndCleanup, close, revoke: close });
 }

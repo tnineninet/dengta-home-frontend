@@ -114,7 +114,7 @@ try {
     anonKey = process.env.VITE_SUPABASE_ANON_KEY;
     apiUrl = "https://dengta-home-backend-rkmq.onrender.com";
     guard = createLiveGuard({ authUrl, anonKey, apiUrl, email: liveIdentity.EMAIL,
-      password: liveIdentity.PASSWORD, expectedUserId: liveIdentity.USER_ID });
+      password: liveIdentity.PASSWORD, expectedUserId: liveIdentity.USER_ID, runNonce: nonce });
   }
   // Copy source only; source Info.plist/release network policy remain untouched.
   fs.cpSync(path.join(root, "ios"), path.join(workspace, "ios"), { recursive: true,
@@ -171,6 +171,9 @@ try {
   await command("stop-anonymous-product", "xcrun", ["simctl", "terminate", device, bundle]);
   let baseline = { unified_system_prompt: "", user_details: "" };
   if (guard) {
+    // The closed live path still lacks a coordinator that awaits a registered
+    // personalization plan and selects the exact guard-created conversation.
+    // Do not remove the entry gate based on the helper's unit tests.
     currentStage = "live-preflight";
     manifest.preflight = await guard.preflight(); guardReady = true;
     baseline = guard.runtimeBaseline();

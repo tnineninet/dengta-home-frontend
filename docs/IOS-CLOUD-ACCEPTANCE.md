@@ -73,15 +73,34 @@ production HTTPS origins and companion header, snapshots the complete editable
 settings payload (including legacy fields and prompt mode), and refuses
 owner/admin or an account with existing conversations before any mutation.
 Stop the app before fallback restoration so its 800 ms autosave cannot race
-cleanup. Restore and reread the complete baseline, delete only the sole session
-created since the empty baseline, verify cleanup, revoke test sessions and delete
-the created Simulator. Cleanup failure fails the run. Runs sharing the dedicated
-account must be serialized and cannot cancel each other. On rejected preflight,
-revoke only the guard's local auth session. After accepting the dedicated account,
-global revocation must succeed to cover the UI login too; HTTP 401 cannot prove it.
-The present helper implements normal completion cleanup only. Forced cancellation
-can skip its `finally`, so interruption recovery is an explicit open blocker and
-the live execution gate stays closed.
+cleanup. Before any UI edits, a future coordinator must await
+`planPersonalization(expected)`: it rereads the personalization baseline and
+records the exact intended fields/values, including an implicit unified mode.
+Cleanup accepts only baseline or planned values; a third value or unregistered
+edit prevents all settings PUTs. Restoration sends only changed planned fields,
+never stale identity/provider fields or server IDs/timestamps. Fresh unrelated
+settings are checked on readback. The ordinary backend also reads then writes
+settings without CAS, so this is not atomic and requires serialized runs/no
+concurrent account use during mutation. Server metadata is excluded from stable
+settings comparisons; volatile updated_at is not treated as an editable value.
+
+Only `createOwnedSession()` can establish a test conversation, using its own
+ordinary POST, exact returned ID and nonce title with a fresh readback. Session
+count, ordering and before/after differences cannot confer ownership.
+`recordCreatedSessions()` now only verifies ownership. A lost/malformed create
+response leaves creation uncertain, forbids another POST, prevents inferred
+deletion and fails cleanup. Renamed conversations are preserved. Proven owned
+sessions can be removed while concurrent foreign sessions remain untouched;
+`ownedSessionAbsent` refers only to that owned ID, not all account data. DELETE
+does not undo every chat side effect or guarantee attachment-storage cleanup.
+
+All helper logout requests use local scope, both before and after preflight.
+Receipts expose `guardSessionRevoked` and always `nativeSessionRevoked: false`;
+HTTP 401 is a failure, not evidence of server revocation. The separate native UI
+login still needs its own local revocation solution; deleting a Simulator is
+insufficient. Cleanup failure fails the run. The helper has no durable recovery:
+forced cancellation can skip finally. The closed driver also lacks integration
+of planned edits/exact conversation selection, so the live gate remains closed.
 
 ## Current account boundary
 
@@ -91,9 +110,11 @@ temporary audit login was revoked with local scope. No credentials were uploaded
 and no conversation or settings writes were made. It does not satisfy the live
 guard's current empty-member policy. That is an implementation restriction, not
 an iOS, Apple or GoTrue requirement. Supporting the specified existing account
-needs exact test-session ownership and local-only revocation (both the current
-guard and normal product logout can revoke globally), in addition to successful
-reply and interruption recovery. Do not ask the user to provide the same account
+needs integration of exact test-session ownership, durable recovery and local
+revocation of the separate UI login (normal product logout still revokes
+globally), in addition to successful reply proof. The local helper improvements
+do not implement existing-owner support or remove this policy restriction.
+Do not ask the user to provide the same account
 again, treat an existing conversation as test-owned, or upload the owner
 credential file. No current job reads account secrets.
 
@@ -154,3 +175,12 @@ limit needs increasing. No new build, XCTest or screenshot exists. Capacity is
 only a separate notice. The administrator must restore Billing & plans before
 rerunning this SHA; no payment or spending settings were changed by this task.
 The Phase 1 report records downloaded hashes and all evidence boundaries.
+
+## Local follow-up after skipping cloud rerun
+
+The user chose to skip the billing recovery/rerun, then requested continued work.
+No new cloud run is requested in this follow-up. Local fake-fetch regressions
+cover the guard changes above: 46/46 business tests pass, including the unchanged
+early live refusal. No production request, account mutation or credential-file
+read is part of these tests. They prove helper behavior against the fixture only,
+not macOS, native integration, production backend behavior or owner readiness.
