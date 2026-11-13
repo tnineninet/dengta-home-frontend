@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D3E10000000000000000000F /* BusinessFlowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3E10000000000000000000E /* BusinessFlowTests.swift */; };
 		D3E100000000000000000005 /* KeyboardSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3E100000000000000000003 /* KeyboardSmokeTests.swift */; };
 		D3E001000000000000000005 /* DengTaReadiness.js in Resources */ = {isa = PBXBuildFile; fileRef = D3E002000000000000000005 /* DengTaReadiness.js */; };
 		D3E001000000000000000001 /* DengTaKeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3E002000000000000000001 /* DengTaKeychainStore.swift */; };
@@ -34,6 +35,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		D3E10000000000000000000E /* BusinessFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BusinessFlowTests.swift; sourceTree = "<group>"; };
 		D3E100000000000000000003 /* KeyboardSmokeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardSmokeTests.swift; sourceTree = "<group>"; };
 		D3E100000000000000000004 /* AppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = AppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		D3E002000000000000000005 /* DengTaReadiness.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = DengTaReadiness.js; sourceTree = "<group>"; };
@@ -68,7 +70,7 @@
 /* Begin PBXGroup section */
 		D3E100000000000000000002 /* AppUITests */ = {
 			isa = PBXGroup;
-			children = (D3E100000000000000000003 /* KeyboardSmokeTests.swift */,);
+			children = (D3E100000000000000000003 /* KeyboardSmokeTests.swift */, D3E10000000000000000000E /* BusinessFlowTests.swift */,);
 			path = AppUITests;
 			sourceTree = "<group>";
 		};
@@ -208,7 +210,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		D3E100000000000000000006 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (D3E100000000000000000005 /* KeyboardSmokeTests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
+		D3E100000000000000000006 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (D3E100000000000000000005 /* KeyboardSmokeTests.swift in Sources */, D3E10000000000000000000F /* BusinessFlowTests.swift in Sources */,); runOnlyForDeploymentPostprocessing = 0; };
 		504EC3001FED79650016851F /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;

@@ -6,13 +6,23 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      business:
+        description: Business acceptance mode (live requires a separate approved account)
+        type: choice
+        options: [none, synthetic, live]
+        default: none
+      source_sha:
+        description: Exact reviewed source SHA (required for live)
+        type: string
+        required: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: ios-phase1-${{ github.head_ref || github.ref_name }}
-  cancel-in-progress: true
+  group: ios-phase1-${{ github.head_ref || github.ref_name }}-${{ inputs.business || 'none' }}
+  cancel-in-progress: ${{ inputs.business != 'live' }}
 
 jobs:
   simulator:
@@ -20,7 +30,8 @@ jobs:
       (github.event_name == 'pull_request' &&
        github.event.pull_request.head.repo.full_name == github.repository &&
        github.head_ref == 'feat/ios-import-75ad3da') ||
-      ((github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      ((github.event_name == 'push' ||
+        (github.event_name == 'workflow_dispatch' && inputs.business == 'none')) &&
        github.ref == 'refs/heads/feat/ios-import-75ad3da')
     runs-on: macos-26
     timeout-minutes: 35
@@ -142,5 +153,119 @@ jobs:
         with:
           name: DengTa-iOS-Simulator-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/dengta-ios-evidence/
+          if-no-files-found: warn
+          retention-days: 7
+
+  synthetic-business:
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.head_ref == 'feat/ios-import-75ad3da') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/feat/ios-import-75ad3da') ||
+      (github.event_name == 'workflow_dispatch' && inputs.business == 'synthetic' &&
+       github.ref == 'refs/heads/feat/ios-import-75ad3da')
+    runs-on: macos-26
+    timeout-minutes: 35
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - name: Checkout reviewed source SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Set up Node 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Business fixture and privacy regressions
+        run: npm run test:ios-business
+      - name: Actual product UI with synthetic auth and backend
+        env:
+          DENGTA_BUSINESS_MODE: synthetic
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/dengta-ios-business-evidence"
+          {
+            git rev-parse HEAD
+            sw_vers
+            xcodebuild -version
+            xcrun --sdk iphonesimulator --show-sdk-version
+          } > "$RUNNER_TEMP/dengta-ios-business-evidence/toolchain.log"
+          node scripts/ios-business-smoke.mjs "$RUNNER_TEMP/dengta-ios-business-evidence" "$(git rev-parse HEAD)"
+      - name: Remove private test plans and Simulator data
+        if: always()
+        run: node scripts/ios-business-cleanup.mjs
+      - name: Upload synthetic business evidence only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: DengTa-iOS-Synthetic-Business-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/dengta-ios-business-evidence/manifest.json
+            ${{ runner.temp }}/dengta-ios-business-evidence/business-evidence.json
+            ${{ runner.temp }}/dengta-ios-business-evidence/fixture-evidence.json
+            ${{ runner.temp }}/dengta-ios-business-evidence/synthetic-chat.png
+            ${{ runner.temp }}/dengta-ios-business-evidence/*-synthetic.log
+            ${{ runner.temp }}/dengta-ios-business-evidence/toolchain.log
+          if-no-files-found: warn
+          retention-days: 7
+
+  live-business:
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.business == 'live' &&
+      github.ref == 'refs/heads/feat/ios-import-75ad3da'
+    runs-on: macos-26
+    environment: ios-business
+    timeout-minutes: 35
+    concurrency:
+      group: dengta-ios-dedicated-business-account
+      cancel-in-progress: false
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - name: Require exact reviewed revision
+        env:
+          EXPECTED_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          node --input-type=module -e '
+            if (!/^[a-f0-9]{40}$/.test(process.env.EXPECTED_SOURCE_SHA || "") || process.env.EXPECTED_SOURCE_SHA !== process.env.GITHUB_SHA) throw new Error("Exact reviewed source SHA required.");
+          '
+      - name: Checkout reviewed source SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Node 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install locked dependencies without account secrets
+        run: npm ci --no-audit --no-fund
+      - name: Dedicated account runtime only
+        env:
+          DENGTA_BUSINESS_MODE: live
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          DENGTA_IOS_E2E_EMAIL: ${{ secrets.DENGTA_IOS_E2E_EMAIL }}
+          DENGTA_IOS_E2E_PASSWORD: ${{ secrets.DENGTA_IOS_E2E_PASSWORD }}
+          DENGTA_IOS_E2E_USER_ID: ${{ secrets.DENGTA_IOS_E2E_USER_ID }}
+        run: node scripts/ios-business-smoke.mjs "$RUNNER_TEMP/dengta-ios-live-evidence" "$GITHUB_SHA"
+      - name: Remove private live outputs and Simulator data
+        if: always()
+        run: node scripts/ios-business-cleanup.mjs
+      - name: Upload allowlisted live receipts only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: DengTa-iOS-Live-Business-Receipts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/dengta-ios-live-evidence/manifest.json
+            ${{ runner.temp }}/dengta-ios-live-evidence/business-evidence.json
           if-no-files-found: warn
           retention-days: 7

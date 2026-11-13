@@ -8179,6 +8179,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             />
             <textarea
               ref={messageInputRef}
+              aria-label="聊天消息"
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               onFocus={() => {
