@@ -39,6 +39,21 @@ for (const [label, platform, navigatorLike, expected] of [
   assert.equal(offersAndroidDownload(platform, navigatorLike), expected, label);
 }
 
+for (const [url, installed] of [
+  ["capacitor://localhost/settings", true],
+  ["capacitor://localhost:8080/", false],
+  ["capacitor://localhost.example.org/", false],
+  ["https://localhost/", false],
+  ["https://dengta.example/", false],
+]) {
+  const controller = createPwaInstallController({
+    windowLike: { ...createWindow(), location: new URL(url) },
+    navigatorLike: { userAgent: "iPhone Mobile Safari" },
+  });
+  assert.equal(controller.isInstalled(), installed, url);
+  assert.equal((await controller.install()).outcome, installed ? "installed" : "instructions", url);
+}
+
 {
   const windowLike = createWindow();
   const controller = createPwaInstallController({

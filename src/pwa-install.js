@@ -34,7 +34,9 @@ export function createPwaInstallController({
 
   function isInstalled() {
     return Boolean(
-      navigatorLike?.standalone === true ||
+      (windowLike?.location?.protocol === "capacitor:" &&
+        windowLike.location.host === "localhost") ||
+        navigatorLike?.standalone === true ||
         windowLike?.matchMedia?.("(display-mode: standalone)")?.matches,
     );
   }

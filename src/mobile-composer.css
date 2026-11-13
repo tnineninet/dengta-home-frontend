@@ -52,6 +52,13 @@
     resize: none;
   }
 
+  .main-panel.view-chat .composer textarea:placeholder-shown,
+  .main-panel.view-chat .composer textarea::placeholder {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   :root[data-keyboard-open="true"] .main-panel.view-chat .composer-wrap {
     padding-bottom: 6px !important;
   }
