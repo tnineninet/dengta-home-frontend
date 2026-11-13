@@ -96,4 +96,67 @@
 - Read-only GitHub compare confirms package75ad3daa is one docs/evidence-only commit ahead of claimed code70b407d2 (23 docs files, zero behind). No external archive was redownloaded or script executed.
 - Final archive commit changes docs/ only, marked [skip ci] to avoid repeating the identical runtime tree. Delivery-boundary receipt checks no runtime differences from c84f0a7 and clean original frontend/backend checkouts. Draft PR#2 remains unmerged; no production/backend/database/deployment/distribution changes.
 - Review pack outside Git: D:/GZdeepseek/_audit/ios-longrun-20261113/review-pack-final.zip, with per-file hashes and ZIP sidecar. Source scan and package scan reject known local secrets and prohibited paths; no password, environment files, product app or raw xcresult are included.
-- Remaining: local interactive Mac acceptance for private login/restoration/companion/live chat-SSE/personality save-restore/memory/settings/chat composer, plus real email/approval/native-picker interaction. Apple Developer/APNs/device signing/TestFlight remain later dependencies. No account/password/certificate request now.
+- Remaining at that historical checkpoint: private business and real email/approval/native-picker acceptance. The subsequent cloud work below supersedes the personal-Mac dependency; Apple Developer/APNs/device signing/TestFlight remain later dependencies.
+
+## Supplemental checkpoint — 2026-11-13 11:55 +08:00
+
+- User confirmed continuing with cloud macOS and specified the account. Normal
+  local auth/bootstrap preflight succeeds; the account is the existing active
+  owner with conversations. Only the audit login was locally revoked. No
+  credentials were uploaded and no production chat/settings writes were made.
+  The empty-member requirement is the current helper's own policy, not an iOS
+  limitation or a reason to ask the user for the same account again.
+- Added real-product synthetic business XCTest/loopback fixture and strict
+  evidence/cleanup helpers. Local `test:ios-business` passes31/31, `test:ios`
+  passes, current `test:settings` exits0, and public-configured `build:web`
+  exits0. First unconfigured build failed auth verification and remains recorded.
+  Desktop/mobile browser preflights each pass6/6, with no external HTTP requests
+  or unknown routes; these are not native evidence.
+- Actual native failures are retained: keyboard AX-container hit-test,
+  terminal text absent from AX despite painted text, fixed header intercepting
+  body drags, and full-screen drags overshooting a textarea. Fixed native key
+  geometry checks, iOS input CSS priority (15px→16px), phone settings entry,
+  body/header bounds, whole count-receipt text nodes, iOS chat content rendering
+  and adaptive held drags. Later source must independently pass; a visible PNG
+  never replaces a failed XCTest.
+- Run43360513467 at5c240db completes standard Xcode/Keychain/two-device anonymous
+  keyboard UI/isolated WKWebView SSE successfully. Its synthetic business test
+  passes login/chat/SSE/settings but fails before settings writes due drag
+  overshoot; overall run remains failure. Current1ba7e3a adaptive-drag run
+  43361811216 is in progress, not yet counted successful.
+- Independent supplemental implementation/CSS/native-UI reviews are in the new
+  audit directory. They are not fabricated extra complete EGM rounds. Live is
+  hard-disabled before side effects: successful-assistant proof, forced-loss
+  recovery and existing-owner session/local-logout semantics remain unfinished.
+  No additional Mac, Apple or account credential request is implied.
+- Audit root: D:/GZdeepseek/_audit/ios-cloud-acceptance-20261113/. Draft PR#2
+  remains unmerged; original frontend/backend/production/main untouched.
+
+## Supplemental checkpoint — 2026-11-13 12:11 +08:00
+
+- Run43361811216 at1ba7e3a completed: standard Simulator job success;
+  synthetic-business failure at the final account-menu selector. XCTest441.155s
+  proves login, first-text/ACK/terminal, native session/history restoration,
+  persona save/relaunch readback/baseline restoration and memory-page opening.
+  Fixture has one stream/ACK, complete user/assistant history, restored settings,
+  zero violations and zero logouts. It is not a full business pass or live test.
+- Actual AX exposes account as Other; committed exact-label ordinary AX queries
+  for account/logout plus strict synthetic memory-body visibility inca121ae.
+  Local business tests31/31 pass. Independent patch review reports no P0/P1;
+  previous page-open check did not establish memory-card visibility.
+- PR run43363465042 (and corresponding push) did not start runners. GitHub
+  reports failed payments/spending limit; enabled jobs have empty steps. No new
+  build, XCTest or screenshot exists. Asked the user/admin to restore Billing &
+  plans; did not alter payment/spending settings or request a Mac/Apple account.
+- Downloaded1ba standard artifact1,050,243bytes SHA256
+  92A0B5E80F44B1D3DDBC32760C9179C5431795070C6FF071F664C3646092D061;
+  failed business896,164bytes SHA256
+  013FAFCDAF9337EF5FB0FFA4C4D0E1A8ED27B51F8BB9C4A5B55390BB7E1261F4;
+  logs160,521bytes SHA256
+  16366AF6B3369B455162E5A6EA69BCADF22A70D6F199659BECC2463DCAD42EFA.
+  Both anonymous PNGs and final synthetic failure PNG were viewed. The latter
+  is the account menu, not retained chat/persona screenshot evidence.
+- Live stays hard-disabled for reply proof, forced-interruption recovery,
+  exact test-session ownership/local-only auth cleanup and conflict-aware
+  settings restoration. Account availability and personal Mac are not the
+  current implementation blockers. Draft PR remains unmerged.

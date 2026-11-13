@@ -4,6 +4,8 @@
 
 **部分完成；尚未通过 Phase 1 核心业务验收。** 环境 B（GitHub Actions macOS）、范围 A 保持。Windows 本地没有 Xcode；原生结论全部来自真实 CI，不把静态准备或合成账号测试算作私人账号实测。
 
+最新已执行原生源码为 `1ba7e3a`：标准双设备 job 通过，合成核心流程通过至人格恢复/记忆页，最后退出导航失败。修复提交 `ca121ae` 已推送，但 Actions 在启动 runner 前因付款/支出上限拒绝，尚无该补丁的原生结果。需要恢复 GitHub 计费后重跑；无需个人 Mac。
+
 | 环境检查 | 实际结果 |
 |---|---|
 | 本机 | Windows 11 Pro x64，10.0.22621；xcodebuild/xcrun 均不存在 |
@@ -12,9 +14,9 @@
 | Apple Developer / App Store Connect | 本轮未使用或验证 Apple 账号权限；Simulator 无此当前阻塞，不索要账号/证书 |
 | APNs / 真机签名 | 均后置；未配置、未分发 |
 
-已完成外部包核验、逐模块选择、隔离分支、Capacitor iOS host、Keychain/认证生命周期与平台修复、八轮真实 fresh-context 审查。最新完整 run [43294494055](https://github.com/DengTaHome/dengta-home-frontend/actions/runs/43294494055) 在 `c84f0a7362683450e69aa744d8a08a5d423888cb` 通过 Xcode 构建，并在 iPhone 17 与 iPhone SE 3 各自通过启动、实际 Keychain、匿名就绪/截图及七阶段键盘交互；另有独立 iOS WKWebView 合成 POST SSE 传输通过。该源码已包含回跳确认修复，但普通 CI 不打开确认框，不验收真实邮件/原生面板交互；合成传输不计为真实业务验收。
+已完成外部包核验、逐模块选择、隔离分支、Capacitor iOS host、Keychain/认证生命周期与平台修复、八轮真实 fresh-context 审查。上一轮完整 run [43294494055](https://github.com/DengTaHome/dengta-home-frontend/actions/runs/43294494055) 在 `c84f0a7362683450e69aa744d8a08a5d423888cb` 通过 Xcode 构建，并在 iPhone 17 与 iPhone SE 3 各自通过启动、实际 Keychain、匿名就绪/截图及七阶段键盘交互；另有独立 iOS WKWebView 合成 POST SSE 传输通过。该源码已包含回跳确认修复，但普通 CI 不打开确认框，不验收真实邮件/原生面板交互；合成传输不计为真实业务验收。
 
-真实私有账号登录/恢复、伴侣、已认证 POST SSE、人格设置保存/恢复、记忆/设置与聊天输入框尚未执行；没有把密码上传 CI。这些缺项使 Phase 1 保持未完成。
+新增云端业务自动化使用真实产品入口、认证 SDK、Keychain 与原生 XCTest，只有 auth/API 替换为 runner loopback 合成服务。它与真实账号验收分开记录，详见下方补充记录和 `IOS-CLOUD-ACCEPTANCE.md`。没有把密码上传 CI；真实账号的原生完整流程仍未执行，Phase 1 保持未完成。个人 Mac 并非现有云端构建或自动化的必要条件。
 
 ## 2. 外部交接包
 
@@ -39,7 +41,7 @@ ZIP 共 1,645 entries / 1,507 文件，展开 46,701,058 字节；Raw 与 ZIP �
 | iOS/SPM | 借鉴结构，CLI 重新生成 | 精确 Capacitor 8.4.3；Bundle ID `home.dengta.app`；当前产品图标 |
 | Keychain/租约 | 审查后采纳并重做边界 | 三认证键、WhenUnlockedThisDeviceOnly、无共享 group/同步；迁移清理、失败关闭、旧刷新隔离 |
 | 认证/请求隔离 | 在本地主线上增量修复 | 身份串行化、scope 票据、超时保留、隔离回跳候选、安全提交和 Web 多标签页兼容 |
-| viewport/键盘 | 借鉴引用计数，保留本地行为 | iOS 有界认证滚动区；真实匿名 XCUITest；不替换业务布局 |
+| viewport/键盘 | 借鉴引用计数，保留本地行为 | iOS 有界认证滚动区；真实匿名 XCUITest；修复 iOS 16px 输入字号兜底被更具体聊天规则覆盖，不替换业务布局 |
 | CI/探针 | 借鉴概念，当前工具链实测 | 标准 Xcode Simulator ad hoc，无手工虚构 Team/重签；严格 nonce/可见性/PNG/几何证据 |
 | AccountVault/AES-GCM | 后置 | 普通缓存没有全面加密，不能把凭据 Keychain 当作全量缓存安全 |
 | 旧业务/截图/嵌套 TAR/签名绕过 | 拒绝 | 不进入产品分支 |
@@ -54,9 +56,9 @@ ZIP 共 1,645 entries / 1,507 文件，展开 46,701,058 字节；Raw 与 ZIP �
 - 认证：原生迁移清理、每 SDK 租约/生命周期/cleanup retry、请求上下文票据、候选回跳验证/预约 seed、明确的本地账号确认、SDK dispose/迟到刷新防护；Web Locks 可用时另有非敏感 origin epoch 和持久化比对。
 - 平台：iOS 不继承 Android marker/touch recovery，隐藏 APK 操作，网易原生播放缺能力返回 unsupported；共享 viewport 保留原抖动保护。
 - 配置/CI：ios@8.4.3 与对应锁文件、iOS 配置、Node 24/macOS 26/Xcode 26.6 构建与有界证据；仅 feature/same-repository PR，contents:read。
-- 文档：11 份 IOS 文档、八轮逐条审查报告和文档漂移记录；具体文件以 PR diff 为准。
+- 文档：原11份加本轮云端验收文档共12份、八轮逐条审查报告和文档漂移记录；具体文件以 PR diff 为准。
 
-主要提交：`d0e2a1f` 基础工程；`11b08ce` runner env 修复；`f8b8f51` 第二轮/XCUITest；`ca3f0f7` 认证/证据第三至第五轮修复；`0431a82` 小屏 CI；`ffeb441` 安装入口；`0745558` 独立传输；`c84f0a7` 异步回跳确认。最终归档提交仅修改 docs/，使用 `[skip ci]` 避免重复构建相同运行代码；`delivery-boundary-check.json` 核对最终 HEAD 与 c84f0a7 在 docs/ 之外无差异。未修改原前端 checkout 的用户工作、生产后端/Supabase/Render/Vercel 或 main。无凭据/构建产物/截图提交 Git，无 IPA/TestFlight/上架操作。
+主要提交：`d0e2a1f` 基础工程；`11b08ce` runner env 修复；`f8b8f51` 第二轮/XCUITest；`ca3f0f7` 认证/证据第三至第五轮修复；`0431a82` 小屏 CI；`ffeb441` 安装入口；`0745558` 独立传输；`c84f0a7` 异步回跳确认。上一轮归档的 `delivery-boundary-check.json` 只证明当时归档与 c84f0a7 的运行代码一致；本轮业务自动化是后续新实现，必须核对新的源码与 CI。新增 `4d521db` 合成产品业务测试，`14f7fdf` fixture/键盘修复与 live gate，`30e6270` 文字定位尝试，`b0052e7` iOS 字号与手机设置入口。未修改原前端 checkout 的用户工作、生产后端/Supabase/Render/Vercel 或 main。无凭据/构建产物/截图提交 Git，无 IPA/TestFlight/上架操作。
 
 ## 5. 已执行验证
 
@@ -111,25 +113,83 @@ ffeb441 evidence 位于 `ci-43283653297/artifact/`，两份 manifest 均为 `sta
 
 0745558 evidence 位于 `ci-43286170878/artifact/`。产品双设备 XCTest 分别为58.052s/52.539s，0 failures；两个 PNG SHA 与已查看的 ffeb441 图完全相同。独立 `webkit-transport/transport-receipt.json` 与 manifest 共享 nonce/source SHA，六个检查布尔值均 true；server 确认3个合法 POST、normal ACK、0 unexpected requests，runtime iOS26.5。ZIP 1,049,888 bytes，SHA-256 `74C167628AC889B3EE74CB2FFBD6F21E58B41D52A968E899AF964D26857E6747`；job logs ZIP 140,969 bytes，SHA-256 `79E4BB7868DC0DEBC26AF1DFA3B2933380F3D15CA4AD59DF5734630AD5BB871A`。
 
-c84f0a7 最新 evidence 在 `ci-43294494055/artifact/`，下载回执在 `download-receipt.json`。iPhone 17/SE 3 的唯一实际 XCTest 分别 59.697s/50.974s，均 0 failures、七阶段且未提交表单；两个 manifest 都明确 `businessFlows: not-exercised`。原生 Keychain 探针成功，PNG 文件哈希与 manifest 一致，且已实际查看。[iPhone 17 匿名截图](D:/GZdeepseek/_audit/ios-longrun-20261113/ci-43294494055/artifact/simulator/login-ready.png)、[iPhone SE 匿名截图](D:/GZdeepseek/_audit/ios-longrun-20261113/ci-43294494055/artifact/simulator-compact/login-ready.png)。独立传输的 native/server nonce 与源码一致，六项检查均 true，3 个合法 POST、0 个意外请求。artifact ZIP 1,050,915 bytes，SHA-256 `3B3D1C60F64D4D46378E4D79C3AABE8F23B8C83EB437BAB7AC8C5A86D53BA789`；logs ZIP 141,898 bytes，SHA-256 `5966E4FEEA85BDBF5CADB585255E7C4CD2D32B9DA57313946F82D77C3E153818`。
+上一轮 c84f0a7 evidence 在 `ci-43294494055/artifact/`，下载回执在 `download-receipt.json`。iPhone 17/SE 3 的唯一实际 XCTest 分别 59.697s/50.974s，均 0 failures、七阶段且未提交表单；两个 manifest 都明确 `businessFlows: not-exercised`。原生 Keychain 探针成功，PNG 文件哈希与 manifest 一致，且已实际查看。[iPhone 17 匿名截图](D:/GZdeepseek/_audit/ios-longrun-20261113/ci-43294494055/artifact/simulator/login-ready.png)、[iPhone SE 匿名截图](D:/GZdeepseek/_audit/ios-longrun-20261113/ci-43294494055/artifact/simulator-compact/login-ready.png)。独立传输的 native/server nonce 与源码一致，六项检查均 true，3 个合法 POST、0 个意外请求。artifact ZIP 1,050,915 bytes，SHA-256 `3B3D1C60F64D4D46378E4D79C3AABE8F23B8C83EB437BAB7AC8C5A86D53BA789`；logs ZIP 141,898 bytes，SHA-256 `5966E4FEEA85BDBF5CADB585255E7C4CD2D32B9DA57313946F82D77C3E153818`。
 
 便携审查包：`D:/GZdeepseek/_audit/ios-longrun-20261113/review-pack-final.zip`；包内 HASHES.json 与旁边 `.sha256.txt` 核验文件，不包含密码、环境文件、产品 app 或原始 xcresult。
+
+### 本轮云端业务补充（2026-11-13）
+
+审计目录：`D:/GZdeepseek/_audit/ios-cloud-acceptance-20261113/`。
+与前述匿名 CI 分开：真实产品 App/SDK/Keychain/XCTest，runner loopback
+合成 auth/API。没有注入登录态、替换产品页面、绕过原生回跳确认或导出真实账号截图。
+`test:ios-business` 31/31、`test:settings`、公开配置下的 `build:web` 均以 exit 0 结束。
+首次缺公开 auth 配置的 build:web 调用在 verifier 失败，随后正确配置重跑通过。
+桌面和 402×874 移动 Chromium 预检各六项通过，无未知路由/远程 HTTP 请求；仅网页证据。
+
+| Run / 源码 | 实际业务结果与修复 |
+|---|---|
+| 43355244162 / 4d521db | 编译/登录通过；keyboard 容器 isHittable 错误门槛失败。改用真实按键和有界 native frame；整体后续被取消 |
+| 43356331374 / 14f7fdf | 首段可见后才 ACK，服务端终段/完整历史确认；XCTest 终段文本查询失败；整体后续被取消 |
+| 43357224935 / 30e6270 | 缩短选择器仍失败，不当作修复；standard simulator job 通过，整体失败 |
+| 43358580545 / b0052e7 | 聊天完整通过、打开设置；回滚手势落固定标题栏导致失败；无设置写入。整体后续被取消 |
+| 43359416288 / 0947466 | 再次无法查终段；原生 AX 树中两方正文缺失，PNG 有文字。字号修复后头像完整、状态胶囊位于 y76；整体失败 |
+| [43360513467](https://github.com/DengTaHome/dengta-home-frontend/actions/runs/43360513467) / 5c240db | iOS 关闭聊天行 CSS 跳过后，本次完整聊天通过；人格大幅滚动在两侧来回过冲，写入前失败。标准 job 全通过，整体仍失败 |
+| [43361811216](https://github.com/DengTaHome/dengta-home-frontend/actions/runs/43361811216) / 1ba7e3a | 标准 job 成功；业务 XCTest 441.155 秒后在退出导航失败。登录、聊天首段/ACK/终段、重启会话、人格保存/重启回读/恢复、记忆页打开均通过；账号控件实际为 AX Other，测试误查 Button。整体失败 |
+| [43363465042](https://github.com/DengTaHome/dengta-home-frontend/actions/runs/43363465042) / ca121ae | 已修正账号/退出控件类型查询并增加合成记忆正文可见性断言；GitHub 付款/支出上限检查在 runner 启动前拒绝两个 job，steps 为空。没有执行新构建或测试，补丁原生未验证 |
+
+新增产品修复：iOS 输入字号最低16px 的规则优先级、iOS 聊天行持续渲染、
+普通 composer 可访问标签、两个完整的保存/字数回执文本节点。聊天历史初始
+显示200行，加载更早内容会逐次增加150行；取消 CSS 跳过有长历史布局成本，
+不是永久200行硬上限。独立只读 CSS 探针实测字号15→16px、渲染规则有效；
+探针脚本/JSON/哈希在审计目录，不能代替原生结果。
+
+5c240db 标准 Simulator evidence：iPhone17/SE3 启动、Keychain、匿名七阶段、
+独立 WKWebView SSE 都通过。ZIP `simulator.zip` 为1,050,089字节，SHA-256
+`2B1972145AF1FD7D2F2F916971AFAECE318E3656E3FE39163A917B9F1F055E71`。
+失败业务 ZIP 为577,227字节，SHA-256
+`F2E22371FCE48849265566B7E8F51E2A14570822DF8A2DD3DB83E9DA125C4E44`；
+截图与 AX 已实际查看，纯合成 SFW 数据。
+
+1ba7e3a 的 fixture 确认人格恢复基线、完整 user/assistant 历史持久化、
+一次流和一次 ACK、零违规请求；logout=false，不能当作整条业务通过。
+这轮 memoryOpened 只证明页面和读取状态，不证明卡片可见；ca121ae 的新增
+正文可见性断言仍待执行。原生失败截图停在账号菜单，没有留存该轮聊天或
+人格页面截图，不以其他 run 或网页图替代。
+
+| 1ba7e3a 下载证据 | 字节 | SHA-256 |
+|---|---:|---|
+| 标准 simulator.zip | 1,050,243 | `92A0B5E80F44B1D3DDBC32760C9179C5431795070C6FF071F664C3646092D061` |
+| 失败 business.zip | 896,164 | `013FAFCDAF9337EF5FB0FFA4C4D0E1A8ED27B51F8BB9C4A5B55390BB7E1261F4` |
+| logs.zip | 160,521 | `16366AF6B3369B455162E5A6EA69BCADF22A70D6F199659BECC2463DCAD42EFA` |
+
+两台标准匿名截图和业务失败截图均已实际查看，文件位于审计目录
+`ci-43361811216/`。最新未启动 run 的 `run.json`、`jobs.json` 和
+`annotations.json` 位于 `ci-43363465042/`；失败原因是 GitHub 账户计费门槛，
+另一个 capacity 提示仅为 notice。需管理员检查 Billing & plans 后重跑该 SHA；
+本轮没有调整支出或付款设置。
+
+本轮便携审查包：`D:/GZdeepseek/_audit/ios-cloud-acceptance-20261113/review-pack-cloud.zip`，
+附逐文件 `HASHES.json` 和 ZIP 旁置 SHA-256。仅含匿名/合成证据、只读审查及报告；
+不包含账号凭据、app、xcresult、测试计划或真实账号原始输出。源码已按本地八个
+私有值模式扫描117个变更文件（含本轮文档），零命中。最终五篇文档/PR描述
+独立复读无剩余漂移，记录为仓库外 `cloud-doc-drift-final.md`；不冒充额外完整审查轮次。
 
 ## 6. 未验证/阻塞
 
 | 验收项 | 当前状态 | 后续执行 |
 |---|---|---|
-| 真实私人账号登录/重启恢复 | 未执行 | 本地交互 Mac；凭据只本地使用 |
+| 最新修复原生编译/完整合成流程 | ca121ae 未执行；GitHub runner 被计费门槛拒绝 | 恢复 Actions 付款/额度后重跑；1ba7e3a 部分通过不能替代 |
+| 真实私人账号登录/重启恢复 | 原生未执行；本地普通 auth/bootstrap 返回200 | 云端 live 尚未就绪；不把本地账号预检算作原生验收 |
 | 伴侣信息/账号伴侣隔离 | 真实链路未执行 | 登录后读取并切换/重启核对 |
 | 已认证 POST SSE 一轮聊天 | 未执行 | 检查多段增量/结束/取消/重连，不能用预检或 mock 替代 |
 | 人格设置保存/恢复 | 真实账号未执行 | 两个字段分别写无害值、重新读取、恢复原值并复读 |
 | 记忆与设置页面 | 真实账号未执行 | 打开/读写范围按授权核验，避免破坏既有数据 |
-| 聊天 composer 键盘/安全区 | 未执行 | 匿名表单七阶段不能代替登录后 composer/横屏 |
+| 聊天 composer 键盘/安全区 | 合成账号原生两阶段已测；完整结果见补充记录 | 匿名表单七阶段不能代替 composer；横屏/真实账号仍未验收 |
 | 已登录页面无 APK 入口 | 源码 guard 有测试；实际页面未执行 | 登录后核对所有安装/更新入口 |
 | 邮件回跳/生产 allowlist | 未执行 | 本地 Mac 实际注册/恢复邮件，核对账号确认/取消/超时与原生 picker 并存；配置不符时另提生产变更 |
 | 语音/前台提醒 | 仅可行性评估 | 不纳入首版硬验收；见插件矩阵 |
 
-当前需要可交互 Mac 完成业务验收。Apple Developer、APNs key、真机签名不阻塞现有 Simulator 流程，均留到后续真机/分发工作，不在本轮索要。
+Actions 计费恢复后可继续云端自动化；个人 Mac 只是在需要人工交互调试时的另一条路径。真实账号 live driver 因成功回复判定与强制中断后的远端恢复尚未完整实现而硬关闭，手动 dispatch 也会在读取账号或请求网络之前失败。用户提供的账号经本地预检为有会话的 owner，不符合目前为全新 member 账号编写的 guard；这是实现限制，后续还需精确拥有本次测试会话、局部撤销和设置冲突保护，无 CAS 不能声称原子恢复。没有上传凭据、没有修改生产聊天或人格。Apple Developer、APNs key、真机签名不阻塞现有 Simulator 流程，均留到后续真机/分发工作，不在本轮索要。
 
 ## 7. 大象/金鱼审查
 
@@ -174,4 +234,4 @@ c84f0a7 最新 evidence 在 `ci-43294494055/artifact/`，下载回执在 `downlo
 
 现行环境 B/范围 A 不重问；外部逐模块导入 A、凭据 Keychain 采纳而 Vault 后置均已按推荐方案实施。PR 保持 Draft，等待用户/Lead 审查，不合并。
 
-下一阶段建议 **A：用户提供可交互 Mac 时，按 IOS-BUILD.md 逐项完成本地私人账号业务与聊天键盘验收**；**B：继续 CI/合成覆盖，保留真实业务未验证状态**；**C：暂停功能扩大，先审查当前差异与后续数据/隐私设计**。Apple Developer/APNs/设备签名及 TestFlight 属于业务验收后的独立授权阶段。
+继续按已确认的 **环境 B / 范围 A** 推进；无需个人 Mac。恢复 GitHub Actions 计费后先验证 ca121ae 云端合成业务整条流程，再完成 live 成功回复判定/强制中断恢复和既有账号隔离，之后才能执行真实账号原生验收。若将来有个人 Mac，可按 IOS-BUILD.md 做人工交互补充；这不是当前自动化的必备条件。PR 继续等待审查，Apple Developer/APNs/设备签名及 TestFlight 留到独立后续阶段。

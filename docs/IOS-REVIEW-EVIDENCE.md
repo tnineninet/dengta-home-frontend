@@ -71,4 +71,80 @@ Fresh-context reviewer `native_callback_intent_review` found three P2: valid for
 - `browser-native-approval.json` adds four executed Windows Chromium cases with the real AuthGate/dialog and a fictional manager: actual showModal/background inert, cancel focus/Tab/Escape/focus restoration, explicit true, unavailable-dialog rejection, and 320x568 long-email scrolling with each 44px control reachable. App/draft/node stay mounted; zero pageerrors/external requests. The initial harness CJS import timeout and overstrict all-content-visible assertion remain in logs; corrected reachability checks pass without product changes. This is not iOS/email/native-picker evidence.
 - The same independent drift reviewer additionally checked only the later external commit-comparison and Chromium dialog additions against their exact JSON/harness receipts and returned no findings. This supplemental check does not claim another source review round or native dialog acceptance.
 
-All local logs/browser harnesses/downloaded CI artifacts remain in `D:/GZdeepseek/_audit/ios-longrun-20261113/`. None of the reviews or anonymous runs establishes real private-account login, companion/SSE/personality/memory/settings or chat-composer acceptance.
+The preceding round-1 to round-8 logs/browser harnesses/downloaded CI artifacts remain in `D:/GZdeepseek/_audit/ios-longrun-20261113/`. None of those reviews or anonymous runs establishes real private-account login, companion/SSE/personality/memory/settings or chat-composer acceptance.
+
+## Supplemental cloud business implementation review
+
+This is a supplemental review of new automation, not another fabricated full
+multi-stage EGM round. Independent `business_native_audit_2` reviewed the fixture,
+live guard, receipt policy, driver, workflow and native product UI test. Root
+fixed localhost Host validation, separate native-login revocation and HTTP 401
+being counted as revocation proof. The live successful-reply proof and
+interruption-safe remote restoration remain open: execution is disabled before
+side effects and the workflow receives no account secrets. All 31 local fixture,
+real SDK, cleanup and evidence-policy cases pass, including actual live-driver
+refusal. Full findings are retained outside Git in `cloud-review-1.md`.
+
+Native runs 43355244162, 43356331374 and 43357224935 did not pass the business
+test; compile/login success did not become a full business claim. A keyboard AX
+container need not itself have a hit point, so the test now requires native keys
+and intersecting bounded geometry. A shortened final-text selector still failed
+43357224935 and is not claimed as a successful repair.
+
+Read-only reviewers `native_layout_check` and `business_driver_next_review`
+then examined actual native failure screenshots and the phone navigation source.
+The first proved the iOS input minimum lost the CSS cascade: the real stylesheet
+probe reports composer 15px before, 16px after the platform guard correction;
+ten representative corrected controls are 16px. Probe script/results/hashes are
+`ios-css-cascade-*` outside Git. The second identified the fixed settings header
+overlapping the test's downward gesture origin. Native run 43358580545 confirms
+the header [0,62,402,80], gesture y84, and no body scrolling back to the prompt.
+Root moved body visibility/gestures below Done.maxY+24 while retaining header
+button reachability. That run passes full synthetic chat/terminal text and opens
+settings but fails before any persona write; fixture reports zero violations
+and settings still at baseline. Its overall result remains failure/cancelled
+as recorded by GitHub; subsequent source must be verified independently.
+
+Supplemental audit root: `D:/GZdeepseek/_audit/ios-cloud-acceptance-20261113/`.
+Desktop/mobile browser preflights each pass six synthetic cases with no remote
+requests, errors or unknown routes; neither is native business evidence.
+
+Subsequent run 43359416288 reproduced missing user/assistant body AX nodes while
+the PNG showed text. `webkit_text_audit` independently confirmed the iOS cascade
+override and absence of another body aria-hidden/inert/deletion path; its five
+Chromium/CSS assertions pass, without claiming native proof. Run 43360513467
+then passes synthetic chat but the large body gesture overshoots the details
+field and oscillates. Root switched to missing-distance drags with a hold before
+lift and bounded the test/command timeouts for the multi-relaunch scenario.
+Standard simulator job at 5c240db is fully successful; business/overall failed.
+Each later native source still requires its own result.
+
+Read-only `live_followup_design` confirmed empty-member is the helper's own
+policy, not a platform requirement. The specified existing owner needs exact
+test-session ownership, conflict-aware settings restoration, independent
+interruption recovery and local authentication cleanup: both the current guard
+and product signOut can revoke globally. No further account or Apple credential
+request is implied. Proposal `live-followup-design.md` remains outside Git; none
+of those mechanisms is falsely marked implemented.
+
+Final supplemental native run 43361811216 / 1ba7e3a passes the earlier scrolling
+issue: login/chat/stream-first ACK/terminal/history and native-session restore,
+persona save/relaunch readback/baseline restoration and memory-page opening are
+true. Its standard Simulator job succeeds. The 441.155s business XCTest fails
+at the account selector (Button requested, actual AX Other); logout=false and
+overall failure remain explicit. Fixture baseline is restored, one stream/ACK,
+persisted user/assistant messages and zero violations. This is synthetic scope.
+
+`native-business-review-current.md` independently reports one P2: page/read-state
+existence did not prove the memory card visible. Root added a synthetic-body
+reveal/strict-visible check and exact-label AX account/logout queries in ca121ae.
+`logout-final-review.md` confirms normal taps, visibility, logout/relaunch checks
+and synthetic-only data are retained, with no new static P0/P1. Local business
+tests pass31/31. Neither review proves Swift compilation or runtime completion.
+
+PR run43363465042 atca121ae is blocked before runner start by GitHub billing:
+failed-payment/spending-limit failure annotation, empty steps, runner_id=0 for
+both enabled jobs. The capacity note is not the failure. No new native build or
+screen exists; the patch remains unverified pending administrator action. The
+read-only document reviewer independently checked these downloaded API records
+and 1ba receipts; this is supplemental review, not another complete EGM round.

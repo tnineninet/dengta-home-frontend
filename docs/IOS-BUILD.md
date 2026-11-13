@@ -66,7 +66,7 @@ CI 依次创建 iPhone 17 和 iPhone SE（第 3 代）临时设备，分别保�
 
 ## 交互验收清单
 
-在用户提供的 Mac 或获准的本地测试设备上使用私有账号；密码只在本地使用，不写入仓库、日志或云 CI。
+下面是人工验收路径。没有个人 Mac 时可先运行下方云端合成业务路径；真实账号云端路径目前硬关闭，不能用配置 Secrets 绕过。私有密码不写入仓库、日志或构建产物。
 
 1. 登录，再终止/重开，确认会话恢复与伴侣正确。
 2. 发送无害文本，看到多个流式增量和结束事件；核对聊天未重复提交。
@@ -95,6 +95,39 @@ CI 依次创建 iPhone 17 和 iPhone SE（第 3 代）临时设备，分别保�
 
 不要把 Safari Web Inspector 的完整 Network/HAR、Authorization headers、回跳 URL 或真实表单值放进报告。可在本地查看分块时序，但交付只保留上述计数/状态和主动选择的 SFW 图。完成后恢复测试字段、退出账号并确认重开匿名；未完成的项目继续标为未验证。
 
+## 无个人 Mac 的云端业务检查
+
+`ios.yml` 的 `synthetic-business` job 使用真正 Capacitor App、认证 SDK、
+Keychain 与 XCTest，普通登录表单输入固定虚构账号；auth/API 由 runner 的
+loopback fixture 提供。完整目标是登录、真实键盘、首段 SSE 在 ACK/终段前
+可见、终段、重启会话、人格两字段保存/重启回读/恢复、记忆和退出。
+不能把该 job 的成功解释为生产账号/上游模型通过。
+
+在 Mac 或 macOS runner 可直接执行：
+
+```bash
+npm ci --no-audit --no-fund
+npm run test:ios-business
+# A plain Mac shell needs the same private temp-root contract as Actions.
+IOS_BUSINESS_TEMP="$(mktemp -d "${TMPDIR:-/tmp}/dengta-business-runner.XXXXXX")"
+export RUNNER_TEMP="$(cd "$IOS_BUSINESS_TEMP" && pwd -P)"
+IOS_BUSINESS_EVIDENCE="$RUNNER_TEMP/evidence"
+DENGTA_BUSINESS_MODE=synthetic node scripts/ios-business-smoke.mjs \
+  "$IOS_BUSINESS_EVIDENCE" "$(git rev-parse HEAD)"
+node scripts/ios-business-cleanup.mjs
+```
+
+driver 在私有临时 workspace 构建，不加载 env 文件或继承 Vite 前缀。
+localhost ATS 例外只写临时 synthetic 工程，release Info.plist 不变。
+只删除本次创建的 Simulator；workflow 的 always cleanup 负责失败清理。
+synthetic-only 截图、日志和失败辅助功能树可交付，均为虚构数据。
+
+`DENGTA_BUSINESS_MODE=live` 当前会输出固定失败原因
+`live-driver-safety-incomplete`，在读取账号、写文件、构建或网络请求前退出。
+成功 assistant 回复的独立判定、强制取消后的远端恢复仍是开放事项。
+本轮没有上传账号 Secrets。细节与已执行/失败记录见
+`IOS-CLOUD-ACCEPTANCE.md` 和 `IOS-PHASE1-REPORT.md`。
+
 ## 独立合成 WKWebView 传输测试
 
 CI 另建 `home.dengta.transport-fixture` 临时 UIKit/WKWebView 宿主，编译当前 `src/api.js`，使用显式虚构认证上下文和仅监听 `127.0.0.1` 的 Node 服务。它不进入产品 bundle，不改产品 ATS/Keychain/Capacitor 配置，不使用私人账号。
@@ -113,6 +146,7 @@ node scripts/ios-webkit-transport.mjs "$TMPDIR/dengta-transport-evidence" "$(git
 
 ## 失败处理
 
+- GitHub Actions 在所有步骤前拒绝，注释提示付款失败或 spending limit：管理员检查 Billing & plans 后，在原 run 页面重新运行。`ca121ae` 的 run `43363465042` 属于此类；runner 未启动，没有构建/测试/截图结果，不按产品测试失败诊断，也不自动提高支出。
 - `-34018`：保留原始受限探针状态，检查 Xcode 产生的签名/entitlements 与嵌入框架；不要虚构 Team/access group。
 - 启动失败：核对源 SHA、Simulator 平台、实际 bundle、签名、PID 与 launch 错误；编译成功不能代替启动成功。
 - 清理失败：保持原租约关闭，解锁后显式重试。不能降级至 Preferences/localStorage，也不能把旧凭据复制回明文。
