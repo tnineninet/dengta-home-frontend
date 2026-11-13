@@ -1832,15 +1832,22 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     // Width and viewport-based height limits can change independently.
     let previousWidth = input.parentElement.clientWidth;
     let previousMaximum = window.getComputedStyle(input).maxHeight;
+    let resizeFrame = null;
     const widthObserver = new ResizeObserver(([entry]) => {
       const maximum = window.getComputedStyle(input).maxHeight;
       if (entry.contentRect.width === previousWidth && maximum === previousMaximum) return;
       previousWidth = entry.contentRect.width;
       previousMaximum = maximum;
-      resizeComposerInput(input);
+      if (resizeFrame === null) resizeFrame = window.requestAnimationFrame(() => {
+        resizeFrame = null;
+        resizeComposerInput(input);
+      });
     });
     widthObserver.observe(input.parentElement);
-    return () => widthObserver.disconnect();
+    return () => {
+      widthObserver.disconnect();
+      if (resizeFrame !== null) window.cancelAnimationFrame(resizeFrame);
+    };
   }, [activeView]);
   const composerMenuTriggerRef = useRef(null);
   const shouldAutoScrollRef = useRef(true);

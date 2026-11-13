@@ -24,6 +24,8 @@
 
 ## 2. 外部交接包
 
+手机输入框后续修复与实测范围见 [MOBILE-COMPOSER-FIX.md](MOBILE-COMPOSER-FIX.md)：共享 Android/iPhone 布局去掉重复底部预留、明确语音按钮位置、恢复多行输入及清空回缩。真实 iPhone Safari 和合成浏览器验证不能替代新原生包验收。
+
 固定提交 `75ad3daa42689bdb48ba46e47b61c494e03d20d7`，来源：[Raw 交接文档](https://raw.githubusercontent.com/DengTaHome/dengta-home/75ad3daa42689bdb48ba46e47b61c494e03d20d7/docs/LOCAL-GPT-HANDOFF.md)、[完整 ZIP](https://codeload.github.com/DengTaHome/dengta-home/zip/75ad3daa42689bdb48ba46e47b61c494e03d20d7)。
 
 | 对象 | HTTP | 字节 | SHA-256 |

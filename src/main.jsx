@@ -28,6 +28,7 @@ import { installAndroidCompatibility } from "./android-compat.js";
 import { Capacitor } from "@capacitor/core";
 import { installNativeDeepLinks, markNativePlatform } from "./native-app-runtime.js";
 import "./ios.css";
+import "./mobile-composer.css";
 import { pwaInstallController } from "./pwa-install.js";
 import ReceiverApp from "./ReceiverApp.jsx";
 import DownloadAppChip from "./DownloadAppChip.jsx";
