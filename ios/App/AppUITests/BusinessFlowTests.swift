@@ -106,11 +106,24 @@ final class BusinessFlowTests: XCTestCase {
     private func visible(_ element: XCUIElement, aboveKeyboard: Bool) -> Bool {
         guard element.exists, element.isHittable else { return false }
         let frame = element.frame, window = app.windows.firstMatch.frame
+        let top = scrollTop(for: element, window: window)
         let bottom = aboveKeyboard
             ? min(app.keyboards.firstMatch.frame.minY, window.maxY - safeBottom)
             : window.maxY - safeBottom
         return frame.width > 0 && frame.height > 0 && frame.minX >= window.minX - 1 &&
-            frame.maxX <= window.maxX + 1 && frame.minY >= window.minY + safeTop && frame.maxY <= bottom - 2
+            frame.maxX <= window.maxX + 1 && frame.minY >= top && frame.maxY <= bottom - 2
+    }
+
+    private func scrollTop(for element: XCUIElement, window: CGRect) -> CGFloat {
+        let safe = window.minY + safeTop
+        // The settings header stays fixed while its body scrolls. A downward
+        // gesture beginning at safeTop + 22 lands on that header on iPhone 17.
+        // Keep body controls/gestures below it; Done itself belongs to the header.
+        if settingsOpen && element.label != "Done" {
+            let done = button("Done")
+            if done.exists { return max(safe, done.frame.maxY + 24) }
+        }
+        return safe
     }
 
     private func reveal(_ element: XCUIElement, aboveKeyboard: Bool = false) throws {
@@ -120,7 +133,8 @@ final class BusinessFlowTests: XCTestCase {
             if visible(element, aboveKeyboard: avoidKeyboard) { return }
             let window = app.windows.firstMatch.frame
             let availableBottom = avoidKeyboard ? app.keyboards.firstMatch.frame.minY : window.maxY - safeBottom
-            let top = window.minY + safeTop + 12, bottom = max(top + 90, availableBottom - 45)
+            let top = scrollTop(for: element, window: window) + 12
+            let bottom = max(top + 90, availableBottom - 45)
             let down = element.frame.minY < top
             let from = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: window.maxX - 24, dy: down ? top + 10 : bottom))
             let to = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: window.maxX - 24, dy: down ? bottom : top + 10))
