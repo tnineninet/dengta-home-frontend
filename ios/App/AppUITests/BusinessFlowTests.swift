@@ -31,7 +31,10 @@ final class BusinessFlowTests: XCTestCase {
     private var evidence: [String: Any] = [:]
 
     private let firstToken = "DengTa 合成流式第一段 🧭"
-    private let finalToken = "DengTa 合成流式第二段，回复已完成。"
+    // WebKit AX may split a wrapped paragraph into several static texts. This
+    // unique second-chunk prefix stays within one line; the runner separately
+    // verifies the fixture's terminal event and persisted complete reply.
+    private let finalToken = "DengTa 合成流式第二段"
     private let question = "This is a safe interface acceptance check. Please reply with one short, friendly sentence."
 
     override func setUpWithError() throws {
