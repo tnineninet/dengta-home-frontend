@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Capacitor } from "@capacitor/core";
+import { offersAndroidDownload } from "./pwa-install.js";
 import "./download-app-chip.css";
 
 const DISMISS_KEY = "dengta.download-chip.dismissed.v1";
@@ -14,7 +15,7 @@ function isNativeApp() {
 
 export default function DownloadAppChip() {
   const [visible, setVisible] = useState(() => {
-    if (isNativeApp()) return false;
+    if (isNativeApp() || !offersAndroidDownload()) return false;
     if (typeof window === "undefined") return false;
     if (/^\/(?:download|install)(?:\/|$)/.test(window.location.pathname)) {
       return false;

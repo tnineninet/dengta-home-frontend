@@ -12,26 +12,77 @@ test('clearing a draft returns to one line even when a narrow placeholder wraps'
  input.value='';resizeComposerInput(input);assert.equal(input.style.height,'44px');
 });
 
-test('the actual App observer refreshes scrollability when the viewport height limit changes without a width change',()=>{
- const app=readFileSync(new URL('../src/App.jsx',import.meta.url),'utf8');
- const start=app.indexOf('  useLayoutEffect(() => {\n    const input = messageInputRef.current;');
- const windowsStart=app.indexOf('  useLayoutEffect(() => {\r\n    const input = messageInputRef.current;');
- const from=Math.max(start,windowsStart),end=app.indexOf('  const composerMenuTriggerRef',from);
- assert.ok(from>=0&&end>from);
- let maximum=176,callback,cleanup,disconnected=false,writes=0;
- const style={overflowY:'hidden'};
- Object.defineProperty(style,'height',{get:()=>style.value,set:value=>{style.value=value;writes++;}});
- const input={parentElement:{clientWidth:310},style,scrollHeight:132,ownerDocument:{defaultView:{getComputedStyle:()=>({minHeight:'44px',maxHeight:`${maximum}px`})}}};
- class Observer {constructor(fn){callback=fn;}observe(target){assert.equal(target,input.parentElement);}disconnect(){disconnected=true;}}
- let frame; const flush=()=>{const fn=frame;frame=null;fn?.();};
- const view={getComputedStyle:()=>({maxHeight:`${maximum}px`}),requestAnimationFrame:fn=>{frame=fn;return 1;},cancelAnimationFrame:()=>{frame=null;}};
- new Function('useLayoutEffect','ResizeObserver','window','messageInputRef','activeView','resizeComposerInput',app.slice(from,end))(
-  fn=>{cleanup=fn();},Observer,view,{current:input},'chat',resizeComposerInput);
- callback([{contentRect:{width:310}}]); assert.equal(writes,0);
- maximum=112; callback([{contentRect:{width:310}}]); assert.equal(writes,0,'observer must defer layout writes until the next frame'); flush();
- assert.equal(style.overflowY,'auto'); assert.equal(style.height,'112px');
- const measured=writes; callback([{contentRect:{width:310}}]); assert.equal(writes,measured,'height-only observer notifications must not create a measurement loop');
- maximum=176; callback([{contentRect:{width:310}}]);flush(); assert.equal(style.overflowY,'hidden');assert.equal(style.height,'132px');
- callback([{contentRect:{width:260}}]);flush();assert.ok(writes>measured,'wrapped width changes still resize');
- cleanup();assert.equal(disconnected,true);
+test('the composer resizes long drafts after the viewport grows without a width or input change', () => {
+  const source = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8').replaceAll('\r\n', '\n');
+  const start = source.indexOf('  useLayoutEffect(() => {\n    const input = messageInputRef.current;');
+  const end = source.indexOf('  const composerMenuTriggerRef', start);
+  assert.ok(start >= 0 && end > start);
+
+  const composer = { clientWidth: 310 };
+  const input = { value: 'many wrapped lines', parentElement: composer, style: {}, scrollHeight: 200 };
+  const visualViewport = new EventTarget();
+  const view = new EventTarget();
+  const frames = new Map();
+  let nextFrame = 0;
+  let maximum = 108;
+  let onComposerResize;
+  let disconnected = false;
+  Object.assign(view, {
+    visualViewport,
+    getComputedStyle: () => ({ minHeight: '44px', maxHeight: `${maximum}px` }),
+    requestAnimationFrame(callback) { frames.set(++nextFrame, callback); return nextFrame; },
+    cancelAnimationFrame(id) { frames.delete(id); },
+  });
+  input.ownerDocument = { defaultView: view };
+  class Observer {
+    constructor(callback) { onComposerResize = callback; }
+    observe(target) { assert.equal(target, composer); }
+    disconnect() { disconnected = true; }
+  }
+  const flush = () => {
+    assert.equal(frames.size, 1);
+    const [id, callback] = frames.entries().next().value;
+    frames.delete(id);
+    callback();
+  };
+  let cleanup;
+  let measurements = 0;
+  const measure = field => { measurements++; resizeComposerInput(field); };
+  resizeComposerInput(input);
+  assert.equal(input.style.height, '108px');
+  new Function('useLayoutEffect', 'ResizeObserver', 'window', 'messageInputRef', 'activeView',
+    'resizeComposerInput', source.slice(start, end))(
+    effect => { cleanup = effect(); }, Observer, view, { current: input }, 'chat', measure,
+  );
+
+  maximum = 132;
+  // Neither the parent nor the inline textarea height changes until we remeasure.
+  // No ResizeObserver callback or new input should be needed.
+  visualViewport.dispatchEvent(new Event('resize'));
+  view.dispatchEvent(new Event('resize'));
+  assert.equal(input.style.height, '108px');
+  flush();
+  assert.equal(input.style.height, '132px');
+  assert.equal(input.style.overflowY, 'auto');
+  assert.equal(measurements, 1);
+
+  onComposerResize();
+  flush();
+  assert.equal(measurements, 1, 'observer notifications for height alone must not cause more writes');
+  maximum = 108;
+  view.dispatchEvent(new Event('resize'));
+  flush();
+  assert.equal(input.style.height, '108px');
+  composer.clientWidth = 260;
+  onComposerResize();
+  flush();
+  assert.equal(measurements, 3, 'a width change must recalculate wrapping');
+
+  visualViewport.dispatchEvent(new Event('resize'));
+  cleanup();
+  assert.equal(disconnected, true);
+  assert.equal(frames.size, 0);
+  view.dispatchEvent(new Event('resize'));
+  visualViewport.dispatchEvent(new Event('resize'));
+  assert.equal(frames.size, 0, 'cleanup removes both resize listeners and cancels the pending frame');
 });

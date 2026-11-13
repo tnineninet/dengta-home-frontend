@@ -61,6 +61,12 @@ const cssCascade = loadEntrypointCssCascade(
   mobileViewport,
 );
 const css = cssCascade.source;
+const focusedChatPanel = cssCascade.declarations(
+  'html[data-keyboard-open="true"] .main-panel.view-chat:has(.composer textarea:focus)',
+);
+assert.equal(focusedChatPanel.position?.value, "fixed");
+assert.equal(focusedChatPanel.inset?.value, "var(--app-viewport-top, 0px) 0 auto");
+assert.equal(focusedChatPanel.height?.value, "var(--app-height, 100dvh)");
 for (const selector of [".message-content", ".message-row:not(.user) .message-content"]) {
   assert.equal(cssCascade.declarations(selector).animation?.value, "none", "restored chat text must not fade in again");
 }

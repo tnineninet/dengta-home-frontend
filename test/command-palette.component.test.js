@@ -17,13 +17,14 @@ function key(key, extra = {}) {
 }
 
 test("command palette filters real entries, cancels IME Enter, and confirms explicitly", async () => {
-  const navigated = [], closed = [], selected = [];
+  const navigated = [], closed = [], settings = [];
   let tree;
   await act(async () => {
     tree = TestRenderer.create(React.createElement(CommandPalette, {
       open: true,
       onClose: options => closed.push(options),
-      onNavigate: (view, sessionId) => { navigated.push([view, sessionId]); selected.push(view); },
+      onNavigate: (view, sessionId) => navigated.push([view, sessionId]),
+      onOpenSettings: category => settings.push(category),
       features,
       settingsCategories,
       sessions: [{ id: "session-1", title: "雨天的对话" }],
@@ -39,6 +40,14 @@ test("command palette filters real entries, cancels IME Enter, and confirms expl
   await act(async () => input.props.onKeyDown(confirm.event));
   assert.deepEqual(navigated, [["music", undefined]]);
   assert.ok(closed.at(-1)?.navigate === true);
+  for (const [query, category] of [["打开设置", undefined], ["个性化", "persona"]]) {
+    await act(async () => input.props.onChange({ target: { value: query } }));
+    const [row] = tree.root.findAll(node => node.type === "button" && node.props["aria-selected"] === true);
+    await act(async () => row.props.onClick());
+    assert.equal(settings.at(-1), category);
+    assert.equal(closed.at(-1)?.navigate, true, "the settings sheet owns focus after navigation");
+  }
+  assert.deepEqual(settings, [undefined, "persona"]);
   await act(async () => tree.unmount());
   await vite.close();
 });

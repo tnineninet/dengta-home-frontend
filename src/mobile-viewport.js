@@ -36,6 +36,7 @@ function createVisualViewportController({ windowObject, documentObject }) {
   let fullHeight = Math.max(windowObject.innerHeight, viewport.height + viewport.offsetTop);
   let viewportWidth = viewport.width || windowObject.innerWidth;
   let keyboardOpen = false, frame = null, disposed = false, lastHeight = "";
+  let lastTop = 0;
   function fitViewport() {
     frame = null;
     if (disposed || (viewport.scale && Math.abs(viewport.scale - 1) > .01)) return;
@@ -55,6 +56,11 @@ function createVisualViewportController({ windowObject, documentObject }) {
     }
     const state = keyboardOpen ? "true" : "false";
     if (root.dataset.keyboardOpen !== state) root.dataset.keyboardOpen = state;
+    const top = keyboardOpen ? Math.max(0, Math.round(viewport.offsetTop)) : 0;
+    if (top !== lastTop) {
+      lastTop = top;
+      root.style.setProperty("--app-viewport-top", `${top}px`);
+    }
     const height = `${Math.round(keyboardOpen ? viewport.height : fullHeight)}px`;
     if (height !== lastHeight) { lastHeight = height; root.style.setProperty("--app-height", height); }
     if (!keyboardOpen && !focused && windowObject.scrollY) windowObject.scrollTo(0, 0);
@@ -62,9 +68,9 @@ function createVisualViewportController({ windowObject, documentObject }) {
   function schedule() {
     if (!disposed && frame === null) frame = windowObject.requestAnimationFrame(fitViewport);
   }
-  // 键盘打开时 visualViewport 的 scroll 会由布局变化反向触发；此时高度只跟 resize 走，
-  // 避免 fitViewport 写入 --app-height 后又触发 scroll 的循环抖动。
-  function scheduleScroll() { if (!keyboardOpen) schedule(); }
+  function scheduleScroll() {
+    if (!keyboardOpen || Math.max(0, Math.round(viewport.offsetTop)) !== lastTop) schedule();
+  }
   fitViewport();
   viewport.addEventListener("resize", schedule); viewport.addEventListener("scroll", scheduleScroll);
   windowObject.addEventListener("resize", schedule); windowObject.addEventListener("orientationchange", schedule);
@@ -74,6 +80,7 @@ function createVisualViewportController({ windowObject, documentObject }) {
     viewport.removeEventListener("resize", schedule); viewport.removeEventListener("scroll", scheduleScroll);
     windowObject.removeEventListener("resize", schedule); windowObject.removeEventListener("orientationchange", schedule);
     documentObject.removeEventListener("focusin", schedule); documentObject.removeEventListener("focusout", schedule);
+    if (lastTop) root.style.setProperty("--app-viewport-top", "0px");
     delete root.dataset.keyboardOpen;
   };
 }

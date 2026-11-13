@@ -56,6 +56,7 @@ import {
   streamChat,
 } from "./api";
 import WebInstallButton from "./WebInstallButton.jsx";
+import { offersAndroidDownload } from "./pwa-install.js";
 import TypewriterText from "./TypewriterText.jsx";
 import DlnaCastPlayer from "./DlnaCastPlayer.jsx";
 import { activityRequestInScope, buildCompanionActivityRequest, normalizeCompanionActivities } from "./companion-activities.js";
@@ -453,6 +454,7 @@ const SETTINGS_CATEGORIES = [
     id: "persona",
     label: "个性化与记忆",
     description: "提示词、长期详情与主动消息",
+    keywords: "人格 人设 个性化指令 你的详情",
     Icon: BrainCircuit,
   },
   {
@@ -1162,6 +1164,8 @@ function hydrateSessionChatHistory(messages, sessionId) {
 
 function App({ accountControl = null, accountScope = "", userName = "" }) {
   const VOICE_LONG_PRESS_MS = 300;
+  const platform = Capacitor.getPlatform();
+  const showAndroidDownload = offersAndroidDownload(platform);
   const visualPreview = arguments[0]?.visualPreview === true;
   const companionScope = String(arguments[0]?.companionScope || "").trim();
   const accountStorageScope = String(accountScope || "").trim();
@@ -1829,23 +1833,33 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   useLayoutEffect(() => {
     const input = messageInputRef.current;
     if (!input) return undefined;
-    // Width and viewport-based height limits can change independently.
-    let previousWidth = input.parentElement.clientWidth;
+    const composer = input.parentElement;
+    const viewport = window.visualViewport;
+    let previousWidth = composer.clientWidth;
     let previousMaximum = window.getComputedStyle(input).maxHeight;
     let resizeFrame = null;
-    const widthObserver = new ResizeObserver(([entry]) => {
-      const maximum = window.getComputedStyle(input).maxHeight;
-      if (entry.contentRect.width === previousWidth && maximum === previousMaximum) return;
-      previousWidth = entry.contentRect.width;
-      previousMaximum = maximum;
-      if (resizeFrame === null) resizeFrame = window.requestAnimationFrame(() => {
+    const scheduleResize = () => {
+      if (resizeFrame !== null) return;
+      resizeFrame = window.requestAnimationFrame(() => {
         resizeFrame = null;
+        const width = composer.clientWidth;
+        const maximum = window.getComputedStyle(input).maxHeight;
+        if (width === previousWidth && maximum === previousMaximum) return;
+        previousWidth = width;
+        previousMaximum = maximum;
         resizeComposerInput(input);
       });
-    });
-    widthObserver.observe(input.parentElement);
+    };
+    // A taller viewport can raise the CSS limit without resizing the composer:
+    // the textarea still has the inline height measured against the old limit.
+    const widthObserver = new ResizeObserver(scheduleResize);
+    widthObserver.observe(composer);
+    window.addEventListener("resize", scheduleResize);
+    viewport?.addEventListener("resize", scheduleResize);
     return () => {
       widthObserver.disconnect();
+      window.removeEventListener("resize", scheduleResize);
+      viewport?.removeEventListener("resize", scheduleResize);
       if (resizeFrame !== null) window.cancelAnimationFrame(resizeFrame);
     };
   }, [activeView]);
@@ -9483,17 +9497,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             </p>
           </div>
           <div className="settings-app-actions">
-          {Capacitor.getPlatform() !== "ios" && <>
-          <WebInstallButton
-            className="install-button"
-            promptLabel="⤓ 安装到手机/电脑"
-            guidanceLabel="⤓ 安装到手机/电脑"
-            onFeedback={setNotice}
-          />
-            <a className="install-button" href="/download" target="_blank" rel="noreferrer">⤓ 下载安卓安装包</a>
-            <button type="button" className="install-button" onClick={() => window.dispatchEvent(new Event("dengta:check-app-updates"))}>检查应用更新</button>
-            <button type="button" className="install-button" onClick={() => window.dispatchEvent(new Event("dengta:app-update-preferences"))}>更新提醒设置</button>
-          </>}
+            {platform !== "ios" && <WebInstallButton
+              className="install-button"
+              promptLabel="⤓ 安装到手机/电脑"
+              guidanceLabel="⤓ 安装到手机/电脑"
+              onFeedback={setNotice}
+            />}
+            {showAndroidDownload && <>
+              <a className="install-button" href="/download" target="_blank" rel="noreferrer">⤓ 下载安卓安装包</a>
+              <button type="button" className="install-button" onClick={() => window.dispatchEvent(new Event("dengta:check-app-updates"))}>检查应用更新</button>
+              <button type="button" className="install-button" onClick={() => window.dispatchEvent(new Event("dengta:app-update-preferences"))}>更新提醒设置</button>
+            </>}
           </div>
         </div>
 
@@ -10847,7 +10861,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       data-ornament-activity={chatSkinPreferences.ornamentActivity}
       data-chat-streaming={isSending ? "true" : "false"}
     >
-      <Suspense fallback={null}><AppUpdateCenter canPrompt={!isSending && !isTakeoutOpen && !isSettingsOpen && !isStatusPanelExpanded && !isComposerMenuOpen && !isMobileNavOpen && !isSidebarOpen && !dialog && !imageViewer && !distillState.modalOpen} /></Suspense>
+      {showAndroidDownload && <Suspense fallback={null}><AppUpdateCenter canPrompt={!isSending && !isTakeoutOpen && !isSettingsOpen && !isStatusPanelExpanded && !isComposerMenuOpen && !isMobileNavOpen && !isSidebarOpen && !dialog && !imageViewer && !distillState.modalOpen} /></Suspense>}
       <CommandPalette
         open={commandPaletteOpen}
         onClose={(options) => {
@@ -10977,7 +10991,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           <div className="sidebar-account-slot">{accountControl}</div>
         )}
 
-        {Capacitor.getPlatform() !== "ios" && <a
+        {showAndroidDownload && <a
           className="sidebar-settings-button"
           href="/download"
           target="_blank"

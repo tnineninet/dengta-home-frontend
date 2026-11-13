@@ -56,6 +56,14 @@
     padding-bottom: 6px !important;
   }
 
+  /* Safari may pan the page to the caret after the chat has already shrunk
+     to the keyboard. Keep the whole conversation in the visible viewport. */
+  html[data-keyboard-open="true"] .main-panel.view-chat:has(.composer textarea:focus) {
+    position: fixed !important;
+    inset: var(--app-viewport-top, 0px) 0 auto;
+    height: var(--app-height, 100dvh);
+  }
+
   /* The draggable shortcut can otherwise cover Send after the viewport
      contracts. The command panel remains available from the app menu. */
   :root[data-keyboard-open="true"] .mobile-command-dock,

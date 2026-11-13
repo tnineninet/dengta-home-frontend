@@ -26,6 +26,8 @@
 
 手机输入框后续修复与实测范围见 [MOBILE-COMPOSER-FIX.md](MOBILE-COMPOSER-FIX.md)：共享 Android/iPhone 布局去掉重复底部预留、明确语音按钮位置、恢复多行输入及清空回缩。真实 iPhone Safari 和合成浏览器验证不能替代新原生包验收。
 
+11 月 13 日在 iPhone 16e 的 Safari 继续使用隔离的合成账号调试。键盘弹出后，聊天面板和命令面板现在会跟随可视区域的顶边和高度。实机验证了连续两次展开与收起键盘、直接点选搜索结果进入设置、刷新后读回个性化指令并恢复空值，以及独立记忆页显示测试卡片正文。设置首页的安卓下载和更新入口已消失，保留了网页主屏幕安装提示。Windows 上的 Web 构建通过。本轮仍无可安装的 DengTa iPhoneOS IPA，原生真机及真实账号验收待做。
+
 固定提交 `75ad3daa42689bdb48ba46e47b61c494e03d20d7`，来源：[Raw 交接文档](https://raw.githubusercontent.com/DengTaHome/dengta-home/75ad3daa42689bdb48ba46e47b61c494e03d20d7/docs/LOCAL-GPT-HANDOFF.md)、[完整 ZIP](https://codeload.github.com/DengTaHome/dengta-home/zip/75ad3daa42689bdb48ba46e47b61c494e03d20d7)。
 
 | 对象 | HTTP | 字节 | SHA-256 |

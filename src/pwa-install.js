@@ -7,6 +7,10 @@ function isIosDevice(navigatorLike) {
   );
 }
 
+export function offersAndroidDownload(platform = "web", navigatorLike = globalThis.navigator) {
+  return platform !== "ios" && (platform !== "web" || !isIosDevice(navigatorLike));
+}
+
 function isIosSafari(navigatorLike) {
   const userAgent = String(navigatorLike?.userAgent || "");
   return (
