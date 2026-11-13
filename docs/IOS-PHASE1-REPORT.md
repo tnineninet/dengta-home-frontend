@@ -8,6 +8,8 @@
 
 用户随后选择跳过云端重跑并继续本地工作。本轮仅加固未启用的 live 辅助脚本及定向测试，保留原生/真实账号未验收状态；不申请新 runner、不调整支出、不启用 live 或上传账号 Secrets。
 
+再后续用户授权 iPhone 16e + Poki + AllSign 真机验收，并要求签名时才使用 AllSign。Poki 已实际连接和控制手机；未发现 DengTa 真机安装包，未签名/安装。新增手动 iPhoneOS Release 构建、平台校验和 unsigned IPA 打包入口，本地定向测试 14/14 与 actionlint 通过；fresh-context 审查发现的环境继承/失败发布两项已修复并独立复核关闭。Mac 构建尚未执行、真机业务仍未验证。详见 [IOS-DEVICE-BUILD.md](IOS-DEVICE-BUILD.md)。本次仍未恢复云端重跑或改变支出。
+
 | 环境检查 | 实际结果 |
 |---|---|
 | 本机 | Windows 11 Pro x64，10.0.22621；xcodebuild/xcrun 均不存在 |

@@ -197,3 +197,31 @@
   ID/header/failed-first-read and PUT/DELETE response-binding cases. The source
   helper is unchanged by these final test additions. P2 independent replay is
   closed; cloud/user-account evidence has not advanced.
+
+## iPhone device-build preparation — 2026-11-13
+
+- User authorized iPhone 16e control through the existing Poki project and
+  AllSign signing/install when needed. Live Poki status/look and AllSign launch
+  succeeded; Resources/Signed/Downloads had no DengTa candidate. Exited AllSign
+  at the user's request to defer it until signing. No file import, signing,
+  app install or real-account interaction occurred.
+- Local archive inventory and read-only GitHub releases/artifacts/runners
+  checks found no reusable iPhoneOS IPA or self-hosted runner. Existing arm64
+  logs explicitly identify Simulator platform 7. Billing/rerun remains skipped.
+- Added isolated exact-SHA iPhoneOS Release builder, thin-arm64 platform/plist/
+  framework checks, unsigned IPA packaging, and a manual-only device mode in
+  the existing workflow. No dependency, production app, backend or deployment
+  changes. Outputs stay outside the checkout; signing credentials are omitted.
+- New tests14/14 and existing emitted-build-policy test1/1 pass. Official
+  actionlint1.7.12 validates the workflow with exit0 (shellcheck/pyflakes disabled).
+  No Xcode build, IPA, installation or DengTa device screenshots were produced.
+- Two initial subagent attempts hit429 and were not counted as reviews. A later
+  fresh-context EGM Codebase Details review completed, found environment
+  inheritance and post-copy cleanup/publication defects, and independently
+  verified both fixes. Git/plutil/ditto now receive explicit allowlisted env;
+  final IPA publication uses an exclusive same-filesystem hard link; cleanup
+  warnings are recorded; failed jobs upload evidence only, not IPA candidates.
+- Local evidence: device-package-tests.log, device-workflow-actionlint.log and
+  device-package-review/goldfish_review_report.md under the existing private
+  ios-cloud-acceptance-20261113 audit directory. Device build instructions are
+  in IOS-DEVICE-BUILD.md. Commit uses skip ci; no workflow was dispatched.

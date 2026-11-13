@@ -2,6 +2,8 @@
 
 状态：工程已由 Capacitor CLI 8.4.3 生成。Windows Web 构建与 sync 已执行；原生构建/运行结论以 `IOS-PHASE1-REPORT.md` 的实际 CI run 为准。
 
+用户随后授权 iPhone 16e 真机验收。新增加的 iPhoneOS Release / unsigned IPA 手动入口、平台校验和 AllSign 交接见 [IOS-DEVICE-BUILD.md](IOS-DEVICE-BUILD.md)。该入口尚未在 Mac 执行；下方已有 Simulator 证据不能用于真机安装。用户跳过云端重跑的选择仍保留。
+
 ## 环境与源码
 
 - 生产基线：`f8fa26aed2bdff46505b32a0115952fa3b92c896`，产品版本 2.13.43。

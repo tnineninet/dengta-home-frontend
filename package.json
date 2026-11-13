@@ -22,6 +22,8 @@
     "build": "eslint src --quiet && vite build && npm run verify:csp",
     "build:web": "npm run build && npm run verify:public-auth-build",
     "verify:ios-build-policy": "node scripts/verify-ios-build-policy.mjs",
+    "build:ios-device": "node scripts/ios-device-build.mjs",
+    "test:ios-device": "node --test test/ios-device-package.test.js",
     "verify:public-auth-build": "node scripts/verify-public-auth-build.mjs",
     "android:sync": "cap sync android",
     "lint": "eslint .",
