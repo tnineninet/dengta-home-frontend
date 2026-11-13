@@ -445,19 +445,24 @@ final class BusinessFlowTests: XCTestCase {
             settingsOpen = false
             try require(text("留在家里的事情").waitForExistence(timeout: 25), "The product memory page did not open.")
             try require(text("已读取当前账号与伴侣的摘要。").waitForExistence(timeout: 25), "The scoped memory list did not confirm its read.")
+            if mode == "synthetic" {
+                let memory = text("这是一条仅用于本地验证的合成记忆。")
+                try reveal(memory)
+                try require(visible(memory, aboveKeyboard: false), "The synthetic memory card must be visible.")
+            }
             evidence["memoryOpened"] = true
 
             if mode == "synthetic" {
                 try tap("打开菜单")
-                let account = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "账号：")).firstMatch
+                // WebKit exposes aria-haspopup=menu as Other on iOS even when
+                // the product uses a native HTML button. Match its exact label.
+                let accountLabel = "账号：" + (try configured("DENGTA_BUSINESS_EMAIL"))
+                let account = app.descendants(matching: .any)
+                    .matching(NSPredicate(format: "label == %@", accountLabel)).firstMatch
                 try reveal(account); account.tap()
-                let logoutButton = button("退出登录")
-                if logoutButton.exists {
-                    try reveal(logoutButton); logoutButton.tap()
-                } else {
-                    let item = app.menuItems["退出登录"]
-                    try reveal(item); item.tap()
-                }
+                let logout = app.descendants(matching: .any)
+                    .matching(NSPredicate(format: "label == %@", "退出登录")).firstMatch
+                try reveal(logout); logout.tap()
                 try require(app.textFields["邮箱"].waitForExistence(timeout: 30), "Synthetic logout did not return to the account form.")
                 app.terminate(); app.launch()
                 try require(app.textFields["邮箱"].waitForExistence(timeout: 30) && !app.textViews["聊天消息"].exists,
