@@ -197,8 +197,8 @@ try {
   const tested = await command("business-xctest", "xcodebuild", ["-xctestrun", runtimePlan, "-destination", `id=${device}`,
     "-parallel-testing-enabled", "NO", "-maximum-concurrent-test-simulator-destinations", "1",
     "-only-testing:AppUITests/BusinessFlowTests/testCoreBusinessFlow", "-test-timeouts-enabled", "YES",
-    "-default-test-execution-time-allowance", "360", "-maximum-test-execution-time-allowance", "480",
-    "-resultBundlePath", path.join(privateRoot, "business.xcresult"), "test-without-building"], { timeout: 600_000, required: false });
+    "-default-test-execution-time-allowance", "600", "-maximum-test-execution-time-allowance", "720",
+    "-resultBundlePath", path.join(privateRoot, "business.xcresult"), "test-without-building"], { timeout: 840_000, required: false });
   if (!tested.passed) {
     manifest.syntheticFailureScreenshot = await copySyntheticScreen("synthetic-failed.png");
     currentStage = "business-xctest";

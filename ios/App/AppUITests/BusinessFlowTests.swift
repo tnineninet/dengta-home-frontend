@@ -103,10 +103,10 @@ final class BusinessFlowTests: XCTestCase {
         app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", value)).firstMatch
     }
 
-    private func visible(_ element: XCUIElement, aboveKeyboard: Bool) -> Bool {
+    private func visible(_ element: XCUIElement, aboveKeyboard: Bool, minimumY: CGFloat? = nil) -> Bool {
         guard element.exists, element.isHittable else { return false }
         let frame = element.frame, window = app.windows.firstMatch.frame
-        let top = scrollTop(for: element, window: window)
+        let top = minimumY ?? scrollTop(for: element, window: window)
         let bottom = aboveKeyboard
             ? min(app.keyboards.firstMatch.frame.minY, window.maxY - safeBottom)
             : window.maxY - safeBottom
@@ -129,18 +129,26 @@ final class BusinessFlowTests: XCTestCase {
     private func reveal(_ element: XCUIElement, aboveKeyboard: Bool = false) throws {
         try require(element.waitForExistence(timeout: 20), "Required business control did not appear.")
         let avoidKeyboard = aboveKeyboard || app.keyboards.firstMatch.exists
+        let contentTop = scrollTop(for: element, window: app.windows.firstMatch.frame)
         for _ in 0..<12 {
-            if visible(element, aboveKeyboard: avoidKeyboard) { return }
+            if visible(element, aboveKeyboard: avoidKeyboard, minimumY: contentTop) { return }
             let window = app.windows.firstMatch.frame
             let availableBottom = avoidKeyboard ? app.keyboards.firstMatch.frame.minY : window.maxY - safeBottom
-            let top = scrollTop(for: element, window: window) + 12
+            let top = contentTop + 12
             let bottom = max(top + 90, availableBottom - 45)
-            let down = element.frame.minY < top
-            let from = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: window.maxX - 24, dy: down ? top + 10 : bottom))
-            let to = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: window.maxX - 24, dy: down ? bottom : top + 10))
-            from.press(forDuration: 0.05, thenDragTo: to)
+            let frame = element.frame, down = frame.minY < top
+            let remaining = down ? top + 8 - frame.minY : frame.maxY - (availableBottom - 12)
+            // Full-height flicks overshoot a textarea and alternate forever
+            // between above/below it. Move only the missing distance, then hold
+            // before lifting so scroll inertia does not undo the alignment.
+            let distance = min(max(50, remaining), (bottom - top) * 0.75)
+            let start = down ? top + 10 : bottom
+            let finish = down ? start + distance : start - distance
+            let from = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: window.maxX - 24, dy: start))
+            let to = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: window.maxX - 24, dy: finish))
+            from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.3)
         }
-        try require(visible(element, aboveKeyboard: avoidKeyboard), "Business control must be fully visible in its scrollport.")
+        try require(visible(element, aboveKeyboard: avoidKeyboard, minimumY: contentTop), "Business control must be fully visible in its scrollport.")
     }
 
     private func tap(_ label: String, containing: Bool = false) throws {
