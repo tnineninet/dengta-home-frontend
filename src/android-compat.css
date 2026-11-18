@@ -373,6 +373,16 @@ html.dengta-flat-paint .status-flow-field {
 
 .settings-memory-profile-card .settings-card-heading {
   align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.settings-memory-profile-card .settings-card-heading > div {
+  flex: 1 1 13rem;
+  min-width: 0;
+}
+
+.settings-memory-profile-card .settings-inline-button {
+  flex: 0 0 auto;
 }
 
 .settings-memory-profile-card .companion-profile {
