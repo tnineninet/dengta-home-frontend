@@ -7,12 +7,13 @@ import { createServer } from "vite";
 const original = new Map(["document", "window", "navigator", "MutationObserver", "IS_REACT_ACT_ENVIRONMENT"].map(key => [key, Object.getOwnPropertyDescriptor(globalThis, key)]));
 const vite = await createServer({ server: { middlewareMode: true }, logLevel: "silent" });
 const Backdrop = (await vite.ssrLoadModule("/src/CoastVideoBackdrop.jsx")).default;
-let renderer, video, attributes, plays, documentObject;
+let renderer, video, attributes, plays, documentObject, mediaQuery;
 const flush = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); };
 
 test.beforeEach(() => {
   documentObject = Object.assign(new EventTarget(), { hidden: false, documentElement: { dataset: {} } });
-  const windowObject = Object.assign(new EventTarget(), { matchMedia: () => Object.assign(new EventTarget(), { matches: false }) });
+  mediaQuery = Object.assign(new EventTarget(), { matches: false });
+  const windowObject = Object.assign(new EventTarget(), { matchMedia: () => mediaQuery });
   for (const [key, value] of Object.entries({ document: documentObject, window: windowObject, navigator: {}, MutationObserver: undefined, IS_REACT_ACT_ENVIRONMENT: true })) {
     Object.defineProperty(globalThis, key, { configurable: true, value });
   }
@@ -46,6 +47,25 @@ async function mount(props) {
   });
 }
 const layer = () => renderer.root.findByProps({ className: "coast-video-backdrop" });
+
+test("desktop-to-phone resize stops the hidden decoder and returning to desktop can resume", async () => {
+  await mount({ sky: { solarMinute: 720 } });
+  assert.equal(plays, 1);
+  await act(async () => { mediaQuery.matches = true; mediaQuery.dispatchEvent(new Event("change")); await flush(); });
+  assert.equal(attributes.has("src"), false);
+  assert.equal(layer().props["data-playback"], "static");
+  await act(async () => { mediaQuery.matches = false; mediaQuery.dispatchEvent(new Event("change")); await flush(); });
+  assert.equal(plays, 2);
+  assert.equal(attributes.get("src"), "/assets/coast-video/coast-day.mp4");
+});
+
+test("initial phone layout never loads a video source", async () => {
+  mediaQuery.matches = true;
+  await mount({ sky: { solarMinute: 720 } });
+  assert.equal(plays, 0);
+  assert.equal(attributes.has("src"), false);
+  assert.equal(layer().props["data-playback"], "static");
+});
 
 test("real component is decorative, silent, inline, unfocusable, and owns only one decoder", async () => {
   await mount({ sky: { solarMinute: 720 }, weatherMode: "rain" });

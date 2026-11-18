@@ -61,6 +61,7 @@ function createSessionManager({
 }
 
 function textContent(node) {
+  if (Array.isArray(node)) return node.map(textContent).join("");
   if (typeof node === "string") return node;
   if (!node || typeof node !== "object") return "";
   return (node.children || []).map(textContent).join("");
@@ -538,6 +539,41 @@ try {
     });
     assert.equal(signUpCalls, 0, "mismatched passwords must not reach the auth service");
     assert.match(textContent(renderer.toJSON()), /两次输入的密码不一致/);
+    await act(async () => renderer.unmount());
+  }
+  for (const available of [true, false]) {
+    let phase = { status: "authenticated", user: { id: "fixture-a", email: "a@example.invalid" }, nativeCallbackApproval: null };
+    const manager = createSessionManager({ signIn: async ({ publish }) => publish(phase) });
+    const decisions = []; let mounts = 0, unmounts = 0, shown = 0, focused = 0;
+    manager.resolveNativeAuthCallbackApproval = (id, approved) => {
+      decisions.push({ id, approved }); phase = { ...phase, nativeCallbackApproval: null }; void manager.signIn();
+    };
+    await manager.signIn();
+    function DraftApp() {
+      const [value, setValue] = React.useState("fictional unsaved draft");
+      React.useEffect(() => { mounts += 1; return () => { unmounts += 1; }; }, []);
+      return React.createElement("input", { "data-draft": true, value, onChange: event => setValue(event.target.value) });
+    }
+    let renderer;
+    await act(async () => { renderer = TestRenderer.create(React.createElement(AuthGate, { sessionManager: manager }, React.createElement(DraftApp)), {
+      createNodeMock: node => {
+        if (node.type === "dialog") return { open: false, showModal: available ? function () { this.open = true; shown += 1; } : undefined, close() { this.open = false; } };
+        if (node.type === "button") return { focus() { focused += 1; } };
+        return null;
+      },
+    }); });
+    await act(async () => { phase = { ...phase, nativeCallbackApproval: { id: 41, email: "b@example.invalid", currentEmail: "a@example.invalid", hasCurrentUser: true, recovery: true } }; await manager.signIn(); });
+    if (available) {
+      assert.equal(shown, 1); assert.equal(focused, 1);
+      assert.match(textContent(renderer.toJSON()), /b@example\.invalid/);
+      let prevented = false;
+      await act(async () => renderer.root.findByType("dialog").props.onCancel({ preventDefault() { prevented = true; } }));
+      assert.equal(prevented, true);
+    }
+    assert.deepEqual(decisions, [{ id: 41, approved: false }]);
+    assert.equal(renderer.root.findAllByType("dialog").length, 0);
+    assert.equal(renderer.root.findByProps({ "data-draft": true }).props.value, "fictional unsaved draft");
+    assert.equal(mounts, 1); assert.equal(unmounts, 0, "approval must preserve the logged-in App and unsaved editor state");
     await act(async () => renderer.unmount());
   }
 } finally {

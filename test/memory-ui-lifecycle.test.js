@@ -6,6 +6,7 @@ import { test } from "node:test";
 import React, { act } from "react";
 import TestRenderer from "react-test-renderer";
 import { createServer } from "vite";
+import { fixtureCache } from "./helpers/vite-fixture-cache.js";
 import { AUTH_STATUS, createAuthSessionManager } from "../src/auth-session.js";
 import { settingsSaveScope } from "../src/settings-save-scope.js";
 
@@ -15,7 +16,7 @@ const text = node => typeof node === "string" ? node : (node?.children || []).ma
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { resolve, promise }; };
 const connection = (type = "supabase_memory", name = "fictional-saved") => ({ id: "fictional-connection-" + type, connection_type: type, name, enabled: true, credential_configured: true, credential_state: "available", credential_reentry_required: false, last_status: "connected", ...(type === "supabase_memory" ? { project_url: "https://fictional.supabase.co", table_name: "dengta_memories", read_tools: ["search_external_memories"] } : { endpoint: "https://fictional.example.test/mcp", read_tools: ["search_memories"] }) });
 const list = (...connections) => ({ ok: true, connections });
-const health = (count = 7) => ({ configured: true, reachable: true, tenant_verified: true, memory_enabled: true, embedding_available: true, total_memories: count, with_embedding: count, ok: true });
+const health = (count = 7) => ({ provider: "kiwi", storage: "kiwi", configured: true, reachable: true, tenant_verified: true, memory_enabled: true, embedding_available: true, total_memories: count, with_embedding: count, ok: true });
 const testReceipt = type => ({ ok: true, result: type === "supabase_memory" ? { connection_type: type, table_name: "dengta_memories", record_count: 4, sample_columns: ["id", "summary", "updated_at"] } : { connection_type: type, tools: [{ name: "search_memories" }, { name: "write_memory" }], read_tools: ["search_memories"] } });
 async function settle() { for (let i = 0; i < 50; i += 1) await Promise.resolve(); }
 
@@ -34,12 +35,15 @@ async function harness(kind = "external", { signedIn = true, companion = COMPANI
   const manager = createAuthSessionManager({ supabaseUrl: "https://fictional.example.test", supabaseAnonKey: "fictional-public-placeholder", storage, createClientFn: () => sdk });
   await manager.initialize();
   if (companion) manager.setActiveCompanionId(companion);
-  const requests = [], events = [], timers = new Map();
+  const requests = [], events = [], timers = new Map(), listeners = new Map();
   let nextTimer = 0, tree, confirms = 0;
   Object.defineProperty(globalThis, "window", { configurable: true, value: {
     setTimeout(callback, delay) { const id = ++nextTimer; timers.set(id, { callback, delay }); return id; },
     clearTimeout(id) { timers.delete(id); },
-    confirm() { confirms += 1; return true; }, dispatchEvent(event) { events.push(event.type); },
+    confirm() { confirms += 1; return true; },
+    addEventListener(name, fn) { if (!listeners.has(name)) listeners.set(name, new Set()); listeners.get(name).add(fn); },
+    removeEventListener(name, fn) { listeners.get(name)?.delete(fn); },
+    dispatchEvent(event) { events.push(event.type); listeners.get(event.type)?.forEach(fn => fn(event)); },
   } });
   Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", { configurable: true, value: true });
   Object.defineProperty(globalThis, "__memoryUiFixture", { configurable: true, value: { manager } });
@@ -49,7 +53,7 @@ async function harness(kind = "external", { signedIn = true, companion = COMPANI
       respond(status, data, responseCompanion = companion) { resolve(new Response(JSON.stringify(data), { status, headers: responseCompanion ? { "X-DengTa-Companion-Id": responseCompanion } : {} })); }, respondWith: resolve });
     // Ignore transport abort intentionally to exercise real API and lifecycle cancellation.
   }) });
-  const vite = await createServer({ configFile: false, root: fileURLToPath(new URL("..", import.meta.url)), envDir: false, appType: "custom", logLevel: "silent", server: { middlewareMode: true },
+  const vite = await createServer({ configFile: false, cacheDir: fixtureCache, root: fileURLToPath(new URL("..", import.meta.url)), envDir: false, appType: "custom", logLevel: "silent", server: { middlewareMode: true, hmr: false, watch: null },
     define: { "import.meta.env.VITE_API_URL": JSON.stringify("http://memory.example.test"), "import.meta.env.VITE_SUPABASE_URL": JSON.stringify(""), "import.meta.env.VITE_SUPABASE_ANON_KEY": JSON.stringify("") },
     plugins: [{ name: "memory-fixture-auth-and-baseline", enforce: "pre", async transform(source, id) {
       const path = id.replaceAll("\\", "/").split("?")[0];
@@ -69,6 +73,7 @@ async function harness(kind = "external", { signedIn = true, companion = COMPANI
   const article = type => tree.root.findAll(node => node.type === "article").find(node => text(node).includes(type === "supabase_memory" ? "Supabase 专用记忆库" : "Ombre Brain MCP"));
   const button = (label, type) => (type ? article(type) : tree.root).findAll(node => node.type === "button" && text(node) === label)[0];
   return { manager, requests, events, timers, render, text: () => text(tree.toJSON()), button,
+    async change(scopeKey, source) { await act(async () => { window.dispatchEvent(new CustomEvent("dengta:memory-updated", { detail: { scopeKey, source } })); await settle(); }); },
     input(label, type = "supabase_memory") { return article(type).findAll(node => node.type === "label").find(node => text(node).startsWith(label)).findByType("input"); },
     async edit(label, value, type = "supabase_memory") { await act(async () => { this.input(label, type).props.onChange({ target: { value } }); await settle(); }); },
     async click(label, type, twice = false) { const target = button(label, type); assert.ok(target, "actual UI contains " + label); await act(async () => { target.props.onClick(); if (twice) target.props.onClick(); await settle(); }); },
@@ -87,6 +92,19 @@ async function harness(kind = "external", { signedIn = true, companion = COMPANI
 test("failed connection list has a GET-only recovery and never labels unknown as zero configured", async () => {
   const h = await harness();
   try { await h.respond(0, 503, { code: "fictional_read_error", message: "FICTIONAL_PRIVATE_BODY" }); assert.match(h.text(), /尚未读取成功/); assert.doesNotMatch(h.text(), /0 个已配置|FICTIONAL_PRIVATE_BODY/); await h.click("重新读取连接", undefined, true); assert.equal(h.requests.length, 2); await h.respond(1, 200, list()); assert.match(h.text(), /0 个已配置/); assert.ok(h.requests.every(r => r.method === "GET")); } finally { await h.finish(); }
+});
+test("Kiwi health becomes a previous check when a write occurs in flight; foreign scope cannot invalidate it", async () => {
+  const h = await harness("gateway"); try {
+    const scope = settingsSaveScope(h.manager.getSnapshot());
+    await h.click("检测连接与账号范围");
+    await h.change(scope, "memory-write"); await h.respond(0, 200, health());
+    assert.match(h.text(), /上次检测：服务可达/);
+    await h.click("检测连接与账号范围");
+    await h.change("other-account", "chat-job-succeeded"); await h.respond(1, 200, health());
+    assert.doesNotMatch(h.text(), /上次检测：服务可达/);
+    await h.change(scope, "chat-job-accepted"); assert.match(h.text(), /上次检测：服务可达/);
+    assert.equal(h.requests.length, 2); assert.ok(h.requests.every(request => request.method === "GET"));
+  } finally { await h.finish(); }
 });
 
 for (const bad of [{}, { ok: true }, { ok: true, connections: {} }, list({ ...connection(), enabled: "yes" }), list(connection(), connection())]) {
@@ -213,7 +231,7 @@ for (const bad of [{}, { configured: true, reachable: true, tenant_verified: fal
 
 test("Kiwi unknown failed status never exposes its raw message or malformed code", async () => {
   const h = await harness("kiwi");
-  try { await h.click("检测连接与账号范围"); await h.respond(0, 200, { configured: true, reachable: false, error: "sk-fictional-secret", message: "FICTIONAL_PRIVATE_BODY" }); assert.match(h.text(), /错误代码：unknown/); assert.doesNotMatch(h.text(), /sk-fictional-secret|FICTIONAL_PRIVATE_BODY/); } finally { await h.finish(); }
+  try { await h.click("检测连接与账号范围"); await h.respond(0, 200, { provider: "kiwi", storage: "kiwi", configured: true, reachable: false, error: "sk-fictional-secret", message: "FICTIONAL_PRIVATE_BODY" }); assert.match(h.text(), /错误代码：unknown/); assert.doesNotMatch(h.text(), /sk-fictional-secret|FICTIONAL_PRIVATE_BODY/); } finally { await h.finish(); }
 });
 
 test("Kiwi missing memory feature is not reported as valid zero-memory recall", async () => {
@@ -250,7 +268,7 @@ test("late Kiwi 401 JSON clone cannot expire a new account after response header
 
 test("failed Kiwi recheck labels retained health as previous result and can recover without writes", async () => {
   const h = await harness("kiwi");
-  try { await h.click("检测连接与账号范围"); await h.respond(0, 200, health()); await h.click("检测连接与账号范围"); await h.respond(1, 503, { code: "fictional_failed_health", message: "FICTIONAL_PRIVATE_BODY" }); assert.match(h.text(), /上次检测/); assert.match(h.text(), /7 条记忆/); assert.doesNotMatch(h.text(), /FICTIONAL_PRIVATE_BODY/); await h.click("检测连接与账号范围"); await h.respond(2, 200, { ...health(), embedding_available: false, ok: false }); assert.match(h.text(), /语义召回未通过/); assert.ok(h.requests.every(r => r.method === "GET")); } finally { await h.finish(); }
+  try { await h.click("检测连接与账号范围"); await h.respond(0, 200, health()); await h.click("检测连接与账号范围"); await h.respond(1, 503, { code: "fictional_failed_health", message: "FICTIONAL_PRIVATE_BODY" }); assert.match(h.text(), /上次检测/); assert.match(h.text(), /7 条记忆/); assert.doesNotMatch(h.text(), /FICTIONAL_PRIVATE_BODY/); await h.click("检测连接与账号范围"); await h.respond(2, 200, { ...health(), embedding_available: false, ok: true }); assert.match(h.text(), /嵌入服务暂不可用/); assert.ok(h.requests.every(r => r.method === "GET")); } finally { await h.finish(); }
 });
 
 test("timed-out Kiwi 401 JSON clone cannot expire the session after a successful manual recheck", async () => {

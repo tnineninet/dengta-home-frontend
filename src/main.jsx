@@ -25,6 +25,10 @@ import { authSession } from "./auth-session.js";
 import DengTaPrelude from "./DengTaPrelude.jsx";
 import { prewarmBackend } from "./backend-prewarm.js";
 import { installAndroidCompatibility } from "./android-compat.js";
+import { Capacitor } from "@capacitor/core";
+import { installNativeDeepLinks, markNativePlatform } from "./native-app-runtime.js";
+import "./ios.css";
+import "./mobile-composer.css";
 import { pwaInstallController } from "./pwa-install.js";
 import ReceiverApp from "./ReceiverApp.jsx";
 import DownloadAppChip from "./DownloadAppChip.jsx";
@@ -37,12 +41,13 @@ import {
 } from "./app-startup-recovery.js";
 
 const isReceiverRoute = window.location.pathname === "/receive";
+markNativePlatform(Capacitor);
 
 // Some MIUI/HyperOS WebViews can leave a transparent first-screen layer above
 // the app, or apply a broken start-up zoom. Give the user a native-looking,
 // always-top escape hatch if the page received no touch for several seconds.
 function installAndroidTouchRecovery() {
-  if (!window.Capacitor?.isNativePlatform?.()) return;
+  if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android") return;
   if (window.__dengtaTouchRecoveryInstalled) return;
   window.__dengtaTouchRecoveryInstalled = true;
   let recoveryButton = null;
@@ -107,38 +112,24 @@ if (!isReceiverRoute) {
 // 原生 App 无法通过 WebView URL 感知 fragment，必须监听 @capacitor/app 事件。
 // 放映厅邀请深链：dengta://room/join?code=XXXXXX 或 https://dengtahome.com/room/join?code=XXXXXX
 if (!isReceiverRoute) {
-  let lastHandledDeepLink = "";
-  const handleDeepLink = (rawValue) => {
-    const rawUrl = String(rawValue || "");
-    if (!rawUrl || rawUrl === lastHandledDeepLink) return;
-    lastHandledDeepLink = rawUrl;
-    if (rawUrl.startsWith("dengta://auth")) {
-      void authSession
-        .handleAuthCallbackUrl(rawUrl)
-        .catch(() => {
-          // 回跳失败会发布 error 快照，由 AuthGate 显示给用户
-        });
-    } else if (
-      rawUrl.includes("room/join") ||
-      /[?&]room_code=/.test(rawUrl)
-    ) {
-      // 放映厅邀请：把邀请码存入本地，App 加载完成后弹出接受/拒绝邀请
-      import("./room-invite.js")
-        .then((m) => m.acceptRoomInviteUrl(rawUrl))
-        .catch(() => {});
-    }
-  };
+  let disposeDeepLinks;
+  let disposed = false;
   import("@capacitor/app")
     .then(({ App }) => {
-      App.addListener("appUrlOpen", (data) => handleDeepLink(data?.url));
-      // 冷启动只通过 getLaunchUrl() 提供首个深链，不会触发 appUrlOpen。
-      Promise.resolve(App.getLaunchUrl?.())
-        .then((data) => handleDeepLink(data?.url))
-        .catch(() => {});
+      if (disposed || !Capacitor.isNativePlatform()) return;
+      disposeDeepLinks = installNativeDeepLinks({
+        app: App,
+        onAuthUrl: rawUrl => authSession.handleAuthCallbackUrl(rawUrl),
+        onRoomUrl: rawUrl => import("./room-invite.js").then(m => m.acceptRoomInviteUrl(rawUrl)),
+      });
     })
     .catch(() => {
       // @capacitor/app 在纯 Web 构建中不可用时静默跳过，邮箱验证走 Web URL 回跳
     });
+  if (import.meta.hot) import.meta.hot.dispose(() => {
+    disposed = true;
+    disposeDeepLinks?.();
+  });
 }
 
 // Pause decorative animations while the app is hidden or the user is actively
@@ -221,7 +212,7 @@ createRoot(document.getElementById("root")).render(
             sessionManager={authSession}
           >
             <Suspense fallback={<AppLoadingScreen />}>
-              <LoadedApp key={JSON.stringify([snapshot.user?.id, snapshot.activeCompanionId])} accountControl={accountControl} accountScope={snapshot.user?.id || ""} userName={snapshot.user?.displayName} companionScope={snapshot.activeCompanionId || ""} />
+              <LoadedApp key={JSON.stringify([snapshot.user?.id, snapshot.activeCompanionId, snapshot.scopeRevision])} accountControl={accountControl} accountScope={snapshot.user?.id || ""} userName={snapshot.user?.displayName} companionScope={snapshot.activeCompanionId || ""} />
             </Suspense>
           </AppStartupBoundary>
         )}

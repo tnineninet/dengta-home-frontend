@@ -753,7 +753,10 @@ export default function TogetherMusic({ session, busy = false, onStart, onStartR
   };
   const openCookiePlaylist = async (playlistId) => {
     if (!canUseCookie() || !playlistId) return;
-    await runCookieBrowse("detail", playlistId, options => cookieGetPlaylistTracks(playlistId, options), data => setCookiePlaylistDetail({ id: playlistId, ...(data?.playlist || {}) }));
+    const summary = [...(cookieMyPlaylists?.owned || []), ...(cookieMyPlaylists?.subscribed || [])].find(row => row.playlist_id === playlistId);
+    await runCookieBrowse("detail", playlistId, options => cookieGetPlaylistTracks(playlistId, options), data => {
+      setCookiePlaylistDetail({ ...data.playlist, id: playlistId, expectedCount: Number(summary?.item_count) || 0 });
+    });
   };
   const openCookieDaily = async () => {
     if (!canUseCookie()) return;
@@ -1110,9 +1113,17 @@ export default function TogetherMusic({ session, busy = false, onStart, onStartR
                       <button type="button" disabled={cookieBusy} className="music-cookie-back" onClick={() => closeCookiePlaylist(cookieReads.detail?.resourceId)}>← 返回歌单列表</button>
                       <CookieReadFeedback kind="detail" read={cookieReads.detail} busy={cookieBusy} onRetry={() => void openCookiePlaylist(cookieReads.detail?.resourceId)} />
                       {cookiePlaylistDetail && <p className="music-cookie-playlist-detail-title">{cookiePlaylistDetail.name}（{cookiePlaylistDetail.tracks?.length || 0} 首）</p>}
-                      {cookieReads.detail?.phase === "ready" && !cookiePlaylistDetail?.tracks?.length && <p role="status">这个歌单暂无歌曲。</p>}
-                      <ul className="music-cookie-track-list">
-                        {(cookiePlaylistDetail?.tracks || []).slice(0, 60).map((track, index) => (
+                      {cookiePlaylistDetail && cookiePlaylistDetail.expectedCount > cookiePlaylistDetail.tracks.length ? (
+                        <div className="music-provider-feedback"><p role="status">已读取 {cookiePlaylistDetail.tracks.length} 首，歌单列表标有 {cookiePlaylistDetail.expectedCount} 首。</p><button type="button" disabled={cookieBusy || cookieOpBusy} onClick={() => void openCookiePlaylist(cookiePlaylistDetail.id)}>重新读取内容</button></div>
+                      ) : cookieReads.detail?.phase === "ready" && !cookiePlaylistDetail?.tracks?.length && <p role="status">这个歌单暂无歌曲。</p>}
+                      {cookiePlaylistDetail?.tracks?.length > 0 && <MusicPagedList
+                        key={cookiePlaylistDetail.id}
+                        label="网易云歌单"
+                        items={cookiePlaylistDetail.tracks}
+                        listTag="ul"
+                        listClassName="music-cookie-track-list"
+                        showSinglePage
+                        renderItem={(track, index) => (
                           <li key={track.id || index}>
                             <span className="music-cookie-track-title">{index + 1}. {track.title}<em>{track.artist}</em></span>
                             <span className="music-cookie-track-actions">
@@ -1120,8 +1131,8 @@ export default function TogetherMusic({ session, busy = false, onStart, onStartR
                               <button type="button" disabled={cookieBusy || cookieOpBusy} onClick={() => void launchExternalTrack("song", track.id, true)}><Play aria-hidden="true" size={13} /><span style={{marginLeft:3}}>播放</span></button>
                             </span>
                           </li>
-                        ))}
-                      </ul>
+                        )}
+                      />}
                     </div>
                   )}
                 </div>

@@ -111,8 +111,9 @@ function createFakeSupabase(initialSession = null, { signUpIdentities, signUpCon
     client: { auth },
     calls,
     setSession(nextSession) {
+      const changedAccount = session?.user?.id !== nextSession?.user?.id;
       session = nextSession;
-      listener?.("TOKEN_REFRESHED", session);
+      listener?.(changedAccount ? "SIGNED_IN" : "TOKEN_REFRESHED", session);
     },
     enterPasswordRecovery(nextSession) {
       session = nextSession;
@@ -142,7 +143,10 @@ function createFakeSupabase(initialSession = null, { signUpIdentities, signUpCon
   assert.equal(factoryCalls[0].options.auth.persistSession, true);
   assert.equal(factoryCalls[0].options.auth.autoRefreshToken, true);
   assert.equal(factoryCalls[0].options.auth.detectSessionInUrl, true);
-  assert.equal(factoryCalls[0].options.auth.storage, storage);
+  const sdkStorage = factoryCalls[0].options.auth.storage;
+  assert.notEqual(sdkStorage, storage, "each SDK owns a revocable lease");
+  await sdkStorage.setItem("dengta_home_auth_v1", "fictional-persisted-session");
+  assert.equal(storage.getItem("dengta_home_auth_v1"), "fictional-persisted-session");
   assert.equal(manager.getSnapshot().status, AUTH_STATUS.authenticated);
   assert.deepEqual(await manager.getRequestContext(), {
     accessToken: "restored-token",

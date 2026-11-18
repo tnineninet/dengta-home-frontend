@@ -72,14 +72,17 @@ export function normalizePrivateMediaCatalog(data = {}) {
   };
 }
 
+export function privateMediaPreferenceId(preferences, purpose) {
+  // The server returns {user_avatar: id}; older directories used suffixed keys.
+  for (const key of [purpose, `${purpose}_asset_id`, `${purpose}_id`]) {
+    if (Object.prototype.hasOwnProperty.call(preferences || {}, key)) return String(preferences[key] || "");
+  }
+  return "";
+}
+
 export function selectedPrivateMedia(catalog, purpose) {
   const normalized = normalizePrivateMediaCatalog(catalog);
-  const selectedId = String(
-    normalized.preferences[`${purpose}_asset_id`] ||
-      normalized.preferences[`${purpose}_id`] ||
-      normalized.preferences[purpose] ||
-      "",
-  );
+  const selectedId = privateMediaPreferenceId(normalized.preferences, purpose);
   return (
     normalized.assets.find(
       (asset) => asset.id === selectedId && asset.purpose === purpose,

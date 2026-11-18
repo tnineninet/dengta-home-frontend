@@ -12,7 +12,7 @@ import { resizeComposerInput } from "./composer-size.js";
 import { restartDengTa } from "./app-runtime.js";
 import { createMonologueRequestOperation } from "./monologue-request-lifecycle.js";
 import { createCompanionInteractionLifecycle } from "./companion-interaction-lifecycle.js";
-import { invalidMemoryReceipt, memoryCount, memoryUiFailure, useMemoryUiRequest as useScopedUiRequest } from "./memory-ui-feedback.js";
+import { useMemoryUiRequest as useScopedUiRequest } from "./memory-ui-feedback.js";
 import { MAX_SESSION_TITLE, readSessionDelete, readSessionRename, sessionDialogFailure } from "./session-dialog-feedback.js";
 import SessionDialog from "./SessionDialog.jsx";
 import ImageViewer from "./ImageViewer.jsx";
@@ -28,6 +28,9 @@ import { useBuiltInNowPlaying } from "./useBuiltInNowPlaying.js";
 import { chooseNowPlayingCard } from "./built-in-now-playing.js";
 import { createAiMusicConsumer } from "./ai-music-consumer.js";
 import MemoryGatewayStatus from "./MemoryGatewayStatus.jsx";
+import KiwiLearnedProfile from "./KiwiLearnedProfile.jsx";
+import { createChatMemoryJobs } from "./chat-memory-jobs.js";
+import { emitMemoryChanged } from "./kiwi-memory-receipt.js";
 import { flushSync } from "react-dom";
 import { Capacitor } from "@capacitor/core";
 
@@ -56,6 +59,7 @@ import {
   streamChat,
 } from "./api";
 import WebInstallButton from "./WebInstallButton.jsx";
+import { offersAndroidDownload } from "./pwa-install.js";
 import TypewriterText from "./TypewriterText.jsx";
 import DlnaCastPlayer from "./DlnaCastPlayer.jsx";
 import { activityRequestInScope, buildCompanionActivityRequest, normalizeCompanionActivities } from "./companion-activities.js";
@@ -128,6 +132,7 @@ import MusicChatCard from "./MusicChatCard.jsx";
 import { fetchEarlyMusicCard, extractMusicRequest } from "./music-chat-preview.js";
 import { isRandomMusicRequest } from "./music-request-intent.js";
 import CelestialBackdrop from "./CelestialBackdrop";
+import DaylightBackdrop from "./DaylightBackdrop";
 import LegacyCoastBackdrop from "./LegacyCoastBackdrop";
 import SunGlassTimeDeck from "./SunGlassTimeDeck";
 import FeatureAtmosphere from "./FeatureAtmosphere";
@@ -397,15 +402,11 @@ const CompanionProfile = lazy(() => import("./CompanionProfile"));
 const ContentImport = lazy(() => import("./ContentImport"));
 const AccountExport = lazy(() => import("./AccountExport"));
 const MusicSettings = lazy(() => import("./MusicSettings"));
-const ExternalMemoryConnections = lazy(
-  () => import("./ExternalMemoryConnections"),
-);
 const McpDeviceCenter = lazy(() => import("./McpDeviceCenter"));
 const XHub = lazy(() => import("./XHub.jsx"));
 const MusicStudio = lazy(() => import("./MusicStudio.jsx"));
 const ChannelHub = lazy(() => import("./ChannelHub.jsx"));
 const Nursery = lazy(() => import("./Nursery"));
-const OmbreMemories = lazy(() => import("./OmbreMemories"));
 const LocalMemorySummaries = lazy(() => import("./LocalMemorySummaries.jsx"));
 const Together = lazy(() => import("./Together.jsx"));
 const ThemeStudio = lazy(() => import("./ThemeStudio"));
@@ -453,6 +454,7 @@ const SETTINGS_CATEGORIES = [
     id: "persona",
     label: "个性化与记忆",
     description: "提示词、长期详情与主动消息",
+    keywords: "人格 人设 个性化指令 你的详情",
     Icon: BrainCircuit,
   },
   {
@@ -667,119 +669,6 @@ function ErrorLogsPanel({ accountScope, companionScope, onOpenSettings }) {
   );
 }
 
-function MemoryImportCard({ scopeKey }) {
-  const [file, setFile] = useState(null);
-  const [busy, setBusy] = useState('');
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState('');
-  const [diagnostic, setDiagnostic] = useState(null);
-  const operationRef = useRef(null);
-  const { request, isCurrent } = useScopedUiRequest(scopeKey);
-  useLayoutEffect(() => {
-    operationRef.current = null;
-    return () => { operationRef.current = null; };
-  }, [scopeKey]);
-
-  async function readImportResult(response) {
-    const data = await response.json().catch(() => null);
-    if (!response.ok) {
-      throw Object.assign(new Error('记忆导入未完成。'), { status: response.status, code: data?.code, logId: data?.error_log_id, source: ['dengta', 'external_memory_gateway'].includes(data?.error_source) ? data.error_source : undefined, upstreamStatus: data?.upstream_status });
-    }
-    if (response.status !== 200 || data?.ok !== true || !memoryCount(data.imported) || ['skipped', 'total'].some(field => Object.hasOwn(data, field) && !memoryCount(data[field]))) throw invalidMemoryReceipt();
-    return data;
-  }
-
-  async function runImport(kind = 'file') {
-    if (operationRef.current || !isCurrent() || (kind === 'file' && !file)) return;
-    if (kind === 'file' && file.size > 20 * 1024 * 1024) {
-      setError('旧记忆直传最大 20MB；大文本请打开设置中的「数据导入」，可分段处理至 1GB。');
-      setResult(null); setDiagnostic(null);
-      return;
-    }
-    const operation = {};
-    operationRef.current = operation;
-    const current = () => isCurrent() && operationRef.current === operation;
-    setBusy(kind);
-    setError('');
-    setResult(null);
-    setDiagnostic(null);
-    try {
-      let body;
-      if (kind === 'file') {
-        body = new FormData();
-        body.append('file', file);
-      }
-      const data = await request('/api/v2/memory/' + (kind === 'file' ? 'import-file' : 'import-history'), {
-        method: 'POST', body, rawBody: true,
-        timeoutMs: kind === 'file' ? 90000 : 300000,
-        responseReader: readImportResult,
-      });
-      if (current()) setResult(data);
-    } catch (importError) {
-      if (current()) {
-        setError(memoryUiFailure(importError, { mutation: true }));
-        const logId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(importError.logId || '') ? importError.logId : undefined;
-        setDiagnostic({ error_code: describeOperationError(importError).code, error_log_id: logId, error_source: importError.source, upstream_status: Number.isInteger(importError.upstreamStatus) && importError.upstreamStatus >= 100 && importError.upstreamStatus <= 599 ? importError.upstreamStatus : undefined });
-      }
-    } finally {
-      if (current()) { operationRef.current = null; setBusy(''); }
-    }
-  }
-
-  return (
-    <div className="settings-card memory-import-card">
-      <h3>导入旧记忆（可选）</h3>
-      <p className="card-hint">
-        把你以前和 AI 聊过的内容导入到这个账号自己的长期记忆库（与其他用户隔离）。
-        支持 txt / md / json / csv / pdf / docx / xlsx / zip 文件；
-        服务器会自动提取文字并整理成记忆（AI 可用时智能提炼，否则按段落保存）。
-        此旧版入口最大 20MB，可能只整理部分内容；大记录建议使用「数据导入」的分段预览与确认。
-      </p>
-      <div className="memory-import-actions">
-        <input
-          type="file"
-          accept=".txt,.md,.json,.csv,.pdf,.docx,.xlsx,.zip"
-          disabled={Boolean(busy)}
-          onChange={(event) => {
-            setFile(event.target.files?.[0] || null);
-            setResult(null);
-            setError('');
-            setDiagnostic(null);
-          }}
-        />
-        <button
-          type="button"
-          className="memory-import-run"
-          disabled={!file || Boolean(busy)}
-          onClick={() => void runImport()}
-        >
-          {busy === 'file' ? '导入中…' : '开始导入'}
-        </button>
-        <button
-          type="button"
-          className="memory-import-history"
-          disabled={Boolean(busy)}
-          onClick={() => void runImport('history')}
-        >
-          {busy === 'history' ? '整理中…' : '从灯塔历史导入（最多 5000 条、30 万字）'}
-        </button>
-      </div>
-      {error && <p className="memory-import-error">{error}</p>}
-      {error && diagnostic && <ChatErrorLog key={diagnostic.error_log_id || error} logId={diagnostic.error_log_id} diagnostic={diagnostic} />}
-      {result && result.ok === true && (
-        <div className="memory-import-result">
-          <strong>导入完成</strong>
-          <span>
-            成功 {result.imported || 0} 条，跳过 {result.skipped || 0} 条，
-            记忆库现有 {result.total ?? '?'} 条
-            {result.mode === 'ai' ? '（AI 智能整理）' : '（按段落保存）'}
-          </span>
-          {result.coverage_notice && <small>{result.coverage_notice}</small>}
-        </div>
-      )}
-    </div>
-  );
-}
 function shanghaiClientTime(value = new Date()) {
   return value.toLocaleString("zh-CN", {
     timeZone: SHANGHAI_TIME_ZONE,
@@ -792,7 +681,7 @@ const initialNotificationPermissionState = {
   message: "开启主动消息后，Android App 会自动准备通知权限和后台检查。",
 };
 
-async function prepareLocalNotificationPermission() {
+async function prepareLocalNotificationPermission({ requestPermission = true } = {}) {
   if (!Capacitor.isNativePlatform()) {
     return {
       status: "web",
@@ -810,6 +699,9 @@ async function prepareLocalNotificationPermission() {
 
   try {
     let permission = await LocalNotifications.checkPermissions();
+    if (permission.display !== "granted" && !requestPermission) {
+      return { status: "prompt", message: "iOS 前台提醒尚未授权。需要时可在此页主动开启；后台推送尚未接入。" };
+    }
     if (permission.display !== "granted") {
       permission = await LocalNotifications.requestPermissions();
     }
@@ -844,7 +736,9 @@ async function prepareLocalNotificationPermission() {
     return {
       status: "success",
       message:
-        "主动通知已准备好。App 退到后台后会由手机系统定期检查，不需要再点测试按钮。",
+        Capacitor.getPlatform() === "ios"
+          ? "前台本地提醒已授权；后台推送尚未接入。"
+          : "主动通知已准备好。App 退到后台后会由手机系统定期检查，不需要再点测试按钮。",
     };
   } catch (error) {
     return {
@@ -1157,6 +1051,8 @@ function hydrateSessionChatHistory(messages, sessionId) {
 
 function App({ accountControl = null, accountScope = "", userName = "" }) {
   const VOICE_LONG_PRESS_MS = 300;
+  const platform = Capacitor.getPlatform();
+  const showAndroidDownload = offersAndroidDownload(platform);
   const visualPreview = arguments[0]?.visualPreview === true;
   const companionScope = String(arguments[0]?.companionScope || "").trim();
   const accountStorageScope = String(accountScope || "").trim();
@@ -1368,7 +1264,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     },
   });
   useEffect(() => {
-    if (!Capacitor.isNativePlatform() || visualPreview || !accountStorageScope || !companionScope) return;
+    if (!Capacitor.isNativePlatform() || Capacitor.getPlatform() !== "android" || !Capacitor.isPluginAvailable("NeteasePlayback") || visualPreview || !accountStorageScope || !companionScope) return;
     const consumer = createAiMusicConsumer({ scope: aiMusicScope, list: listAiMusicPlayRequests, claim: claimAiMusicPlayRequest, commit: commitAiMusicPlayRequest, report: reportAiMusicPlayResult, open: playNeteaseSilent, storage: globalThis.sessionStorage, onFeedback: message => setNotice(message) });
     void consumer.drain();
     const timer = window.setInterval(() => {
@@ -1576,6 +1472,18 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [sessionDialogFeedback, setSessionDialogFeedback] = useState("");
   const sessionDialogRequest = useScopedUiRequest(privateMediaScope);
   const { request: requestSessionHistory, isCurrent: isHistoryScopeCurrent } = useScopedUiRequest(privateMediaScope);
+  const chatMemoryJobsRef = useRef(null);
+  useLayoutEffect(() => {
+    const watcher = createChatMemoryJobs({
+      isCurrent: isHistoryScopeCurrent,
+      readJob: id => requestSessionHistory(`/api/v2/memory/jobs/${encodeURIComponent(id)}`),
+      notify: (source, jobId) => emitMemoryChanged(privateMediaScope, source, undefined, jobId),
+      schedule: (fn, delay) => window.setTimeout(fn, delay),
+      cancel: timer => window.clearTimeout(timer),
+    });
+    chatMemoryJobsRef.current = watcher;
+    return () => { watcher.dispose(); chatMemoryJobsRef.current = null; };
+  }, [privateMediaScope, requestSessionHistory, isHistoryScopeCurrent]);
   useLayoutEffect(() => { dialogRef.current = dialog; sessionsRef.current = sessions; }, [dialog, sessions]);
   useLayoutEffect(() => {
     sessionDialogPendingRef.current = null;
@@ -1606,13 +1514,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   useEffect(() => {
-    function refreshAfterImport() {
-      void refreshPrivateMediaCatalog();
+    function refreshAfterImport(event) {
+      if (event.detail?.scopeKey === privateMediaScope) void refreshPrivateMediaCatalog();
     }
     window.addEventListener("dengta:memories-imported", refreshAfterImport);
     return () =>
       window.removeEventListener("dengta:memories-imported", refreshAfterImport);
-  }, [refreshPrivateMediaCatalog]);
+  }, [privateMediaScope, refreshPrivateMediaCatalog]);
 
   useLayoutEffect(
     () => () => {
@@ -1824,18 +1732,35 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   useLayoutEffect(() => {
     const input = messageInputRef.current;
     if (!input) return undefined;
-    // Width and viewport-based height limits can change independently.
-    let previousWidth = input.parentElement.clientWidth;
+    const composer = input.parentElement;
+    const viewport = window.visualViewport;
+    let previousWidth = composer.clientWidth;
     let previousMaximum = window.getComputedStyle(input).maxHeight;
-    const widthObserver = new ResizeObserver(([entry]) => {
-      const maximum = window.getComputedStyle(input).maxHeight;
-      if (entry.contentRect.width === previousWidth && maximum === previousMaximum) return;
-      previousWidth = entry.contentRect.width;
-      previousMaximum = maximum;
-      resizeComposerInput(input);
-    });
-    widthObserver.observe(input.parentElement);
-    return () => widthObserver.disconnect();
+    let resizeFrame = null;
+    const scheduleResize = () => {
+      if (resizeFrame !== null) return;
+      resizeFrame = window.requestAnimationFrame(() => {
+        resizeFrame = null;
+        const width = composer.clientWidth;
+        const maximum = window.getComputedStyle(input).maxHeight;
+        if (width === previousWidth && maximum === previousMaximum) return;
+        previousWidth = width;
+        previousMaximum = maximum;
+        resizeComposerInput(input);
+      });
+    };
+    // A taller viewport can raise the CSS limit without resizing the composer:
+    // the textarea still has the inline height measured against the old limit.
+    const widthObserver = new ResizeObserver(scheduleResize);
+    widthObserver.observe(composer);
+    window.addEventListener("resize", scheduleResize);
+    viewport?.addEventListener("resize", scheduleResize);
+    return () => {
+      widthObserver.disconnect();
+      window.removeEventListener("resize", scheduleResize);
+      viewport?.removeEventListener("resize", scheduleResize);
+      if (resizeFrame !== null) window.cancelAnimationFrame(resizeFrame);
+    };
   }, [activeView]);
   const composerMenuTriggerRef = useRef(null);
   const shouldAutoScrollRef = useRef(true);
@@ -1988,6 +1913,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const voiceMaxTimerRef = useRef(null);
   const voiceRequestRef = useRef(null);
   const chatRequestRef = useRef(null);
+  const chatSendVersion = useRef(0);
   const pendingChatClientMessageRef = useRef(null);
   const refreshSessionsRef = useRef(null);
   const createSessionPendingRef = useRef(false);
@@ -3495,7 +3421,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       status: "checking",
       message: "正在自动检查手机通知权限…",
     });
-    void prepareLocalNotificationPermission().then((result) => {
+    void prepareLocalNotificationPermission({ requestPermission: Capacitor.getPlatform() !== "ios" }).then((result) => {
       if (!cancelled) setNotificationPermissionState(result);
     });
 
@@ -5785,7 +5711,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       attachmentsReleased: false,
       cancelReason: "",
     };
+    const chatSession = createScopedSettingsSession(authSession, privateMediaScope, request.controller.signal);
     chatRequestRef.current = request;
+    const sendVersion = ++chatSendVersion.current;
     const deviceActivityRefresh = refreshDeviceActivityContext({ silent: true });
     try {
       setSendPreparationStage("settings");
@@ -5797,7 +5725,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         await awaitChatPreparation(() => sessionModelSaveQueueRef.current, request.controller.signal);
       }
       if (request.controller.signal.aborted || chatRequestRef.current !== request ||
-          !componentMountedRef.current || activeSessionIdRef.current !== startingSessionId) {
+          !componentMountedRef.current || !isHistoryScopeCurrent() || activeSessionIdRef.current !== startingSessionId) {
         throw new DOMException("发送准备已取消", "AbortError");
       }
     } catch (error) {
@@ -5860,7 +5788,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             ),
           }),
           signal: request.controller.signal,
+          authSession: chatSession,
         });
+        if (!isHistoryScopeCurrent() || request.controller.signal.aborted) throw new DOMException("会话已切换", "AbortError");
         sessionId = created.session.id;
         activeSessionIdRef.current = sessionId;
         moveSessionDraft(null, sessionId);
@@ -6001,7 +5931,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       ]);
 
       void loadEarlyMusicCard(text);
-      await streamChat(
+      const completion = await streamChat(
         {
           session_id: sessionId,
           message: text,
@@ -6024,7 +5954,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             request.controller.signal.aborted ||
             chatRequestRef.current !== request ||
             !componentMountedRef.current ||
-            settingsSaveScope(authSession.getSnapshot()) !== privateMediaScope
+            !isHistoryScopeCurrent()
           ) {
             return;
           }
@@ -6250,7 +6180,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             }
           }
         },
-        { signal: request.controller.signal },
+        { signal: request.controller.signal, authSession: chatSession },
       );
 
       if (streamFailed) {
@@ -6269,6 +6199,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         throw error;
       }
       sendSucceeded = true;
+      if (request.controller.signal.aborted || !isHistoryScopeCurrent() || chatRequestRef.current !== request) return;
+      chatMemoryJobsRef.current?.observe(completion, sessionId);
       // 回复已经提交。后续刷新历史/会话是收尾工作，不能让输入框一直停在“发送中”。
       isSendingRef.current = false;
       if (componentMountedRef.current) setIsSending(false);
@@ -6290,10 +6222,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         chatRequestRef.current = null;
       }
 
-      const history = await apiRequest(
+      const history = await requestSessionHistory(
         `/api/v2/sessions/${sessionId}/messages`,
         { timeoutMs: 15_000 },
       );
+      if (!isHistoryScopeCurrent() || chatSendVersion.current !== sendVersion) return;
       if (activeSessionIdRef.current === sessionId) {
         messageLoadTokenRef.current += 1;
         messagesSessionIdRef.current = sessionId;
@@ -6310,8 +6243,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         );
       }
       await refreshSessions(activeSessionIdRef.current || sessionId);
-      void refreshComposerHint(sessionId);
+      if (isHistoryScopeCurrent() && chatSendVersion.current === sendVersion && activeSessionIdRef.current === sessionId) void refreshComposerHint(sessionId);
     } catch (error) {
+      if (!isHistoryScopeCurrent() || chatSendVersion.current !== sendVersion) {
+        releaseChatRequestAttachments(request);
+        return;
+      }
       const publicErrorMessage = publicChatErrorMessage(
         error,
         "回复暂时中断，请稍后重试。",
@@ -6366,7 +6303,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           request.clientMessageId,
         );
       }
-      if (!componentMountedRef.current) {
+      if (!componentMountedRef.current || !isHistoryScopeCurrent()) {
         releaseChatRequestAttachments(request);
         return;
       }
@@ -6494,16 +6431,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       if (chatRequestRef.current === request) {
         chatRequestRef.current = null;
       }
-      if (streamingSessionIdRef.current === sessionId) {
-        streamingSessionIdRef.current = null;
-      }
-      isSendingRef.current = false;
-      if (componentMountedRef.current) setIsSending(false);
-      if (
-        componentMountedRef.current &&
-        companionInteractionQueueRef.current.length > 0
-      ) {
-        scheduleCompanionInteraction(250);
+      if (chatSendVersion.current === sendVersion && isHistoryScopeCurrent()) {
+        if (streamingSessionIdRef.current === sessionId) streamingSessionIdRef.current = null;
+        isSendingRef.current = false;
+        if (componentMountedRef.current) setIsSending(false);
+        if (componentMountedRef.current && companionInteractionQueueRef.current.length > 0) {
+          scheduleCompanionInteraction(250);
+        }
       }
     }
   }
@@ -7873,15 +7807,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     setIsSettingsOpen(true);
   }
 
-  function openExternalMemorySettings() {
-    closeComposerMenu();
-    requestStatusPanelClose();
-    setIsSidebarOpen(false);
-    setIsMobileNavOpen(false);
-    setSettingsCategory("persona");
-    setSettingsFocusTarget("external-memory-connections");
-    setIsSettingsOpen(true);
-  }
 
   function closeSettingsPanel() {
     if (hasLoadedSettingsRef.current) {
@@ -8174,6 +8099,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             />
             <textarea
               ref={messageInputRef}
+              aria-label="聊天消息"
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               onFocus={() => {
@@ -8342,6 +8268,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 onNow={() => setPreviewMinute(null)}
                 weather={ambientWeather}
                 weatherMode={weatherPreviewMode}
+                showWeather={themePreferences.background === "coast"}
                 onWeatherMode={setWeatherPreviewMode}
                 glassLevel={themePreferences.cardOpacity * 100}
                 onGlassLevel={(value) =>
@@ -9181,13 +9108,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         <div className="section-intro">
           <span className="eyebrow">长期记忆</span>
           <h2>留在家里的事情</h2>
-          <p>这些摘要会作为真实模型回复时的长期背景。</p>
+          <p>查看当前账号和伴侣的 Kiwi 记忆、对话摘要和自动画像。聊天是否召回记忆，以当次召回结果为准。</p>
         </div>
           <MemoryGatewayStatus key={privateMediaScope} scopeKey={privateMediaScope} />
-        <Suspense fallback={<DeferredFeature label="正在打开记忆档案…" />}>
-          <OmbreMemories onManageConnections={openExternalMemorySettings} />
-        </Suspense>
-        <Suspense fallback={<DeferredFeature label="正在打开对话摘要…" />}>
+          <KiwiLearnedProfile scopeKey={privateMediaScope} />
+        <Suspense fallback={<DeferredFeature label="正在打开长期记忆…" />}>
           <LocalMemorySummaries
             key={privateMediaScope}
             scopeKey={privateMediaScope}
@@ -9469,15 +9394,18 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               把外观、伴侣和日常陪伴调成你喜欢的样子。
             </p>
           </div>
-          <div className="settings-app-actions"><WebInstallButton
-            className="install-button"
-            promptLabel="⤓ 安装到手机/电脑"
-            guidanceLabel="⤓ 安装到手机/电脑"
-            onFeedback={setNotice}
-          />
-          <a className="install-button" href="/download" target="_blank" rel="noreferrer">⤓ 下载安卓安装包</a>
-          <button type="button" className="install-button" onClick={() => window.dispatchEvent(new Event("dengta:check-app-updates"))}>检查应用更新</button>
-          <button type="button" className="install-button" onClick={() => window.dispatchEvent(new Event("dengta:app-update-preferences"))}>更新提醒设置</button>
+          <div className="settings-app-actions">
+            {platform !== "ios" && <WebInstallButton
+              className="install-button"
+              promptLabel="⤓ 安装到手机/电脑"
+              guidanceLabel="⤓ 安装到手机/电脑"
+              onFeedback={setNotice}
+            />}
+            {showAndroidDownload && <>
+              <a className="install-button" href="/download" target="_blank" rel="noreferrer">⤓ 下载安卓安装包</a>
+              <button type="button" className="install-button" onClick={() => window.dispatchEvent(new Event("dengta:check-app-updates"))}>检查应用更新</button>
+              <button type="button" className="install-button" onClick={() => window.dispatchEvent(new Event("dengta:app-update-preferences"))}>更新提醒设置</button>
+            </>}
           </div>
         </div>
 
@@ -9510,6 +9438,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 <Suspense fallback={<DeferredFeature label="正在打开外观设置…" />}>
                   <ThemeStudio
                     preferences={themePreferences}
+                    minute={previewMinute ?? celestialSnapshot.minute}
+                    previewing={previewMinute != null}
+                    onPreview={setPreviewMinute}
                     updateTheme={updateTheme}
                     chatSkinPreferences={chatSkinPreferences}
                     updateChatSkin={updateChatSkinPreferences}
@@ -9678,7 +9609,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                       }}
                     />
                   </Suspense>
-                  <Suspense fallback={<DeferredFeature label="正在打开对话摘要…" />}>
+                  <Suspense fallback={<DeferredFeature label="正在打开长期记忆…" />}>
                     <LocalMemorySummaries
                       key={privateMediaScope}
                       scopeKey={privateMediaScope}
@@ -9691,9 +9622,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                     />
                   </Suspense>
                 </div>
-                <Suspense fallback={<DeferredFeature label="正在打开外部记忆连接…" />}>
-                  <ExternalMemoryConnections key={privateMediaScope} scopeKey={privateMediaScope} />
-                </Suspense>
               </>
             )}
           {settingsCategory === "persona" && (
@@ -9903,15 +9831,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   </span>
                 </div>
                 <p>
-                  这里不重复展示或编辑记忆正文，避免意外覆盖。最近回执记录了{" "}
-                  {lastPromptReceipt?.delivery?.stableMemory?.count ??
-                    memories.length}{" "}
-                  条记忆
-                  {lastPromptReceipt?.delivery?.stableMemory?.chars !== null &&
-                    lastPromptReceipt?.delivery?.stableMemory?.chars !==
-                      undefined &&
-                    `，共 ${lastPromptReceipt.delivery.stableMemory.chars} 字`}
-                  。
+                  打开记忆页可查看 Kiwi 为当前账号和伴侣确认的条目。每次回复只会选用与对话有关的记忆。
                 </p>
               </section>
 
@@ -10164,6 +10084,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               >
                 {notificationPermissionState.message}
               </p>
+              {Capacitor.getPlatform() === "ios" && (
+                <button type="button" disabled={notificationPermissionState.status === "checking"} onClick={() => {
+                  setNotificationPermissionState({ status: "checking", message: "正在请求前台提醒权限…" });
+                  void prepareLocalNotificationPermission().then(setNotificationPermissionState);
+                }}>开启前台本地提醒</button>
+              )}
               {reminderChannelSettingsAvailable() && (
                 <div className="device-activity-actions">
                   <button
@@ -10194,7 +10120,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 </small>
               )}
             </div>
-            <MemoryImportCard key={privateMediaScope} scopeKey={privateMediaScope} />
               </>
             )}
 
@@ -10609,12 +10534,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           {settingsCategory === "persona" && settingsSaveReceipt && (
             <div className="settings-save-receipt" role="status">
               <strong>✓ 服务器已保存并回读</strong>
-              <span>
-                个性化指令 {settingsSaveReceipt.customInstructionsLength} 字
-              </span>
-              <span>
-                你的详情 {settingsSaveReceipt.userDetailsLength} 字
-              </span>
+              <span>{`个性化指令 ${settingsSaveReceipt.customInstructionsLength} 字`}</span>
+              <span>{`你的详情 ${settingsSaveReceipt.userDetailsLength} 字`}</span>
               <span>
                 统一提示词模式 · 亲密与成人表达
                 {settingsSaveReceipt.intimateExpressionEnabled
@@ -10829,7 +10750,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       data-ornament-activity={chatSkinPreferences.ornamentActivity}
       data-chat-streaming={isSending ? "true" : "false"}
     >
-      <Suspense fallback={null}><AppUpdateCenter canPrompt={!isSending && !isTakeoutOpen && !isSettingsOpen && !isStatusPanelExpanded && !isComposerMenuOpen && !isMobileNavOpen && !isSidebarOpen && !dialog && !imageViewer && !distillState.modalOpen} /></Suspense>
+      {showAndroidDownload && <Suspense fallback={null}><AppUpdateCenter canPrompt={!isSending && !isTakeoutOpen && !isSettingsOpen && !isStatusPanelExpanded && !isComposerMenuOpen && !isMobileNavOpen && !isSidebarOpen && !dialog && !imageViewer && !distillState.modalOpen} /></Suspense>}
       <CommandPalette
         open={commandPaletteOpen}
         onClose={(options) => {
@@ -10842,6 +10763,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         }}
         onNavigate={(view, sessionId) => { if (sessionId) chooseSession(sessionId); else changeView(view); }}
         onCreateSession={createSession}
+        onSetBackground={(background) => updateTheme({ background })}
         onOpenSettings={(category) => { openSettingsPanel(); if (category) setSettingsCategory(category); }}
         onReturnActivity={activityReturn ? returnToActivity : undefined}
         features={navItems}
@@ -10856,6 +10778,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         loginPanel={<TakeoutLoginPanel key={diagnosticScopeKey(accountStorageScope, companionScope)}
           scope={diagnosticScopeKey(accountStorageScope, companionScope)} feedback={takeoutLoginFeedback} />} />
       {themePreferences.background === "auto" ? (
+        <DaylightBackdrop minute={celestialSnapshot.minute} />
+      ) : themePreferences.background === "coast" ? (
         <CelestialBackdrop
           snapshot={celestialSnapshot}
           weather={ambientWeather}
@@ -10959,7 +10883,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           <div className="sidebar-account-slot">{accountControl}</div>
         )}
 
-        <a
+        {showAndroidDownload && <a
           className="sidebar-settings-button"
           href="/download"
           target="_blank"
@@ -10968,7 +10892,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         >
           <span aria-hidden="true">⤓</span>
           下载 Android App
-        </a>
+        </a>}
 
         <button
           type="button"
@@ -11333,11 +11257,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           )}
           {activeView === "together" && renderTogether("together")}
           {activeView === "music-studio" && (
-        <Suspense fallback={<DeferredFeature label="正在打开音乐工作室…" />}>
-          <MusicStudio onOpenSync={() => changeView("music")} />
-        </Suspense>
-      )}
-      {activeView === "music" && renderTogether("music")}
+            <Suspense fallback={<DeferredFeature label="正在打开音乐工作室…" />}>
+              <MusicStudio key={privateMediaScope} onOpenSync={() => changeView("music")} onOpenChat={() => changeView("chat")} />
+            </Suspense>
+          )}
+          {activeView === "music" && renderTogether("music")}
           {activeView === "x" && (
             <Suspense fallback={<DeferredFeature label="正在连接 X…" />}>
               <XHub

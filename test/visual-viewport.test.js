@@ -16,6 +16,15 @@ function fixture() {
   return { root, viewport, windowObject, documentObject, writes, flags, frames, listeners, fire, flush };
 }
 const editable = { matches: () => true };
+test("AuthGate and App share viewport ownership until the final release", () => {
+  const f = fixture(), first = installVisualViewportController(f), initial = f.writes.length;
+  const second = installVisualViewportController(f);
+  assert.equal(f.writes.length, initial);
+  first(); first(); assert.notEqual(f.listeners.size, 0);
+  f.documentObject.activeElement = editable; f.viewport.height = 500;
+  f.fire("viewport", "resize"); f.flush(); assert.equal(f.root.dataset.keyboardOpen, "true");
+  second(); assert.equal(f.listeners.size, 0); assert.equal(f.root.dataset.keyboardOpen, undefined);
+});
 test("focusout during keyboard dismissal cannot flash the full-height page and capsule", () => {
   const f = fixture(), stop = installVisualViewportController(f);
   f.documentObject.activeElement = editable; f.viewport.height = 500;
@@ -41,6 +50,24 @@ test("event bursts coalesce into one frame and identical viewport sizes perform 
   assert.equal(f.frames.size, 1); f.flush(); assert.equal(f.writes.length, initial);
   f.fire("viewport", "scroll"); stop(); assert.equal(f.frames.size, 0); assert.equal(f.listeners.size, 0);
   assert.equal(f.root.dataset.keyboardOpen, undefined);
+});
+test("keyboard panning moves the visible top without repeatedly writing or retaining its offset", () => {
+  const f = fixture(), stop = installVisualViewportController(f);
+  const tops = () => f.writes.filter(([name]) => name === "--app-viewport-top").map(([, value]) => value);
+  f.documentObject.activeElement = editable;
+  f.viewport.height = 390; f.viewport.offsetTop = 160;
+  f.fire("viewport", "resize"); f.flush();
+  assert.deepEqual(tops(), ["160px"]);
+  f.viewport.offsetTop = 210;
+  for (let i = 0; i < 10; i++) f.fire("viewport", "scroll");
+  assert.equal(f.frames.size, 1); f.flush();
+  assert.deepEqual(tops(), ["160px", "210px"]);
+  f.fire("viewport", "scroll"); assert.equal(f.frames.size, 0);
+  f.viewport.height = 844; f.viewport.offsetTop = 0;
+  f.fire("viewport", "resize"); f.flush();
+  assert.deepEqual(tops(), ["160px", "210px", "0px"]);
+  assert.equal(f.root.dataset.keyboardOpen, "false");
+  stop();
 });
 test("desktop resize can shrink the baseline and pinch zoom cannot resize the app layout", () => {
   const f = fixture(), stop = installVisualViewportController(f);

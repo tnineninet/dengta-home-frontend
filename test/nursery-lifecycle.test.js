@@ -122,7 +122,11 @@ function switchAccount() { sdkSession = sessionFor(ACCOUNT_B); authListener("SIG
 afterEach(async () => {
   await unmount();
   requests.length = 0; notices.length = 0; timers.clear(); signOutCalls = [];
-  sdkSession = sessionFor(ACCOUNT_A); authListener("SIGNED_IN", sdkSession); manager.setActiveCompanionId(COMPANION_A);
+  sdkSession = sessionFor(ACCOUNT_A);
+  // A real 401 retires that SDK; initialize the replacement before emitting
+  // the next test's login instead of resurrecting its detached listener.
+  await manager.initialize();
+  authListener("SIGNED_IN", sdkSession); manager.setActiveCompanionId(COMPANION_A);
   document.visibilityState = "visible";
 });
 after(async () => {

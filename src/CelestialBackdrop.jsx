@@ -75,9 +75,10 @@ function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode, ra
     let lightningSegments = [];
 
 
+    let starsRatio = 1, cloudRatio = 1;
     const resize = () => {
-      sizeCanvas(starsCanvas, compact ? 1.5 : 2);
-      sizeCanvas(cloudCanvas, compact ? 1.25 : 1.5);
+      starsRatio = sizeCanvas(starsCanvas, compact ? 1.5 : 2);
+      cloudRatio = sizeCanvas(cloudCanvas, compact ? 1.25 : 1.5);
       sizeCanvas(weatherCanvas, compact ? 1.25 : 1.5);
       starPoints = Array.from({ length: compact ? 70 : 110 }, (_, index) => ({
         x: ((index * 73) % 997) / 997,
@@ -136,8 +137,6 @@ function usePrototypeAtmosphere({ starsRef, cloudsRef, weatherRef, sky, mode, ra
 
     const paint = (now) => {
       const currentSky = skyRef.current;
-      const starsRatio = Math.min(window.devicePixelRatio || 1, 2);
-      const cloudRatio = Math.min(window.devicePixelRatio || 1, 1.5);
       const width = starsCanvas.width / starsRatio;
       const height = starsCanvas.height / starsRatio;
 

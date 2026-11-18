@@ -82,11 +82,22 @@ try {
   await act(async () => { healthTree = TestRenderer.create(React.createElement(Health)); });
   await act(async () => { const check = healthTree.root.findByType('button').props.onClick; check(); check(); await settle(); });
   const checks = requests.filter(item => item.path === '/api/v2/memory/health'); assert.equal(checks.length, 1);
-  await act(async () => { checks[0].resolve({ configured:true,reachable:false,error: 'kiwi_mem_tenant_unverified',status:200 }); await settle(); });
-  assert.match(JSON.stringify(healthTree.toJSON()), /X-Tenant-Id/);
+  const scoped = checks[0].options.authSession;
+  assert.equal(scoped.getSnapshot().user.id, healthAccount);
+  assert.equal((await scoped.getRequestContext()).companionId, healthCompanion);
+  const kiwi = { provider: 'kiwi', storage: 'kiwi', configured: true };
+  await act(async () => { checks[0].resolve({ ...kiwi, ok:false,reachable:false,tenant_verified:false,error:'kiwi_mem_tenant_unverified',status:200 }); await settle(); });
+  assert.match(JSON.stringify(healthTree.root.findByProps({role:'alert'}).children[0].children), /未返回匹配的租户回执/);
+  assert.doesNotMatch(JSON.stringify(healthTree.toJSON()), /账号与伴侣范围已确认/);
   await act(async () => { healthTree.root.findByType('button').props.onClick(); await settle(); });
+  const verified = { ...kiwi, ok:true,reachable:true,tenant_verified:true,memory_enabled:true,embedding_available:true,total_memories:3 };
+  await act(async () => { requests.at(-1).resolve(verified); await settle(); });
+  const status = JSON.stringify(healthTree.root.findByProps({role:'status'}).children.map(node => node.children));
+  assert.match(status, /账号与伴侣范围已确认/); assert.match(status, /3 条记忆/);
+  assert.doesNotMatch(JSON.stringify(healthTree.toJSON()), new RegExp(`${healthAccount}|${healthCompanion}`));
+  await act(async () => { healthTree.root.findAllByType('button')[0].props.onClick(); await settle(); });
   const late = requests.at(-1);
   await act(async () => healthTree.unmount()); assert.equal(late.options.signal.aborted, true);
-  late.resolve({ configured:true,reachable:true,tenant_verified:true,memory_enabled:true,embedding_available:true,total_memories:0 });
+  late.resolve(verified);
   console.log('Together and memory health lifecycle passed: stale resolve, cache clear, double click, unmount');
 } finally { await vite.close(); healthManager.destroy();delete globalThis.__togetherRequest;delete globalThis.__togetherAuthManager; }

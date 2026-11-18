@@ -47,6 +47,7 @@ const IMPORT_ERROR_MESSAGES = Object.freeze({
   import_world_book_match_mode_invalid: "世界书匹配模式无效，请重新选择任一匹配或全部匹配。",
   import_world_book_position_invalid: "世界书注入位置无效，请重新选择位置。",
   import_target_invalid: "候选项的写入位置无效，请重新选择。",
+  import_memory_target_unavailable: "此导入接口未提供 Kiwi 长期记忆写入回执。请拒绝该候选，或手动选择其他明确的写入位置。",
   import_time_unreliable: "这条日历线索缺少可靠时间，暂时不能接受。",
   import_already_committed: "这次导入已经提交，无需重复操作。",
   import_commit_conflict: "这次导入已经以另一组决策提交，请检查已保存结果，不要重复追加。",
@@ -74,7 +75,7 @@ const IMPORT_ERROR_MESSAGES = Object.freeze({
 export function importCommitRecovery(code) {
   if (["import_legacy_preview", "import_partial_legacy", "import_receipt_missing"].includes(code)) return "legacy";
   if (["import_commit_rolled_back", "import_transaction_unavailable", "import_settings_missing",
-    "import_decisions_incomplete", "import_candidate_invalid", "import_decision_invalid", "import_target_invalid",
+    "import_decisions_incomplete", "import_candidate_invalid", "import_decision_invalid", "import_target_invalid", "import_memory_target_unavailable",
     "import_content_invalid", "import_content_empty", "import_time_unreliable", "import_title_too_long",
     "import_world_book_keywords_invalid", "import_world_book_priority_invalid", "import_world_book_sort_order_invalid",
     "import_world_book_enabled_invalid", "import_world_book_constant_invalid", "import_world_book_case_sensitive_invalid",
@@ -296,7 +297,14 @@ export function previewContentImport(
   );
 }
 
-export function commitContentImport(importId, decisions, client = defaultClient, options = {}) {
+const writableImportTargets = new Set(["user_details", "unified_system_prompt", "world_book_entries", "memory_calendar"]);
+export function canCommitImportTarget(item) {
+  return Boolean(item && ((item.decision === "rejected" && item.accepted !== true) || writableImportTargets.has(item.target)));
+}
+export async function commitContentImport(importId, decisions, client = defaultClient, options = {}) {
+  if (!Array.isArray(decisions) || !decisions.every(canCommitImportTarget)) {
+    throw Object.assign(new Error(IMPORT_ERROR_MESSAGES.import_memory_target_unavailable), { code: "import_memory_target_unavailable" });
+  }
   return jsonImportRequest(
     `/api/v2/imports/${encodeURIComponent(importId)}/commit`,
     { ...options, method: "POST", body: JSON.stringify({ decisions }) },

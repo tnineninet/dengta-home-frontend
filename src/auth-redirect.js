@@ -47,11 +47,13 @@ const DEEP_LINK_SCHEME = "dengta://auth";
 
 export function resolveEmailRedirectUrl({
   nativePlatform = false,
+  platform = "",
   location = globalThis.location,
   configuredUrl = BUILD_PUBLIC_AUTH_REDIRECT_URL,
   baseUrl = BUILD_APP_BASE_URL,
   officialUrl = PUBLIC_AUTH_REDIRECT_URL,
 } = {}) {
+  if (nativePlatform && platform === "ios") return DEEP_LINK_SCHEME;
   const configured = cleanHttpUrl(configuredUrl);
   if (configured) return configured;
 

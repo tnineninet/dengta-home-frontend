@@ -2,7 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { useMemoryUiRequest } from "./memory-ui-feedback.js";
 import { formatMemorySummaryDate, memorySummaryFailure, memorySummaryListReceipt, memorySummaryPatchReceipt, readMemorySummaryDelete, readMemorySummaryJson } from "./memory-summary-feedback.js";
 import { recordOperationFailure } from "./operation-diagnostics.js";
+import { assertKiwiReceipt, emitMemoryChanged, invalidKiwiReceipt, kiwiAcceptedJob, kiwiJobReceipt, kiwiMemoryId } from "./kiwi-memory-receipt.js";
 import "./memory-summary-list.css";
+import { describeKiwiListPage } from "./kiwi-list-presentation.js";
 
 const PATH = "/api/v2/memories";
 
@@ -13,6 +15,13 @@ export default function LocalMemorySummaries({ scopeKey, conversationId = "", it
   const [confirmed, setConfirmed] = useState(false);
   const [busyId, setBusyId] = useState("");
   const [feedback, setFeedback] = useState(null);
+  const [listState, setListState] = useState(null);
+  const [job, setJob] = useState(null);
+  const jobRef = useRef(null);
+  const jobTimer = useRef(null);
+  const jobPollCount = useRef(0);
+  const polling = useRef(null);
+  const sender = useRef(Symbol("memory-list"));
   const readVersion = useRef(0);
   const writeLock = useRef(null);
   const pendingRefresh = useRef(false);
@@ -27,7 +36,7 @@ export default function LocalMemorySummaries({ scopeKey, conversationId = "", it
     onNotice?.(detail.message);
   }, [scopeKey, onNotice]);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async ({ preserveFeedback = false } = {}) => {
     if (!isCurrent()) return;
     if (writeLock.current) { pendingRefresh.current = true; return; }
     pendingRefresh.current = false;
@@ -38,8 +47,9 @@ export default function LocalMemorySummaries({ scopeKey, conversationId = "", it
       if (!isCurrent() || readVersion.current !== version) return;
       const memories = memorySummaryListReceipt(data);
       onItemsChange(memories);
+      setListState({ total: data.total, partial: data.partial, hasMore: data.has_more, limit: data.limit, offset: data.offset });
       setConfirmed(true);
-      setFeedback(null);
+      if (!preserveFeedback) setFeedback(null);
     } catch (error) {
       if (isCurrent() && readVersion.current === version) showFailure(error, PATH);
     } finally {
@@ -47,22 +57,71 @@ export default function LocalMemorySummaries({ scopeKey, conversationId = "", it
     }
   }, [isCurrent, request, onItemsChange, showFailure]);
 
-  const consolidate = useCallback(async () => {
-    if (!conversationId || consolidating || !isCurrent()) return;
+  async function pollJob(id) {
+    if (!isCurrent() || jobRef.current !== id || polling.current === id) return;
+    polling.current = id;
+    if (jobTimer.current !== null) window.clearTimeout(jobTimer.current);
+    jobTimer.current = null;
+    try {
+      const receipt = await request(`/api/v2/memory/jobs/${encodeURIComponent(id)}`, { responseReader: readMemorySummaryJson });
+      if (!isCurrent() || jobRef.current !== id) return;
+      const next = kiwiJobReceipt(receipt, id);
+      setJob(next);
+      if (next.status === "pending" || next.status === "running") {
+        setFeedback({ error: false, message: "整理任务仍在处理，尚未确认记忆、摘要或画像已保存。" });
+        if (++jobPollCount.current < 60) jobTimer.current = window.setTimeout(() => void pollJob(id), 2000);
+        return;
+      }
+      jobRef.current = null;
+      writeLock.current = null;
+      setConsolidating(false);
+      if (next.status === "failed") {
+        const failure = Object.assign(new Error("整理未完成。"), { code: next.error_code || "memory_job_failed" });
+        showFailure(failure, `/api/v2/memory/jobs/${id}`, true);
+      } else if (next.status === "cancelled") {
+        setFeedback({ error: false, message: "整理已取消，本次未确认有新记忆。" });
+      } else if (next.status === "succeeded") {
+        setFeedback({ error: false, message: `本次整理完成：Kiwi 已保存 ${next.result.extraction.saved} 条，跳过 ${next.result.extraction.skipped} 条。摘要和自动画像以各自的更新状态为准。` });
+        emitMemoryChanged(scopeKey, "consolidated", sender.current);
+      }
+      await refresh({ preserveFeedback: true });
+    } catch (error) {
+      if (isCurrent() && jobRef.current === id) {
+        showFailure(error, `/api/v2/memory/jobs/${id}`);
+        // Keep the job and lock: a failed status read does not cancel the remote job.
+      }
+    } finally {
+      if (polling.current === id) polling.current = null;
+    }
+  }
+
+  const consolidate = async () => {
+    if (!conversationId || writeLock.current || !isCurrent()) return;
+    const operation = { type: "consolidate" };
+    writeLock.current = operation;
+    readVersion.current += 1;
     setConsolidating(true);
     setFeedback(null);
     try {
       const data = await request("/api/v2/memories/consolidate", {
         method: "POST",
-        body: { conversation_id: conversationId },
+        body: { conversation_id: conversationId, request_id: globalThis.crypto?.randomUUID?.() },
         responseReader: readMemorySummaryJson,
         timeoutMs: 90_000,
       });
-      if (!isCurrent()) return;
-      if (data?.ok !== true) throw new Error("记忆整理回执不完整。");
+      if (!isCurrent() || writeLock.current !== operation) return;
+      assertKiwiReceipt(data);
+      if (data.accepted === true) {
+        kiwiAcceptedJob(data);
+        jobRef.current = data.job_id;
+        jobPollCount.current = 0;
+        setJob({ id: data.job_id, status: data.status === "running" ? "running" : "pending" });
+        setFeedback({ error: false, message: "整理任务已受理，正在等待 Kiwi 完成保存；现在还不能确认有新记忆。" });
+        void pollJob(data.job_id);
+        return;
+      }
       if (data.compressed === true) {
-        setFeedback({ message: `已整理当前对话，保存了 1 条新摘要，隐去 ${data.hidden_message_count || 0} 条已整理消息。`, error: false });
-        onNotice?.("当前对话的长期记忆已更新。");
+        throw invalidKiwiReceipt();
       } else {
         const reason = {
           not_enough_messages: "当前对话消息还不够，至少需要 3 条可见消息。",
@@ -71,24 +130,30 @@ export default function LocalMemorySummaries({ scopeKey, conversationId = "", it
           model_unavailable: "当前接口没有可用模型或密钥，暂时无法整理。",
           already_running: "已有一条整理任务在进行，请稍后再看。",
           below_threshold: "当前对话内容还不到自动整理阈值。",
-        }[data.reason] || "当前对话暂时没有生成新摘要。";
-        setFeedback({ message: `${reason}`, error: false });
+        }[data.reason];
+        if (!reason || data.compressed !== false) throw invalidKiwiReceipt();
+        setFeedback({ message: reason, error: data.reason === "model_unavailable" });
       }
-      await refresh();
+      writeLock.current = null;
+      await refresh({ preserveFeedback: true });
     } catch (error) {
       if (isCurrent()) showFailure(error, "/api/v2/memories/consolidate", true);
     } finally {
-      if (isCurrent()) setConsolidating(false);
+      if (isCurrent() && !jobRef.current) { if (writeLock.current === operation) writeLock.current = null; setConsolidating(false); }
     }
-  }, [conversationId, consolidating, isCurrent, onNotice, refresh, request, showFailure]);
+  };
 
   useEffect(() => {
     let cancelled = false;
     Promise.resolve().then(() => { if (!cancelled) void refresh(); });
-    const imported = () => { void refresh(); };
-    window.addEventListener("dengta:memories-imported", imported);
-    return () => { cancelled = true; pendingRefresh.current = false; readVersion.current += 1; window.removeEventListener("dengta:memories-imported", imported); };
-  }, [refresh]);
+    const imported = event => {
+      if (event.detail?.scopeKey === scopeKey && event.detail.sender !== sender.current &&
+          ["chat-job-succeeded", "consolidated", "memory-write"].includes(event.detail.source)) void refresh({ preserveFeedback: true });
+    };
+    window.addEventListener("dengta:memory-updated", imported);
+    return () => { cancelled = true; pendingRefresh.current = false; readVersion.current += 1; window.removeEventListener("dengta:memory-updated", imported); };
+  }, [refresh, scopeKey]);
+  useEffect(() => () => { jobRef.current = null; if (jobTimer.current !== null) window.clearTimeout(jobTimer.current); }, []);
 
   function edit(id, value) {
     draftVersions.current[id] = (draftVersions.current[id] || 0) + 1;
@@ -104,6 +169,7 @@ export default function LocalMemorySummaries({ scopeKey, conversationId = "", it
 
   async function mutate(item, deleting = false) {
     if (!isCurrent() || writeLock.current) return;
+    if (!kiwiMemoryId(item.id)) { showFailure(invalidKiwiReceipt(), PATH, true); return; }
     const draft = draftsRef.current[item.id];
     const summary = String(draft || "").trim();
     if (!deleting && (!summary || summary.length > 4000)) {
@@ -112,7 +178,7 @@ export default function LocalMemorySummaries({ scopeKey, conversationId = "", it
     }
     const action = { id: item.id, version: draftVersions.current[item.id] || 0, draft };
     writeLock.current = action;
-    if (deleting && !window.confirm("确定删除这条长期记忆吗？删除后不会再注入对话。")) {
+    if (deleting && !window.confirm("确定删除当前账号和伴侣的这条 Kiwi 记忆吗？")) {
       writeLock.current = null;
       return;
     }
@@ -123,17 +189,19 @@ export default function LocalMemorySummaries({ scopeKey, conversationId = "", it
     const endpoint = `${PATH}/${item.id}`;
     try {
       const data = await request(endpoint, deleting
-        ? { method: "DELETE", responseReader: readMemorySummaryDelete }
+        ? { method: "DELETE", responseReader: response => readMemorySummaryDelete(response, item.id) }
         : { method: "PATCH", body: { summary }, responseReader: readMemorySummaryJson });
       if (!isCurrent() || writeLock.current !== action) return;
       const receipt = deleting ? data : memorySummaryPatchReceipt(data, item.id, summary);
       readVersion.current += 1;
       onItemsChange(current => receipt.deleted ? current.filter(memory => memory.id !== item.id) : current.map(memory => memory.id === item.id ? receipt.memory : memory));
+      if (receipt.deleted) setListState(previous => previous ? { ...previous, total: previous.total === null ? null : Math.max(0, previous.total - 1) } : previous);
       const unchanged = draftVersions.current[item.id] === action.version || (action.version === 0 && draftVersions.current[item.id] === undefined);
       const hasNewerDraft = !unchanged || draftsRef.current[item.id] !== action.draft;
       if (!hasNewerDraft) onDraftsChange(current => { if (current[item.id] !== action.draft) return current; const next = { ...current }; delete next[item.id]; return next; });
       const message = `${receipt.deleted ? deleting ? "记忆已经删除。" : "服务端已确认删除这条残留内容。" : "记忆已经保存。"}${hasNewerDraft ? " 新输入已保留，尚未保存。" : ""}`;
       setFeedback({ error: false, message });
+      emitMemoryChanged(scopeKey, "memory-write", sender.current);
       onNotice?.(message);
     } catch (error) {
       if (isCurrent() && writeLock.current === action) showFailure(error, endpoint, true);
@@ -148,43 +216,51 @@ export default function LocalMemorySummaries({ scopeKey, conversationId = "", it
     }
   }
 
-  const itemIds = new Set(items.map(item => item.id));
+  const displayed = confirmed && listState ? items : [];
+  const itemIds = new Set(displayed.map(item => item.id));
   const orphanDrafts = Object.entries(drafts).filter(([id]) => !itemIds.has(id));
+  const listDescription = confirmed && listState && describeKiwiListPage(listState, displayed.length);
+  const previousList = reading || feedback?.error || listState?.stale;
 
   return (
-    <section className="local-memory-summaries" aria-label="对话摘要">
+    <section className="local-memory-summaries" aria-label="Kiwi 长期记忆">
       <div className="memory-source-heading local-memory-heading">
-        <div><span className="eyebrow">SUPABASE</span><h3>对话摘要</h3></div>
-        <span className="local-memory-count">{confirmed || items.length ? `${items.length} 条${!confirmed ? " · 上次读取" : ""}` : "尚未确认"}</span>
+        <div><span className="eyebrow">KIWI</span><h3>长期记忆</h3></div>
+        <span className="local-memory-count">{listDescription ? `${previousList ? "上次读取：" : ""}${listDescription.count}` : "总数尚未确认"}</span>
       </div>
       <div className="memory-summary-toolbar">
-        <p role="status">{reading ? "正在读取对话摘要…" : feedback?.error && (confirmed || items.length) ? "保留上次确认的摘要，本次结果尚未确认。" : confirmed ? "已读取当前账号与伴侣的摘要。" : items.length ? "保留上次读取的摘要，本次尚未确认。" : "尚未成功读取对话摘要。"}</p>
-        <button type="button" onClick={() => void refresh()} disabled={reading || Boolean(busyId)}>{reading ? "读取中…" : "重新读取摘要"}</button>
+        <p role="status">{reading ? "正在读取 Kiwi 长期记忆…" : listDescription ? previousList ? "保留上次确认的记忆，当前结果尚未确认。" : "已读取 Kiwi 为当前账号与伴侣确认的记忆。" : "尚未成功读取当前账号与伴侣的 Kiwi 记忆。"}</p>
+        <button type="button" onClick={() => void refresh()} disabled={reading || Boolean(busyId)}>{reading ? "读取中…" : "重新读取记忆"}</button>
         <button
           type="button"
           className="memory-consolidate-button"
           onClick={() => void consolidate()}
-          disabled={!conversationId || consolidating || reading}
-          title={conversationId ? "立即整理当前聊天，不等待自动阈值" : "请先在聊天里打开一个会话"}
+          disabled={!conversationId || consolidating || reading || Boolean(busyId)}
+          title={conversationId ? "提交当前会话以提取记忆" : "请先在聊天里打开一个会话"}
         >
           {consolidating ? "整理中…" : "立即整理当前对话"}
         </button>
       </div>
+      {!conversationId && <p>先打开一个聊天会话，才能整理该会话的记忆。</p>}
+      {conversationId && <p className="memory-consolidate-help">整理会把当前会话提交给 Kiwi 提取记忆。是否新增记忆，请以任务结果为准。</p>}
+      {listState?.hasMore && <p>还有其他记忆，可在记忆页用关键词查找。</p>}
+      {job && <p role="status">整理状态：{({ pending: "等待处理", running: "处理中", succeeded: "已完成", failed: "失败", cancelled: "已取消" })[job.status]} {consolidating && <button type="button" onClick={() => void pollJob(job.id)}>查看整理进度</button>}</p>}
       {feedback && <div className={`memory-summary-feedback${feedback.error ? " is-error" : ""}`} role={feedback.error ? "alert" : "status"}>
         <p>{feedback.message}</p>
         {feedback.error && <details><summary>技术详情</summary><dl><dt>错误代码</dt><dd>{feedback.code}</dd>{feedback.status && <><dt>后端 HTTP</dt><dd>{feedback.status}</dd></>}{feedback.logId && <><dt>日志编号</dt><dd>{feedback.logId}</dd></>}</dl></details>}
       </div>}
       <div className="memory-grid">
-        {confirmed && items.length === 0 ? <div className="empty-card">暂时没有长期记忆。达到设置中的 token 阈值后会自动整理。</div> : items.map(item => (
+        {displayed.length === 0 ? (!previousList && listDescription && <div className="empty-card">{listDescription.empty}</div>) : displayed.map(item => (
           <article className="memory-card" key={item.id}>
             <span>{formatMemorySummaryDate(item.updated_at || item.created_at)}</span>
+            {item.permanent && <span className="memory-gateway-permanent">永久 · 编辑前请在记忆页取消永久</span>}
             {Object.hasOwn(drafts, item.id) ? <textarea className="memory-editor" value={drafts[item.id]} onChange={event => edit(item.id, event.target.value)} maxLength={4000} rows={5} aria-label="修改长期记忆" /> : <p>{item.summary}</p>}
             <div className="memory-card-actions">
               {Object.hasOwn(drafts, item.id) ? <>
-                <button type="button" onClick={() => void mutate(item)} disabled={Boolean(busyId)}>{busyId === item.id ? "保存中…" : "保存"}</button>
+                <button type="button" onClick={() => void mutate(item)} disabled={Boolean(busyId) || item.permanent}>{busyId === item.id ? "保存中…" : "保存"}</button>
                 <button type="button" onClick={() => cancelEdit(item.id)} disabled={busyId === item.id}>取消</button>
               </> : <>
-                <button type="button" onClick={() => edit(item.id, item.summary)} disabled={busyId === item.id}>修改</button>
+                <button type="button" onClick={() => edit(item.id, item.summary)} disabled={busyId === item.id || item.permanent}>修改</button>
                 <button type="button" className="danger" onClick={() => void mutate(item, true)} disabled={Boolean(busyId)}>{busyId === item.id ? "删除中…" : "删除"}</button>
               </>}
             </div>
@@ -193,7 +269,7 @@ export default function LocalMemorySummaries({ scopeKey, conversationId = "", it
       </div>
       {orphanDrafts.length > 0 && <div className="memory-summary-orphan-drafts" aria-label="未保存的记忆草稿">
         <h4>仍然保留的输入</h4>
-        <p>当前摘要列表未找到对应记录。这些输入尚未保存，可以选中全文复制，或手动丢弃。</p>
+        <p>{listDescription ? "当前记忆列表未找到对应记录。" : "尚未读取到可与草稿核对的记忆列表。"}这些输入尚未保存，可以复制或丢弃。</p>
         {orphanDrafts.map(([id, draft]) => <div key={id}>
           <textarea readOnly value={draft} rows={4} aria-label="选择并复制未保存的记忆草稿" onFocus={event => event.currentTarget.select()} />
           <button type="button" disabled={Boolean(busyId)} onClick={() => {

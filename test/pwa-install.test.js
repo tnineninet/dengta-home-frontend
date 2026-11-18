@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { createPwaInstallController } from "../src/pwa-install.js";
+import { createPwaInstallController, offersAndroidDownload } from "../src/pwa-install.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
@@ -24,6 +24,34 @@ function createWindow({ standalone = false } = {}) {
       listeners.get(type)?.(event);
     },
   };
+}
+
+for (const [label, platform, navigatorLike, expected] of [
+  ["iPhone Safari", "web", { userAgent: "iPhone Mobile Safari", platform: "iPhone" }, false],
+  ["iPhone Chrome", "web", { userAgent: "iPhone CriOS Mobile" }, false],
+  ["iPhone Home Screen", "web", { userAgent: "iPhone Mobile", standalone: true }, false],
+  ["iPad in desktop mode", "web", { userAgent: "Macintosh Safari", platform: "MacIntel", maxTouchPoints: 5 }, false],
+  ["Mac Safari", "web", { userAgent: "Macintosh Safari", platform: "MacIntel", maxTouchPoints: 0 }, true],
+  ["Android Chrome", "web", { userAgent: "Android Chrome Mobile Safari", maxTouchPoints: 5 }, true],
+  ["native iOS", "ios", {}, false],
+  ["native Android", "android", {}, true],
+]) {
+  assert.equal(offersAndroidDownload(platform, navigatorLike), expected, label);
+}
+
+for (const [url, installed] of [
+  ["capacitor://localhost/settings", true],
+  ["capacitor://localhost:8080/", false],
+  ["capacitor://localhost.example.org/", false],
+  ["https://localhost/", false],
+  ["https://dengta.example/", false],
+]) {
+  const controller = createPwaInstallController({
+    windowLike: { ...createWindow(), location: new URL(url) },
+    navigatorLike: { userAgent: "iPhone Mobile Safari" },
+  });
+  assert.equal(controller.isInstalled(), installed, url);
+  assert.equal((await controller.install()).outcome, installed ? "installed" : "instructions", url);
 }
 
 {
@@ -113,6 +141,11 @@ assert.match(indexHtml, /apple-mobile-web-app-capable/);
 assert.match(main, /pwaInstallController\.start\(\)/);
 assert.match(authGate, /<WebInstallButton/);
 assert.match(app, /<WebInstallButton/);
+assert.match(app, /showAndroidDownload\s*&&\s*<>\s*<a[^>]*href="\/download"[\s\S]*?dengta:check-app-updates[\s\S]*?dengta:app-update-preferences[^\n]*\n\s*<\/>/);
+assert.match(app, /showAndroidDownload\s*&&\s*<a\s+className="sidebar-settings-button"\s+href="\/download"/);
+assert.match(app, /showAndroidDownload\s*&&\s*<Suspense[^>]*><AppUpdateCenter/);
+const downloadChip = fs.readFileSync(path.join(root, "src", "DownloadAppChip.jsx"), "utf8");
+assert.match(downloadChip, /if \(isNativeApp\(\) \|\| !offersAndroidDownload\(\)\) return false/);
 assert.doesNotMatch(app, /beforeinstallprompt/);
 assert.doesNotMatch(app, /installPrompt/);
 assert.equal(vercel.buildCommand, "npm run build:web");

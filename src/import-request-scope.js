@@ -2,9 +2,10 @@ import { apiFetch, apiRequest } from "./api.js";
 import { authSession } from "./auth-session.js";
 
 export function createImportRequestClient({ accountScope, companionScope, auth = authSession, client = { apiFetch, apiRequest } }) {
+  const revision = auth.getSnapshot()?.scopeRevision;
   const current = () => {
     const snapshot = auth.getSnapshot();
-    return Boolean(accountScope && companionScope && snapshot?.user?.id === accountScope && snapshot?.activeCompanionId === companionScope);
+    return Boolean(accountScope && companionScope && revision === snapshot?.scopeRevision && snapshot?.user?.id === accountScope && snapshot?.activeCompanionId === companionScope);
   };
   const assertCurrent = signal => {
     signal?.throwIfAborted();
@@ -17,7 +18,7 @@ export function createImportRequestClient({ accountScope, companionScope, auth =
       if (context?.companionId !== companionScope) throw Object.assign(new Error("导入请求的伴侣范围未确认。"), { code: "import_scope_changed" });
       return context;
     },
-    captureCompanionFromResponse: response => { if (current()) auth.captureCompanionFromResponse?.(response); },
+    captureCompanionFromResponse: (response, context) => { if (current()) auth.captureCompanionFromResponse?.(response, context); },
     invalidateSession: (...args) => current() ? auth.invalidateSession?.(...args) : undefined,
   };
   const guarded = method => async (path, options = {}) => {

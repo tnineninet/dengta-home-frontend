@@ -1,0 +1,37 @@
+/* Apply only inside the native iOS host. Browser/Android styles stay shared. */
+html[data-native-platform="ios"] .auth-page {
+  height: var(--app-height, 100dvh);
+  min-height: 0;
+  box-sizing: border-box;
+  padding-top: max(20px, env(safe-area-inset-top));
+  padding-bottom: max(20px, env(safe-area-inset-bottom));
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+html[data-native-platform="ios"] :is(input, textarea, select) {
+  /* WebKit zooms focused controls below 16px. Component rules such as
+     .main-panel.view-chat .composer textarea are more specific than this
+     platform guard, so keep the native minimum above those rules. */
+  font-size: max(16px, 1em) !important;
+}
+
+html[data-native-platform="ios"] .main-panel.view-chat .message-row {
+  /* Keep streamed chat text in WebKit's accessibility tree when the keyboard
+     changes the viewport. ChatTranscript already bounds rendered history. */
+  content-visibility: visible;
+  contain-intrinsic-size: none;
+}
+
+@media (max-width: 820px) {
+  html[data-native-platform="ios"] .auth-panel {
+    min-height: 0;
+    margin-top: clamp(12px, 8dvh, 60px);
+    align-content: start;
+  }
+
+  html[data-native-platform="ios"][data-keyboard-open="true"] .auth-panel {
+    margin-top: 0;
+  }
+}

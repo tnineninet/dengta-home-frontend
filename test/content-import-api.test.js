@@ -82,7 +82,7 @@ test("list, detail and commit use exact import endpoints and decision payload", 
       return { ok: true };
     },
   };
-  const decisions = [{ id: "candidate-1", decision: "accepted", title: "灯塔", content: "保留原文", target: "memory" }];
+  const decisions = [{ id: "candidate-1", decision: "accepted", title: "灯塔", content: "保留原文", target: "user_details" }];
   await listContentImports(client);
   await getContentImport("import / one", client);
   await commitContentImport("import / one", decisions, client);
@@ -92,6 +92,17 @@ test("list, detail and commit use exact import endpoints and decision payload", 
   assert.equal(calls[2].path, "/api/v2/imports/import%20%2F%20one/commit");
   assert.equal(calls[2].options.method, "POST");
   assert.deepEqual(JSON.parse(calls[2].options.body), { decisions });
+});
+
+test("legacy memory targets cannot reach the commit endpoint, including a mixed batch or missing target", async () => {
+  let calls = 0;
+  const client = { apiRequest: async () => { calls++; return {}; } };
+  for (const target of ["memories", "memory", undefined]) {
+    await assert.rejects(commitContentImport("test", [{ decision: "accepted", target: "user_details" }, { decision: "accepted", target }], client), { code: "import_memory_target_unavailable" });
+  }
+  assert.equal(calls, 0);
+  await commitContentImport("test", [{ decision: "rejected", target: "memories" }, { decision: "accepted", target: "world_book_entries" }], client);
+  assert.equal(calls, 1);
 });
 
 test("file validation and backend failures have explicit translated errors", async () => {

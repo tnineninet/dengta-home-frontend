@@ -12,7 +12,7 @@ export function installAndroidCompatibility() {
   installed = true;
 
   const root = document.documentElement;
-  const native = Capacitor.isNativePlatform();
+  const native = Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android";
   if (native) root.dataset.dengtaAndroid = "true";
 
   const syncViewport = () => {

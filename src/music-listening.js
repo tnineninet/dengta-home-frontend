@@ -290,7 +290,14 @@ export async function cookieGetMyPlaylists(options = {}) {
 }
 
 export async function cookieGetPlaylistTracks(playlistId, options = {}) {
-  return musicRequest("/api/v2/music/providers/netease/cookie/playlist?id=" + encodeURIComponent(text(playlistId, 20)), { timeoutMs: READ_TIMEOUT_MS }, options);
+  const id = text(playlistId, 20);
+  const data = await musicRequest("/api/v2/music/providers/netease/cookie/playlist?id=" + encodeURIComponent(id), { timeoutMs: READ_TIMEOUT_MS }, options);
+  const playlist = data?.playlist;
+  if (!Array.isArray(playlist?.tracks) || (playlist.id != null && String(playlist.id) !== id) ||
+      !playlist.tracks.every(track => track?.id && typeof track.title === "string" && (track.artist == null || typeof track.artist === "string"))) {
+    throw Object.assign(new Error("网易云没有返回有效的歌单曲目，请重新读取。"), { code: "music_cookie_playlist_receipt_invalid" });
+  }
+  return data;
 }
 
 export async function cookieGetDailyRecommend(options = {}) {

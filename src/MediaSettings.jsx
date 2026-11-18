@@ -7,6 +7,7 @@ import { filterStickerShelf, importStickerFiles } from "./sticker-shelf.js";
 import { AuthenticatedImage } from "./PrivateMedia";
 import StickerImportSettings, { StickerSource } from "./StickerImportSettings.jsx";
 import XhsStickerImportSettings from "./XhsStickerImportSettings.jsx";
+import { PRIVATE_PHOTO_ACCEPT, assertPrivatePhotoActive, preparePrivatePhoto } from "./private-photo.js";
 import {
   archivePrivateMediaAsset,
   describePrivateSticker,
@@ -16,8 +17,10 @@ import {
   uploadPrivateMediaAsset,
 } from "./private-media-api.js";
 import {
+  isPrivateMediaAssetId,
   normalizePrivateMediaCatalog,
   privateMediaContentPath,
+  privateMediaPreferenceId,
 } from "./private-media.js";
 const PURPOSES = [
   ["user_avatar", "用户头像", "你的聊天头像"],
@@ -37,12 +40,12 @@ function UploadControl({ purpose, label, busy, disabled, onUpload }) {
         <span>{busy ? "上传中…" : `上传${label}`}</span>
         <input
           type="file"
-          accept={purpose === "custom_sticker" ? "image/jpeg,image/png,image/webp,image/gif" : "image/jpeg,image/png,image/webp"}
+          accept={purpose === "custom_sticker" ? "image/jpeg,image/png,image/webp,image/gif" : PRIVATE_PHOTO_ACCEPT}
           multiple={purpose === "custom_sticker"}
           disabled={disabled || busy}
           onChange={(event) => {
             const file = event.target.files?.[0];
-            setWarning(privateMediaFileWarning(file, purpose));
+            setWarning(purpose === "custom_sticker" ? privateMediaFileWarning(file, purpose) : "");
             if (file) void onUpload(purpose === "custom_sticker" ? Array.from(event.target.files) : file);
             event.target.value = "";
           }}
@@ -175,6 +178,8 @@ export default function MediaSettings({
   const normalized = useMemo(() => normalizePrivateMediaCatalog(catalog), [catalog]);
   const [busy, setBusy] = useState("");
   const [localError, setLocalError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [edit, setEdit] = useState(null);
   const [stickerQuery, setStickerQuery] = useState("");
   const [importResults, setImportResults] = useState([]);
   const operation = useRef(null);
@@ -202,12 +207,14 @@ export default function MediaSettings({
     const client = {
       apiFetch: (path, init) => apiFetch(path, { ...init, ...options }),
       apiRequest: (path, init) => apiRequest(path, { ...init, ...options }),
+      signal: options.signal,
       isCurrent,
       onConfirmed: () => { confirmed++; },
     };
     let submitted = false;
     setBusy(key);
     setLocalError("");
+    setNotice("");
     try {
       await action(client);
       submitted = true;
@@ -242,7 +249,16 @@ export default function MediaSettings({
 
   function upload(purpose, file) {
     return perform(`upload:${purpose}`, async (client) => {
-      if (purpose !== "custom_sticker") return uploadPrivateMediaAsset({ image: file, purpose }, client);
+      if (purpose !== "custom_sticker") {
+        const image = await preparePrivatePhoto(file, purpose, client.signal);
+        assertPrivatePhotoActive(client.signal);
+        const receipt = await uploadPrivateMediaAsset({ image, purpose }, client);
+        if (receipt?.ok !== true || !isPrivateMediaAssetId(receipt.asset?.id) || receipt.asset.purpose !== purpose) {
+          throw Object.assign(new Error("没有收到有效的图片保存回执，请先刷新图库核对，不要重复上传。"), { code: "private_media_receipt_invalid" });
+        }
+        if (client.isCurrent()) setNotice("图片已上传。点击图片下方的“启用”即可更换。");
+        return;
+      }
       const results = await importStickerFiles(Array.isArray(file) ? file : [file], {
         upload: values => uploadPrivateMediaAsset(values, client), isCurrent: client.isCurrent,
         onConfirmed: client.onConfirmed,
@@ -253,9 +269,19 @@ export default function MediaSettings({
   }
 
   function choose(purpose, id) {
-    return perform(`preference:${purpose}`, (client) =>
-      updatePrivateMediaPreferences({ [preferenceKey(purpose)]: id || null }, client),
-    );
+    const assetId = id || null;
+    return perform(`preference:${purpose}`, async (client) => {
+      const saved = await updatePrivateMediaPreferences({ [preferenceKey(purpose)]: assetId }, client);
+      if (saved?.ok !== true || saved.preference?.purpose !== purpose || saved.preference.asset_id !== assetId) {
+        throw Object.assign(new Error("未能确认图片是否已切换，请先刷新图库核对。"), { code: "private_media_receipt_invalid" });
+      }
+      if (!client.isCurrent()) return;
+      onCatalogChange?.(current => {
+        const latest = normalizePrivateMediaCatalog(current);
+        return { ...latest, preferences: { ...latest.preferences, [purpose]: assetId } };
+      });
+      setNotice(assetId ? "已启用，返回聊天即可查看。" : "已恢复默认。");
+    });
   }
 
   async function refreshCatalog() {
@@ -283,11 +309,12 @@ export default function MediaSettings({
       </div>
 
       {feedback && <div className="media-settings-error" role="alert">{feedback}</div>}
+      {!feedback && notice && <p role="status">{notice}</p>}
 
       <div className="media-purpose-grid" aria-busy={loading || Boolean(busy)}>
         {PURPOSES.map(([purpose, label, hint]) => {
           const items = normalized.assets.filter((asset) => asset.purpose === purpose);
-          const selectedId = String(normalized.preferences[preferenceKey(purpose)] || "");
+          const selectedId = privateMediaPreferenceId(normalized.preferences, purpose);
           return (
             <section className="media-purpose-card" key={purpose} aria-labelledby={`media-${purpose}`}>
               <div className="media-purpose-heading">
@@ -330,18 +357,7 @@ export default function MediaSettings({
                             type="button"
                             className="media-choice-edit"
                             disabled={loading || Boolean(busy)}
-                            onClick={() => {
-                              const nextName = window.prompt("显示名称（可留空）：", asset.display_name || "");
-                              if (nextName === null) return;
-                              const nextAlt = window.prompt("替代文字（可留空）：", asset.alt_text || "");
-                              if (nextAlt === null) return;
-                              void perform(`patch:${asset.id}`, (client) =>
-                                patchPrivateMediaAsset(asset.id, {
-                                  display_name: nextName.trim(),
-                                  alt_text: nextAlt.trim(),
-                                }, client),
-                              );
-                            }}
+                            onClick={() => setEdit({ mode: "edit", purpose, id: asset.id, name: asset.display_name, alt: asset.alt_text })}
                           >
                             修改
                           </button>
@@ -349,10 +365,7 @@ export default function MediaSettings({
                             type="button"
                             className="danger"
                             disabled={loading || Boolean(busy)}
-                            onClick={() => {
-                              if (!window.confirm(`确认删除此${label}？删除后不可恢复。`)) return;
-                              void perform(`delete:${asset.id}`, (client) => archivePrivateMediaAsset(asset.id, true, client));
-                            }}
+                            onClick={() => setEdit({ mode: "delete", purpose, id: asset.id })}
                           >
                             删除
                           </button>
@@ -360,23 +373,39 @@ export default function MediaSettings({
                       </article>
                     );
                   })}
-                  <div className="media-default-row">
-                    <button
-                      type="button"
-                      className="media-default-button"
-                      disabled={loading || Boolean(busy) || !selectedId}
-                      onClick={() => void choose(purpose, null)}
-                    >
-                      {purpose === "chat_background" ? (selectedId ? "移除背景，恢复默认" : "默认天空·太阳轨迹·银河") : (selectedId ? "移除头像，恢复默认" : "默认头像")}
-                    </button>
-                    {purpose === "chat_background" && !selectedId && (
-                      <small className="media-default-hint">日出日落、夜晚银河正在显示</small>
-                    )}
-                  </div>
                 </div>
               ) : (
                 <p className="media-empty-state">还没有上传{label}。</p>
               )}
+              {edit?.purpose === purpose && (
+                <div className="media-asset-editor" role="group" aria-label={edit.mode === "delete" ? `确认删除${label}` : `编辑${label}`}>
+                  {edit.mode === "delete" ? <p>确认删除此{label}？删除后不可恢复。</p> : <>
+                    <label>显示名称<input maxLength={120} value={edit.name} onChange={event => setEdit({ ...edit, name: event.target.value })} /></label>
+                    <label>替代文字<input maxLength={500} value={edit.alt} onChange={event => setEdit({ ...edit, alt: event.target.value })} /></label>
+                  </>}
+                  <div>
+                    <button type="button" disabled={loading || Boolean(busy)} onClick={() => setEdit(null)}>取消</button>
+                    <button type="button" disabled={loading || Boolean(busy)} onClick={() => {
+                      const deleting = edit.mode === "delete";
+                      void perform(`${deleting ? "delete" : "patch"}:${edit.id}`, async client => {
+                        if (deleting) await archivePrivateMediaAsset(edit.id, true, client);
+                        else await patchPrivateMediaAsset(edit.id, { display_name: edit.name.trim(), alt_text: edit.alt.trim() }, client);
+                        if (client.isCurrent()) setEdit(null);
+                      });
+                    }}>{edit.mode === "delete" ? "确认删除" : "保存修改"}</button>
+                  </div>
+                </div>
+              )}
+              <div className="media-default-row">
+                <button
+                  type="button"
+                  className="media-default-button"
+                  disabled={loading || Boolean(busy) || !selectedId}
+                  onClick={() => void choose(purpose, null)}
+                >
+                  {purpose === "chat_background" ? (selectedId ? "移除背景，恢复默认" : "默认聊天背景") : (selectedId ? "移除头像，恢复默认" : "默认头像")}
+                </button>
+              </div>
             </section>
           );
         })}

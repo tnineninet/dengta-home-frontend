@@ -1,4 +1,5 @@
 import { describeOperationError } from "./operation-error-help.js";
+import { kiwiMemoryDeleteReceipt, kiwiMemoryListReceipt, kiwiMemoryWriteReceipt } from "./kiwi-memory-receipt.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const HELP = {
@@ -8,25 +9,17 @@ const HELP = {
   memory_not_found: "当前账号和伴侣下找不到这条记忆，请重新读取后核对。",
   request_timeout: "等待记忆服务确认超时。",
 };
-const object = value => value && typeof value === "object" && !Array.isArray(value);
 
 export function invalidMemorySummaryReceipt() {
   return Object.assign(new Error("记忆摘要回执无效。"), { code: "memory_summary_receipt_invalid" });
 }
 
-function memoryRecord(value) {
-  return object(value) && typeof value.id === "string" && UUID.test(value.id) && typeof value.summary === "string" && value.confirmation_status === "confirmed";
-}
-
 export function memorySummaryListReceipt(data) {
-  if (!object(data) || !Array.isArray(data.memories) || data.memories.some(value => !memoryRecord(value)) || new Set(data.memories.map(value => value.id.toLowerCase())).size !== data.memories.length) throw invalidMemorySummaryReceipt();
-  return data.memories;
+  try { return kiwiMemoryListReceipt(data).memories; } catch { throw invalidMemorySummaryReceipt(); }
 }
 
 export function memorySummaryPatchReceipt(data, id, summary) {
-  if (object(data) && data.deleted === true && data.reason === "memory_summary_rejected" && !Object.hasOwn(data, "memory")) return { deleted: true };
-  if (!object(data) || Object.hasOwn(data, "deleted") || !memoryRecord(data.memory) || data.memory.id !== id || data.memory.summary !== summary) throw invalidMemorySummaryReceipt();
-  return { memory: data.memory };
+  try { return { memory: kiwiMemoryWriteReceipt(data, id, summary) }; } catch { throw invalidMemorySummaryReceipt(); }
 }
 
 async function readFailure(response) {
@@ -39,14 +32,14 @@ async function readFailure(response) {
 
 export async function readMemorySummaryJson(response) {
   if (!response.ok) return readFailure(response);
-  if (response.status !== 200) throw invalidMemorySummaryReceipt();
+  if (response.status !== 200 && response.status !== 202) throw invalidMemorySummaryReceipt();
   try { return await response.json(); } catch { throw invalidMemorySummaryReceipt(); }
 }
 
-export async function readMemorySummaryDelete(response) {
+export async function readMemorySummaryDelete(response, id) {
   if (!response.ok) return readFailure(response);
-  if (response.status !== 204) throw invalidMemorySummaryReceipt();
-  return { deleted: true };
+  if (response.status !== 200) throw invalidMemorySummaryReceipt();
+  try { return kiwiMemoryDeleteReceipt(await response.json(), id); } catch { throw invalidMemorySummaryReceipt(); }
 }
 
 export function memorySummaryFailure(error, mutation = false) {

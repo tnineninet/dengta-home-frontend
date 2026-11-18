@@ -12,6 +12,23 @@
 .settings-sheet .card-hint,
 .settings-sheet .notification-feature-feedback,
 .settings-sheet .media-settings-error { overflow-wrap: anywhere; white-space: pre-wrap; }
+.media-upload-button { position: relative; overflow: hidden; min-height: 44px; }
+.media-upload-button input[type=file] { inset: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.media-upload-button:focus-within { outline: 2px solid var(--theme-accent); outline-offset: 2px; }
+.media-purpose-card .media-choice-list { grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); }
+.media-purpose-card .media-choice { grid-template-columns: 52px minmax(0, 1fr); gap: 6px 10px; align-items: center; padding: 8px; }
+.media-choice .media-choice-preview { display: block; width: 52px; height: 52px; padding: 0; overflow: hidden; border: 0; border-radius: 10px; }
+.media-choice .media-choice-image { display: block; width: 52px; height: 52px; }
+.media-purpose-card .media-choice > span { font-size: 13px; }
+.media-choice-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px; }
+.media-choice-actions button, .media-default-button { min-height: 44px; }
+.media-choice-actions .media-choice-enable[aria-pressed=true] { background: var(--theme-accent, #544149); border-color: transparent; color: white; opacity: 1; }
+.media-default-row, .media-asset-editor { display: grid; gap: 8px; margin-top: 12px; }
+.media-default-button { justify-self: start; padding: 5px 12px; border: 1px solid var(--theme-control-border, #b1a7a3); border-radius: 12px; background: var(--theme-control-background, transparent); color: var(--theme-ink, inherit); }
+.media-default-button:disabled { opacity: .65; }
+.media-asset-editor label { display: grid; gap: 4px; }
+.media-asset-editor input { width: 100%; min-width: 0; box-sizing: border-box; }
+.media-asset-editor button { min-height: 44px; margin-inline-end: 6px; }
 .settings-sheet .autosave-hint { flex: 0 1 180px; }
 .settings-sheet .mcp-form-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr)); }
 .gender-schema-feedback { grid-column: 1 / -1; margin: 0; font-size: 13px; line-height: 1.6; color: var(--theme-accent); }

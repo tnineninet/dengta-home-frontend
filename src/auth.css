@@ -1,3 +1,20 @@
+.native-auth-approval {
+  box-sizing: border-box;
+  width: min(92vw, 32rem);
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2rem);
+  overflow: auto;
+  border: 1px solid #d9c6ca;
+  border-radius: 1.1rem;
+  padding: 1.4rem;
+  background: #fffcf9;
+  color: #4c353e;
+}
+.native-auth-approval::backdrop { background: rgb(34 20 28 / 55%); }
+.native-auth-approval p { overflow-wrap: anywhere; }
+.native-auth-approval-actions { display: flex; flex-wrap: wrap; gap: .7rem; }
+.native-auth-approval button { min-height: 44px; padding: .7rem 1rem; cursor: pointer; }
+.native-auth-approval button:focus-visible { outline: 3px solid #8c3e5c; outline-offset: 3px; }
+
 .auth-page {
   position: relative;
   display: grid;
@@ -101,7 +118,7 @@
 
 .auth-mode-switch {
   display: grid;
-  height: 42px;
+  min-height: 42px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   padding: 3px;
   border: 1px solid #dfd1cc;

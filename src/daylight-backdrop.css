@@ -1,0 +1,14 @@
+.daylight-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  contain: strict;
+}
+.daylight-tile, .daylight-backdrop > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.daylight-tile {
+  background-image: var(--sky-atlas);
+  background-size: 100% var(--sky-scale);
+  background-repeat: no-repeat;
+}

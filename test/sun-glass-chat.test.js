@@ -15,8 +15,8 @@ test("the approved Variant A controls are wired into the real chat screen", () =
   assert.match(app, /weatherModeOverride=\{weatherPreviewMode\}/);
   assert.match(deck, /清晨 08:00/);
   assert.match(deck, /红霞 18:00/);
-  assert.match(deck, /蓝调 18:40/);
-  assert.match(deck, /银河 22:00/);
+  assert.match(deck, /暮色 18:40/);
+  assert.match(deck, /星夜 22:00/);
   assert.match(deck, /微云/);
   assert.match(deck, /雨幕/);
   assert.match(deck, /晴雷/);

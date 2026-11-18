@@ -1,0 +1,318 @@
+name: iOS Simulator Phase 1
+
+on:
+  push:
+    branches: [feat/ios-import-75ad3da]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      business:
+        description: Acceptance mode or unsigned device package (live remains disabled)
+        type: choice
+        options: [none, synthetic, live, device]
+        default: none
+      source_sha:
+        description: Exact reviewed source SHA (required for live or device)
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-phase1-${{ github.head_ref || github.ref_name }}-${{ inputs.business || 'none' }}
+  cancel-in-progress: ${{ inputs.business != 'live' }}
+
+jobs:
+  device-package:
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.business == 'device' &&
+      github.ref == 'refs/heads/feat/ios-import-75ad3da'
+    runs-on: macos-26
+    timeout-minutes: 40
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      VITE_API_URL: https://dengta-home-backend-rkmq.onrender.com
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+    steps:
+      - name: Require exact reviewed device revision
+        env:
+          EXPECTED_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          node --input-type=module -e '
+            if (!/^[a-f0-9]{40}$/.test(process.env.EXPECTED_SOURCE_SHA || "") || process.env.EXPECTED_SOURCE_SHA !== process.env.GITHUB_SHA) throw new Error("Exact reviewed source SHA required.");
+          '
+      - name: Checkout reviewed device source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Node 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - name: Build and inspect unsigned iPhoneOS Release package
+        run: node scripts/ios-device-build.mjs "$RUNNER_TEMP/dengta-ios-device-evidence" "$GITHUB_SHA"
+      - name: Upload device build evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: DengTa-iPhoneOS-Build-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/dengta-ios-device-evidence/manifest.json
+            ${{ runner.temp }}/dengta-ios-device-evidence/*.log
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload device candidate only after a successful build
+        if: success()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: DengTa-iPhoneOS-Unsigned-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/dengta-ios-device-evidence/manifest.json
+            ${{ runner.temp }}/dengta-ios-device-evidence/*.ipa
+          if-no-files-found: error
+          retention-days: 7
+
+  simulator:
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.head_ref == 'feat/ios-import-75ad3da') ||
+      ((github.event_name == 'push' ||
+        (github.event_name == 'workflow_dispatch' && inputs.business == 'none')) &&
+       github.ref == 'refs/heads/feat/ios-import-75ad3da')
+    runs-on: macos-26
+    timeout-minutes: 35
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+      VITE_API_URL: https://dengta-home-backend-rkmq.onrender.com
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+    steps:
+      - name: Checkout reviewed source SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Set up Node 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Record source and toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          IOS_EVIDENCE="$RUNNER_TEMP/dengta-ios-evidence"
+          printf 'IOS_EVIDENCE=%s\nIOS_DERIVED_DATA=%s\n' "$IOS_EVIDENCE" "$RUNNER_TEMP/dengta-ios-derived" >> "$GITHUB_ENV"
+          mkdir -p "$IOS_EVIDENCE"
+          test -d "$DEVELOPER_DIR"
+          {
+            git rev-parse HEAD
+            sw_vers
+            xcodebuild -version
+            xcrun --sdk iphonesimulator --show-sdk-version
+            node --version
+            npm --version
+            printf 'runner image: %s\n' "${ImageVersion:-unknown}"
+          } | tee "$IOS_EVIDENCE/toolchain.log"
+
+      - name: Validate public build configuration
+        run: |
+          node --input-type=module -e '
+            for (const key of ["VITE_SUPABASE_URL", "VITE_SUPABASE_ANON_KEY"]) {
+              if (!process.env[key]?.trim()) throw new Error("Required public auth build configuration is unavailable.");
+            }
+            if (!process.env.VITE_SUPABASE_URL.startsWith("https://")) throw new Error("HTTPS public auth URL required.");
+            if (process.env.VITE_PUBLIC_AUTH_REDIRECT_URL) throw new Error("iOS build must use its native callback.");
+            console.log("Public build configuration present; values omitted.");
+          '
+
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Authentication, platform and SSE regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run test:ios 2>&1 | tee "$IOS_EVIDENCE/javascript-tests.log"
+
+      - name: Build verified web assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build:web 2>&1 | tee "$IOS_EVIDENCE/web-build.log"
+          npm run verify:ios-build-policy 2>&1 | tee "$IOS_EVIDENCE/ios-build-policy.log"
+
+      - name: Synchronize iOS SPM dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx --no-install cap sync ios 2>&1 | tee "$IOS_EVIDENCE/cap-sync.log"
+
+      - name: Native Keychain policy fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/test-ios-keychain-native.sh 2>&1 | tee "$IOS_EVIDENCE/keychain-policy.log"
+
+      - name: Build Simulator app with Xcode ad hoc signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild -project ios/App/App.xcodeproj -scheme App -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$IOS_DERIVED_DATA" \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGN_IDENTITY=- build \
+            2>&1 | tee "$IOS_EVIDENCE/xcodebuild.log"
+
+      - name: Real Simulator launch, Keychain and anonymous keyboard UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/ios-simulator-smoke.sh \
+            "$IOS_DERIVED_DATA/Build/Products/Debug-iphonesimulator/App.app" \
+            "$IOS_EVIDENCE/simulator" "$(git rev-parse HEAD)" \
+            2>&1 | tee "$IOS_EVIDENCE/simulator-smoke.log"
+
+      - name: Compact iPhone SE anonymous keyboard UI
+        shell: bash
+        env:
+          DENGTA_SIMULATOR_DEVICE_NAME: iPhone SE (3rd generation)
+        run: |
+          set -euo pipefail
+          bash scripts/ios-simulator-smoke.sh \
+            "$IOS_DERIVED_DATA/Build/Products/Debug-iphonesimulator/App.app" \
+            "$IOS_EVIDENCE/simulator-compact" "$(git rev-parse HEAD)" \
+            2>&1 | tee "$IOS_EVIDENCE/simulator-compact-smoke.log"
+
+      - name: Isolated synthetic WKWebView POST SSE transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/ios-webkit-transport.mjs "$IOS_EVIDENCE/webkit-transport" "$(git rev-parse HEAD)" \
+            2>&1 | tee "$IOS_EVIDENCE/webkit-transport.log"
+
+      - name: Upload bounded simulator evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: DengTa-iOS-Simulator-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/dengta-ios-evidence/
+          if-no-files-found: warn
+          retention-days: 7
+
+  synthetic-business:
+    if: >-
+      (github.event_name == 'pull_request' &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.head_ref == 'feat/ios-import-75ad3da') ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/feat/ios-import-75ad3da') ||
+      (github.event_name == 'workflow_dispatch' && inputs.business == 'synthetic' &&
+       github.ref == 'refs/heads/feat/ios-import-75ad3da')
+    runs-on: macos-26
+    timeout-minutes: 35
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - name: Checkout reviewed source SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Set up Node 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Business fixture and privacy regressions
+        run: npm run test:ios-business
+      - name: Actual product UI with synthetic auth and backend
+        env:
+          DENGTA_BUSINESS_MODE: synthetic
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/dengta-ios-business-evidence"
+          {
+            git rev-parse HEAD
+            sw_vers
+            xcodebuild -version
+            xcrun --sdk iphonesimulator --show-sdk-version
+          } > "$RUNNER_TEMP/dengta-ios-business-evidence/toolchain.log"
+          node scripts/ios-business-smoke.mjs "$RUNNER_TEMP/dengta-ios-business-evidence" "$(git rev-parse HEAD)"
+      - name: Remove private test plans and Simulator data
+        if: always()
+        run: node scripts/ios-business-cleanup.mjs
+      - name: Upload synthetic business evidence only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: DengTa-iOS-Synthetic-Business-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/dengta-ios-business-evidence/manifest.json
+            ${{ runner.temp }}/dengta-ios-business-evidence/business-evidence.json
+            ${{ runner.temp }}/dengta-ios-business-evidence/fixture-evidence.json
+            ${{ runner.temp }}/dengta-ios-business-evidence/synthetic-chat.png
+            ${{ runner.temp }}/dengta-ios-business-evidence/synthetic-failed.png
+            ${{ runner.temp }}/dengta-ios-business-evidence/*-synthetic.log
+            ${{ runner.temp }}/dengta-ios-business-evidence/toolchain.log
+          if-no-files-found: warn
+          retention-days: 7
+
+  live-business:
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.business == 'live' &&
+      github.ref == 'refs/heads/feat/ios-import-75ad3da'
+    runs-on: macos-26
+    environment: ios-business
+    timeout-minutes: 35
+    concurrency:
+      group: dengta-ios-dedicated-business-account
+      cancel-in-progress: false
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.6.app/Contents/Developer
+    steps:
+      - name: Require exact reviewed revision
+        env:
+          EXPECTED_SOURCE_SHA: ${{ inputs.source_sha }}
+        run: |
+          node --input-type=module -e '
+            if (!/^[a-f0-9]{40}$/.test(process.env.EXPECTED_SOURCE_SHA || "") || process.env.EXPECTED_SOURCE_SHA !== process.env.GITHUB_SHA) throw new Error("Exact reviewed source SHA required.");
+          '
+      - name: Checkout reviewed source SHA
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Set up Node 24
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install locked dependencies without account secrets
+        run: npm ci --no-audit --no-fund
+      - name: Live driver remains unavailable pending safety acceptance
+        env:
+          DENGTA_BUSINESS_MODE: live
+        run: node scripts/ios-business-smoke.mjs "$RUNNER_TEMP/dengta-ios-live-evidence" "$GITHUB_SHA"
+      - name: Remove private live outputs and Simulator data
+        if: always()
+        run: node scripts/ios-business-cleanup.mjs
+      - name: Upload allowlisted live receipts only
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: DengTa-iOS-Live-Business-Receipts-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/dengta-ios-live-evidence/manifest.json
+            ${{ runner.temp }}/dengta-ios-live-evidence/business-evidence.json
+          if-no-files-found: warn
+          retention-days: 7

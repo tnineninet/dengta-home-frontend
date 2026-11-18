@@ -83,7 +83,7 @@ export function defaultThemePreferences(environment = globalThis) {
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 const APPEARANCE_MODES = new Set(["auto", "day", "night"]);
-const BACKGROUND_MODES = new Set(["auto", "legacy", "legacy-day", "legacy-dusk", "legacy-night"]);
+const BACKGROUND_MODES = new Set(["auto", "coast", "legacy"]);
 const FONT_MODES = new Set(["standard", "system"]);
 
 function safeColor(value, fallback) {
@@ -121,7 +121,7 @@ export function normalizeThemePreferences(value = {}) {
       : DEFAULT_THEME_PREFERENCES.appearance,
       background: BACKGROUND_MODES.has(source.background)
         ? source.background
-        : DEFAULT_THEME_PREFERENCES.background,
+        : ["legacy-day", "legacy-dusk", "legacy-night"].includes(source.background) ? "legacy" : DEFAULT_THEME_PREFERENCES.background,
     fontMode: FONT_MODES.has(source.fontMode)
       ? source.fontMode
       : DEFAULT_THEME_PREFERENCES.fontMode,

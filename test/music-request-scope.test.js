@@ -22,6 +22,7 @@ globalThis.__musicScopeFixture={auth,request:async(path,options)=>{
  const context=await options.authSession?.getRequestContext();calls.push({path,options,companion:context?.companionId});
  if(handler)return handler(path,options);
  if(path.endsWith('/cookie-session'))return {session:{connected:options.method==='POST'}};
+ if(path.includes('/cookie/playlist?'))return {playlist:{id:'1',name:'Fixture',tracks:[]}};
  if(path.endsWith('/connections/provision'))return {connection:{id:'connection-a',name:'Fixture'}};
  if(path.endsWith('/status'))return {status:{logged_in:true,account_name:'Fixture account'}};
  if(path.endsWith('/ai-play-requests?delivery=claim-v1'))return {requests:[],delivery_protocol:'claim-v1'};

@@ -28,8 +28,9 @@ async function parsedPageClient(received) {
     assert.equal(requestPath, "/api/v2/imports/preview");
     assert.equal(options.retry, false);
     const part = options.body.get("file");
-    const parsed = await previewInput({ file: { originalname: part.name, mimetype: part.type, buffer: Buffer.from(await part.arrayBuffer()) }, body: { source_type: options.body.get("kind") } });
-    received.push(parsed);
+    const uploaded = Buffer.from(await part.arrayBuffer());
+    const parsed = await previewInput({ file: { originalname: part.name, mimetype: part.type, buffer: uploaded }, body: { source_type: options.body.get("kind") } });
+    received.push({ ...parsed, uploaded });
     return { ok: true, json: async () => ({ ok: true, result: { import: { id: "synthetic-preview", status: "preview" }, candidates: [] } }) };
   } };
 }
@@ -50,18 +51,29 @@ test("paged TSV keeps quoted multiline rows intact for the actual server parser"
 });
 
 test("actual disk file is bounded, cancellable, resumable, fingerprintable and sampled without full-string reads", { timeout: 300000 }, async () => {
-  assert.ok(Number.isSafeInteger(bytes) && bytes > 0 && bytes <= 1024 ** 3 && bytes % 64 === 0);
+  assert.ok(Number.isSafeInteger(bytes) && bytes >= 3 * MiB && bytes <= 1024 ** 3 && bytes % 64 === 0);
   await mkdir(output, { recursive: true });
   const filename = path.join(output, `import-synthetic-${bytes}.txt`);
   assert.equal(path.dirname(filename), output);
   const line = Buffer.from("user: 虚构容量测试。", "utf8");
   const record = Buffer.alloc(64, 32); line.copy(record); record[63] = 10;
   const chunk = Buffer.alloc(MiB); for (let offset = 0; offset < chunk.length; offset += record.length) record.copy(chunk, offset);
+  // Number tail records so a duplicate message cannot hide a missing message.
+  const expectedTail = Buffer.alloc(128 * 1024), endStart = bytes - expectedTail.length;
+  for (let i = 0; i < expectedTail.length / record.length; i++) {
+    record.copy(expectedTail, i * record.length);
+    expectedTail.write(`#${i}`, i * record.length + line.length + 1, "ascii");
+  }
   const baseline = createHash("sha256"), generatedAt = performance.now();
   const handle = await open(filename, "wx");
   try {
     for (let offset = 0; offset < bytes; offset += chunk.length) {
-      const part = chunk.subarray(0, Math.min(chunk.length, bytes - offset));
+      let part = chunk.subarray(0, Math.min(chunk.length, bytes - offset));
+      const overlap = Math.max(offset, endStart);
+      if (overlap < offset + part.length) {
+        part = Buffer.from(part);
+        expectedTail.copy(part, overlap - offset, overlap - endStart, offset + part.length - endStart);
+      }
       await handle.write(part); baseline.update(part);
     }
   } finally { await handle.close(); }
@@ -97,11 +109,16 @@ test("actual disk file is bounded, cancellable, resumable, fingerprintable and s
     assert.equal(sample.size, bytes); assert.ok(sample.included_characters <= 60000); assert.equal(sample.truncated, true);
     assert.ok(maxRead <= MiB);
     const received = [], client = await parsedPageClient(received);
-    const pageAt = performance.now(), endStart = bytes - 128 * 1024;
+    const pageAt = performance.now();
     let next = endStart;
     while (next < bytes) { const { page } = await previewContentImportPage({ file: tracked, kind: "chat_history", startByte: next }, client); assert.equal(page.startByte, next); next = page.endByte; rememberMemory(); }
     timings.endPagesMs = performance.now() - pageAt;
-    assert.equal(Buffer.concat(received.map(part => part.bytes)).toString("utf8"), record.toString("utf8").repeat((bytes - endStart) / record.length), "message-boundary paging must retain every byte without duplication");
+    assert.deepEqual(Buffer.concat(received.map(part => part.uploaded)), expectedTail, "multipart paging must transmit every byte exactly once");
+    // The actual parser trims the end of each upload. Compare all numbered
+    // messages to single-upload parsing, ignoring only the fixture's padding.
+    const messages = text => text.split("\n").map(message => message.trimEnd());
+    const whole = await extractText("synthetic.txt", expectedTail);
+    assert.deepEqual(received.flatMap(part => messages(part.bytes.toString("utf8"))), messages(whole.text), "the server must see the same messages in order");
     const result = { timestamp: new Date().toISOString(), runtime: process.version, bytes, realDiskFile: true, filesystemBackedBlob: true, fullBytesDecoded: coveredBytes, cancellationByte: resumedAt, fullReadSha256Matches: true, fingerprintMatches: true, maxSliceBytes: maxRead, readCalls, decodeBatches: batches, sampleCharacters: sample.included_characters, sampleBatches: sample.batches, finalPageRequests: received.length, finalPageStartByte: endStart, finalPageEndByte: next, timings, maximaBytes: maxima, fixtureDeleted: false, networkRequests: 0, databaseWrites: 0, productionAccepted: false, androidAccepted: false };
     await unlink(filename); result.fixtureDeleted = true;
     await writeFile(path.join(output, `import-capacity-${bytes}.json`), JSON.stringify(result, null, 2));

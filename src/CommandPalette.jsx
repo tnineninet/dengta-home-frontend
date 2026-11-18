@@ -87,14 +87,15 @@ export default function CommandPalette({
 
   const actions = useMemo(() => {
     const result = [{ id: "new-chat", label: "新建对话", hint: "打开一个新的聊天", kind: "action", run: onCreateSession, icon: <Plus aria-hidden="true" /> }];
-    result.push({ id: "open-settings", label: "打开设置", hint: "模型、外观、语音与数据", kind: "action", run: onOpenSettings, icon: <Settings aria-hidden="true" /> });
+    result.push({ id: "open-settings", label: "打开设置", hint: "模型、外观、语音与数据", kind: "settings", icon: <Settings aria-hidden="true" /> });
     if (onReturnActivity) result.push({ id: "return-activity", label: "回到本次活动", hint: "返回一起看或一起听", kind: "action", run: onReturnActivity, icon: <CornerDownLeft aria-hidden="true" /> });
     if (onSetBackground) {
       result.push({ id: "background:legacy", label: "背景 · 旧版海岸", hint: "切回你喜欢的经典海岸背景", kind: "action", run: () => onSetBackground("legacy"), icon: <Brush aria-hidden="true" /> });
-      result.push({ id: "background:auto", label: "背景 · 实时天空", hint: "恢复天气与时间变化的动态天空", kind: "action", run: () => onSetBackground("auto"), icon: <Sparkles aria-hidden="true" /> });
+      result.push({ id: "background:auto", label: "背景 · 日出日落", hint: "跟随时钟，从晨光到星夜", kind: "action", run: () => onSetBackground("auto"), icon: <Sparkles aria-hidden="true" /> });
+      result.push({ id: "background:coast", label: "背景 · 实时海岸", hint: "查看海岸与天气", kind: "action", run: () => onSetBackground("coast"), icon: <Brush aria-hidden="true" /> });
     }
     return result;
-  }, [onCreateSession, onOpenSettings, onReturnActivity, onSetBackground]);
+  }, [onCreateSession, onReturnActivity, onSetBackground]);
 
   const entries = useMemo(() => {
     const rows = features.map(item => ({
@@ -166,7 +167,7 @@ export default function CommandPalette({
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset transient search state when the dialog opens
     setQuery("");
     setHighlighted(0);
-    const timer = globalThis.setTimeout(() => inputRef.current?.focus(), 0);
+    const timer = globalThis.setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 0);
     return () => globalThis.clearTimeout(timer);
   }, [open, returnFocusRef]);
 
@@ -212,7 +213,13 @@ export default function CommandPalette({
   useEffect(() => {
     const entry = filtered[highlighted];
     if (!entry || typeof document === "undefined") return;
-    document.getElementById(`${listId}-${entry.id}`)?.scrollIntoView?.({ block: "nearest" });
+    const row = document.getElementById(`${listId}-${entry.id}`);
+    const list = row?.closest("ul");
+    if (!list) return;
+    const rowBox = row.getBoundingClientRect();
+    const listBox = list.getBoundingClientRect();
+    if (rowBox.top < listBox.top) list.scrollTop += rowBox.top - listBox.top;
+    else if (rowBox.bottom > listBox.bottom) list.scrollTop += rowBox.bottom - listBox.bottom;
   }, [filtered, highlighted, listId]);
 
   function closeAndRestore() {
@@ -238,7 +245,7 @@ export default function CommandPalette({
       globalThis.setTimeout(() => focusTarget("#main-content, .view-content"), 0);
     } else {
       entry.run?.();
-      onClose?.({ navigate: entry.id !== "open-settings" });
+      onClose?.({ navigate: true });
     }
   }
 
@@ -284,7 +291,11 @@ export default function CommandPalette({
           />
           {query ? <button type="button" className="command-palette-clear" aria-label="清空搜索" onClick={() => { setQuery(""); setHighlighted(0); inputRef.current?.focus(); }}><X aria-hidden="true" /></button> : null}
         </div>
-        <ul id={listId} className="command-palette-results" role="listbox" aria-label="命令结果">
+        <ul id={listId} className="command-palette-results" role="listbox" aria-label="命令结果"
+          onMouseDown={event => {
+            // Keep the keyboard geometry stable between touching a result and its click.
+            if (event.button === 0 && document.activeElement === inputRef.current && event.target.closest("button")) event.preventDefault();
+          }}>
           {!query && recentEntries.length ? (
             <li className="command-palette-recent-item">
               <div className="command-palette-recent" aria-label="最近使用">

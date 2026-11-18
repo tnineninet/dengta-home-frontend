@@ -148,11 +148,6 @@ html[data-dengta-force-mobile="true"] .settings-sheet {
   border-radius: 22px 22px 0 0 !important;
 }
 
-html[data-dengta-force-mobile="true"] .music-studio-page {
-  height: calc(100dvh - 86px) !important;
-  padding-bottom: calc(64px + env(safe-area-inset-bottom)) !important;
-}
-
 html[data-dengta-force-mobile="true"] .music-studio-frame-shell {
   min-height: 0 !important;
 }

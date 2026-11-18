@@ -61,6 +61,20 @@ const cssCascade = loadEntrypointCssCascade(
   mobileViewport,
 );
 const css = cssCascade.source;
+const focusedChatSelector = 'html[data-keyboard-open="true"] .main-panel.view-chat:has(.composer textarea:focus)';
+const forcedChatSelector = 'html[data-dengta-force-mobile="true"][data-keyboard-open="true"] .main-panel.view-chat:has(.composer textarea:focus)';
+const tabletCascade = loadEntrypointCssCascade(
+  new URL("../src/main.jsx", import.meta.url), { width: 980, height: 430, reducedMotion: false },
+);
+for (const panel of [cssCascade.declarations(focusedChatSelector), tabletCascade.declarations(forcedChatSelector)]) {
+  assert.equal(panel.position?.value, "fixed");
+  assert.equal(panel.inset?.value, "var(--app-viewport-top, 0px) 0 auto");
+  assert.equal(panel.height?.value, "var(--app-height, 100dvh)");
+}
+assert.notEqual(
+  tabletCascade.declarations(focusedChatSelector).position?.value, "fixed",
+  "wide chat without the handset fallback must stay in its own grid column",
+);
 for (const selector of [".message-content", ".message-row:not(.user) .message-content"]) {
   assert.equal(cssCascade.declarations(selector).animation?.value, "none", "restored chat text must not fade in again");
 }
@@ -125,6 +139,8 @@ assert.deepEqual(
     "android-compat.css",
     "menu-interactions.css",
     "force-mobile.css",
+    "ios.css",
+    "mobile-composer.css",
   ],
   "layout tests must use the same stylesheet order as the application entrypoint",
 );
@@ -160,6 +176,8 @@ assert.deepEqual(
     "android-compat.css",
     "menu-interactions.css",
     "force-mobile.css",
+    "ios.css",
+    "mobile-composer.css",
   ],
   "the 280px regression must use the complete application stylesheet cascade",
 );

@@ -1,5 +1,9 @@
 import { GoTrueClient } from "@supabase/auth-js";
 import { resolveAuthStorage } from "./auth-native-storage.js";
+import { createAuthStorageLease } from "./auth-storage-lease.js";
+import { parseNativeAuthCallback } from "./native-app-runtime.js";
+import { nativeAuthApprovalDetails } from "./native-auth-approval.js";
+import { AUTH_WEB_LIFETIME_KEY, createWebAuthLifetime } from "./auth-web-lifetime.js";
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -161,12 +165,26 @@ export function createAuthSessionManager({
   supabaseAnonKey = DEFAULT_SUPABASE_ANON_KEY,
   storage = globalThis.localStorage,
   createClientFn = createAuthOnlyClient,
+  resolveStorageFn = resolveAuthStorage,
+  windowObject = globalThis.window,
+  approveNativeAuthCallback,
 } = {}) {
   const normalizedUrl = String(supabaseUrl || "").trim().replace(/\/$/, "");
   const normalizedKey = String(supabaseAnonKey || "").trim();
   const persistentStorage = storageForBrowser(storage);
   const listeners = new Set();
   let client = null;
+  let clientRecord = null;
+  let lifecycle = 0;
+  let destroyed = false;
+  let cleanupRecord = null;
+  let cleanupPromise = null;
+  let identityQueue = Promise.resolve();
+  let identityEpoch = 0;
+  let pendingIdentitySeed = null;
+  let callbackApproval = null;
+  let callbackApprovalSequence = 0;
+  const requestContexts = new WeakMap();
   let initialization = null;
   let authSubscription = null;
   let session = null;
@@ -175,20 +193,39 @@ export function createAuthSessionManager({
   let passwordRecovery = false;
   let callbackInitializationChecked = false;
   let snapshot = Object.freeze({
+    scopeRevision,
     status: configured(normalizedUrl, normalizedKey)
       ? AUTH_STATUS.loading
       : AUTH_STATUS.unconfigured,
     user: null,
     activeCompanionId: "",
     error: null,
+    cleanupState: "",
+    nativeCallbackApproval: null,
   });
 
   function publish(next) {
     const previous = snapshot;
-    snapshot = Object.freeze({ ...snapshot, ...next });
-    if (previous.user?.id !== snapshot.user?.id || previous.activeCompanionId !== snapshot.activeCompanionId) scopeRevision += 1;
+    const updated = { ...previous, ...next };
+    if (previous.user?.id !== updated.user?.id || previous.activeCompanionId !== updated.activeCompanionId) scopeRevision += 1;
+    snapshot = Object.freeze({ ...updated, scopeRevision });
     listeners.forEach((listener) => listener(snapshot));
     return snapshot;
+  }
+
+  function finishCallbackApproval(entry, approved = false) {
+    if (!entry || callbackApproval !== entry) return false;
+    callbackApproval = null;
+    entry.resolve(approved === true);
+    if (!destroyed) publish({ nativeCallbackApproval: null });
+    else snapshot = Object.freeze({ ...snapshot, nativeCallbackApproval: null });
+    return true;
+  }
+
+  function resolveNativeAuthCallbackApproval(id, approved) {
+    const entry = callbackApproval;
+    if (!entry || entry.id !== id || entry.epoch !== identityEpoch || destroyed) return false;
+    return finishCallbackApproval(entry, approved);
   }
 
   function applySession(nextSession, status) {
@@ -227,29 +264,202 @@ export function createAuthSessionManager({
     }
   }
 
-  async function ensureClient() {
+  function staleOperation() {
+    return new AuthSessionError("账号操作已取消，请重新操作。", { code: "auth_operation_cancelled" });
+  }
+
+  function isCurrent(record) {
+    return record && clientRecord === record && !record.retired && record.generation === lifecycle;
+  }
+
+  function assertCurrent(record) {
+    if (!isCurrent(record)) throw staleOperation();
+  }
+
+  function resolveLease(record) {
+    return Promise.resolve().then(() => resolveStorageFn({ storage: persistentStorage }))
+      .then(async storage => {
+        record.provider = storage;
+        record.coordinator = await createWebAuthLifetime({ storage, windowObject });
+        record.lease = createAuthStorageLease(storage, undefined, { coordinator: record.coordinator, sdkCompatibleReads: true });
+        return record.lease;
+      });
+  }
+
+  function newRecord() {
+    const record = { generation: lifecycle, retired: false, lease: null, client: null };
+    record.ready = resolveLease(record);
+    return record;
+  }
+
+  function cleanupFailure() {
+    return new AuthSessionError("安全登录存储尚未清理。请解锁设备后重试清理，再重新登录。", { code: "auth_cleanup_failed" });
+  }
+
+  function clearRetiredRecord(record, retry = false) {
+    if (cleanupPromise) return cleanupPromise;
+    if (retry && !record.lease) record.ready = resolveLease(record);
+    // Seal synchronously; draining the lease also fences a native call that
+    // was already in flight. An explicit exit may upgrade a timeout's
+    // preserve-only retirement to verified deletion before this completes.
+    const drained = record.lease ? record.lease.retire() : record.ready.then(lease => lease?.retire());
+    const clear = drained.then(async () => {
+        if (!record.preserveStorage) await record.lease?.retireAndClear();
+        if (cleanupRecord === record) {
+          cleanupRecord = null;
+          publish({ cleanupState: "" });
+        }
+      }).catch(() => {
+        if (cleanupRecord === record) publish({ status: AUTH_STATUS.error, cleanupState: "failed", error: cleanupFailure() });
+        throw cleanupFailure();
+      }).finally(() => {
+        if (cleanupPromise === clear) cleanupPromise = null;
+      });
+    cleanupPromise = clear;
+    return clear;
+  }
+
+  function disposeClient(record) {
+    const dispose = () => {
+      try {
+        const auth = record.client?.auth;
+        Promise.resolve(typeof auth?.dispose === "function" ? auth.dispose() : auth?.stopAutoRefresh?.()).catch(() => {});
+      } catch { /* Already detached. */ }
+    };
+    dispose();
+    // GoTrue initialization installs its visibility listener in finally, even
+    // after disposal. Dispose again when that actual initialization settles.
+    if (record.sdkInitialization) void record.sdkInitialization.finally(dispose).catch(() => {});
+  }
+
+  function retireCurrent({ status = AUTH_STATUS.anonymous, error = null, revoke = false, preserveStorage = false, preserveIdentityQueue = false } = {}) {
+    if (!preserveIdentityQueue) finishCallbackApproval(callbackApproval);
+    if (cleanupRecord) {
+      if (!preserveIdentityQueue) {
+        lifecycle += 1;
+        identityEpoch += 1;
+        identityQueue = Promise.resolve();
+        pendingIdentitySeed = null;
+        initialization = null;
+      }
+      if (!preserveStorage) cleanupRecord.preserveStorage = false;
+      publish({ status, user: null, activeCompanionId: "", error, cleanupState: cleanupPromise ? "pending" : "failed" });
+      return cleanupPromise || Promise.reject(cleanupFailure());
+    }
+    const record = clientRecord || newRecord();
+    record.retired = true;
+    record.preserveStorage = preserveStorage;
+    lifecycle += 1;
+    clientRecord = null;
+    client = null;
+    initialization = null;
+    if (!preserveIdentityQueue) {
+      identityEpoch += 1;
+      identityQueue = Promise.resolve();
+      pendingIdentitySeed = null;
+    }
+    callbackInitializationChecked = false;
+    authSubscription?.unsubscribe?.();
+    authSubscription = null;
+    disposeClient(record);
+    // Revoke directly with the captured token where the SDK supports it. The
+    // sealed SDK storage must never be reopened to perform server logout.
+    if (revoke && record.client) {
+      try {
+        const auth = record.client.auth;
+        const operation = auth.admin?.signOut && session?.access_token
+          ? auth.admin.signOut(session.access_token, "global")
+          : auth.signOut?.();
+        Promise.resolve(operation).catch(() => {});
+      } catch { /* Local revocation is authoritative when offline. */ }
+    }
+    passwordRecovery = false;
+    session = null;
+    sessionRevision += 1;
+    scopeRevision += 1;
+    cleanupRecord = record;
+    // retireAndClear is called synchronously when the lease already exists.
+    const clear = clearRetiredRecord(record);
+    if (!revoke && !preserveStorage && record.client) {
+      // Best-effort SDK-local disposal runs through its already sealed lease;
+      // it cannot read/write/remove credentials belonging to the next client.
+      try { Promise.resolve(record.client.auth.signOut?.({ scope: "local" })).catch(() => {}); } catch { /* Already detached. */ }
+    }
+    publish({ status, user: null, activeCompanionId: "", error, cleanupState: "pending" });
+    return clear;
+  }
+
+  async function retryAuthCleanup() {
+    if (!cleanupRecord) return snapshot;
+    publish({ cleanupState: "pending", error: null });
+    await clearRetiredRecord(cleanupRecord, true);
+    return publish({ status: AUTH_STATUS.anonymous, error: null });
+  }
+
+  async function ensureClient(seedSession) {
     requireConfiguration();
-    if (client) return client;
-    // 缺陷 2 修复：原生端优先使用 @capacitor/preferences 持久化会话
-    const resolvedStorage = await resolveAuthStorage({ storage: persistentStorage });
-    client = createClientFn(normalizedUrl, normalizedKey, {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-        storage: resolvedStorage || persistentStorage,
-        storageKey: AUTH_STORAGE_KEY,
-      },
-    });
-    return client;
+    if (destroyed) throw staleOperation();
+    const generation = lifecycle;
+    if (cleanupRecord) {
+      if (!cleanupPromise) throw cleanupFailure();
+      await cleanupPromise;
+    }
+    if (generation !== lifecycle) throw staleOperation();
+    if (!clientRecord) {
+      const record = newRecord();
+      const seed = pendingIdentitySeed?.epoch === identityEpoch ? pendingIdentitySeed : (seedSession ? { session: seedSession } : null);
+      clientRecord = record;
+      record.creation = record.ready.then(async lease => {
+        assertCurrent(record);
+        if (seed) {
+          if (!lease) {
+            // Web without persistent storage still has an isolated memory
+            // session. iOS storage resolution fails before this path.
+            const values = new Map();
+            lease = createAuthStorageLease({ getItem: key => values.get(key) ?? null,
+              setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) }, undefined, { sdkCompatibleReads: true });
+            record.lease = lease;
+          }
+          await lease.setItem(AUTH_STORAGE_KEY, JSON.stringify(seed.session));
+          assertCurrent(record);
+          passwordRecovery = Boolean(seed.recovery);
+        }
+        record.client = createClientFn(normalizedUrl, normalizedKey, {
+          auth: {
+            persistSession: true,
+            autoRefreshToken: true,
+            detectSessionInUrl: true,
+            storage: lease,
+            storageKey: AUTH_STORAGE_KEY,
+          },
+        });
+        client = record.client;
+        if (typeof client.auth.initialize === "function") {
+          record.sdkInitialization = Promise.resolve(client.auth.initialize());
+          void record.sdkInitialization.catch(() => {});
+        }
+        return client;
+      }).catch(async error => {
+        if (isCurrent(record)) {
+          if (seed) await retireCurrent({ status: AUTH_STATUS.error, error: new AuthSessionError("安全登录存储写入失败，请重试。", { code: "auth_storage_write_failed" }) }).catch(() => {});
+          else clientRecord = null;
+        }
+        throw error;
+      });
+    }
+    return clientRecord.creation;
   }
 
   async function initialize() {
     if (!configured(normalizedUrl, normalizedKey)) return snapshot;
     if (initialization) return initialization;
 
+    const generation = lifecycle;
     initialization = (async () => {
-      const authClient = await ensureClient();
+      const authClient = await withAuthTimeout(ensureClient(), 20_000, "登录服务响应超时，请检查网络后重试。");
+      if (generation !== lifecycle) throw staleOperation();
+      const record = clientRecord;
+      assertCurrent(record);
       publish({ status: AUTH_STATUS.loading, error: null });
 
       // getSession() awaits SDK initialization but does not return its callback error.
@@ -257,27 +467,52 @@ export function createAuthSessionManager({
       if (!callbackInitializationChecked && authClient.auth.initialize) {
         callbackInitializationChecked = true;
         const { error } = await withAuthTimeout(
-          authClient.auth.initialize(),
+          record.sdkInitialization,
           20_000,
           "登录服务响应超时，请检查网络后重试。",
         );
+        assertCurrent(record);
         if (error) {
           const restored = await withAuthTimeout(
             authClient.auth.getSession(),
             20_000,
             "登录服务响应超时，请检查网络后重试。",
           );
+          assertCurrent(record);
           if (!restored.data?.session?.user?.id) {
             throw authFailure(error, "邮箱链接验证失败，请重新发送验证邮件，或使用已验证的邮箱和密码登录。");
           }
         }
       }
 
+      if (record.coordinator && !await record.coordinator.isCurrent()) {
+        if (pendingIdentitySeed?.epoch === identityEpoch) {
+          pendingIdentitySeed = null;
+          const failure = new AuthSessionError("回跳会话未能安全恢复，请重新登录。", { code: "invalid_session" });
+          await retireCurrent({ status: AUTH_STATUS.error, error: failure, preserveIdentityQueue: true });
+          throw failure;
+        }
+        await retireCurrent({ preserveStorage: true });
+        return initialize();
+      }
+
       if (!authSubscription) {
         const result = authClient.auth.onAuthStateChange(
-          (event, nextSession) => {
+          async (event, nextSession) => {
+            if (!isCurrent(record)) return;
+            if (event !== "SIGNED_OUT" && record.coordinator) {
+              if (!await record.coordinator.matchesSession(nextSession) || !isCurrent(record)) return;
+            }
+            if (["TOKEN_REFRESHED", "USER_UPDATED", "INITIAL_SESSION"].includes(event) && session?.user?.id && nextSession?.user?.id && session.user.id !== nextSession.user.id) return;
             if (event === "PASSWORD_RECOVERY") {
               applyRecoverySession(nextSession);
+              return;
+            }
+            if (event === "SIGNED_OUT" && record.coordinator) {
+              // SDK BroadcastChannel messages may arrive after a newer login.
+              // Inspect current persistence/epoch rather than trusting null
+              // event payloads; never await SDK methods in its own callback.
+              void retireLostWebSession(record).catch(() => {});
               return;
             }
             if (event === "SIGNED_OUT") passwordRecovery = false;
@@ -290,19 +525,35 @@ export function createAuthSessionManager({
         authSubscription = result?.data?.subscription || null;
       }
 
+      const restoreRevision = sessionRevision;
       const { data, error } = await withAuthTimeout(
         authClient.auth.getSession(),
         20_000,
         "登录服务响应超时，请检查网络后重试。",
       );
+      assertCurrent(record);
+      if (restoreRevision !== sessionRevision) return snapshot;
       if (error) {
         throw authFailure(error, "无法恢复登录状态，请重新登录。");
       }
       return passwordRecovery
         ? applyRecoverySession(data?.session || null)
         : applySession(data?.session || null);
-    })().catch((error) => {
+    })().catch(async (error) => {
+      if (generation !== lifecycle) throw staleOperation();
+      if (error?.code === "auth_storage_retired" && clientRecord?.coordinator) {
+        // The SDK can discover an invalid/expired persisted session before
+        // our listener is installed. Recover anonymously with a fresh lease.
+        if (pendingIdentitySeed?.epoch === identityEpoch) {
+          pendingIdentitySeed = null;
+          await retireCurrent({ preserveIdentityQueue: true });
+          throw new AuthSessionError("回跳会话未能安全恢复，请重新登录。", { code: "invalid_session" });
+        }
+        await retireCurrent({ preserveStorage: true });
+        return initialize();
+      }
       initialization = null;
+      if (error?.code === "auth_timeout") void retireCurrent({ preserveStorage: true }).catch(() => {});
       publish({
         status: AUTH_STATUS.error,
         error:
@@ -316,6 +567,64 @@ export function createAuthSessionManager({
     return initialization;
   }
 
+  async function initializedRecord() {
+    const generation = lifecycle;
+    await initialize();
+    if (generation !== lifecycle) throw staleOperation();
+    const record = clientRecord;
+    assertCurrent(record);
+    return record;
+  }
+
+  function invokeAuth(record, method, ...args) {
+    assertCurrent(record);
+    return record.client.auth[method](...args);
+  }
+
+  async function freshIdentityRecord() {
+    const epoch = identityEpoch;
+    const record = await initializedRecord();
+    if (epoch !== identityEpoch) throw staleOperation();
+    assertCurrent(record);
+    if (!session?.user?.id && !record.coordinator) return record;
+    // A stale anonymous Web tab may adopt a peer's newer account when its
+    // replacement initializes. Never reuse that SDK for another identity:
+    // it may already have started refreshing the restored account.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await retireCurrent({ preserveIdentityQueue: true });
+      if (epoch !== identityEpoch) throw staleOperation();
+      const replacement = await initializedRecord();
+      if (epoch !== identityEpoch) throw staleOperation();
+      if (!session?.user?.id) return replacement;
+    }
+    // Competing tabs kept changing identity. Keep the latest valid session
+    // and let the user retry rather than mutate a nonempty SDK.
+    throw staleOperation();
+  }
+
+  function serializeIdentity(operation) {
+    return (...args) => {
+      const epoch = identityEpoch;
+      const run = identityQueue.then(() => {
+        if (epoch !== identityEpoch) throw staleOperation();
+        return operation(...args);
+      });
+      identityQueue = run.catch(() => {});
+      return run;
+    };
+  }
+
+  async function identityDeadline(record, operation, milliseconds, message) {
+    try {
+      return await withAuthTimeout(operation, milliseconds, message);
+    } catch (error) {
+      if (isCurrent(record) && error?.code === "auth_timeout") {
+        void retireCurrent({ status: AUTH_STATUS.error, error }).catch(() => {});
+      }
+      throw error;
+    }
+  }
+
   async function signUp({
     email,
     password,
@@ -323,7 +632,7 @@ export function createAuthSessionManager({
     emailRedirectTo,
   } = {}) {
     requireConfiguration();
-    await initialize();
+    const record = await freshIdentityRecord();
     publish({ status: AUTH_STATUS.authenticating, error: null });
     const options = {};
     const normalizedDisplayName = String(displayName || "").trim().slice(0, 80);
@@ -333,11 +642,12 @@ export function createAuthSessionManager({
     if (emailRedirectTo) {
       options.emailRedirectTo = String(emailRedirectTo);
     }
-    const { data, error } = await (await ensureClient()).auth.signUp({
+    const { data, error } = await invokeAuth(record, "signUp", {
       email: cleanEmail(email),
       password: String(password || ""),
       ...(Object.keys(options).length ? { options } : {}),
     });
+    assertCurrent(record);
     if (error) {
       const failure = authFailure(error, "注册失败，请稍后再试。");
       publish({ status: AUTH_STATUS.anonymous, error: failure });
@@ -378,17 +688,18 @@ export function createAuthSessionManager({
 
   async function signIn({ email, password } = {}) {
     requireConfiguration();
-    await initialize();
+    const record = await freshIdentityRecord();
     publish({ status: AUTH_STATUS.authenticating, error: null });
-    const { data, error } = await withAuthTimeout(
-      (await ensureClient()).auth.signInWithPassword({
+    const { data, error } = await identityDeadline(record,
+      invokeAuth(record, "signInWithPassword", {
         email: cleanEmail(email),
         password: String(password || ""),
       }),
       20_000,
       "登录请求超时，请检查网络后重试。",
     );
-    if (error || !data?.session) {
+    assertCurrent(record);
+    if (error || !data?.session?.user?.id || !data.session.access_token) {
       const failure = authFailure(
         error || { code: "invalid_session" },
         "登录失败，请检查邮箱和密码。",
@@ -402,15 +713,16 @@ export function createAuthSessionManager({
 
   async function resendVerification({ email, emailRedirectTo } = {}) {
     requireConfiguration();
-    await initialize();
+    const record = await initializedRecord();
     const options = emailRedirectTo
       ? { emailRedirectTo: String(emailRedirectTo) }
       : undefined;
-    const { error } = await (await ensureClient()).auth.resend({
+    const { error } = await invokeAuth(record, "resend", {
       type: "signup",
       email: cleanEmail(email),
       ...(options ? { options } : {}),
     });
+    assertCurrent(record);
     if (error) {
       throw authFailure(error, "验证邮件发送失败，请稍后再试。");
     }
@@ -418,14 +730,15 @@ export function createAuthSessionManager({
 
   async function requestPasswordReset({ email, redirectTo } = {}) {
     requireConfiguration();
-    await initialize();
+    const record = await initializedRecord();
     const options = redirectTo
       ? { redirectTo: String(redirectTo) }
       : undefined;
-    const { error } = await (await ensureClient()).auth.resetPasswordForEmail(
+    const { error } = await invokeAuth(record, "resetPasswordForEmail",
       cleanEmail(email),
       options,
     );
+    assertCurrent(record);
     if (error) {
       throw authFailure(error, "密码重置邮件发送失败，请稍后再试。");
     }
@@ -446,8 +759,9 @@ export function createAuthSessionManager({
     } catch {
       throw new AuthSessionError("请粘贴本次灯塔注册邮件中“Confirm email address”按钮的原始链接；不要粘贴网页地址、其他网站或重置密码链接。", { code: "invalid_registration_link" });
     }
-    await initialize();
-    const { data, error } = await (await ensureClient()).auth.verifyOtp({ token_hash: tokenHash, type });
+    const record = await freshIdentityRecord();
+    const { data, error } = await identityDeadline(record, invokeAuth(record, "verifyOtp", { token_hash: tokenHash, type }), 20_000, "邮箱验证响应超时，请重新登录。");
+    assertCurrent(record);
     if (error || !data?.session?.user?.id) {
       throw authFailure(error || { code: "invalid_session" }, "邮箱验证未完成，请重新发送验证邮件并复制最新链接。");
     }
@@ -457,16 +771,17 @@ export function createAuthSessionManager({
 
   async function updatePassword({ password } = {}) {
     requireConfiguration();
-    await initialize();
+    const record = await initializedRecord();
     if (!session?.user?.id || !passwordRecovery) {
       throw new AuthSessionError("密码重置链接已失效，请重新申请。", {
         code: "password_recovery_required",
         status: 401,
       });
     }
-    const { data, error } = await (await ensureClient()).auth.updateUser({
+    const { data, error } = await invokeAuth(record, "updateUser", {
       password: String(password || ""),
     });
+    assertCurrent(record);
     if (error) {
       throw authFailure(error, "新密码保存失败，请重新申请重置邮件。");
     }
@@ -476,41 +791,19 @@ export function createAuthSessionManager({
   }
 
   async function signOut() {
-    passwordRecovery = false;
-    if (!configured(normalizedUrl, normalizedKey)) {
-      applySession(null);
-      return;
-    }
-    // A dead network must not trap the user in a signed-in shell. Try the
-    // server revoke first, then always clear local auth storage + snapshot.
-    try {
-      await withAuthTimeout(
-        initialize(),
-        10_000,
-        "退出登录服务响应超时。",
-      );
-      const { error } = await withAuthTimeout(
-        (await ensureClient()).auth.signOut(),
-        10_000,
-        "退出登录服务响应超时。",
-      );
-      if (error) throw authFailure(error, "退出登录失败，请稍后再试。");
-    } catch {
-      // best-effort server revoke; local sign-out below is authoritative
-    }
-    try {
-      const storage = await resolveAuthStorage({ storage: persistentStorage });
-      await storage?.removeItem?.(AUTH_STORAGE_KEY);
-    } catch {
-      // ignore storage failures; the in-memory session still clears
-    }
-    applySession(null);
+    await retireCurrent({ revoke: true });
   }
 
   async function getRequestContext() {
     if (!configured(normalizedUrl, normalizedKey)) return {};
+    if (!session && [AUTH_STATUS.anonymous, AUTH_STATUS.expired].includes(snapshot.status)) return {};
     const startingScope = snapshot.user?.id ? scopeRevision : null;
     await initialize();
+    const record = clientRecord;
+    if (record?.coordinator && !await record.coordinator.isCurrent({ requireSession: Boolean(session?.user?.id) })) {
+      if (isCurrent(record)) await retireCurrent({ preserveStorage: true });
+      return {};
+    }
     const requestScope = startingScope ?? scopeRevision;
     function assertRequestScope() {
       if (requestScope === scopeRevision && session?.user?.id === snapshot.user?.id) return;
@@ -548,11 +841,17 @@ export function createAuthSessionManager({
         }
       }
     }
+    if (record?.coordinator && !await record.coordinator.isCurrent({ requireSession: Boolean(session?.user?.id) })) {
+      if (isCurrent(record)) await retireCurrent({ preserveStorage: true });
+      return {};
+    }
     assertRequestScope();
-    return {
+    const context = {
       accessToken: session.access_token,
       companionId: snapshot.activeCompanionId,
     };
+    requestContexts.set(context, { generation: lifecycle, scope: scopeRevision, revision: sessionRevision });
+    return context;
   }
 
   function setActiveCompanionId(companionId) {
@@ -573,7 +872,13 @@ export function createAuthSessionManager({
     return normalized;
   }
 
-  function captureCompanionFromResponse(response) {
+  function contextIsCurrent(context) {
+    const ticket = requestContexts.get(context);
+    return Boolean(ticket && ticket.generation === lifecycle && ticket.scope === scopeRevision && ticket.revision === sessionRevision);
+  }
+
+  function captureCompanionFromResponse(response, context) {
+    if (context !== undefined && !contextIsCurrent(context)) return "";
     const companionId = String(
       response?.headers?.get?.("X-DengTa-Companion-Id") || "",
     ).trim();
@@ -585,17 +890,10 @@ export function createAuthSessionManager({
     return companionId;
   }
 
-  async function invalidateSession(message = "登录状态已经失效，请重新登录。") {
-    if (client) {
-      await client.auth.signOut({ scope: "local" }).catch(() => {});
-    }
-    passwordRecovery = false;
-    session = null;
-    sessionRevision += 1;
-    publish({
+  async function invalidateSession(message = "登录状态已经失效，请重新登录。", context) {
+    if (context !== undefined && !contextIsCurrent(context)) return snapshot;
+    await retireCurrent({
       status: AUTH_STATUS.expired,
-      user: null,
-      activeCompanionId: "",
       error: new AuthSessionError(message, {
         code: "invalid_session",
         status: 401,
@@ -610,41 +908,127 @@ export function createAuthSessionManager({
   }
 
   function destroy() {
+    destroyed = true;
+    finishCallbackApproval(callbackApproval);
+    lifecycle += 1;
+    identityEpoch += 1;
+    pendingIdentitySeed = null;
+    if (clientRecord) {
+      clientRecord.retired = true;
+      if (clientRecord.lease) void clientRecord.lease.retire().catch(() => {});
+      else void clientRecord.ready.then(lease => lease?.retire()).catch(() => {});
+      disposeClient(clientRecord);
+    }
+    clientRecord = null;
+    client = null;
+    initialization = null;
     authSubscription?.unsubscribe?.();
     authSubscription = null;
     listeners.clear();
+    windowObject?.removeEventListener?.("storage", handlePeerStorage);
   }
+
+  async function handlePeerStorage(event) {
+    if (destroyed || ![AUTH_STORAGE_KEY, AUTH_WEB_LIFETIME_KEY].includes(event?.key) ||
+        event.storageArea !== persistentStorage) return;
+    const record = clientRecord;
+    try {
+      if (record?.coordinator) {
+        await retireLostWebSession(record);
+      } else if (record?.provider === persistentStorage && event.key === AUTH_STORAGE_KEY && event.newValue === null &&
+          persistentStorage?.getItem(AUTH_STORAGE_KEY) === null && session?.user?.id && isCurrent(record)) {
+        // Without Web Locks, preserve ordinary logout fanout. Strict cross-tab
+        // persistence fencing is only claimed for the coordinated protocol.
+        await retireCurrent({ preserveStorage: true });
+      }
+      // Ignore event values: a delayed old exit must not erase a newer login.
+      if (!destroyed && !clientRecord && !cleanupRecord && persistentStorage?.getItem(AUTH_STORAGE_KEY) !== null) await initialize();
+    } catch { /* The UI/next request surfaces current storage recovery errors. */ }
+  }
+
+  async function retireLostWebSession(record) {
+    if (!isCurrent(record)) return;
+    if (!await record.coordinator.isCurrent({ requireSession: Boolean(session?.user?.id) }) && isCurrent(record)) {
+      await retireCurrent({ preserveStorage: true });
+    }
+  }
+
+  windowObject?.addEventListener?.("storage", handlePeerStorage);
 
   // 缺陷 1 修复：处理 dengta://auth#access_token=... 深度链接回跳。
   // 用户点击邮箱验证/密码重置链接后回跳到 App，把 fragment 里的 token
   // 交给 GoTrueClient 换成正式会话。
   async function handleAuthCallbackUrl(rawUrl) {
+    const callback = parseNativeAuthCallback(rawUrl);
+    if (!callback) return { ok: false, reason: "invalid_callback" };
     requireConfiguration();
-    await initialize();
+    const epoch = identityEpoch;
+    await initializedRecord();
+    if (epoch !== identityEpoch || destroyed) throw staleOperation();
+    let candidate;
+    let commit;
+    let approval;
     try {
-      const parsed = new URL(String(rawUrl || ""));
-      const fragment = parsed.hash?.replace(/^#/, "") || "";
-      const params = new URLSearchParams(fragment);
-      const accessToken = params.get("access_token");
-      const refreshToken = params.get("refresh_token");
-      if (!accessToken || !refreshToken) {
-        return { ok: false, reason: "missing_tokens" };
+      // A native URL is untrusted. Validate in SDK-owned memory before
+      // touching the current account, durable storage or recovery state.
+      candidate = { client: createClientFn(normalizedUrl, normalizedKey, { auth: {
+        persistSession: false, autoRefreshToken: false, detectSessionInUrl: false,
+        storageKey: `${AUTH_STORAGE_KEY}:candidate`,
+      } }) };
+      if (candidate.client.auth.initialize) {
+        candidate.sdkInitialization = Promise.resolve(candidate.client.auth.initialize());
+        void candidate.sdkInitialization.catch(() => {});
       }
-      const { data, error } = await (await ensureClient()).auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      });
-      if (error) {
-        throw authFailure(error, "回跳登录失败，请重新登录。");
+      const { data, error } = await withAuthTimeout(candidate.client.auth.setSession({
+        access_token: callback.accessToken,
+        refresh_token: callback.refreshToken,
+      }), 20_000, "回跳登录响应超时，请重新登录。");
+      if (epoch !== identityEpoch || destroyed) throw staleOperation();
+      if (error || !data?.session?.user?.id || !data.session.access_token) {
+        throw authFailure(error || { code: "invalid_session" }, "回跳登录失败，请重新登录。");
       }
-      passwordRecovery = params.get("type") === "recovery";
-      applySession(
-        data?.session || null,
-        passwordRecovery ? AUTH_STATUS.recovery : undefined,
-      );
+      // Provider validity proves identity, not the user's intent to use it.
+      // Keep the candidate only in SDK memory until explicit local approval.
+      const approvalStarted = Date.now();
+      const details = { user: publicUser(data.session), currentUser: publicUser(session), recovery: callback.recovery };
+      const approve = () => {
+        if (epoch !== identityEpoch || destroyed) throw staleOperation();
+        if (approveNativeAuthCallback) return approveNativeAuthCallback(details);
+        const prompt = nativeAuthApprovalDetails(details);
+        if (!prompt) return false;
+        return new Promise(resolve => {
+          approval = { id: ++callbackApprovalSequence, epoch, resolve };
+          callbackApproval = approval;
+          publish({ nativeCallbackApproval: Object.freeze({ ...prompt, id: approval.id }) });
+        });
+      };
+      const approved = await withAuthTimeout(Promise.resolve().then(approve), 60_000, "邮件操作确认已过期，请重新打开链接。");
+      if (epoch !== identityEpoch || destroyed) throw staleOperation();
+      if (Date.now() - approvalStarted > 60_000) throw new AuthSessionError("邮件操作确认已过期，请重新打开链接。", { code: "auth_timeout" });
+      if (approved !== true) return { ok: false, reason: "callback_not_approved" };
+      // Reserve the validated seed before publishing retirement/cleanup. A
+      // subscriber's concurrent initialize must build the same candidate,
+      // rather than occupy the new client slot with an empty SDK.
+      commit = { epoch, session: data.session, recovery: callback.recovery };
+      pendingIdentitySeed = commit;
+      await retireCurrent({ preserveIdentityQueue: true });
+      if (epoch !== identityEpoch || destroyed) throw staleOperation();
+      passwordRecovery = callback.recovery;
+      // Commit the validated full session (including rotated refresh tokens),
+      // then restore a fresh persistent SDK. Never validate original tokens a
+      // second time after erasing the old account.
+      const creation = ensureClient(data.session), record = clientRecord;
+      await identityDeadline(record, creation, 20_000, "安全登录存储响应超时，请重试。");
+      if (epoch !== identityEpoch || destroyed) throw staleOperation();
+      await initialize();
+      if (epoch !== identityEpoch || destroyed) throw staleOperation();
+      if (session?.user?.id !== data.session.user.id || !session?.access_token) {
+        throw new AuthSessionError("回跳会话未能安全恢复，请重新登录。", { code: "invalid_session" });
+      }
       return { ok: true };
     } catch (error) {
-      publish({
+      // Invalid/expired URLs leave a currently valid account untouched.
+      if (!session?.user?.id && epoch === identityEpoch && !destroyed) publish({
         status: AUTH_STATUS.error,
         error:
           error instanceof AuthSessionError
@@ -652,6 +1036,10 @@ export function createAuthSessionManager({
             : authFailure(error, "回跳登录失败，请重新登录。"),
       });
       throw error;
+    } finally {
+      finishCallbackApproval(approval);
+      if (candidate) disposeClient(candidate);
+      if (pendingIdentitySeed === commit) pendingIdentitySeed = null;
     }
   }
 
@@ -688,14 +1076,16 @@ export function createAuthSessionManager({
 
   return Object.freeze({
     initialize,
-    signUp,
-    signIn,
+    signUp: serializeIdentity(signUp),
+    signIn: serializeIdentity(signIn),
     signOut,
+    retryAuthCleanup,
     resendVerification,
-    verifyRegistrationLink,
+    verifyRegistrationLink: serializeIdentity(verifyRegistrationLink),
     requestPasswordReset,
-    updatePassword,
-    handleAuthCallbackUrl,
+    updatePassword: serializeIdentity(updatePassword),
+    handleAuthCallbackUrl: serializeIdentity(handleAuthCallbackUrl),
+    resolveNativeAuthCallbackApproval,
     checkConnectivity,
     getRequestContext,
     setActiveCompanionId,

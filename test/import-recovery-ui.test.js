@@ -9,7 +9,7 @@ import {importCommitRecovery} from '../src/content-import-api.js';
 globalThis.IS_REACT_ACT_ENVIRONMENT=true;
 const text=node=>typeof node==='string'?node:(node?.children||[]).map(text).join('');
 const button=(renderer,label)=>renderer.root.find(n=>n.type==='button'&&text(n)===label);
-const preview={import:{id:'receipt-1',status:'preview'},candidates:[{id:'candidate-1',candidate_type:'memory',title:'Synthetic',content:'Synthetic content'}]};
+const preview={import:{id:'receipt-1',status:'preview'},candidates:[{id:'candidate-1',candidate_type:'memory',title:'Synthetic',content:'Synthetic content',target:'user_details'}]};
 
 test('pending receipt GET preserves every existing edit and decision while unknown commits stay locked',async()=>{
   const previousStorage=globalThis.localStorage,previousWindow=globalThis.window;

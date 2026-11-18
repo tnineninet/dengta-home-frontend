@@ -13,6 +13,8 @@ const API_BASE_URL = (
 ).replace(/\/$/, "");
 
 const RETRYABLE_SERVER_STATUSES = new Set([502, 503, 504]);
+const responseAuthContexts = new WeakMap();
+const responseErrorBodies = new WeakMap();
 
 function wait(milliseconds) {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
@@ -102,7 +104,8 @@ async function fetchFromApi(path, options = {}) {
         }),
         effectiveSignal,
       );
-      authSession?.captureCompanionFromResponse?.(response);
+      responseAuthContexts.set(response, authContext || {});
+      if (response.status < 400) authSession?.captureCompanionFromResponse?.(response, authContext);
       if (
         attempt < retryDelays.length - 1 &&
         RETRYABLE_SERVER_STATUSES.has(response.status)
@@ -135,17 +138,18 @@ async function fetchFromApi(path, options = {}) {
 export async function apiFetch(path, options = {}) {
   const response = await fetchFromApi(path, options);
   if (
-    response.status === 401 &&
-    typeof response.clone === "function"
+    response.status === 401
   ) {
     // A 401 from a third-party provider (NetEase/Bilibili/XHS cookie expired)
     // is not a DengTa session failure. Only the auth whitelist may log out.
-    const data = await response.clone().json().catch(() => ({}));
+    const cloned = typeof response.clone === "function";
+    const data = await (cloned ? response.clone() : response).json().catch(() => ({}));
+    if (!cloned) responseErrorBodies.set(response, data);
     if (
       ["invalid_session", "authentication_required", "token_expired"].includes(data.code)
     ) {
       await (options.authSession || defaultAuthSession)
-        ?.invalidateSession?.(data.message);
+        ?.invalidateSession?.(data.message, responseAuthContexts.get(response));
     }
   }
   return response;
@@ -180,16 +184,11 @@ async function requestJson(path, options = {}) {
     return null;
   }
 
-  const data = await response.json().catch(() => ({}));
+  const data = responseErrorBodies.has(response)
+    ? responseErrorBodies.get(response)
+    : await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    if (
-      response.status === 401 &&
-      ["invalid_session", "authentication_required", "token_expired"].includes(data.code)
-    ) {
-      await (options.authSession || defaultAuthSession)
-        ?.invalidateSession?.(data.message);
-    }
     const error = new Error(
       publicChatErrorMessage(data, "请求失败，请稍后重试。"),
     );

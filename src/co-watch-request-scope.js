@@ -20,8 +20,8 @@ export function coWatchRequestOptions(options = {}, authSession) {
         if (context?.companionId !== companionScope) throw Object.assign(new Error("共看请求的伴侣范围不一致，请刷新后重试。"), { code: "co_watch_scope_changed" });
         return context;
       },
-      captureCompanionFromResponse: response => { if (matches()) authSession.captureCompanionFromResponse?.(response); },
-      invalidateSession: message => { if (matches()) return authSession.invalidateSession?.(message); },
+      captureCompanionFromResponse: (response, context) => { if (matches()) authSession.captureCompanionFromResponse?.(response, context); },
+      invalidateSession: (message, context) => { if (matches()) return authSession.invalidateSession?.(message, context); },
     },
   };
 }
