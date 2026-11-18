@@ -132,6 +132,7 @@ import MusicChatCard from "./MusicChatCard.jsx";
 import { fetchEarlyMusicCard, extractMusicRequest } from "./music-chat-preview.js";
 import { isRandomMusicRequest } from "./music-request-intent.js";
 import CelestialBackdrop from "./CelestialBackdrop";
+import DaylightBackdrop from "./DaylightBackdrop";
 import LegacyCoastBackdrop from "./LegacyCoastBackdrop";
 import SunGlassTimeDeck from "./SunGlassTimeDeck";
 import FeatureAtmosphere from "./FeatureAtmosphere";
@@ -8267,6 +8268,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 onNow={() => setPreviewMinute(null)}
                 weather={ambientWeather}
                 weatherMode={weatherPreviewMode}
+                showWeather={themePreferences.background === "coast"}
                 onWeatherMode={setWeatherPreviewMode}
                 glassLevel={themePreferences.cardOpacity * 100}
                 onGlassLevel={(value) =>
@@ -9436,6 +9438,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 <Suspense fallback={<DeferredFeature label="正在打开外观设置…" />}>
                   <ThemeStudio
                     preferences={themePreferences}
+                    minute={previewMinute ?? celestialSnapshot.minute}
+                    previewing={previewMinute != null}
+                    onPreview={setPreviewMinute}
                     updateTheme={updateTheme}
                     chatSkinPreferences={chatSkinPreferences}
                     updateChatSkin={updateChatSkinPreferences}
@@ -10758,6 +10763,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         }}
         onNavigate={(view, sessionId) => { if (sessionId) chooseSession(sessionId); else changeView(view); }}
         onCreateSession={createSession}
+        onSetBackground={(background) => updateTheme({ background })}
         onOpenSettings={(category) => { openSettingsPanel(); if (category) setSettingsCategory(category); }}
         onReturnActivity={activityReturn ? returnToActivity : undefined}
         features={navItems}
@@ -10772,6 +10778,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         loginPanel={<TakeoutLoginPanel key={diagnosticScopeKey(accountStorageScope, companionScope)}
           scope={diagnosticScopeKey(accountStorageScope, companionScope)} feedback={takeoutLoginFeedback} />} />
       {themePreferences.background === "auto" ? (
+        <DaylightBackdrop minute={celestialSnapshot.minute} />
+      ) : themePreferences.background === "coast" ? (
         <CelestialBackdrop
           snapshot={celestialSnapshot}
           weather={ambientWeather}
@@ -11249,11 +11257,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           )}
           {activeView === "together" && renderTogether("together")}
           {activeView === "music-studio" && (
-        <Suspense fallback={<DeferredFeature label="正在打开音乐工作室…" />}>
-          <MusicStudio onOpenSync={() => changeView("music")} />
-        </Suspense>
-      )}
-      {activeView === "music" && renderTogether("music")}
+            <Suspense fallback={<DeferredFeature label="正在打开音乐工作室…" />}>
+              <MusicStudio key={privateMediaScope} onOpenSync={() => changeView("music")} onOpenChat={() => changeView("chat")} />
+            </Suspense>
+          )}
+          {activeView === "music" && renderTogether("music")}
           {activeView === "x" && (
             <Suspense fallback={<DeferredFeature label="正在连接 X…" />}>
               <XHub

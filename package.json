@@ -70,7 +70,7 @@
     "test:companion-profile": "node test/companion-profile.test.js",
     "test:instant-feedback": "node test/instant-feedback.test.js && node --test test/moments-lifecycle.test.js",
     "test:mobile-layout": "node test/mobile-layout.test.js && node --test test/visual-viewport.test.js test/channel-hub-usability.test.js",
-    "test:sun-glass-chat": "node --test test/sun-glass-chat.test.js test/solar-sky-location.test.js test/rain-intensity.test.js",
+    "test:sun-glass-chat": "node --test test/sun-glass-chat.test.js test/solar-sky-location.test.js test/rain-intensity.test.js test/daylight-sky.test.js",
     "test:chat-scroll-state": "node test/chat-scroll-state.test.js && node test/chat-error-log.test.js && node test/error-log-request.test.js && node --test --test-force-exit test/chat-history-lifecycle.test.js test/chat-history-feedback.test.js",
     "test:native-motion": "node test/native-motion.test.js && node --test test/app-motion-preference.test.js test/feature-title.test.js",
     "test:dengta-theme": "node test/dengta-theme.test.js",

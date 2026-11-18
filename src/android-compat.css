@@ -117,7 +117,6 @@
 /* Flat paint mode for WebViews where large blur layers make the UI appear to
    freeze. This is intentionally opt-in through a runtime class. */
 html.dengta-flat-paint .celestial-backdrop,
-html.dengta-flat-paint .private-chat-background,
 html.dengta-flat-paint .coast-video-backdrop,
 html.dengta-flat-paint .status-flow-field {
   display: none !important;

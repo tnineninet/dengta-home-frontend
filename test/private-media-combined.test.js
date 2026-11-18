@@ -22,7 +22,7 @@ const ids = {
 const scopeA = JSON.stringify(["fictional-account-a", "fictional-companion-a"]);
 const avatarCatalog = (id, name) => ({
   assets: [{ id, purpose: "user_avatar", display_name: name }],
-  preferences: { user_avatar_asset_id: id },
+  preferences: { user_avatar: id },
 });
 const withoutAsset = (catalog, id) => ({
   ...catalog,
@@ -104,6 +104,8 @@ try {
     const button = tree.root.findAllByType("button").find(node => node.children.includes("删除"));
     assert.ok(button && !button.props.disabled);
     await act(async () => button.props.onClick());
+    assert.equal(fixture.mutations.length, 0, "delete must wait for in-page confirmation");
+    await act(async () => tree.root.findAllByType("button").find(node => node.children.includes("确认删除")).props.onClick());
     assert.equal(fixture.mutations.length, 1);
     assert.deepEqual(fixture.mutations[0], { scope: scopeA, kind: "archive", id: ids.avatar, permanent: true });
   };
@@ -112,6 +114,29 @@ try {
     await act(async () => fixture.action.resolve({ ok: true }));
   };
 
+  await mount();
+  const purposeCard = purpose => tree.root.findByProps({ "aria-labelledby": `media-${purpose}` });
+  const cardButton = (purpose, className) => purposeCard(purpose).findByProps({ className });
+  for (const [purpose, id] of [["user_avatar", ids.avatar], ["companion_avatar", ids.other], ["chat_background", ids.background]]) {
+    const assets = [{ id, purpose, display_name: `Fictional ${purpose}` }];
+    fixture.catalogs.set(scopeA, { assets, preferences: { [purpose]: id } });
+    await act(async () => current.refresh());
+    assert.equal(cardButton(purpose, "media-choice-enable").props["aria-pressed"], true);
+    assert.equal(cardButton(purpose, "media-default-button").props.disabled, false);
+    const set = async value => {
+      fixture.action = deferred();
+      await act(async () => cardButton(purpose, value ? "media-choice-enable" : "media-default-button").props.onClick());
+      assert.deepEqual(fixture.mutations.at(-1), { scope: scopeA, kind: "preference", [`${purpose}_asset_id`]: value });
+      fixture.catalogs.set(scopeA, { assets, preferences: value ? { [purpose]: value } : {} });
+      await act(async () => fixture.action.resolve({ ok: true, preference: { purpose, asset_id: value } }));
+      assert.equal(selectedPrivateMedia(current.catalog, purpose)?.id || null, value);
+    };
+    await set(null);
+    assert.equal(cardButton(purpose, "media-choice-enable").props["aria-pressed"], false);
+    await set(id);
+    assert.equal(cardButton(purpose, "media-choice-enable").props["aria-pressed"], true);
+  }
+  await unmount();
   await mount();
   await deleteAvatar();
   await update({ show: false });

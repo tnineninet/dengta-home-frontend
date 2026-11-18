@@ -1,6 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { COAST_VIDEO_SCENES, coastSceneForSky, createCoastVideoLifecycle } from "./coast-video-lifecycle.js";
 import "./coast-video-backdrop.css";
+
+const phoneLayout = () => globalThis.window?.matchMedia?.("(max-width: 820px)");
+const isPhone = () => phoneLayout()?.matches === true;
+function watchPhone(onChange) {
+  const query = phoneLayout();
+  query?.addEventListener?.("change", onChange);
+  return () => query?.removeEventListener?.("change", onChange);
+}
 
 export default function CoastVideoBackdrop({ sky, weatherMode = "clear", reducedMotion = false }) {
   const scene = coastSceneForSky(sky);
@@ -10,6 +18,7 @@ export default function CoastVideoBackdrop({ sky, weatherMode = "clear", reduced
   const asset = COAST_VIDEO_SCENES[scene];
   const poster = COAST_VIDEO_SCENES[playback.posterScene];
   const state = playback.scene === scene ? playback.state : "static";
+  const compact = useSyncExternalStore(watchPhone, isPhone, () => false);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -17,7 +26,7 @@ export default function CoastVideoBackdrop({ sky, weatherMode = "clear", reduced
     // The phone layout deliberately hides the looping coastline video and keeps
     // the poster. Do not decode the hidden clip: display:none does not pause a
     // playing <video>, and it dominated idle CPU/battery on the real device.
-    if (globalThis.matchMedia?.("(max-width: 820px)")?.matches === true) {
+    if (compact) {
       video.pause();
       video.removeAttribute("src");
       video.load();
@@ -47,7 +56,7 @@ export default function CoastVideoBackdrop({ sky, weatherMode = "clear", reduced
       },
     });
     return () => { disposed = true; clearTimeout(posterTimer); lifecycle.dispose(); };
-  }, [asset.video, reducedMotion, scene]);
+  }, [asset.video, reducedMotion, scene, compact]);
 
   return (
     <div ref={layerRef} className="coast-video-backdrop" data-scene={scene} data-playback={state} data-weather={weatherMode} aria-hidden="true">

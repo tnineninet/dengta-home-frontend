@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import test from "node:test";
+import { assertPrivatePhotoActive, preparePrivatePhoto } from "../src/private-photo.js";
 import {
   archivePrivateMediaAsset,
   getPrivateMediaCatalog,
@@ -13,6 +14,7 @@ import {
   normalizePrivateMediaCatalog,
   privateMediaAsset,
   privateMediaContentPath,
+  privateMediaPreferenceId,
   privateMediaRequestPath,
   selectedPrivateMedia,
 } from "../src/private-media.js";
@@ -23,6 +25,51 @@ const UUIDS = {
   background: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
   sticker: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
 };
+
+test("initial media selection works without Object.hasOwn on iOS 15.0 and explicit reset wins over aliases", t => {
+  const original = Object.getOwnPropertyDescriptor(Object, "hasOwn");
+  Object.defineProperty(Object, "hasOwn", { configurable: true, value: undefined });
+  t.after(() => Object.defineProperty(Object, "hasOwn", original));
+  assert.equal(selectedPrivateMedia(null, "user_avatar"), null);
+  assert.equal(privateMediaPreferenceId(null, "user_avatar"), "");
+  assert.equal(privateMediaPreferenceId({ user_avatar: null, user_avatar_asset_id: UUIDS.user }, "user_avatar"), "");
+  assert.equal(privateMediaPreferenceId({ user_avatar_asset_id: UUIDS.user }, "user_avatar"), UUIDS.user);
+});
+
+test("static Photos imports tolerate older abort signals, retain PNG bytes and reject mislabeled or animated sources", async () => {
+  const legacy = { aborted: false }; // no AbortSignal.throwIfAborted or .reason on early iOS 15.
+  const pixels = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4AWMQier5DwADegH6AMv25AAAAABJRU5ErkJggg==", "base64");
+  const png = new File([pixels], "synthetic.png", { type: "image/png" });
+  assert.equal(await preparePrivatePhoto(png, "user_avatar", legacy), png);
+  const fromFiles = await preparePrivatePhoto(new File([pixels], "synthetic.png"), "chat_background", legacy);
+  assert.equal(fromFiles.type, "image/png");
+  assert.deepEqual(Buffer.from(await fromFiles.arrayBuffer()), pixels);
+  assert.throws(() => assertPrivatePhotoActive({ aborted: true }), { name: "AbortError" });
+  for (const type of ["image/heic-sequence", "image/heif-sequence"]) {
+    await assert.rejects(preparePrivatePhoto(new File(["synthetic"], "burst.heic", { type }), "user_avatar"), /静态.*JPEG/);
+  }
+  await assert.rejects(preparePrivatePhoto(new File([pixels], "renamed.heic", { type: "image/heic" }), "companion_avatar"), /HEIC.*JPEG/);
+});
+
+test("HEIC decoder failure releases its object URL and offers a usable fallback", async t => {
+  const header = new Uint8Array([0, 0, 0, 20, ...Buffer.from("ftypheic"), 0, 0, 0, 0, ...Buffer.from("mif1")]);
+  const input = new File([header], "test.heic", { type: "image/heic" });
+  const previously = globalThis.Image;
+  const source = "blob:synthetic-photo";
+  t.mock.method(URL, "createObjectURL", () => source);
+  const revoke = t.mock.method(URL, "revokeObjectURL", () => {});
+  globalThis.Image = class {
+    decode() { return Promise.reject(new Error("codec unavailable")); }
+    removeAttribute(attribute) { assert.equal(attribute, "src"); }
+  };
+  try {
+    await assert.rejects(preparePrivatePhoto(input, "user_avatar"), /HEIC.*JPEG/);
+    assert.deepEqual(revoke.mock.calls[0].arguments, [source]);
+  } finally {
+    if (previously === undefined) delete globalThis.Image;
+    else globalThis.Image = previously;
+  }
+});
 
 test("private media upload uses apiFetch with browser-managed FormData headers", async () => {
   let request;

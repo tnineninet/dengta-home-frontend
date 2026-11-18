@@ -91,7 +91,8 @@ export default function CommandPalette({
     if (onReturnActivity) result.push({ id: "return-activity", label: "回到本次活动", hint: "返回一起看或一起听", kind: "action", run: onReturnActivity, icon: <CornerDownLeft aria-hidden="true" /> });
     if (onSetBackground) {
       result.push({ id: "background:legacy", label: "背景 · 旧版海岸", hint: "切回你喜欢的经典海岸背景", kind: "action", run: () => onSetBackground("legacy"), icon: <Brush aria-hidden="true" /> });
-      result.push({ id: "background:auto", label: "背景 · 实时天空", hint: "恢复天气与时间变化的动态天空", kind: "action", run: () => onSetBackground("auto"), icon: <Sparkles aria-hidden="true" /> });
+      result.push({ id: "background:auto", label: "背景 · 日出日落", hint: "跟随时钟，从晨光到星夜", kind: "action", run: () => onSetBackground("auto"), icon: <Sparkles aria-hidden="true" /> });
+      result.push({ id: "background:coast", label: "背景 · 实时海岸", hint: "查看海岸与天气", kind: "action", run: () => onSetBackground("coast"), icon: <Brush aria-hidden="true" /> });
     }
     return result;
   }, [onCreateSession, onReturnActivity, onSetBackground]);

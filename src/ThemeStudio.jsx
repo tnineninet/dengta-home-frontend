@@ -11,22 +11,29 @@ const APPEARANCE_OPTIONS = [
 const BACKGROUND_OPTIONS = [
   {
     id: "auto",
-    label: "实时天空",
+    label: "日出日落",
+    hint: "晨光、晚霞与星夜，随时钟渐变",
+    preview: "linear-gradient(155deg, #407aa7, #d6c6bf 52%, #ffa432)",
+  },
+  {
+    id: "coast",
+    label: "实时海岸",
     hint: "新版天气、云层与光线实时变化",
     preview: "linear-gradient(155deg, #8ec8e2 0%, #b7dde1 42%, #f8d99c 100%)",
-    appearance: "auto",
   },
   {
     id: "legacy",
     label: "旧版动态天空",
     hint: "太阳月亮高度、日出日落五段色彩随时变化",
     image: "/assets/coast-video/coast-day.webp",
-    appearance: "auto",
   },
 ];
 
 export default function ThemeStudio({
   preferences,
+  minute,
+  previewing,
+  onPreview,
   updateTheme,
   chatSkinPreferences,
   updateChatSkin,
@@ -79,7 +86,7 @@ export default function ThemeStudio({
       <div className="theme-background-control">
         <span>
           <strong>背景</strong>
-          <small>换回你喜欢的旧版海岸，或继续用实时天空</small>
+          <small>自选聊天壁纸优先显示；恢复默认后跟随这里的选择。</small>
         </span>
         <div className="theme-background-grid" role="group" aria-label="背景模式">
           {BACKGROUND_OPTIONS.map((option) => (
@@ -88,12 +95,7 @@ export default function ThemeStudio({
               className={preferences.background === option.id ? "active" : ""}
               aria-pressed={preferences.background === option.id}
               key={option.id}
-              onClick={() =>
-                updateTheme({
-                  background: option.id,
-                  ...(option.appearance ? { appearance: option.appearance } : {}),
-                })
-              }
+              onClick={() => updateTheme({ background: option.id })}
             >
               <span
                 className="theme-background-swatch"
@@ -112,6 +114,14 @@ export default function ThemeStudio({
             </button>
           ))}
         </div>
+        {preferences.background === "auto" && onPreview && <div className="daylight-clock-control">
+          <label htmlFor="theme-daylight-clock">预览天空
+            <output htmlFor="theme-daylight-clock">{String(Math.floor(minute / 60)).padStart(2, "0")}:{String(minute % 60).padStart(2, "0")}</output>
+          </label>
+          <input id="theme-daylight-clock" type="range" min="0" max="1439" value={minute}
+            onChange={event => onPreview(Number(event.target.value))} />
+          <button type="button" disabled={!previewing} onClick={() => onPreview(null)}>{previewing ? "回到现在" : "跟随现在"}</button>
+        </div>}
       </div>
 
       <div className="theme-control-list">

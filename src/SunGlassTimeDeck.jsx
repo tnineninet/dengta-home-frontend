@@ -18,8 +18,8 @@ import { useGlassScrubber } from "./use-glass-scrubber";
 const TIME_PRESETS = [
   { minute: 480, label: "清晨 08:00", Icon: SunMedium },
   { minute: 1080, label: "红霞 18:00", Icon: Sparkles },
-  { minute: 1120, label: "蓝调 18:40", Icon: MoonStar },
-  { minute: 1320, label: "银河 22:00", Icon: MoonStar },
+  { minute: 1120, label: "暮色 18:40", Icon: MoonStar },
+  { minute: 1320, label: "星夜 22:00", Icon: MoonStar },
 ];
 
 const WEATHER_PRESETS = [
@@ -45,6 +45,7 @@ export default function SunGlassTimeDeck({
   onNow,
   weather,
   weatherMode,
+  showWeather = true,
   onWeatherMode,
   glassLevel,
   onGlassLevel,
@@ -183,14 +184,13 @@ export default function SunGlassTimeDeck({
         <button
           type="button"
           className="sun-glass-button compact"
-          aria-label="天气与光线设置"
+          aria-label={showWeather ? "天气与光线设置" : "光线设置"}
           aria-expanded={isOpen}
           onClick={() => setIsOpen((current) => !current)}
         >
           <SlidersHorizontal aria-hidden="true" />
           <span>
-            {usesLiveWeather ? `实时${displayedWeatherLabel}` : displayedWeatherLabel}
-            {" · 光线"}
+            {showWeather && `${usesLiveWeather ? `实时${displayedWeatherLabel}` : displayedWeatherLabel} · `}光线
           </span>
         </button>
       </div>
@@ -235,7 +235,7 @@ export default function SunGlassTimeDeck({
           ))}
         </div>
 
-        <div className="sun-glass-weather-options" aria-label="天气预览">
+        {showWeather && <div className="sun-glass-weather-options" aria-label="天气预览">
           <button
             type="button"
             className={usesLiveWeather ? "is-active" : ""}
@@ -259,7 +259,7 @@ export default function SunGlassTimeDeck({
               <span>{label}</span>
             </button>
           ))}
-        </div>
+        </div>}
 
         <label className="sun-glass-tuner">
           <span>

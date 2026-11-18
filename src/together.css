@@ -550,11 +550,13 @@
 
 .music-cookie-connect-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
 .music-cookie-connect-primary { }
-.music-list-pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 10px; padding: 12px 0; }
-.music-list-pager button { min-height: 40px; padding: 8px 14px; border-radius: 12px; touch-action: manipulation; }
-.music-list-pager label { display: flex; align-items: center; gap: 5px; }
-.music-list-pager select { min-height: 40px; width: auto; }
-.music-list-pager small { width: 100%; text-align: center; color: #796558; }
+.music-paged-list { min-width: 0; }
+.music-cookie-playlist-detail :is(.music-cookie-track-title, .music-cookie-playlist-detail-title) { overflow-wrap: anywhere; }
+.music-list-pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 5px; padding: 8px 0; }
+.music-list-pager button { min-height: 44px; padding: 5px 8px; border-radius: 12px; touch-action: manipulation; }
+.music-paged-list .music-list-pager label { display: flex; align-items: center; gap: 3px; width: auto; }
+.music-paged-list .music-list-pager select { min-height: 44px; width: auto; padding-inline: 3px; }
+.music-list-pager small, .music-page-summary { display: block; width: 100%; text-align: center; color: var(--together-muted, inherit); }
 .music-import-backdrop { position: fixed; inset: 0; z-index: 1100; display: grid; place-items: center; padding: 20px; background: rgba(35, 29, 24, .42); }
 .music-import-dialog { width: min(680px, 100%); max-height: min(88dvh, 900px); display: flex; flex-direction: column; min-height: 0; border: 1px solid var(--theme-control-border, rgba(120, 87, 67, .16)); border-radius: 22px; background: rgb(var(--theme-card-rgb, 255 250 243) / .98); color: var(--theme-ink, #5c3f30); box-shadow: 0 18px 60px rgba(35,29,24,.18); overflow: hidden; animation: music-sheet-enter .18s ease-out; }
 .music-import-dialog > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px; border-bottom: 1px solid var(--theme-control-border, rgba(120,87,67,.12)); }

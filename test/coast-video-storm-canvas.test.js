@@ -9,12 +9,12 @@ const source = fs.readFileSync(new URL("../src/CelestialBackdrop.jsx", import.me
 const componentAt = source.indexOf("function CelestialBackdrop(");
 const helpers = source.slice(0, componentAt).replace(/^import[^;]+;\r?\n/gm, "");
 
-function drawFixture(mode, intensity = 1) {
+function drawFixture(mode, intensity = 1, deviceRatio = 1, compact = false) {
   const calls = () => ({ fill: 0, stroke: 0, fillRect: 0, ellipses: 0, lines: 0 });
   const canvas = () => {
     const receipt = calls();
     const context = {
-      setTransform() {}, clearRect() {}, save() {}, restore() {}, translate() {}, scale() {}, beginPath() {}, arc() {},
+      setTransform(ratio) { receipt.ratio = ratio; }, clearRect(x, y, width, height) { receipt.width = width; receipt.height = height; }, save() {}, restore() {}, translate() {}, scale() {}, beginPath() {}, arc() {},
       fill() { receipt.fill++; }, stroke() { receipt.stroke++; }, fillRect() { receipt.fillRect++; },
       ellipse() { receipt.ellipses++; }, moveTo() {}, lineTo() { receipt.lines++; },
     };
@@ -28,14 +28,23 @@ function drawFixture(mode, intensity = 1) {
     useEffect: callback => { cleanups.push(callback()); },
     performance: { now: () => 0 },
     setTimeout: () => 0, clearTimeout: () => {},
-    window: { devicePixelRatio: 1, innerWidth: 390, innerHeight: 844, addEventListener() {}, removeEventListener() {} },
+    window: { devicePixelRatio: deviceRatio, matchMedia: () => ({ matches: compact }), innerWidth: 390, innerHeight: 844, addEventListener() {}, removeEventListener() {} },
     document: { hidden: false, documentElement: { dataset: {} }, querySelector: () => null },
     createVisualLoop(draw) { draw(1000); return { invalidate() {}, dispose() {} }; },
   };
   vm.runInNewContext(`${helpers}\nusePrototypeAtmosphere({ starsRef:{current:stars}, cloudsRef:{current:clouds}, weatherRef:{current:weather}, sky:{night:0,daylight:1}, mode, rainIntensity:intensity, reduceMotion:false });`, scope);
   cleanups.forEach(cleanup => cleanup?.());
-  return { clouds: clouds.receipt, weather: weather.receipt };
+  return { stars: stars.receipt, clouds: clouds.receipt, weather: weather.receipt };
 }
+
+test("3x phone canvases paint at their allocated scale and fill the entire viewport", () => {
+  const f = drawFixture("rain", 1, 3, true);
+  for (const [name, ratio] of [["stars", 1.5], ["clouds", 1.25], ["weather", 1.25]]) {
+    assert.equal(f[name].ratio, ratio);
+    assert.ok(Math.abs(f[name].width - 390) < 1);
+    assert.ok(Math.abs(f[name].height - 844) < 1);
+  }
+});
 
 test("actual clear atmosphere draws no cloud/rain/lightning weather layers", () => {
   const f = drawFixture("clear");

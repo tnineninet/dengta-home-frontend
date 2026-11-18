@@ -121,7 +121,30 @@ test("playlist detail has visible pending feedback, a scoped failure and read-on
   await finish("detail", readFailure("detail"), true); says("fictional_detail_failed");
   pending.detail = deferred(); const retry = button("重试读取内容")?.props.onClick; assert.ok(retry, "Missing detail retry");
   await act(async () => { retry(); retry(); }); assert.equal(count("detail"), 2);
-  await finish("detail", { playlist: { name: "虚构空歌单详情", tracks: [] } }); says("这个歌单暂无歌曲"); assert.equal(writes(), 0);
+  await finish("detail", { playlist: { name: "虚构缺少曲目详情", tracks: [] } }); says("已读取 0 首，歌单列表标有 1 首"); doesNotSay("这个歌单暂无歌曲"); assert.equal(writes(), 0);
+});
+test("playlist pages expose every returned track and preserve its identity after a jump", async () => {
+  await reset(); await click("我的歌单"); pending.detail = deferred(); await click("虚构旧账号歌单");
+  const tracks = Array.from({ length: 123 }, (_, i) => ({ id: String(3000 + i), title: `虚构歌曲-${i + 1}`, artist: "虚构艺人" }));
+  await finish("detail", { playlist: { id: "1001", name: "测试", tracks } });
+  const rows = () => tree.root.findByProps({ className: "music-cookie-playlist-detail" }).findByType("ul").findAllByType("li");
+  assert.equal(rows().length, 50); assert.equal(button("上一页").props.disabled, true);
+  await click("下一页"); says("51. 虚构歌曲-51"); says("51–100 / 123 首"); doesNotSay("50. 虚构歌曲-50");
+  await act(async () => tree.root.findByProps({ "aria-label": "网易云歌单页码" }).props.onChange({ target: { value: "2" } }));
+  assert.equal(rows().length, 23); says("123. 虚构歌曲-123"); says("101–123 / 123 首"); assert.equal(button("下一页").props.disabled, true);
+  await act(async () => { rows().at(-1).findByProps({ title: "红心" }).props.onClick(); });
+  assert.equal(JSON.parse(last("like").options.body).song_id, "3122");
+  await click("← 返回歌单列表"); await click("虚构旧账号歌单"); says("第 1 / 1 页"); doesNotSay("虚构歌曲-123");
+});
+test("empty, malformed and mismatched playlist receipts have distinct feedback", async () => {
+  await reset(); pending.rows = deferred(); await click("我的歌单");
+  await finish("rows", { owned: [{ playlist_id: "1001", name: "空歌单", item_count: 0 }], subscribed: [] });
+  pending.detail = deferred(); await click("空歌单"); await finish("detail", { playlist: { tracks: {} } });
+  says("没有返回有效的歌单曲目"); doesNotSay("这个歌单暂无歌曲");
+  pending.detail = deferred(); await click("重试读取内容"); await finish("detail", { playlist: { id: "1002", tracks: [] } });
+  says("没有返回有效的歌单曲目"); doesNotSay("这个歌单暂无歌曲");
+  pending.detail = deferred(); await click("重试读取内容"); await finish("detail", { playlist: { id: "1001", name: "空歌单", tracks: [] } });
+  says("这个歌单暂无歌曲"); assert.equal(writes(), 0);
 });
 test("returning from pending detail cancels its receipt without changing confirmed playlists", async () => {
   await reset(); await click("我的歌单"); pending.detail = deferred(); await click("虚构旧账号歌单");
