@@ -1,0 +1,60 @@
+{
+  "surface": "Windows Edge headless; offline server-rendered components; not iOS or device evidence",
+  "engine": "157.0.4341.60",
+  "widths": [
+    {
+      "width": 280,
+      "documentWidth": 280,
+      "paragraphHeight": 41.59375,
+      "toolbarGap": 8,
+      "buttons": 4,
+      "minButtonHeight": 44,
+      "allButtonsContained": true
+    },
+    {
+      "width": 320,
+      "documentWidth": 320,
+      "paragraphHeight": 20.796875,
+      "toolbarGap": 8,
+      "buttons": 4,
+      "minButtonHeight": 44,
+      "allButtonsContained": true
+    },
+    {
+      "width": 360,
+      "documentWidth": 360,
+      "paragraphHeight": 20.796875,
+      "toolbarGap": 8,
+      "buttons": 4,
+      "minButtonHeight": 44,
+      "allButtonsContained": true
+    },
+    {
+      "width": 390,
+      "documentWidth": 390,
+      "paragraphHeight": 20.796875,
+      "toolbarGap": 8,
+      "buttons": 4,
+      "minButtonHeight": 44,
+      "allButtonsContained": true
+    },
+    {
+      "width": 420,
+      "documentWidth": 420,
+      "paragraphHeight": 20.796875,
+      "toolbarGap": 8,
+      "buttons": 4,
+      "minButtonHeight": 44,
+      "allButtonsContained": true
+    },
+    {
+      "width": 768,
+      "documentWidth": 768,
+      "paragraphHeight": 20.796875,
+      "toolbarGap": -32.890625,
+      "buttons": 4,
+      "minButtonHeight": 44,
+      "allButtonsContained": true
+    }
+  ]
+}

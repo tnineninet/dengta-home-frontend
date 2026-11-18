@@ -212,7 +212,7 @@ createRoot(document.getElementById("root")).render(
             sessionManager={authSession}
           >
             <Suspense fallback={<AppLoadingScreen />}>
-              <LoadedApp key={JSON.stringify([snapshot.user?.id, snapshot.activeCompanionId])} accountControl={accountControl} accountScope={snapshot.user?.id || ""} userName={snapshot.user?.displayName} companionScope={snapshot.activeCompanionId || ""} />
+              <LoadedApp key={JSON.stringify([snapshot.user?.id, snapshot.activeCompanionId, snapshot.scopeRevision])} accountControl={accountControl} accountScope={snapshot.user?.id || ""} userName={snapshot.user?.displayName} companionScope={snapshot.activeCompanionId || ""} />
             </Suspense>
           </AppStartupBoundary>
         )}

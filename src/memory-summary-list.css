@@ -1,6 +1,6 @@
 .local-memory-summaries { min-width: 0; }
-.memory-summary-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 16px; }
-.memory-summary-toolbar p { margin: 0; color: var(--theme-muted, #667075); font-size: 13px; line-height: 1.6; }
+.memory-summary-toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 16px; }
+.memory-summary-toolbar p { flex: 1 1 220px; margin: 0; color: var(--theme-muted, #667075); font-size: 13px; line-height: 1.6; }
 .local-memory-summaries button, .memory-summary-feedback summary { min-height: 44px; padding: 10px 14px; border-radius: 12px; }
 .memory-summary-toolbar button { flex-shrink: 0; }
 .local-memory-summaries button:focus-visible, .memory-summary-feedback summary:focus-visible, .local-memory-summaries textarea:focus-visible { outline: 2px solid var(--theme-accent, #52776c); outline-offset: 3px; }
@@ -19,9 +19,16 @@
 .memory-summary-orphan-drafts > div { display: grid; min-width: 0; gap: 8px; }
 .memory-summary-orphan-drafts textarea { box-sizing: border-box; width: 100%; padding: 12px; border: 1px solid var(--theme-control-border, rgba(105, 125, 118, .2)); border-radius: 12px; color: inherit; background: rgb(var(--theme-card-rgb, 255 255 255) / .7); font: inherit; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; resize: vertical; }
 .memory-summary-orphan-drafts button { justify-self: start; }
-@media (max-width: 420px) { .memory-summary-toolbar { align-items: flex-start; flex-direction: column; gap: 8px; } .memory-summary-toolbar button { width: 100%; } }
-
-.memory-summary-toolbar { flex-wrap: wrap; }
-.memory-summary-toolbar p { flex: 1 1 220px; }
-.memory-consolidate-button { white-space: nowrap; }
-@media (max-width: 420px) { .memory-consolidate-button { width: 100%; } }
+.local-memory-heading, .kiwi-learned-profile .memory-source-heading, .memory-gateway-item-actions { flex-wrap: wrap; }
+.local-memory-count { overflow-wrap: anywhere; }
+.memory-consolidate-help, .kiwi-learned-profile p { font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }
+.kiwi-learned-profile article p { white-space: pre-wrap; }
+.kiwi-learned-profile button, .memory-privacy-notice summary { min-height: 44px; box-sizing: border-box; padding: 10px 12px; }
+.memory-privacy-notice summary { padding-inline: 0; cursor: pointer; }
+.memory-gateway-status .memory-gateway-edit { display: grid; grid-template-columns: minmax(0, 1fr); }
+.memory-gateway-status .memory-gateway-load { margin-top: 0; }
+@media (max-width: 420px) {
+  .memory-summary-toolbar { align-items: stretch; flex-direction: column; gap: 8px; }
+  .memory-summary-toolbar p { flex: none; }
+  .memory-summary-toolbar button { width: 100%; }
+}

@@ -6,7 +6,8 @@ import { describeOperationError } from "./operation-error-help.js";
 
 const HELP = Object.freeze({
   memory_ui_receipt_invalid: "记忆服务返回的确认信息不完整。本次未确认成功，请重新读取连接状态后核对。",
-  kiwi_mem_not_configured: "服务器尚未配置 Kiwi。现有灯塔记忆仍可使用。",
+  kiwi_mem_not_configured: "服务器尚未配置 Kiwi，长期记忆暂不可用。请配置 Kiwi 后重新检测。",
+  kiwi_memory_provider_required: "长期记忆仅使用 Kiwi。Supabase 记忆连接和导入已停用；请在 Kiwi 记忆页面核对。",
   kiwi_mem_tenant_required: "账号或伴侣标识不完整，请重新登录并选择伴侣后检测。",
   kiwi_mem_tenant_unverified: "网关未返回匹配的租户回执。请检查网关及代理是否支持 X-Tenant-Id 回执；本次不会使用未经确认的记忆。",
   kiwi_mem_http_401: "Kiwi 鉴权失败，请检查服务器配置的网关令牌。",
@@ -15,6 +16,7 @@ const HELP = Object.freeze({
   kiwi_mem_timeout: "Kiwi 响应超时，请检查网关是否休眠或网络是否可达，再点击检测。",
   kiwi_mem_network_error: "无法连接 Kiwi，请检查服务器到网关的网络连接，再点击检测。",
   kiwi_mem_invalid_response: "Kiwi 未返回可用状态，请检查网关日志和记忆功能开关。",
+  kiwi_mem_status_upgrade_required: "网关未返回可核对的存储状态，请升级 Kiwi 网关后重新检测。",
   kiwi_mem_memory_disabled: "Kiwi 的记忆功能已关闭，请在网关管理面板开启后重新检测。",
   EXTERNAL_MEMORY_MIGRATION_REQUIRED: "外部记忆的保存结构尚未准备好。请联系管理员更新服务；现有配置和输入继续保留。",
   EXTERNAL_MEMORY_CREDENTIAL_REQUIRED: "请填写连接凭据，再测试当前填写。",
@@ -64,24 +66,26 @@ export function invalidMemoryReceipt() {
 export const memoryCount = value => Number.isSafeInteger(value) && value >= 0;
 
 export function kiwiHealthReceipt(data) {
-  if (!data || typeof data.configured !== "boolean" || typeof data.reachable !== "boolean") throw invalidMemoryReceipt();
-  if (data.reachable && (data.tenant_verified !== true || typeof data.memory_enabled !== "boolean" || typeof data.embedding_available !== "boolean" || !memoryCount(data.total_memories))) throw invalidMemoryReceipt();
+  if (!data || data.provider !== "kiwi" || data.storage !== "kiwi" || typeof data.configured !== "boolean" || typeof data.reachable !== "boolean") throw invalidMemoryReceipt();
+  if (data.reachable && data.ok === false && data.tenant_verified === true && data.error === "kiwi_mem_status_upgrade_required") return data;
+  if (data.reachable && (data.ok !== true || data.tenant_verified !== true || typeof data.memory_enabled !== "boolean" || typeof data.embedding_available !== "boolean" || !(data.total_memories === null || memoryCount(data.total_memories)))) throw invalidMemoryReceipt();
   if (!data.reachable && (typeof data.error !== "string" || !data.error)) throw invalidMemoryReceipt();
   return data;
 }
 
 export function useMemoryUiRequest(scopeKey) {
   const lifecycle = useRef(null);
+  const revision = authSession.getSnapshot().scopeRevision;
   useLayoutEffect(() => {
     const controller = new AbortController();
     const current = { scopeKey, controller };
     lifecycle.current = current;
     return () => { controller.abort(); if (lifecycle.current === current) lifecycle.current = null; };
-  }, [scopeKey]);
+  }, [scopeKey, revision]);
   const isCurrent = useCallback(() => {
     const snapshot = authSession.getSnapshot();
-    return Boolean(lifecycle.current?.scopeKey === scopeKey && !lifecycle.current.controller.signal.aborted && snapshot.user?.id && snapshot.activeCompanionId && settingsSaveScope(snapshot) === scopeKey);
-  }, [scopeKey]);
+    return Boolean(lifecycle.current?.scopeKey === scopeKey && !lifecycle.current.controller.signal.aborted && snapshot.scopeRevision === revision && snapshot.user?.id && snapshot.activeCompanionId && settingsSaveScope(snapshot) === scopeKey);
+  }, [scopeKey, revision]);
   const request = useCallback(async (path, { body, rawBody = false, timeoutMs = 15_000, responseReader, ...options } = {}) => {
     if (!isCurrent()) {
       const error = new Error("账号或伴侣范围已变化。");
@@ -110,7 +114,11 @@ export function useMemoryUiRequest(scopeKey) {
       const result = responseReader
         ? apiFetch(path, { ...requestOptions, headers: { ...(rawBody ? {} : { "Content-Type": "application/json" }), ...(options.headers || {}) } }).then(responseReader)
         : apiRequest(path, requestOptions);
-      return await Promise.race([result, aborted]);
+      const data = await Promise.race([result, aborted]);
+      if (lifecycle.current !== current || !isCurrent()) {
+        throw Object.assign(new Error("账号或伴侣范围已变化。"), { code: "settings_scope_changed" });
+      }
+      return data;
     } finally {
       window.clearTimeout(timer);
       current.controller.signal.removeEventListener("abort", forwardAbort);

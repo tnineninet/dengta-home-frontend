@@ -193,6 +193,7 @@ export function createAuthSessionManager({
   let passwordRecovery = false;
   let callbackInitializationChecked = false;
   let snapshot = Object.freeze({
+    scopeRevision,
     status: configured(normalizedUrl, normalizedKey)
       ? AUTH_STATUS.loading
       : AUTH_STATUS.unconfigured,
@@ -205,8 +206,9 @@ export function createAuthSessionManager({
 
   function publish(next) {
     const previous = snapshot;
-    snapshot = Object.freeze({ ...snapshot, ...next });
-    if (previous.user?.id !== snapshot.user?.id || previous.activeCompanionId !== snapshot.activeCompanionId) scopeRevision += 1;
+    const updated = { ...previous, ...next };
+    if (previous.user?.id !== updated.user?.id || previous.activeCompanionId !== updated.activeCompanionId) scopeRevision += 1;
+    snapshot = Object.freeze({ ...updated, scopeRevision });
     listeners.forEach((listener) => listener(snapshot));
     return snapshot;
   }

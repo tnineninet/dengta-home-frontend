@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { compileFunction } from "node:vm";
 import test from "node:test";
 import { awaitChatPreparation } from "../src/chat-send-preparation.js";
+import { createScopedSettingsSession, settingsSaveScope } from "../src/settings-save-scope.js";
 
 const app = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
 const send = app.indexOf("async function sendMessage()");
@@ -24,8 +25,11 @@ function deferred() {
   return { promise, resolve, reject };
 }
 function fixture({ save = Promise.resolve(true), model = Promise.resolve(), preserve = false } = {}) {
+  const privateScope = { user: { id: "account-a" }, activeCompanionId: "companion-a", scopeRevision: 1 };
   const context = {
     AbortController, DOMException, awaitChatPreparation,
+    chatSendVersion: { current: 0 }, createScopedSettingsSession, privateMediaScope: settingsSaveScope(privateScope),
+    authSession: { getSnapshot: () => privateScope }, isHistoryScopeCurrent: () => privateScope.scopeRevision === 1, privateScope,
     isSendingRef: { current: false }, activeSessionIdRef: { current: "a" },
     chatRequestRef: { current: null }, componentMountedRef: { current: true },
     sessionModelSaveQueueRef: { current: model }, attachmentsToSend: [{ id: "fake-file", released: false }],
@@ -73,6 +77,11 @@ test("model wait is cancellable and a changed conversation cannot inherit the se
   const otherRun = changed.run(); changed.context.activeSessionIdRef.current = "b";
   save.resolve(true); await otherRun;
   assert.equal(changed.context.reached, 0);
+
+  const gate = deferred(), switched = fixture({ save: gate.promise });
+  const switchingRun = switched.run(); switched.context.privateScope.scopeRevision += 2;
+  gate.resolve(true); await switchingRun;
+  assert.equal(switched.context.reached, 0, "a switch away and back must prevent the previous scope from sending");
 });
 
 test("settings failures keep the draft and expose a precise local code without raw exception text", async () => {

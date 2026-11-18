@@ -30,7 +30,7 @@ import { settingsSaveScope } from "../src/settings-save-scope.js";
 const source = readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
 const streamStart = source.indexOf("await streamChat(");
 const callbackStart = source.indexOf("        (event) => {", streamStart);
-const callbackEnd = source.indexOf("\n        { signal: request.controller.signal },", callbackStart);
+const callbackEnd = source.indexOf("\n        { signal: request.controller.signal,", callbackStart);
 assert.ok(streamStart >= 0 && callbackStart > streamStart && callbackEnd > callbackStart,
   "extract the actual App stream callback instead of reproducing its reducer");
 const callbackSource = source.slice(callbackStart, callbackEnd).trim().replace(/,$/, "");
@@ -59,7 +59,8 @@ const done = (body, monologue = snapshot("Synthetic visible self-report.")) => (
 });
 
 function harness() {
-  let owner = { user: { id: "account-a" }, activeCompanionId: "companion-a" };
+  let owner = { user: { id: "account-a" }, activeCompanionId: "companion-a", scopeRevision: 1 };
+  const initialScope = settingsSaveScope(owner), initialRevision = owner.scopeRevision;
   const played = [], receipts = [], writes = [];
   let messages = [{
     id: localAssistantId, role: "assistant", conversation_id: sessionId, content: "",
@@ -70,7 +71,8 @@ function harness() {
   const env = {
     request, sessionId, localAssistantId, localUserId: "local-user-body-first",
     componentMountedRef: { current: true },
-    privateMediaScope: settingsSaveScope(owner),
+    privateMediaScope: initialScope,
+    isHistoryScopeCurrent: () => settingsSaveScope(owner) === initialScope && owner.scopeRevision === initialRevision,
     authSession: { getSnapshot: () => owner }, settingsSaveScope,
     activeSessionIdRef: { current: sessionId }, chatRequestRef: { current: request },
     streamThinkingRef: { current: { statuses: [], summary: "" } },
@@ -219,6 +221,7 @@ test("late body, monologue and done cannot cross a session, request, unmount, ac
     h => { h.env.componentMountedRef.current = false; },
     h => h.switchOwner({ user: { id: "account-b" } }),
     h => h.switchOwner({ activeCompanionId: "companion-b" }),
+    h => h.switchOwner({ scopeRevision: 3 }),
   ]) {
     const h = harness();
     h.emit({ type: "text", content: "Original account body" });

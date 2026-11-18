@@ -1,5 +1,7 @@
 # DengTa iOS 长任务报告
 
+2026-11-18：[Kiwi 记忆真机核验、修复和发布顺序](KIWI-MEMORY-VERIFICATION.md)。
+
 ## 1. 结论
 
 **部分完成；尚未通过 Phase 1 核心业务验收。** 环境 B（GitHub Actions macOS）、范围 A 保持。Windows 本地没有 Xcode；原生结论全部来自真实 CI，不把静态准备或合成账号测试算作私人账号实测。

@@ -4,7 +4,11 @@ export function settingsSaveScope(snapshot = {}) {
 
 export function createScopedSettingsSession(manager, scope, signal) {
   const [accountId, companionId] = JSON.parse(scope);
-  const isCurrent = () => !signal?.aborted && settingsSaveScope(manager.getSnapshot()) === scope;
+  const revision = manager.getSnapshot().scopeRevision;
+  const isCurrent = () => {
+    const snapshot = manager.getSnapshot();
+    return !signal?.aborted && settingsSaveScope(snapshot) === scope && snapshot.scopeRevision === revision;
+  };
   function assertCurrent(context) {
     if (isCurrent() && (!context || (context.companionId || "") === companionId)) return;
     const error = new Error("账号或伴侣已切换，本次设置保存已取消。请在原来的空间核对设置。");

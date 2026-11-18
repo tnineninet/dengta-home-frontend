@@ -12,7 +12,7 @@ import { resizeComposerInput } from "./composer-size.js";
 import { restartDengTa } from "./app-runtime.js";
 import { createMonologueRequestOperation } from "./monologue-request-lifecycle.js";
 import { createCompanionInteractionLifecycle } from "./companion-interaction-lifecycle.js";
-import { invalidMemoryReceipt, memoryCount, memoryUiFailure, useMemoryUiRequest as useScopedUiRequest } from "./memory-ui-feedback.js";
+import { useMemoryUiRequest as useScopedUiRequest } from "./memory-ui-feedback.js";
 import { MAX_SESSION_TITLE, readSessionDelete, readSessionRename, sessionDialogFailure } from "./session-dialog-feedback.js";
 import SessionDialog from "./SessionDialog.jsx";
 import ImageViewer from "./ImageViewer.jsx";
@@ -28,6 +28,9 @@ import { useBuiltInNowPlaying } from "./useBuiltInNowPlaying.js";
 import { chooseNowPlayingCard } from "./built-in-now-playing.js";
 import { createAiMusicConsumer } from "./ai-music-consumer.js";
 import MemoryGatewayStatus from "./MemoryGatewayStatus.jsx";
+import KiwiLearnedProfile from "./KiwiLearnedProfile.jsx";
+import { createChatMemoryJobs } from "./chat-memory-jobs.js";
+import { emitMemoryChanged } from "./kiwi-memory-receipt.js";
 import { flushSync } from "react-dom";
 import { Capacitor } from "@capacitor/core";
 
@@ -398,15 +401,11 @@ const CompanionProfile = lazy(() => import("./CompanionProfile"));
 const ContentImport = lazy(() => import("./ContentImport"));
 const AccountExport = lazy(() => import("./AccountExport"));
 const MusicSettings = lazy(() => import("./MusicSettings"));
-const ExternalMemoryConnections = lazy(
-  () => import("./ExternalMemoryConnections"),
-);
 const McpDeviceCenter = lazy(() => import("./McpDeviceCenter"));
 const XHub = lazy(() => import("./XHub.jsx"));
 const MusicStudio = lazy(() => import("./MusicStudio.jsx"));
 const ChannelHub = lazy(() => import("./ChannelHub.jsx"));
 const Nursery = lazy(() => import("./Nursery"));
-const OmbreMemories = lazy(() => import("./OmbreMemories"));
 const LocalMemorySummaries = lazy(() => import("./LocalMemorySummaries.jsx"));
 const Together = lazy(() => import("./Together.jsx"));
 const ThemeStudio = lazy(() => import("./ThemeStudio"));
@@ -669,119 +668,6 @@ function ErrorLogsPanel({ accountScope, companionScope, onOpenSettings }) {
   );
 }
 
-function MemoryImportCard({ scopeKey }) {
-  const [file, setFile] = useState(null);
-  const [busy, setBusy] = useState('');
-  const [result, setResult] = useState(null);
-  const [error, setError] = useState('');
-  const [diagnostic, setDiagnostic] = useState(null);
-  const operationRef = useRef(null);
-  const { request, isCurrent } = useScopedUiRequest(scopeKey);
-  useLayoutEffect(() => {
-    operationRef.current = null;
-    return () => { operationRef.current = null; };
-  }, [scopeKey]);
-
-  async function readImportResult(response) {
-    const data = await response.json().catch(() => null);
-    if (!response.ok) {
-      throw Object.assign(new Error('记忆导入未完成。'), { status: response.status, code: data?.code, logId: data?.error_log_id, source: ['dengta', 'external_memory_gateway'].includes(data?.error_source) ? data.error_source : undefined, upstreamStatus: data?.upstream_status });
-    }
-    if (response.status !== 200 || data?.ok !== true || !memoryCount(data.imported) || ['skipped', 'total'].some(field => Object.hasOwn(data, field) && !memoryCount(data[field]))) throw invalidMemoryReceipt();
-    return data;
-  }
-
-  async function runImport(kind = 'file') {
-    if (operationRef.current || !isCurrent() || (kind === 'file' && !file)) return;
-    if (kind === 'file' && file.size > 20 * 1024 * 1024) {
-      setError('旧记忆直传最大 20MB；大文本请打开设置中的「数据导入」，可分段处理至 1GB。');
-      setResult(null); setDiagnostic(null);
-      return;
-    }
-    const operation = {};
-    operationRef.current = operation;
-    const current = () => isCurrent() && operationRef.current === operation;
-    setBusy(kind);
-    setError('');
-    setResult(null);
-    setDiagnostic(null);
-    try {
-      let body;
-      if (kind === 'file') {
-        body = new FormData();
-        body.append('file', file);
-      }
-      const data = await request('/api/v2/memory/' + (kind === 'file' ? 'import-file' : 'import-history'), {
-        method: 'POST', body, rawBody: true,
-        timeoutMs: kind === 'file' ? 90000 : 300000,
-        responseReader: readImportResult,
-      });
-      if (current()) setResult(data);
-    } catch (importError) {
-      if (current()) {
-        setError(memoryUiFailure(importError, { mutation: true }));
-        const logId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(importError.logId || '') ? importError.logId : undefined;
-        setDiagnostic({ error_code: describeOperationError(importError).code, error_log_id: logId, error_source: importError.source, upstream_status: Number.isInteger(importError.upstreamStatus) && importError.upstreamStatus >= 100 && importError.upstreamStatus <= 599 ? importError.upstreamStatus : undefined });
-      }
-    } finally {
-      if (current()) { operationRef.current = null; setBusy(''); }
-    }
-  }
-
-  return (
-    <div className="settings-card memory-import-card">
-      <h3>导入旧记忆（可选）</h3>
-      <p className="card-hint">
-        把你以前和 AI 聊过的内容导入到这个账号自己的长期记忆库（与其他用户隔离）。
-        支持 txt / md / json / csv / pdf / docx / xlsx / zip 文件；
-        服务器会自动提取文字并整理成记忆（AI 可用时智能提炼，否则按段落保存）。
-        此旧版入口最大 20MB，可能只整理部分内容；大记录建议使用「数据导入」的分段预览与确认。
-      </p>
-      <div className="memory-import-actions">
-        <input
-          type="file"
-          accept=".txt,.md,.json,.csv,.pdf,.docx,.xlsx,.zip"
-          disabled={Boolean(busy)}
-          onChange={(event) => {
-            setFile(event.target.files?.[0] || null);
-            setResult(null);
-            setError('');
-            setDiagnostic(null);
-          }}
-        />
-        <button
-          type="button"
-          className="memory-import-run"
-          disabled={!file || Boolean(busy)}
-          onClick={() => void runImport()}
-        >
-          {busy === 'file' ? '导入中…' : '开始导入'}
-        </button>
-        <button
-          type="button"
-          className="memory-import-history"
-          disabled={Boolean(busy)}
-          onClick={() => void runImport('history')}
-        >
-          {busy === 'history' ? '整理中…' : '从灯塔历史导入（最多 5000 条、30 万字）'}
-        </button>
-      </div>
-      {error && <p className="memory-import-error">{error}</p>}
-      {error && diagnostic && <ChatErrorLog key={diagnostic.error_log_id || error} logId={diagnostic.error_log_id} diagnostic={diagnostic} />}
-      {result && result.ok === true && (
-        <div className="memory-import-result">
-          <strong>导入完成</strong>
-          <span>
-            成功 {result.imported || 0} 条，跳过 {result.skipped || 0} 条，
-            记忆库现有 {result.total ?? '?'} 条
-            {result.mode === 'ai' ? '（AI 智能整理）' : '（按段落保存）'}
-          </span>
-          {result.coverage_notice && <small>{result.coverage_notice}</small>}
-        </div>
-      )}
-    </div>
-  );
-}
 function shanghaiClientTime(value = new Date()) {
   return value.toLocaleString("zh-CN", {
     timeZone: SHANGHAI_TIME_ZONE,
@@ -1585,6 +1471,18 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [sessionDialogFeedback, setSessionDialogFeedback] = useState("");
   const sessionDialogRequest = useScopedUiRequest(privateMediaScope);
   const { request: requestSessionHistory, isCurrent: isHistoryScopeCurrent } = useScopedUiRequest(privateMediaScope);
+  const chatMemoryJobsRef = useRef(null);
+  useLayoutEffect(() => {
+    const watcher = createChatMemoryJobs({
+      isCurrent: isHistoryScopeCurrent,
+      readJob: id => requestSessionHistory(`/api/v2/memory/jobs/${encodeURIComponent(id)}`),
+      notify: (source, jobId) => emitMemoryChanged(privateMediaScope, source, undefined, jobId),
+      schedule: (fn, delay) => window.setTimeout(fn, delay),
+      cancel: timer => window.clearTimeout(timer),
+    });
+    chatMemoryJobsRef.current = watcher;
+    return () => { watcher.dispose(); chatMemoryJobsRef.current = null; };
+  }, [privateMediaScope, requestSessionHistory, isHistoryScopeCurrent]);
   useLayoutEffect(() => { dialogRef.current = dialog; sessionsRef.current = sessions; }, [dialog, sessions]);
   useLayoutEffect(() => {
     sessionDialogPendingRef.current = null;
@@ -1615,13 +1513,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   useEffect(() => {
-    function refreshAfterImport() {
-      void refreshPrivateMediaCatalog();
+    function refreshAfterImport(event) {
+      if (event.detail?.scopeKey === privateMediaScope) void refreshPrivateMediaCatalog();
     }
     window.addEventListener("dengta:memories-imported", refreshAfterImport);
     return () =>
       window.removeEventListener("dengta:memories-imported", refreshAfterImport);
-  }, [refreshPrivateMediaCatalog]);
+  }, [privateMediaScope, refreshPrivateMediaCatalog]);
 
   useLayoutEffect(
     () => () => {
@@ -2014,6 +1912,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const voiceMaxTimerRef = useRef(null);
   const voiceRequestRef = useRef(null);
   const chatRequestRef = useRef(null);
+  const chatSendVersion = useRef(0);
   const pendingChatClientMessageRef = useRef(null);
   const refreshSessionsRef = useRef(null);
   const createSessionPendingRef = useRef(false);
@@ -5811,7 +5710,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       attachmentsReleased: false,
       cancelReason: "",
     };
+    const chatSession = createScopedSettingsSession(authSession, privateMediaScope, request.controller.signal);
     chatRequestRef.current = request;
+    const sendVersion = ++chatSendVersion.current;
     const deviceActivityRefresh = refreshDeviceActivityContext({ silent: true });
     try {
       setSendPreparationStage("settings");
@@ -5823,7 +5724,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         await awaitChatPreparation(() => sessionModelSaveQueueRef.current, request.controller.signal);
       }
       if (request.controller.signal.aborted || chatRequestRef.current !== request ||
-          !componentMountedRef.current || activeSessionIdRef.current !== startingSessionId) {
+          !componentMountedRef.current || !isHistoryScopeCurrent() || activeSessionIdRef.current !== startingSessionId) {
         throw new DOMException("发送准备已取消", "AbortError");
       }
     } catch (error) {
@@ -5886,7 +5787,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             ),
           }),
           signal: request.controller.signal,
+          authSession: chatSession,
         });
+        if (!isHistoryScopeCurrent() || request.controller.signal.aborted) throw new DOMException("会话已切换", "AbortError");
         sessionId = created.session.id;
         activeSessionIdRef.current = sessionId;
         moveSessionDraft(null, sessionId);
@@ -6027,7 +5930,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       ]);
 
       void loadEarlyMusicCard(text);
-      await streamChat(
+      const completion = await streamChat(
         {
           session_id: sessionId,
           message: text,
@@ -6050,7 +5953,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             request.controller.signal.aborted ||
             chatRequestRef.current !== request ||
             !componentMountedRef.current ||
-            settingsSaveScope(authSession.getSnapshot()) !== privateMediaScope
+            !isHistoryScopeCurrent()
           ) {
             return;
           }
@@ -6276,7 +6179,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             }
           }
         },
-        { signal: request.controller.signal },
+        { signal: request.controller.signal, authSession: chatSession },
       );
 
       if (streamFailed) {
@@ -6295,6 +6198,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         throw error;
       }
       sendSucceeded = true;
+      if (request.controller.signal.aborted || !isHistoryScopeCurrent() || chatRequestRef.current !== request) return;
+      chatMemoryJobsRef.current?.observe(completion, sessionId);
       // 回复已经提交。后续刷新历史/会话是收尾工作，不能让输入框一直停在“发送中”。
       isSendingRef.current = false;
       if (componentMountedRef.current) setIsSending(false);
@@ -6316,10 +6221,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         chatRequestRef.current = null;
       }
 
-      const history = await apiRequest(
+      const history = await requestSessionHistory(
         `/api/v2/sessions/${sessionId}/messages`,
         { timeoutMs: 15_000 },
       );
+      if (!isHistoryScopeCurrent() || chatSendVersion.current !== sendVersion) return;
       if (activeSessionIdRef.current === sessionId) {
         messageLoadTokenRef.current += 1;
         messagesSessionIdRef.current = sessionId;
@@ -6336,8 +6242,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         );
       }
       await refreshSessions(activeSessionIdRef.current || sessionId);
-      void refreshComposerHint(sessionId);
+      if (isHistoryScopeCurrent() && chatSendVersion.current === sendVersion && activeSessionIdRef.current === sessionId) void refreshComposerHint(sessionId);
     } catch (error) {
+      if (!isHistoryScopeCurrent() || chatSendVersion.current !== sendVersion) {
+        releaseChatRequestAttachments(request);
+        return;
+      }
       const publicErrorMessage = publicChatErrorMessage(
         error,
         "回复暂时中断，请稍后重试。",
@@ -6392,7 +6302,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           request.clientMessageId,
         );
       }
-      if (!componentMountedRef.current) {
+      if (!componentMountedRef.current || !isHistoryScopeCurrent()) {
         releaseChatRequestAttachments(request);
         return;
       }
@@ -6520,16 +6430,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       if (chatRequestRef.current === request) {
         chatRequestRef.current = null;
       }
-      if (streamingSessionIdRef.current === sessionId) {
-        streamingSessionIdRef.current = null;
-      }
-      isSendingRef.current = false;
-      if (componentMountedRef.current) setIsSending(false);
-      if (
-        componentMountedRef.current &&
-        companionInteractionQueueRef.current.length > 0
-      ) {
-        scheduleCompanionInteraction(250);
+      if (chatSendVersion.current === sendVersion && isHistoryScopeCurrent()) {
+        if (streamingSessionIdRef.current === sessionId) streamingSessionIdRef.current = null;
+        isSendingRef.current = false;
+        if (componentMountedRef.current) setIsSending(false);
+        if (componentMountedRef.current && companionInteractionQueueRef.current.length > 0) {
+          scheduleCompanionInteraction(250);
+        }
       }
     }
   }
@@ -7899,15 +7806,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     setIsSettingsOpen(true);
   }
 
-  function openExternalMemorySettings() {
-    closeComposerMenu();
-    requestStatusPanelClose();
-    setIsSidebarOpen(false);
-    setIsMobileNavOpen(false);
-    setSettingsCategory("persona");
-    setSettingsFocusTarget("external-memory-connections");
-    setIsSettingsOpen(true);
-  }
 
   function closeSettingsPanel() {
     if (hasLoadedSettingsRef.current) {
@@ -9208,13 +9106,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         <div className="section-intro">
           <span className="eyebrow">长期记忆</span>
           <h2>留在家里的事情</h2>
-          <p>这些摘要会作为真实模型回复时的长期背景。</p>
+          <p>查看当前账号和伴侣的 Kiwi 记忆、对话摘要和自动画像。聊天是否召回记忆，以当次召回结果为准。</p>
         </div>
           <MemoryGatewayStatus key={privateMediaScope} scopeKey={privateMediaScope} />
-        <Suspense fallback={<DeferredFeature label="正在打开记忆档案…" />}>
-          <OmbreMemories onManageConnections={openExternalMemorySettings} />
-        </Suspense>
-        <Suspense fallback={<DeferredFeature label="正在打开对话摘要…" />}>
+          <KiwiLearnedProfile scopeKey={privateMediaScope} />
+        <Suspense fallback={<DeferredFeature label="正在打开长期记忆…" />}>
           <LocalMemorySummaries
             key={privateMediaScope}
             scopeKey={privateMediaScope}
@@ -9708,7 +9604,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                       }}
                     />
                   </Suspense>
-                  <Suspense fallback={<DeferredFeature label="正在打开对话摘要…" />}>
+                  <Suspense fallback={<DeferredFeature label="正在打开长期记忆…" />}>
                     <LocalMemorySummaries
                       key={privateMediaScope}
                       scopeKey={privateMediaScope}
@@ -9721,9 +9617,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                     />
                   </Suspense>
                 </div>
-                <Suspense fallback={<DeferredFeature label="正在打开外部记忆连接…" />}>
-                  <ExternalMemoryConnections key={privateMediaScope} scopeKey={privateMediaScope} />
-                </Suspense>
               </>
             )}
           {settingsCategory === "persona" && (
@@ -9933,15 +9826,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   </span>
                 </div>
                 <p>
-                  这里不重复展示或编辑记忆正文，避免意外覆盖。最近回执记录了{" "}
-                  {lastPromptReceipt?.delivery?.stableMemory?.count ??
-                    memories.length}{" "}
-                  条记忆
-                  {lastPromptReceipt?.delivery?.stableMemory?.chars !== null &&
-                    lastPromptReceipt?.delivery?.stableMemory?.chars !==
-                      undefined &&
-                    `，共 ${lastPromptReceipt.delivery.stableMemory.chars} 字`}
-                  。
+                  打开记忆页可查看 Kiwi 为当前账号和伴侣确认的条目。每次回复只会选用与对话有关的记忆。
                 </p>
               </section>
 
@@ -10230,7 +10115,6 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 </small>
               )}
             </div>
-            <MemoryImportCard key={privateMediaScope} scopeKey={privateMediaScope} />
               </>
             )}
 

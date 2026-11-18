@@ -2,9 +2,10 @@ import { apiFetch, apiRequest } from "./api.js";
 import { authSession } from "./auth-session.js";
 
 export function createImportRequestClient({ accountScope, companionScope, auth = authSession, client = { apiFetch, apiRequest } }) {
+  const revision = auth.getSnapshot()?.scopeRevision;
   const current = () => {
     const snapshot = auth.getSnapshot();
-    return Boolean(accountScope && companionScope && snapshot?.user?.id === accountScope && snapshot?.activeCompanionId === companionScope);
+    return Boolean(accountScope && companionScope && revision === snapshot?.scopeRevision && snapshot?.user?.id === accountScope && snapshot?.activeCompanionId === companionScope);
   };
   const assertCurrent = signal => {
     signal?.throwIfAborted();

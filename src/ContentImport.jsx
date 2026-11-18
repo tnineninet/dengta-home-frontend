@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { commitContentImport, getContentImport, resolveContentImport, contentImportResolutionReceipt, listContentImports, previewContentImport, previewContentImportPage, CONTENT_IMPORT_PAGED_EXTENSIONS, CONTENT_IMPORT_ERROR_FEEDBACK, translatedImportError, importCommitRecovery } from "./content-import-api.js";
+import { canCommitImportTarget, commitContentImport, getContentImport, resolveContentImport, contentImportResolutionReceipt, listContentImports, previewContentImport, previewContentImportPage, CONTENT_IMPORT_PAGED_EXTENSIONS, CONTENT_IMPORT_ERROR_FEEDBACK, translatedImportError, importCommitRecovery } from "./content-import-api.js";
 import WorldBookManager from "./WorldBookManager.jsx";
 import ChatErrorLog from "./ChatErrorLog.jsx";
 import { funLabsDiagnostic } from "./fun-labs-refresh.js";
@@ -12,7 +12,7 @@ const TYPE_META = Object.freeze({
   memory: {
     label: "稳定记忆",
     defaultTarget: "memories",
-    targets: [["memories", "稳定记忆"], ["user_details", "你的详情"]],
+    targets: [["memories", "旧记忆库（不可写入）"], ["user_details", "你的详情"]],
   },
   style: {
     label: "表达风格",
@@ -188,8 +188,9 @@ export default function ContentImport({ api, accountScope = "", companionScope =
       accepted: value.accepted + Number(item.decision === "accepted"),
       rejected: value.rejected + Number(item.decision === "rejected"),
       pending: value.pending + Number(item.decision === "pending"),
+      unsupported: value.unsupported + Number(item.decision === "accepted" && !canCommitImportTarget(item)),
     }),
-    { accepted: 0, rejected: 0, pending: 0 },
+    { accepted: 0, rejected: 0, pending: 0, unsupported: 0 },
   ), [preview]);
 
   function updateCandidate(clientKey, patch) {
@@ -280,7 +281,7 @@ export default function ContentImport({ api, accountScope = "", companionScope =
   }
 
   async function handleCommit() {
-    if (!preview?.id || summary.pending > 0 || commitBlocked) return;
+    if (!preview?.id || summary.pending > 0 || summary.unsupported > 0 || commitBlocked) return;
     const task=begin("commit");if(!task)return;
     const committing=resume?.record.pending ? {...resume.record,pending:{...resume.record.pending,commitAttempted:true}} : null;
     if(committing)remember(resume.key,committing);
@@ -319,7 +320,7 @@ export default function ContentImport({ api, accountScope = "", companionScope =
       if(committing)settlePage(resume.key,committing);
       setResult(committedResult(committed));
       setPreview(null);
-      window.dispatchEvent(new CustomEvent("dengta:memories-imported", { detail: committed.result || committed }));
+      window.dispatchEvent(new CustomEvent("dengta:memories-imported", { detail: { scopeKey: JSON.stringify([accountScope, companionScope]) } }));
       await refreshRecent(task);
     } catch (commitError) {
       if(current(task)) {
@@ -354,7 +355,7 @@ export default function ContentImport({ api, accountScope = "", companionScope =
       setUncertainImportId(null);
       removeAttempt(importId);
       settlePage(resume?.key,resume?.record);setResult(committedResult(value.import));setPreview(null);
-      window.dispatchEvent(new CustomEvent("dengta:memories-imported", {detail:value}));
+      window.dispatchEvent(new CustomEvent("dengta:memories-imported", { detail: { scopeKey: JSON.stringify([accountScope, companionScope]) } }));
       setRecoveryNote("服务器已确认提交成功，没有重复写入。");await refreshRecent(task);
     } catch(error) {if(current(task))fail(error?.code==="import_not_found" ? {...error,code:"import_receipt_missing"} : error);} finally {finish(task);}
   }
@@ -389,7 +390,7 @@ export default function ContentImport({ api, accountScope = "", companionScope =
       } else {
         settlePage(resume?.key,resume?.record);setResult(committedResult(value.import));
         setRecoveryNote("原提交已经完成，保留原结果，没有重复写入或删除已保存内容。");
-        window.dispatchEvent(new CustomEvent("dengta:memories-imported",{detail:value}));
+        window.dispatchEvent(new CustomEvent("dengta:memories-imported", { detail: { scopeKey: JSON.stringify([accountScope, companionScope]) } }));
       }
       await refreshRecent(task);
     } catch(error) {if(current(task)){fail(error);setRecoveryNote("结束旧候选的请求未确认；旧提交编号仍保留，请先检查提交结果，再决定下一步。");}} finally {finish(task);}
@@ -483,7 +484,8 @@ export default function ContentImport({ api, accountScope = "", companionScope =
                   {item.contentTruncation && <p role="alert">此候选仅含部分正文：源条目 {item.contentTruncation.source_characters.toLocaleString()} 字符，预览保留 {item.contentTruncation.retained_characters.toLocaleString()}，另有 {item.contentTruncation.omitted_characters.toLocaleString()} 未纳入。确认提交只保存当前候选；完整内容请拆条重新导入。</p>}
                   <label><span>标题</span><input disabled={decisionsLocked} aria-label={`${item.title}的标题`} value={item.title} onChange={(event) => updateCandidate(item.clientKey, { title: event.target.value })} /></label>
                   <label><span>内容</span><textarea disabled={decisionsLocked} aria-label={`${item.title}的内容`} value={item.content} onChange={(event) => updateCandidate(item.clientKey, { content: event.target.value })} rows={5} /></label>
-                   <label><span>写入位置</span><select disabled={decisionsLocked} aria-label={`${item.title}的写入位置`} value={item.target} onChange={(event) => updateCandidate(item.clientKey, { target: event.target.value })}>{TYPE_META[item.type].targets.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label>
+                   <label><span>写入位置</span><select disabled={decisionsLocked} aria-label={`${item.title}的写入位置`} value={item.target} onChange={(event) => updateCandidate(item.clientKey, { target: event.target.value })}>{TYPE_META[item.type].targets.map(([value, label]) => <option value={value} key={value} disabled={value === "memories"}>{label}</option>)}</select></label>
+                   {item.target === "memories" && <p>这里不能导入到 Kiwi 长期记忆。请拒绝这条候选，或手动改存到“你的详情”。</p>}
                    {item.type === "world_book" && <div className="content-import-world-book-fields">
                      <label><span>关键词</span><input disabled={decisionsLocked} aria-label={`${item.title}的关键词`} value={item.keywords.join(", ")} onChange={(event) => updateCandidate(item.clientKey, { keywords: event.target.value.split(/[,，\n]/).map((value) => value.trim()).filter(Boolean) })} /></label>
                      <label><span>优先级</span><input disabled={decisionsLocked} aria-label={`${item.title}的优先级`} type="number" min="-100000" max="100000" value={item.priority} onChange={(event) => updateCandidate(item.clientKey, { priority: event.target.value })} /></label>
@@ -497,7 +499,7 @@ export default function ContentImport({ api, accountScope = "", companionScope =
               ))}</div>
             </section>
           ))}
-          {preview.candidates.length > 0 && <div className="content-import-commit-summary" role="status"><div><strong>提交前确认</strong><span>接受 {summary.accepted} 项 · 拒绝 {summary.rejected} 项 · 未决定 {summary.pending} 项</span></div><button className="content-import-primary" type="button" disabled={Boolean(busy) || commitBlocked || summary.pending > 0} onClick={() => void handleCommit()}>{busy === "commit" ? "正在写入…" : summary.pending > 0 ? "请先逐项决定" : "确认并提交"}</button></div>}
+          {preview.candidates.length > 0 && <div className="content-import-commit-summary" role="status"><div><strong>提交前确认</strong><span>接受 {summary.accepted} 项 · 拒绝 {summary.rejected} 项 · 未决定 {summary.pending} 项</span>{summary.unsupported > 0 && <p>有 {summary.unsupported} 项指向不能写入的位置。请改选写入位置，或拒绝这些候选。</p>}</div><button className="content-import-primary" type="button" disabled={Boolean(busy) || commitBlocked || summary.pending > 0 || summary.unsupported > 0} onClick={() => void handleCommit()}>{busy === "commit" ? "正在写入…" : summary.pending > 0 ? "请先逐项决定" : summary.unsupported > 0 ? "请先核对写入位置" : "确认并提交"}</button></div>}
         </section>
       )}
 

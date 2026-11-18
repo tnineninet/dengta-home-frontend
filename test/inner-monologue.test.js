@@ -416,7 +416,7 @@ assert.ok(
 );
 const streamHandlerStart = appSource.indexOf('await streamChat(');
 const streamHandlerEnd = appSource.indexOf(
-  'const history = await apiRequest(',
+  'const history = await requestSessionHistory(',
   streamHandlerStart,
 );
 const streamHandlerSource = appSource.slice(

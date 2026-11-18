@@ -35,6 +35,7 @@ test("settings has a lazy, standalone data import entry and responsive glass sty
   assert.match(componentSource, /aria-label="选择导入文件"/);
   assert.match(componentSource, /event\.target\.value\s*=\s*""/, "the same file can be selected again after a canceled or completed preview");
   assert.match(componentSource, /memory[\s\S]*style[\s\S]*world_book[\s\S]*calendar/);
+  assert.doesNotMatch(appSource + componentSource, /\bMemoryImportCard\b|["'](?:[^"']*\/)?import-(?:file|history)["']/, "neither settings nor the supported preview importer may expose legacy bulk memory endpoints");
 });
 
 test("preview defaults to pending, requires item decisions, commits edits, and dispatches refresh", async () => {
@@ -86,6 +87,12 @@ test("preview defaults to pending, requires item decisions, commits edits, and d
     const decisionGroups = renderer.root.findAll((node) => node.props.role === "group");
     await act(async () => decisionGroups[0].findAllByType("button")[0].props.onClick());
     await act(async () => decisionGroups[1].findAllByType("button")[1].props.onClick());
+    const blocked = buttonByText(renderer, "请先核对写入位置");
+    assert.equal(blocked.props.disabled, true);
+    await act(async () => blocked.props.onClick());
+    assert.equal(calls.some(call => call.path.endsWith("/commit")), false);
+    const target = renderer.root.find(node => node.type === "select" && node.props["aria-label"] === "旧称呼的写入位置");
+    await act(async () => target.props.onChange({ target: { value: "user_details" } }));
     assert.equal(buttonByText(renderer, "确认并提交").props.disabled, false);
     await act(async () => buttonByText(renderer, "确认并提交").props.onClick());
 
@@ -94,6 +101,7 @@ test("preview defaults to pending, requires item decisions, commits edits, and d
     assert.deepEqual(payload.decisions.map((item) => item.decision), ["accepted", "rejected"]);
     assert.deepEqual(payload.decisions.map((item) => item.candidate_id), ["a", "b"]);
     assert.equal(payload.decisions[0].content, `${previewContent}\n补充原文`);
+    assert.equal(payload.decisions[0].target, "user_details");
     assert.equal(dispatched[0].type, "dengta:memories-imported");
     assert.match(textContent(renderer.toJSON()), /导入完成/);
     await act(async () => renderer.unmount());
