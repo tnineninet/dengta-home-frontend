@@ -1,0 +1,22 @@
+{
+  "dti_type": "API_CALL",
+  "carrier_type": "MINIMAL_TEST_HARNESS",
+  "entry_point": "services/calendar-consolidation.runCalendarConsolidation",
+  "invocation_shape": [
+    "Create a Supabase-style database test double containing active calendar rows for multiple tenants",
+    "Call runCalendarConsolidation with the database, deterministic clock, logger, and force option",
+    "Inspect inserted summary rows and superseded source identifiers"
+  ],
+  "required_setup": [
+    "Two distinct tenants each provide seven completed active day rows"
+  ],
+  "evidence_sources": [
+    ".bugfix/calendar-consolidation-multitenant-20260813/analysis_results.json",
+    "services/calendar-consolidation.js"
+  ],
+  "template_paths": [
+    "test/background-job-loop.test.js",
+    "test/background-job-reconciliation.test.js"
+  ],
+  "selected_template_path": "test/background-job-reconciliation.test.js"
+}

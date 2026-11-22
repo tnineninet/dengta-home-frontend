@@ -1,0 +1,11 @@
+{
+  "issue_name": "together-music-local-audio-2.9.3-20260814",
+  "brt_path": "E:\\chatgpt\\dengta-home-frontend\\.bugfix\\together-music-local-audio-2.9.3-20260814\\reproduction\\refresh-freeze.repro.test.js",
+  "reproduction_result": "REPRODUCED",
+  "localization_mode": "static",
+  "trace_path": "",
+  "localization_result": "plausible",
+  "root_cause_summary": "音乐功能把无超时的服务端歌单刷新、仅支持文本歌单的文件选择、平台网页链接与可播放音频 URL、以及 TogetherMusic 与一起看页面导航耦合在同一套路径中，缺少本机音频独立生命周期和入口路由。",
+  "affected_code": "src/music-listening.js:108-125（导入/列表 API 无完整超时边界及平台分享识别）；src/MusicSettings.jsx:15-70（刷新未管理独立 finally 状态，file input 仅接受并读取歌单文本，无本机音频状态/object URL）；src/Together.jsx:39-73,339-378,457-466（听歌作为一起看 tab 嵌入）；src/CompanionStatus.jsx:38-65,272-284（听歌动作只更新动态，只有 watching 动作导航）；src/App.jsx:6197-6224,7493-7510（仅 Together 页面承载播放器，动态栏未提供听歌导航）。",
+  "localization_analysis": "复现 stdout/diagnostic_observations 证明 listMusicPlaylists 在 refresh 路径执行时 timeoutConfigured=false，永久 pending 的请求不会自行结束。静态事实进一步显示 MusicSettings.refresh 没有独立 busy/finally，文件 input 的 accept 仅含 JSON/M3U/TXT 且一律 file.text()，因此 MP3 不可能形成可播放本机媒体状态；parseMusicText 默认把每个非注释行标准化为曲目，无法把网易云 playlist 网页与音频直链做语义区分；Together 把 music 作为一起看第三个 tab，而 CompanionStatus.runDesireAction 仅对 watching 调用 onWatchTogether。Node/React 不适用技能要求的 JaCoCo JVM 链路，故不伪造动态覆盖率，结论标为 plausible；上述代码事实与四组症状逐一一致。"
+}

@@ -1,0 +1,150 @@
+diff --git a/src/ReceiverApp.jsx b/src/ReceiverApp.jsx
+index 5cc1278..b95d48e 100644
+--- a/src/ReceiverApp.jsx
++++ b/src/ReceiverApp.jsx
+@@ -24,8 +24,10 @@ function receiverLabel() {
+ export default function ReceiverApp() {
+   const videoRef = useRef(null);
+   const revisionRef = useRef(-1);
++  const sequenceRef = useRef(0);
+   const [token, setToken] = useState(() => readReceiverToken(globalThis.sessionStorage));
+   const [pairingCode, setPairingCode] = useState("");
++  const [pairingSessionId, setPairingSessionId] = useState("");
+   const [receiverName, setReceiverName] = useState(receiverLabel);
+   const [session, setSession] = useState(null);
+   const [ready, setReady] = useState(false);
+@@ -42,6 +44,7 @@ export default function ReceiverApp() {
+     }
+     clearReceiverToken(globalThis.sessionStorage);
+     revisionRef.current = -1;
++    sequenceRef.current = 0;
+     setToken("");
+     setSession(null);
+     setReady(false);
+@@ -53,6 +56,7 @@ export default function ReceiverApp() {
+     if (!token || !video) return;
+     await acknowledgeCastReceiver(token, {
+       revision: revisionRef.current,
++      sequence: ++sequenceRef.current,
+       playbackState: video.paused ? "paused" : "playing",
+       mediaPositionSeconds: video.currentTime,
+       event,
+@@ -107,15 +111,16 @@ export default function ReceiverApp() {
+ 
+   const pair = async (event) => {
+     event.preventDefault();
+-    if (!pairingCode.trim() || !receiverName.trim() || busy) return;
++    if (!pairingSessionId.trim() || !pairingCode.trim() || !receiverName.trim() || busy) return;
+     setBusy(true);
+     setMessage("正在配对…");
+     try {
+-      const data = await pairCastReceiver(pairingCode, receiverName);
++      const data = await pairCastReceiver(pairingSessionId, pairingCode, receiverName);
+       const nextToken = storeReceiverToken(globalThis.sessionStorage, data?.receiver_token);
+       if (!nextToken) throw new Error("服务端没有返回有效的接收端凭据。");
+       setToken(nextToken);
+       setPairingCode("");
++      setPairingSessionId("");
+       if (data?.session) setSession(normalizeReceiverSession(data));
+       setMessage("配对成功。请在电视上确认一次“准备播放”。");
+     } catch (error) {
+@@ -144,9 +149,10 @@ export default function ReceiverApp() {
+       <header><small>DENGTA CAST RECEIVER</small><h1>在这块屏幕上接收</h1><p>无需登录。配对凭据只保存在当前标签页会话中。</p></header>
+       {!token ? (
+         <form className="receiver-card" onSubmit={pair}>
++          <label>会话编号<input value={pairingSessionId} onChange={(event) => setPairingSessionId(event.target.value.trim())} autoComplete="off" maxLength={80} /></label>
+           <label>配对码<input value={pairingCode} onChange={(event) => setPairingCode(event.target.value.replace(/\s/g, ""))} inputMode="numeric" autoComplete="one-time-code" maxLength={20} autoFocus /></label>
+           <label>接收端名称<input value={receiverName} onChange={(event) => setReceiverName(event.target.value)} maxLength={100} /></label>
+-          <button type="submit" disabled={busy || !pairingCode.trim() || !receiverName.trim()}>{busy ? "正在配对…" : "连接控制端"}</button>
++          <button type="submit" disabled={busy || !pairingSessionId.trim() || !pairingCode.trim() || !receiverName.trim()}>{busy ? "正在配对…" : "连接控制端"}</button>
+         </form>
+       ) : (
+         <section className="receiver-stage">
+diff --git a/src/Together.jsx b/src/Together.jsx
+index 4fabbbc..9eccb95 100644
+--- a/src/Together.jsx
++++ b/src/Together.jsx
+@@ -539,7 +539,7 @@ export default function Together({
+               {directActive && <section className="together-cast" aria-label="电视接收">
+                 <header><strong>在电视上接收</strong><span>{castReceiver?.status === "online" ? "接收端在线" : castReceiver?.status || "等待接收端"}</span></header>
+                 <p>在电视浏览器打开 <strong>{globalThis.location?.origin || ""}/receive</strong>，再输入短期配对码。这里不会显示媒体 URL 或接收端凭据。</p>
+-                {castPairing?.pairingCode ? <div className="together-pairing-code"><b>{castPairing.pairingCode}</b><small>有效期至 {castPairing.expiresAt ? new Date(castPairing.expiresAt).toLocaleTimeString("zh-CN") : "短期有效"}</small></div> : <button type="button" disabled={busy} onClick={onGenerateCastPairing}>生成配对码</button>}
++                {castPairing?.pairingCode ? <div className="together-pairing-code"><b>{castPairing.pairingCode}</b><small>会话编号：{castPairing.sessionId}</small><small>有效期至 {castPairing.expiresAt ? new Date(castPairing.expiresAt).toLocaleTimeString("zh-CN") : "短期有效"}</small></div> : <button type="button" disabled={busy} onClick={onGenerateCastPairing}>生成配对码</button>}
+                 {castReceiver?.lastAckAt && <small>最近确认：{formatMoment(castReceiver.lastAckAt)}</small>}
+                 <div className="cast-provider-list">{castProviders.map((provider) => <span key={provider.id}><b>{provider.label}</b><small>{provider.status === "ready" ? "可用" : `计划中${provider.detected ? " · 检测到浏览器能力" : ""}`}</small></span>)}</div>
+               </section>}
+diff --git a/src/cast-receiver-api.js b/src/cast-receiver-api.js
+index 99aeb1c..60a69c3 100644
+--- a/src/cast-receiver-api.js
++++ b/src/cast-receiver-api.js
+@@ -11,7 +11,7 @@ function cleanText(value, maximum = 180) {
+ async function receiverRequest(path, { method = "GET", body, token = "" } = {}) {
+   const headers = new Headers({ Accept: "application/json" });
+   if (body !== undefined) headers.set("Content-Type", "application/json");
+-  if (token) headers.set("X-DengTa-Receiver-Token", token);
++  if (token) headers.set("Authorization", `Bearer ${token}`);
+   const response = await fetch(`${API_BASE_URL}${path}`, {
+     method,
+     headers,
+@@ -44,10 +44,11 @@ export function clearReceiverToken(storage) {
+   storage?.removeItem(RECEIVER_TOKEN_KEY);
+ }
+ 
+-export async function pairCastReceiver(pairingCode, receiverName) {
++export async function pairCastReceiver(sessionId, pairingCode, receiverName) {
+   return receiverRequest("/api/v2/cast/pair", {
+     method: "POST",
+     body: {
++      session_id: cleanText(sessionId, 80),
+       pairing_code: cleanText(pairingCode, 20),
+       receiver_name: cleanText(receiverName, 100),
+     },
+@@ -63,9 +64,10 @@ export function acknowledgeCastReceiver(token, input = {}) {
+     method: "POST",
+     token,
+     body: {
+-      playback_revision: Number(input.revision) || 0,
+-      playback_state: input.playbackState === "playing" ? "playing" : "paused",
+-      media_position_seconds: Math.max(0, Number(input.mediaPositionSeconds) || 0),
++      revision: Number(input.revision) || 0,
++      sequence: Math.max(0, Number(input.sequence) || 0),
++      state: input.playbackState === "playing" ? "playing" : "paused",
++      position_seconds: Math.max(0, Number(input.mediaPositionSeconds) || 0),
+       event: cleanText(input.event, 40) || "heartbeat",
+     },
+   });
+diff --git a/src/co-watch.js b/src/co-watch.js
+index 1628d07..a3d73eb 100644
+--- a/src/co-watch.js
++++ b/src/co-watch.js
+@@ -12,6 +12,7 @@ function cleanNumber(value, maximum = 604800) {
+ 
+ export function normalizeCoWatchSession(value) {
+   if (!value?.id) return null;
++  const receiver = value.receiver || value.cast_receiver || {};
+   return Object.freeze({
+     id: cleanText(value.id, 80),
+     conversationId: cleanText(value.conversation_id, 80),
+@@ -31,9 +32,11 @@ export function normalizeCoWatchSession(value) {
+     musicPlaylistId: cleanText(value.playlist_id ?? value.music_playlist_id, 100),
+     musicPlaylistItemId: cleanText(value.item_id ?? value.music_playlist_item_id, 100),
+     castReceiver: Object.freeze({
+-      status: cleanText(value.cast_receiver?.status ?? value.receiver_status, 40),
+-      name: cleanText(value.cast_receiver?.name ?? value.receiver_name, 100),
+-      lastAckAt: value.cast_receiver?.last_ack_at ?? value.receiver_last_ack_at ?? "",
++      status: cleanText(receiver.status ?? receiver.state ?? value.receiver_status, 40),
++      name: cleanText(receiver.name ?? value.receiver_name, 100),
++      acknowledged: Boolean(receiver.acknowledged),
++      positionSeconds: cleanNumber(receiver.position_seconds),
++      lastAckAt: receiver.last_ack_at ?? receiver.reported_at ?? value.receiver_last_ack_at ?? "",
+     }),
+     frameCount: cleanNumber(value.frame_count, 1_000_000),
+     reactionCount: cleanNumber(value.reaction_count, 1_000_000),
+@@ -111,6 +114,7 @@ export async function createCoWatchPairingCode(sessionId) {
+   );
+   return Object.freeze({
+     pairingCode: cleanText(data?.pairing_code, 20),
++    sessionId: cleanText(data?.session_id ?? sessionId, 80),
+     expiresAt: data?.expires_at || "",
+   });
+ }

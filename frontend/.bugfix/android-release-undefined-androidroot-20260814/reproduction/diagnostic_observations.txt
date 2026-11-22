@@ -1,0 +1,2 @@
+[BUGFIX_REPRO_TRACE] {"projectRoot":"E:\\chatgpt\\dengta-home-frontend","androidRootType":"undefined"}
+The trace was emitted immediately before NeteasePlaybackPlugin.java loading; stderr then recorded ReferenceError: androidRoot is not defined at test/android-release.test.js:64:5.

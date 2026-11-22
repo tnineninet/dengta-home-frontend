@@ -1,0 +1,18 @@
+{
+  "trace_prefix": "[BUGFIX_REPRO_TRACE]",
+  "instrumentation_added": true,
+  "instrumented_locations": [
+    {
+      "file": "test/android-release.test.js",
+      "location_type": "project_source",
+      "method_or_region": "cmd=play source assertion",
+      "debug_question": "Does the current assertion pattern match the Java-escaped source when executed?",
+      "trace_kind": "state",
+      "observed_values_or_branches": ["current pattern match result"]
+    }
+  ],
+  "trace_output_observed": false,
+  "diagnostic_output_path": "",
+  "missing_trace_output_reason": "ESLint statically analyzes the carrier without executing it.",
+  "summary": "Instrumentation preserves an executable semantic check, while the lint reproducer reports static escape diagnostics without runtime trace output."
+}

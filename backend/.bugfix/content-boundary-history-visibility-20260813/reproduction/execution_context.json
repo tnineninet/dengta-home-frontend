@@ -1,0 +1,11 @@
+{
+  "dti": "CODE_INTERFACE",
+  "project_root": "E:\\chatgpt\\dengta-home-backend",
+  "reproduction_workspace": "E:\\chatgpt\\dengta-home-backend\\.bugfix\\content-boundary-history-visibility-20260813\\reproduction",
+  "module_root": "E:\\chatgpt\\dengta-home-backend",
+  "entry_point": "services/provider-output-guard.js#providerOutputVerdict",
+  "build_cmd": "",
+  "run_cmd": "node E:\\chatgpt\\dengta-home-backend\\.bugfix\\content-boundary-history-visibility-20260813\\reproduction\\content-boundary.repro.test.js",
+  "scope": "backend provider and persistent-memory boundary helpers",
+  "build_run_split_justification": "The repository-aligned Node executable test directly loads CommonJS production modules and needs no separate build."
+}

@@ -1,0 +1,34 @@
+{
+  "preconditions": {
+    "inputs": {
+      "dataset_or_case": "1) 在一起听歌页面点击右侧刷新；2) 在音乐设置中通过 Capacitor Android WebView 文件选择器选择本机 MP3/audio 文件；3) 粘贴网易云分享歌单文本或 https://music.163.com/m/playlist?id=8547232002&creatorId=8678296482；4) 从一起看或聊天页动态栏寻找 Together 听歌入口。",
+      "size_or_boundary": "本机音频格式范围为 MP3/M4A/WAV/OGG/FLAC；歌单文件与本机音频必须区分；Together 跨设备队列只允许服务端可识别的 HTTPS 曲目。",
+      "other": "不得上传、代理本机音频或把本机路径发送给后端/AI；不得抓取音乐平台网页、绕过 DRM 或使用非官方 API；保留已有功能和播放器状态。"
+    },
+    "environments": {
+      "version": "DengTa Home Android App 2.9.2；目标版本 2.9.3/versionCode 50。",
+      "other": "Capacitor Android WebView，前端项目 E:\\chatgpt\\dengta-home-frontend，必要时后端 E:\\chatgpt\\dengta-home-backend。"
+    }
+  },
+  "expected_behavior": {
+    "description": "刷新操作应有超时、finally 清理和可重试能力，且不会用 busy/loading 遮罩锁住全屏；Android WebView 能选择并重新选择本机音频，正确显示文件名、识别格式并仅在当前设备播放，同时明确提示不能投屏或跨设备同步并及时 revoke object URL；网易云歌单分享文本/链接应识别平台、playlist id 和标题提示，但不得作为音频曲目保存或声称导入，应引导用户提供 M3U/TXT 或合法 HTTPS 音频直链；Together 听歌入口应从一起看页面移到聊天页彩虹动态栏展开后的左侧听歌动作，并直接打开现有 TogetherMusic 体验。"
+  },
+  "actual_behavior": {
+    "description": "一起听歌页面点击右侧刷新后整个屏幕卡死且任何控件无法点击；音乐设置选择本机 MP3 后仍显示“未选择任何文件”，无法添加或听歌；粘贴网易云分享歌单文本或指定分享链接时提示“歌曲 URL 格式不正确/不支持音乐平台网页”；Together 听歌入口当前位于一起看功能内，而不是彩虹动态栏展开后的左侧听歌动作。"
+  },
+  "possible_root_cause": "报告提示需检查 busy/loading 全屏遮罩、Promise/revision 队列、事件冒泡、刷新按钮类型、pointer-events 和未清理状态；本机音频问题可能涉及 Android WebView file input 的 accept/change、同文件重选、文件名状态、格式识别及 object URL 生命周期。",
+  "reproduction_seed_snippet": "",
+  "minimal_reproduction_steps": "1. 在 2.9.2 Android App 打开 TogetherMusic/一起听歌页面，点击右侧“刷新”，验证页面随后无法点击任何控件。\n2. 打开音乐设置，通过文件选择器选择一个本机 MP3，验证页面仍显示“未选择任何文件”且无法添加或播放；再次选择同一文件观察 change 行为。\n3. 在歌曲/歌单输入处分别粘贴网易云分享歌单文本和 https://music.163.com/m/playlist?id=8547232002&creatorId=8678296482，验证出现格式不正确或不支持平台网页提示。\n4. 打开一起看页面和聊天页彩虹动态栏，验证 Together 听歌入口当前位置与目标位置不符。",
+  "log_excerpt": "",
+  "log_evidence": {
+    "log_path": "",
+    "start_line": "",
+    "end_line": "",
+    "summary": "",
+    "content": ""
+  },
+  "workflow_readiness": {
+    "decision": "PASS",
+    "missing_or_insufficient_information": ""
+  }
+}

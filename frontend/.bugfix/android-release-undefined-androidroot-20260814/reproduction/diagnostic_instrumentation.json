@@ -1,0 +1,20 @@
+{
+  "trace_prefix": "[BUGFIX_REPRO_TRACE]",
+  "instrumentation_added": true,
+  "instrumented_locations": [
+    {
+      "file": "test/android-release.test.js",
+      "location_type": "project_source",
+      "method_or_region": "NeteasePlaybackPlugin.java fixture loading",
+      "debug_question": "Which root values are available immediately before the failing file read?",
+      "trace_kind": "state",
+      "observed_values_or_branches": [
+        "projectRoot",
+        "typeof androidRoot"
+      ]
+    }
+  ],
+  "trace_output_observed": true,
+  "diagnostic_output_path": ".bugfix/android-release-undefined-androidroot-20260814/reproduction/diagnostic_observations.txt",
+  "summary": "Execution observed projectRoot as an absolute repository path and androidRoot as undefined immediately before the ReferenceError."
+}

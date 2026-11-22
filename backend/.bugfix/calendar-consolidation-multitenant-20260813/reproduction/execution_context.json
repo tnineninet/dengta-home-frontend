@@ -1,0 +1,11 @@
+{
+  "dti_type": "API_CALL",
+  "build_cmd": "",
+  "run_cmd": "node \"E:\\chatgpt\\dengta-home-backend\\.bugfix\\calendar-consolidation-multitenant-20260813\\reproduction\\calendar-consolidation.repro.test.js\"",
+  "artifacts": [
+    "E:\\chatgpt\\dengta-home-backend\\.bugfix\\calendar-consolidation-multitenant-20260813\\reproduction\\calendar-consolidation.repro.test.js"
+  ],
+  "configs": [],
+  "env": [],
+  "evidence": "The repository uses directly executable Node.js assertion tests; run_cmd invokes the minimal issue-specific test without a separate build."
+}

@@ -1,0 +1,147 @@
+diff --git a/routes/cast-receiver.js b/routes/cast-receiver.js
+index 6816749..72391c6 100644
+--- a/routes/cast-receiver.js
++++ b/routes/cast-receiver.js
+@@ -4,10 +4,21 @@ const { normalizeSessionId } = require("../services/co-watch-sessions");
+ 
+ function error(status, code, message) { const e = new Error(message); e.status = status; e.code = code; return e; }
+ function noStore(res) { res.set({ "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" }); }
++function receiverToken(req) {
++    const bearer = String(req.headers.authorization || "").match(/^Bearer\s+(.+)$/i)?.[1]?.trim();
++    return bearer || String(req.headers["x-dengta-receiver-token"] || "").trim();
++}
++function receiverPosition(row, now = Date.now()) {
++    const position = Math.max(0, Number(row?.media_position_seconds) || 0);
++    if (row?.playback_state !== "playing") return position;
++    const updatedAt = Date.parse(row?.updated_at || "");
++    return Number.isFinite(updatedAt) ? position + Math.max(0, now - updatedAt) / 1000 : position;
++}
+ function createCastReceiverRouter({ receiver, database, limiter, includeControl = true } = {}) {
+     if (!receiver) throw new Error("receiver service is required");
+     const router = express.Router();
+     const limit = limiter || (() => true);
++    const ackSequences = new Map();
+     router.post("/pair", async (req, res, next) => {
+         try {
+             noStore(res);
+@@ -16,7 +27,7 @@ function createCastReceiverRouter({ receiver, database, limiter, includeControl
+             const id = normalizeSessionId(body.session_id);
+             const code = String(body.pairing_code || "").toUpperCase();
+             const db = database;
+-            const found = await db.from("co_watch_sessions").select("id, user_id, companion_id, status, session_mode, media_url_ciphertext, receiver_pairing_used, receiver_pairing_failed_attempts, receiver_pairing_locked_until").eq("id", id).maybeSingle();
++            const found = await db.from("co_watch_sessions").select("id, user_id, companion_id, status, session_mode, receiver_pairing_used, receiver_pairing_failed_attempts, receiver_pairing_locked_until").eq("id", id).maybeSingle();
+             if (found.error) throw found.error;
+             const locked = Date.parse(found.data?.receiver_pairing_locked_until || "") > Date.now();
+             const valid = found.data && found.data.status === "active" && found.data.session_mode === "direct_media" && !found.data.receiver_pairing_used && !locked && code === receiver.pairingCode(id);
+@@ -33,42 +44,53 @@ function createCastReceiverRouter({ receiver, database, limiter, includeControl
+             if (!marked.data) throw error(400, "cast_pair_invalid", "配对失败。");
+             const grant = await db.from("co_watch_receiver_grants").insert({ user_id: found.data.user_id, companion_id: found.data.companion_id, session_id: id, token_hash: token.tokenHash, expires_at: new Date(Date.now() + receiver.tokenTtl).toISOString() }).select("id, expires_at").single();
+             if (grant.error) throw grant.error;
+-            res.json({ receiver_token: token.token, expires_at: grant.data.expires_at, media: found.data.media_url_ciphertext });
++            res.json({ receiver_token: token.token, expires_at: grant.data.expires_at });
+         } catch (e) { next(e); }
+     });
+     router.get("/session", async (req, res, next) => {
+         try {
+             noStore(res);
+-            const hash = receiver.hashToken(String(req.headers.authorization || "").replace(/^Bearer\s+/i, ""));
++            const hash = receiver.hashToken(receiverToken(req));
+             const grant = await database.from("co_watch_receiver_grants").select("session_id, expires_at, revoked_at").eq("token_hash", hash).maybeSingle();
+             if (grant.error) throw grant.error;
+             if (!grant.data || grant.data.revoked_at || Date.parse(grant.data.expires_at) <= Date.now()) throw error(401, "cast_token_invalid", "接收端凭据无效。");
+-            const session = await database.from("co_watch_sessions").select("id, status, session_mode, playback_state, media_position_seconds, receiver_state, receiver_acknowledged, receiver_position_seconds, receiver_reported_at").eq("id", grant.data.session_id).maybeSingle();
++            const session = await database.from("co_watch_sessions").select("id, status, session_mode, title, playback_revision, playback_state, media_position_seconds, media_url_ciphertext, updated_at, receiver_state, receiver_acknowledged, receiver_position_seconds, receiver_reported_at").eq("id", grant.data.session_id).maybeSingle();
+             if (session.error) throw session.error;
+             if (!session.data || session.data.status !== "active") throw error(401, "cast_token_invalid", "接收端凭据无效。");
+-            res.json({ session: { id: session.data.id, status: session.data.status, session_mode: session.data.session_mode, playback_state: session.data.playback_state, media_position_seconds: session.data.media_position_seconds, receiver: receiver.publicReceiverState(session.data) } });
++            res.json({ session: { id: session.data.id, status: session.data.status, session_mode: session.data.session_mode, title: session.data.title || "", playback_revision: Number(session.data.playback_revision) || 0, playback_state: session.data.playback_state, media_position_seconds: receiverPosition(session.data), media_url: receiver.decryptMediaUrl(session.data.media_url_ciphertext), receiver: receiver.publicReceiverState(session.data) } });
+         } catch (e) { next(e); }
+     });
+     router.post("/ack", async (req, res, next) => {
+         try {
+             noStore(res);
+-            const hash = receiver.hashToken(String(req.headers.authorization || "").replace(/^Bearer\s+/i, ""));
++            const hash = receiver.hashToken(receiverToken(req));
+             const grant = await database.from("co_watch_receiver_grants").select("session_id, expires_at, revoked_at").eq("token_hash", hash).maybeSingle();
+             if (grant.error) throw grant.error;
+             if (!grant.data || grant.data.revoked_at || Date.parse(grant.data.expires_at) <= Date.now()) throw error(401, "cast_token_invalid", "接收端凭据无效。");
+-            const position = Math.max(0, Math.round(Number(req.body?.position_seconds) || 0));
+-            const current = await database.from("co_watch_sessions").select("receiver_position_seconds").eq("id", grant.data.session_id).eq("status", "active").maybeSingle();
++            const body = req.body || {};
++            const position = Math.max(0, Number(body.position_seconds ?? body.media_position_seconds) || 0);
++            const sequenceValue = Number(body.sequence);
++            const sequence = Number.isSafeInteger(sequenceValue) && sequenceValue >= 0 ? sequenceValue : null;
++            const current = await database.from("co_watch_sessions").select("receiver_state, receiver_acknowledged, receiver_position_seconds, receiver_reported_at").eq("id", grant.data.session_id).eq("status", "active").maybeSingle();
+             if (current.error) throw current.error;
+             if (!current.data) throw error(401, "cast_token_invalid", "接收端凭据无效。");
+-            const monotonicPosition = Math.max(Number(current.data.receiver_position_seconds) || 0, position);
+-            const updated = await database.from("co_watch_sessions").update({ receiver_state: String(req.body?.state || "idle").slice(0, 20), receiver_acknowledged: true, receiver_position_seconds: monotonicPosition, receiver_reported_at: new Date().toISOString() }).eq("id", grant.data.session_id).eq("status", "active").select("receiver_state, receiver_acknowledged, receiver_position_seconds, receiver_reported_at").single();
++            const previousSequence = ackSequences.get(hash) ?? -1;
++            if (sequence !== null && sequence <= previousSequence) {
++                return res.json({ receiver: receiver.publicReceiverState(current.data) });
++            }
++            if (sequence !== null) ackSequences.set(hash, sequence);
++            const updated = await database.from("co_watch_sessions").update({ receiver_state: String(body.state ?? body.playback_state ?? "idle").slice(0, 20), receiver_acknowledged: true, receiver_position_seconds: position, receiver_reported_at: new Date().toISOString() }).eq("id", grant.data.session_id).eq("status", "active").select("receiver_state, receiver_acknowledged, receiver_position_seconds, receiver_reported_at").single();
++            if (updated.error && sequence !== null && ackSequences.get(hash) === sequence) {
++                if (previousSequence < 0) ackSequences.delete(hash);
++                else ackSequences.set(hash, previousSequence);
++            }
+             if (updated.error) throw updated.error;
+             res.json({ receiver: receiver.publicReceiverState(updated.data) });
+         } catch (e) { next(e); }
+     });
+     if (includeControl) router.post("/sessions/:sessionId/pairing-code", async (req, res, next) => {
+-        try { const scope = requireRequestScope(req); const id = normalizeSessionId(req.params.sessionId); const found = await scope.db.from("co_watch_sessions").select("id, status, session_mode").eq("id", id).maybeSingle(); if (found.error) throw found.error; if (!found.data || found.data.status !== "active" || found.data.session_mode !== "direct_media") throw error(409, "cast_pair_unavailable", "该会话不可配对。"); noStore(res); res.json({ pairing_code: receiver.pairingCode(id), expires_at: new Date(Date.now() + receiver.pairTtl).toISOString() }); } catch (e) { next(e); }
++        try { const scope = requireRequestScope(req); const id = normalizeSessionId(req.params.sessionId); const found = await scope.db.from("co_watch_sessions").select("id, status, session_mode").eq("id", id).maybeSingle(); if (found.error) throw found.error; if (!found.data || found.data.status !== "active" || found.data.session_mode !== "direct_media") throw error(409, "cast_pair_unavailable", "该会话不可配对。"); noStore(res); res.json({ pairing_code: receiver.pairingCode(id), session_id: id, expires_at: receiver.pairingExpiresAt() }); } catch (e) { next(e); }
+         });
+     return router;
+ }
+-module.exports = { createCastReceiverRouter };
++module.exports = { createCastReceiverRouter, receiverPosition, receiverToken };
+diff --git a/routes/co-watch.js b/routes/co-watch.js
+index dfcb314..6fed1ac 100644
+--- a/routes/co-watch.js
++++ b/routes/co-watch.js
+@@ -113,7 +113,7 @@ function createCoWatchRouter(services = {}) {
+                     const error = new Error("该会话不可配对。"); error.status = 409; error.code = "cast_pair_unavailable"; throw error;
+                 }
+                 res.set({ "Cache-Control": "no-store", "Referrer-Policy": "no-referrer" });
+-                res.json({ pairing_code: services.receiver.pairingCode(session.id), expires_at: new Date(Date.now() + services.receiver.pairTtl).toISOString() });
++                res.json({ pairing_code: services.receiver.pairingCode(session.id), session_id: session.id, expires_at: services.receiver.pairingExpiresAt() });
+             } catch (error) { next(error); }
+         });
+     }
+diff --git a/services/cast-receiver.js b/services/cast-receiver.js
+index a6c6749..83af4c7 100644
+--- a/services/cast-receiver.js
++++ b/services/cast-receiver.js
+@@ -26,6 +26,13 @@ function encryptMediaUrl(url, key, iv = crypto.randomBytes(12)) {
+     const ciphertext = Buffer.concat([cipher.update(url, "utf8"), cipher.final()]);
+     return `${iv.toString("base64url")}.${ciphertext.toString("base64url")}.${cipher.getAuthTag().toString("base64url")}`;
+ }
++function decryptMediaUrl(value, key) {
++    const [encodedIv, encodedCiphertext, encodedTag, ...extra] = String(value || "").split(".");
++    if (!encodedIv || !encodedCiphertext || !encodedTag || extra.length) throw new Error("cast_media_ciphertext_invalid");
++    const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(encodedIv, "base64url"));
++    decipher.setAuthTag(Buffer.from(encodedTag, "base64url"));
++    return Buffer.concat([decipher.update(Buffer.from(encodedCiphertext, "base64url")), decipher.final()]).toString("utf8");
++}
+ function hashToken(token) { return digest(token); }
+ function publicReceiverState(row) {
+     return row ? { state: row.receiver_state || "idle", acknowledged: Boolean(row.receiver_acknowledged), position_seconds: Number(row.receiver_position_seconds) || 0, reported_at: row.receiver_reported_at || null } : null;
+@@ -34,7 +41,9 @@ function createReceiverService({ env = process.env, now = () => Date.now(), rand
+     const settings = config(env);
+     return {
+         pairingCode: (sessionId) => codeFor(sessionId, settings.pairing, now()),
++        pairingExpiresAt: () => new Date((Math.floor(now() / PAIR_TTL) + 1) * PAIR_TTL).toISOString(),
+         encryptMediaUrl: (url) => encryptMediaUrl(url, settings.key),
++        decryptMediaUrl: (value) => decryptMediaUrl(value, settings.key),
+         createToken: () => { const token = randomBytes(32).toString("base64url"); return { token, tokenHash: hashToken(token) }; },
+         hashToken,
+         tokenTtl: TOKEN_TTL,
+@@ -43,4 +52,4 @@ function createReceiverService({ env = process.env, now = () => Date.now(), rand
+     };
+ }
+ 
+-module.exports = { PAIR_TTL, TOKEN_TTL, codeFor, config, createReceiverService, encryptMediaUrl, hashToken, publicReceiverState };
++module.exports = { PAIR_TTL, TOKEN_TTL, codeFor, config, createReceiverService, decryptMediaUrl, encryptMediaUrl, hashToken, publicReceiverState };

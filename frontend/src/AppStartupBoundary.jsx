@@ -1,0 +1,126 @@
+import { Component, useEffect, useState } from "react";
+import {
+  clearStartupCachesAndReload,
+  clearUiPreferencesAndReload,
+  reloadApplication,
+  startupDiagnosticCode,
+} from "./app-startup-recovery.js";
+import { restartDengTa } from "./app-runtime.js";
+
+export function AppLoadingScreen() {
+  const [slow, setSlow] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const timer = setTimeout(() => setSlow(true), 20_000);
+    const ticker = setInterval(() => setElapsed(value => value + 1), 1000);
+    return () => { clearTimeout(timer); clearInterval(ticker); };
+  }, []);
+  return (
+    <main className="app-startup-page" aria-busy={slow ? "false" : "true"} aria-live="polite">
+      <div className="app-startup-mark" aria-hidden="true">灯</div>
+      <strong>正在点亮你的家</strong>
+      <span>{slow ? `启动时间比平时更长（已等待 ${elapsed} 秒），可以重新载入或清理启动缓存。` : "载入聊天、记忆与伴侣空间…"}</span>
+      {slow && (
+        <div className="app-startup-actions">
+          <button type="button" onClick={reloadApplication}>重新载入</button>
+          <button type="button" onClick={() => void clearStartupCachesAndReload()}>清理启动缓存并重载</button>
+        </div>
+      )}
+    </main>
+  );
+}
+
+export function AppFailureScreen({
+  diagnosticCode = "DT-START-UI-01",
+  errorMessage = "",
+  accountScope = "",
+  sessionManager,
+}) {
+  const [signOutState, setSignOutState] = useState("");
+  const [restartState, setRestartState] = useState("");
+
+  async function exitAccount() {
+    setSignOutState("busy");
+    try {
+      await sessionManager?.signOut();
+      reloadApplication();
+    } catch {
+      setSignOutState("error");
+    }
+  }
+
+  async function restartApplication() {
+    setRestartState("busy");
+    const scheduled = await restartDengTa();
+    if (!scheduled) setRestartState("");
+  }
+
+  return (
+    <main className="app-startup-page app-startup-failure" role="alert">
+      <div className="app-startup-mark" aria-hidden="true">灯</div>
+      <strong>这次没有顺利点亮</strong>
+      <span>应用内容载入失败，账号和聊天数据不会因此丢失。</span>
+      <small>诊断码：{diagnosticCode}</small>
+      {errorMessage ? (
+        <small className="app-startup-error">
+          错误详情：{errorMessage.slice(0, 300)}
+        </small>
+      ) : null}
+      <button type="button" onClick={reloadApplication}>重新载入应用</button>
+      <button type="button" disabled={restartState === "busy"} onClick={restartApplication}>
+        {restartState === "busy" ? "正在重启灯塔…" : "重启灯塔（结束进程后重新打开）"}
+      </button>
+      <button
+        type="button"
+        onClick={() => clearUiPreferencesAndReload(accountScope)}
+      >
+        清理本机界面偏好后重试
+      </button>
+      <button type="button" disabled={signOutState === "busy"} onClick={exitAccount}>
+        {signOutState === "busy" ? "正在退出…" : "退出当前账号"}
+      </button>
+      {signOutState === "error" && (
+        <span role="status">退出失败，请检查网络后重试。</span>
+      )}
+    </main>
+  );
+}
+
+export class AppStartupBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { failed: false, diagnosticCode: "DT-START-UI-01", errorMessage: "" };
+  }
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  componentDidCatch(error) {
+    const name = String(error?.name || "Error").slice(0, 80);
+    const diagnosticCode = startupDiagnosticCode(error);
+    this.setState({
+      diagnosticCode,
+      errorMessage: String(error?.message || error?.name || "").slice(0, 400),
+    });
+    console.error(
+      "DengTa 应用界面载入失败",
+      JSON.stringify({
+        name,
+        diagnosticCode,
+        message: String(error?.message || ""),
+      }),
+    );
+  }
+
+  render() {
+    return this.state.failed ? (
+      <AppFailureScreen
+        diagnosticCode={this.state.diagnosticCode}
+        errorMessage={this.state.errorMessage}
+        accountScope={this.props.accountScope}
+        sessionManager={this.props.sessionManager}
+      />
+    ) : this.props.children;
+  }
+}

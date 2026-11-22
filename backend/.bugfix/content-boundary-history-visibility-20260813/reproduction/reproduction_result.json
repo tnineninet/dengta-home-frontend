@@ -1,0 +1,13 @@
+{
+  "issue_number": "content-boundary-history-visibility-20260813",
+  "brt_path": "E:\\chatgpt\\dengta-home-backend\\.bugfix\\content-boundary-history-visibility-20260813\\reproduction\\content-boundary.repro.test.js",
+  "run_cmd_path": "E:\\chatgpt\\dengta-home-backend\\.bugfix\\content-boundary-history-visibility-20260813\\reproduction\\run_repro.sh",
+  "evidence_path": [
+    "E:\\chatgpt\\dengta-home-backend\\.bugfix\\content-boundary-history-visibility-20260813\\reproduction\\stderr.txt",
+    "E:\\chatgpt\\dengta-home-backend\\.bugfix\\content-boundary-history-visibility-20260813\\reproduction\\exit_code.txt",
+    "E:\\chatgpt\\dengta-home-backend\\.bugfix\\content-boundary-history-visibility-20260813\\reproduction\\diagnostic_observations.txt"
+  ],
+  "reproduction_result": "REPRODUCED",
+  "reproduction_analysis": "The executable reproducer reached the production provider-output verdict path. stderr.txt records an assertion mismatch true !== false for ordinary model JSON content, exit_code.txt records status 1, and diagnostic_observations.txt confirms the JSON text entered the semantic envelope decision. The already-modified persistent-memory pass-through assertions succeeded before that failure.",
+  "brt_type": "WHITE_BOX"
+}

@@ -1,0 +1,10 @@
+{
+  "dti_type": "API_CALL",
+  "carrier_type": "MINIMAL_TEST_HARNESS",
+  "entry_point": "services/cast-receiver.createReceiverService",
+  "invocation_shape": ["使用 Receiver 加密配置构造 service", "加密 HTTPS 媒体 URL", "通过同一 Receiver service 解密 ciphertext 并比较原 URL"],
+  "required_setup": ["提供非生产配对 secret", "提供 32 字节非生产 AES-GCM key"],
+  "evidence_sources": [".bugfix/security-cast-receiver-blocking-20260814/analysis_results.json", "services/cast-receiver.js", "test/cast-receiver.test.js"],
+  "template_paths": ["test/cast-receiver.test.js"],
+  "selected_template_path": "test/cast-receiver.test.js"
+}

@@ -1,0 +1,11 @@
+{
+  "issue_name": "security-cast-receiver-blocking-20260814",
+  "brt_path": "E:\\chatgpt\\dengta-home-backend\\.bugfix\\security-cast-receiver-blocking-20260814\\reproduction\\cast-receiver-media-repro.test.js",
+  "reproduction_result": "REPRODUCED",
+  "localization_mode": "dynamic",
+  "trace_path": "E:\\chatgpt\\dengta-home-backend\\.bugfix\\security-cast-receiver-blocking-20260814\\reproduction\\diagnostic_observations.txt",
+  "localization_result": "confirmed",
+  "root_cause_summary": "安全投屏的前后端契约分别演进，Receiver 路由缺少受 grant 保护的 AES-GCM 解密输出与 ACK 顺序语义，同时客户端仍发送旧 header/字段且遗漏 session_id，导致认证、媒体播放和状态同步连续阻断。",
+  "affected_code": "后端 services/cast-receiver.js:24-43（仅加密无解密/时间桶结束能力）、routes/cast-receiver.js:11-70（pair/session/ack 认证与 DTO、Math.max 位置逻辑）、routes/co-watch.js:108-117（pairing expires_at）；前端 src/cast-receiver-api.js:11-71（pair/header/ACK DTO）、src/ReceiverApp.jsx:24-140（session_id 与 ACK sequence 状态）、src/co-watch.js:13-44（receiver 嵌套 DTO 兼容）。",
+  "localization_analysis": "复现器实际调用 Receiver service 后，stderr 证明 decryptMediaUrl 为 undefined，源码诊断跟踪证明运行路径只产生 encrypted-only 输出。结构检查进一步给出同一契约链的可验证事实：后端 session/ack 只从 Authorization 取 token，pair 直接返回 ciphertext，session 查询未选择 title/playback_revision/media_url_ciphertext，ACK 使用 Math.max 合并位置且没有 sequence 判重；前端 pair body 缺 session_id、认证仍使用 X-DengTa-Receiver-Token、ACK 仍发送 playback_revision/playback_state/media_position_seconds；co-watch 仅读取 cast_receiver 而后端普通 DTO 返回 receiver。上述事实与规范问题逐项一致。RequestScope 仍位于控制端 co-watch 路由，grant 查询、token_hash、短码和 direct-media HTTPS/SSRF 边界均是必须保留的外围安全约束。"
+}

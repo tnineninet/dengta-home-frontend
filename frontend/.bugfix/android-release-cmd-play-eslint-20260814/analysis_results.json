@@ -1,0 +1,34 @@
+{
+  "preconditions": {
+    "inputs": {
+      "dataset_or_case": "test/android-release.test.js:137 使用正则匹配 Java 源码中转义后的 cmd=play JSON",
+      "size_or_boundary": "4 个 no-useless-escape 错误",
+      "other": "执行 npm run lint"
+    },
+    "environments": {
+      "version": "ESLint 10.6.0",
+      "other": "保持 npm run test:android-release 通过"
+    }
+  },
+  "expected_behavior": {
+    "description": "测试断言应继续确认 Java 源码字符串包含转义后的 cmd=play JSON 字段，同时通过 ESLint no-useless-escape 检查。"
+  },
+  "actual_behavior": {
+    "description": "当前正则可通过 Android release 测试，但 ESLint 对其中四处引号转义报告 no-useless-escape 错误，导致 npm run lint 失败。"
+  },
+  "possible_root_cause": "问题描述指出正则字面量为了表示反斜杠加引号而转义了双引号，但双引号在正则字面量中无需转义。",
+  "reproduction_seed_snippet": "assert.match(neteasePlaybackPlugin, /\\\\\\\"cmd\\\\\\\":\\\\\\\"play\\\\\\\"/);",
+  "minimal_reproduction_steps": "1. 保持当前 test/android-release.test.js:137。\n2. 执行 npm run test:android-release 并确认断言通过。\n3. 执行 npm run lint，观察该行出现 4 个 no-useless-escape 错误。",
+  "log_excerpt": "ESLint no-useless-escape 报 4 个错误",
+  "log_evidence": {
+    "log_path": "用户提供的问题描述",
+    "start_line": "137",
+    "end_line": "137",
+    "summary": "目标正则的四个双引号转义被 ESLint 判定为无用。",
+    "content": "test/android-release.test.js:137: no-useless-escape (4 errors)"
+  },
+  "workflow_readiness": {
+    "decision": "PASS",
+    "missing_or_insufficient_information": ""
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "preconditions": {
+    "inputs": {
+      "dataset_or_case": "memory_calendar contains active day/week/month summary rows belonging to multiple user_id + companion_id tenants, including two tenants with seven active day rows each.",
+      "size_or_boundary": "Seven active day rows per tenant are sufficient to produce one week summary for that tenant.",
+      "other": "runCalendarConsolidation() executes as part of the background-job flow; the source table may also be missing or its query may fail."
+    },
+    "environments": {
+      "version": "Current repository version 0.27.0 with the newly added calendar consolidation flow.",
+      "other": "Node.js 24.x CommonJS backend using a Supabase-style database client."
+    }
+  },
+  "expected_behavior": {
+    "description": "Calendar consolidation must partition active rows by user_id + companion_id, and by conversation_id if required, then create each higher-level summary only from source rows in that same tenant. Inserted summaries must carry the correct tenant identifiers, successfully consumed source rows must be marked superseded, and missing-table or query errors must be skipped without interrupting the background-job main loop."
+  },
+  "actual_behavior": {
+    "description": "loadActiveCalendarRows() omits user_id and companion_id even though insertion reads them, causing undefined tenant identifiers, while runCalendarConsolidation() passes all tenants' active rows into one consolidation operation so day/week/month rows from different tenants can be combined into a shared higher-level summary and superseded across tenant boundaries."
+  },
+  "possible_root_cause": "The report points to services/calendar-consolidation.js: loadActiveCalendarRows() selects too few tenant fields, and runCalendarConsolidation() does not group activeRows by tenant before calling consolidateCalendar().",
+  "reproduction_seed_snippet": "loadActiveCalendarRows() select: id, period_type, period_start, period_end, superseded, summary\ninsertCalendarSummary() reads: sourceRows[0].user_id and sourceRows[0].companion_id\nrunCalendarConsolidation(): consolidateCalendar(activeRows)",
+  "minimal_reproduction_steps": "1. Provide two distinct user_id + companion_id tenants, each with seven active day calendar rows.\n2. Execute runCalendarConsolidation() with those rows returned together by loadActiveCalendarRows().\n3. Inspect generated week summaries and their sourceIds: each tenant should produce its own week and no sourceIds may cross tenants.\n4. Inspect inserted tenant fields and superseded updates.\n5. Repeat with a missing table or failed active-row query and verify the background consolidation call safely returns without throwing.",
+  "log_excerpt": "",
+  "log_evidence": {
+    "log_path": "",
+    "start_line": "",
+    "end_line": "",
+    "summary": "",
+    "content": ""
+  },
+  "workflow_readiness": {
+    "decision": "PASS",
+    "missing_or_insufficient_information": ""
+  }
+}

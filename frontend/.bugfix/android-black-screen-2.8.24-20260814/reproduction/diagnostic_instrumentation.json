@@ -1,0 +1,33 @@
+{
+  "trace_prefix": "[BUGFIX_REPRO_TRACE]",
+  "instrumentation_added": true,
+  "instrumented_locations": [
+    {
+      "file": "src/main.jsx",
+      "location_type": "project_source",
+      "method_or_region": "web application bootstrap before route selection",
+      "debug_question": "Does the bundled WebView execute the React bootstrap and find its root node?",
+      "trace_kind": "state_and_control_flow",
+      "observed_values_or_branches": [
+        "window.location.pathname",
+        "document root presence"
+      ]
+    },
+    {
+      "file": ".bugfix/android-black-screen-2.8.24-20260814/reproduction/repro-test.mjs",
+      "location_type": "execution_carrier",
+      "method_or_region": "old APK entry bundle inspection",
+      "debug_question": "Can the authenticated lazy App path become visually empty without a loading or recoverable error surface?",
+      "trace_kind": "state_and_control_flow",
+      "observed_values_or_branches": [
+        "rootPresent",
+        "appChunk",
+        "nullSuspenseFallback",
+        "recoverableRuntimeBoundary"
+      ]
+    }
+  ],
+  "trace_output_observed": true,
+  "diagnostic_output_path": ".bugfix/android-black-screen-2.8.24-20260814/reproduction/diagnostic_observations.txt",
+  "summary": "The old APK trace confirms a valid root and authenticated lazy App chunk, but its Suspense fallback is null and its entry has no recoverable runtime boundary; this records the observed empty-surface path without asserting root cause."
+}

@@ -1,0 +1,21 @@
+name: Production backend health
+
+on:
+  schedule:
+    - cron: "23,53 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check Render health and revision
+        run: |
+          body="$(curl --fail --silent --show-error --max-time 30 https://dengta-home-backend-rkmq.onrender.com/health)"
+          echo "$body" | jq -e '.revision | type == "string" and length > 0' > /dev/null
+          echo "$body" | jq '{status, revision, features: (.features | keys? // [])}'
+          echo "Backend health check passed."

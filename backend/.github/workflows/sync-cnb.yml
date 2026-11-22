@@ -1,0 +1,65 @@
+name: Sync backend to CNB
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-cnb-backend
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Mirror main to CNB backend-main
+        if: github.ref_type == 'branch'
+        env:
+          CNB_USERNAME: ${{ secrets.CNB_USERNAME }}
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+        run: |
+          test -n "$CNB_USERNAME"
+          test -n "$CNB_TOKEN"
+          AUTH="$(printf '%s:%s' "$CNB_USERNAME" "$CNB_TOKEN" | base64 -w0)"
+          git -c "http.https://cnb.cool/.extraheader=Authorization: Basic ${AUTH}" push "https://cnb.cool/dengtahome/dengtahome.git" "HEAD:refs/heads/backend-main"
+
+      - name: Verify CNB backend-main matches this commit
+        if: github.ref_type == 'branch'
+        env:
+          CNB_USERNAME: ${{ secrets.CNB_USERNAME }}
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+        run: |
+          test -n "$CNB_USERNAME"
+          test -n "$CNB_TOKEN"
+          AUTH="$(printf '%s:%s' "$CNB_USERNAME" "$CNB_TOKEN" | base64 -w0)"
+          REMOTE_SHA="$(git -c "http.https://cnb.cool/.extraheader=Authorization: Basic ${AUTH}" ls-remote "https://cnb.cool/dengtahome/dengtahome.git" refs/heads/backend-main | awk '{print $1}')"
+          echo "cnb=${REMOTE_SHA} github=${GITHUB_SHA}"
+          test "$REMOTE_SHA" = "$GITHUB_SHA"
+
+      - name: Mirror missing tags
+        env:
+          CNB_USERNAME: ${{ secrets.CNB_USERNAME }}
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+        run: |
+          test -n "$CNB_USERNAME"
+          test -n "$CNB_TOKEN"
+          AUTH="$(printf '%s:%s' "$CNB_USERNAME" "$CNB_TOKEN" | base64 -w0)"
+          URL="https://cnb.cool/dengtahome/dengtahome.git"
+          for tag in $(git tag --list); do
+            if ! git -c "http.https://cnb.cool/.extraheader=Authorization: Basic ${AUTH}" ls-remote --tags "$URL" "refs/tags/${tag}" | grep -q .; then
+              git -c "http.https://cnb.cool/.extraheader=Authorization: Basic ${AUTH}" push "$URL" "refs/tags/${tag}:refs/tags/${tag}"
+            fi
+          done

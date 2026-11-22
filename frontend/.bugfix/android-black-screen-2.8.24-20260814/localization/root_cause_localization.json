@@ -1,0 +1,11 @@
+{
+  "issue_name": "android-black-screen-2.8.24-20260814",
+  "brt_path": "E:\\chatgpt\\dengta-home-frontend\\.bugfix\\android-black-screen-2.8.24-20260814\\reproduction\\app-first-render-repro.mjs",
+  "reproduction_result": "REPRODUCED",
+  "localization_mode": "dynamic",
+  "trace_path": "E:\\chatgpt\\dengta-home-frontend\\.bugfix\\android-black-screen-2.8.24-20260814\\reproduction\\app-first-render-repro.mjs",
+  "localization_result": "confirmed",
+  "root_cause_summary": "Authenticated App starts with privateMediaCatalog=null, but its synchronous first chat render passes that null to normalizePrivateMediaCatalog, which dereferences data.catalog before the asynchronous catalog load can complete.",
+  "affected_code": "src/private-media.js:44-46 normalizePrivateMediaCatalog; reached from src/App.jsx:719 and src/App.jsx:5325-5337 renderChat",
+  "localization_analysis": "The deterministic React first-render carrier executed the real App.jsx under clean storage, malformed 2.8.x-style local preferences, and storage-denied Android-like environments. All three runs produced the same TypeError: Cannot read properties of null (reading 'catalog'), with project frames normalizePrivateMediaCatalog (src/private-media.js:45), selectedPrivateMedia (src/private-media.js:73), renderChat (src/App.jsx:5326), and App. App initializes privateMediaCatalog to null at src/App.jsx:719 and only populates it asynchronously in an effect, while renderChat synchronously selects avatars and background before that effect resolves. The default parameter data={} does not normalize explicit null. This dynamic evidence directly confirms the faulty null handling and explains why authentication succeeds before AppStartupBoundary displays its failure screen."
+}

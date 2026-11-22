@@ -1,0 +1,13 @@
+diff --git a/test/android-release.test.js b/test/android-release.test.js
+--- a/test/android-release.test.js
++++ b/test/android-release.test.js
+@@ -57,7 +57,8 @@ const screenGlanceService = fs.readFileSync(
+ );
+ const neteasePlaybackPlugin = fs.readFileSync(
+   path.join(
+-    androidRoot,
++    projectRoot,
++    "android",
+     "app",
+     "src",
+     "main",

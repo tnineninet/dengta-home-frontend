@@ -1,0 +1,127 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "android/**"
+      - "src/**"
+      - "test/**"
+      - "public/**"
+      - "index.html"
+      - "package.json"
+      - "package-lock.json"
+      - "capacitor.config.*"
+      - ".github/workflows/android-apk.yml"
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  build-debug-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Restore stable Android debug signing key
+        env:
+          ANDROID_STABLE_DEBUG_KEYSTORE_BASE64: ${{ secrets.ANDROID_STABLE_DEBUG_KEYSTORE_BASE64_V2 }}
+        run: |
+          test -n "$ANDROID_STABLE_DEBUG_KEYSTORE_BASE64"
+          install -d -m 700 "$HOME/.android"
+          printf '%s' "$ANDROID_STABLE_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
+          chmod 600 "$HOME/.android/debug.keystore"
+          KEYSTORE_CERT_SHA256="$(keytool -exportcert \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android | sha256sum | awk '{print $1}')"
+          test "$KEYSTORE_CERT_SHA256" = "0d634aaf6eb10dd4c9042883ddb00fa7c32e01eb6387e1a7238bf96d08a1e0f5"
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Prune old APK artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/${{ github.repository }}/actions/artifacts --paginate | jq -r '.artifacts[] | select(.name == "DengTa-home-android-debug" and .expired == false) | .id' | tail -n +5 | xargs -r -I{} gh api -X DELETE repos/${{ github.repository }}/actions/artifacts/{}
+
+      - name: Run frontend regression checks
+        run: |
+          npm test
+          npm run lint
+
+      - name: Validate public authentication build settings
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          test -n "$VITE_SUPABASE_URL"
+          test -n "$VITE_SUPABASE_ANON_KEY"
+
+      - name: Build DengTa web app
+        run: |
+          npm run build
+          npm run verify:public-auth-build
+        env:
+          VITE_API_URL: https://dengta-home-backend-rkmq.onrender.com
+          VITE_PUBLIC_AUTH_REDIRECT_URL: https://www.dengtahome.com/
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+      - name: Remove old APK from Android web assets
+        run: rm -rf public/downloads dist/downloads
+
+      - name: Sync Android project
+        run: |
+          npx cap sync android
+          test -f android/app/src/main/assets/public/fonts/DengTaSans-cjk-v2.woff2
+          cmp public/fonts/DengTaSans-cjk-v2.woff2 android/app/src/main/assets/public/fonts/DengTaSans-cjk-v2.woff2
+
+      - name: Allow Gradle wrapper to run
+        run: chmod +x android/gradlew
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+
+      - name: Verify debug APK signature
+        run: |
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -n "$APKSIGNER"
+          SIGNATURE_OUTPUT="$("$APKSIGNER" verify --verbose --print-certs android/app/build/outputs/apk/debug/app-debug.apk)"
+          printf '%s\n' "$SIGNATURE_OUTPUT"
+          printf '%s\n' "$SIGNATURE_OUTPUT" | grep -F "certificate SHA-256 digest: 0d634aaf6eb10dd4c9042883ddb00fa7c32e01eb6387e1a7238bf96d08a1e0f5"
+
+      - name: Keep the APK on the runner
+        run: |
+          ls -lh android/app/build/outputs/apk/debug/app-debug.apk
+          echo "The APK is also uploaded when GitHub artifact quota allows; retention is one day."
+
+      - name: Upload APK
+        continue-on-error: true
+        uses: actions/upload-artifact@v6
+        with:
+          name: DengTa-home-android-debug
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 1

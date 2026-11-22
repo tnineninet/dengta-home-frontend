@@ -1,0 +1,9 @@
+{
+  "dti_type": "API_CALL",
+  "build_cmd": "",
+  "run_cmd": "\"C:\\Program Files\\nodejs\\node.exe\" \"E:\\chatgpt\\dengta-home-backend\\.bugfix\\security-cast-receiver-blocking-20260814\\reproduction\\cast-receiver-media-repro.test.js\"",
+  "artifacts": ["E:\\chatgpt\\dengta-home-backend\\.bugfix\\security-cast-receiver-blocking-20260814\\reproduction\\cast-receiver-media-repro.test.js"],
+  "configs": [],
+  "env": [],
+  "evidence": "兼容技能主说明要求的 exec_context.json 镜像。"
+}

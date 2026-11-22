@@ -1,0 +1,34 @@
+{
+  "preconditions": {
+    "inputs": {
+      "dataset_or_case": "已建立安全投屏 pairing/session，并由 Receiver 使用配对获得的 grant/token 请求会话媒体、上报播放 ACK；前端同时消费 co-watch 响应。",
+      "size_or_boundary": "配对有效期必须落在真实时间桶结束；ACK 可能重复、乱序，并包含向后 seek 的较小 position_seconds。",
+      "other": "请求保持 RequestScope 与多租户隔离；token 以 hash 校验；短码、SSRF/HTTPS 与无代理边界保持不变。"
+    },
+    "environments": {
+      "version": "当前 dengta-home-backend 与 dengta-home-frontend 工作树",
+      "other": "过渡期后端需同时接受 Authorization: Bearer 与 X-DengTa-Receiver-Token，新前端只发送 Bearer。"
+    }
+  },
+  "expected_behavior": {
+    "description": "前端 pair 请求携带 session_id；新 Receiver 使用 Bearer，后端过渡兼容旧 token header；仅在有效 grant/token 下解密媒体并以 session.media_url 返回，同时 session 返回 title、playback_revision 和准确播放位置；ACK 后端兼容两套字段而新前端统一 revision/sequence/state/position_seconds/event，以递增 sequence 拒绝重复和乱序但允许向后 seek；前端兼容既有 receiver 嵌套 DTO；pairing expires_at 为真实时间桶结束，且敏感 URL/ciphertext/token 不进入普通 Together DTO、AI 上下文或日志。"
+  },
+  "actual_behavior": {
+    "description": "安全投屏 Receiver 当前被多处契约不一致阻断：pair 缺少 session_id，前端发送的 X-DengTa-Receiver-Token 不被仅识别 Bearer 的后端读取，后端只返回 Receiver 无法播放的 AES-GCM ciphertext，会话元数据与准确位置不足，ACK 字段不一致且 Math.max 位置合并阻止向后 seek，前端不能兼容现有 receiver 嵌套响应，pairing expires_at 也未使用真实时间桶结束。"
+  },
+  "possible_root_cause": "问题报告指出前后端 pairing、认证 header、session 媒体响应、ACK DTO/顺序控制及 co-watch DTO 存在契约漂移，并指出后端位置更新使用 Math.max、配对过期时间桶计算不准确。",
+  "reproduction_seed_snippet": "",
+  "minimal_reproduction_steps": "1. 创建/选择一个可投屏的 co-watch session，并从前端发起 Receiver pair，检查请求是否包含 session_id。\n2. 使用配对 token 按当前前端方式请求 Receiver session，观察后端只读取 Bearer 导致认证失败；改用 Bearer 后观察响应仅有 AES-GCM ciphertext 且缺少可播放 session.media_url 和完整播放元数据。\n3. 分别使用旧、新 ACK 字段上报播放状态，再发送重复/乱序 sequence 和 position_seconds 更小的向后 seek，观察字段不兼容或 Math.max 阻止位置倒退。\n4. 让前端消费带 receiver 嵌套字段的现有 co-watch DTO，观察解析不兼容。\n5. 在时间桶边界附近创建 pairing，核对 expires_at 是否等于真实桶结束。",
+  "log_excerpt": "",
+  "log_evidence": {
+    "log_path": "",
+    "start_line": "",
+    "end_line": "",
+    "summary": "",
+    "content": ""
+  },
+  "workflow_readiness": {
+    "decision": "PASS",
+    "missing_or_insufficient_information": ""
+  }
+}

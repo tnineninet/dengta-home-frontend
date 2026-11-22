@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="night-sky" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#070d1d"/>
+      <stop offset=".55" stop-color="#0d1e3f"/>
+      <stop offset="1" stop-color="#1a3a66"/>
+    </linearGradient>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop stop-color="#12355f"/>
+      <stop offset="1" stop-color="#0a1e3a"/>
+    </linearGradient>
+    <linearGradient id="tower" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#ffffff"/>
+      <stop offset=".5" stop-color="#fdf6ec"/>
+      <stop offset="1" stop-color="#e4d8c4"/>
+    </linearGradient>
+    <linearGradient id="light-beam" x1="0" y1="1" x2="1" y2="0">
+      <stop stop-color="#ffd98a" stop-opacity="0"/>
+      <stop offset=".35" stop-color="#ffd98a" stop-opacity=".34"/>
+      <stop offset="1" stop-color="#ffe9b8" stop-opacity=".72"/>
+    </linearGradient>
+    <radialGradient id="lamp-glow" cx=".5" cy=".5" r=".5">
+      <stop stop-color="#ffffff"/>
+      <stop offset=".32" stop-color="#fff3cc"/>
+      <stop offset=".58" stop-color="#ffd76a"/>
+      <stop offset="1" stop-color="#ffb83d" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="reflection" cx=".5" cy=".5" r=".5">
+      <stop stop-color="#ffd76a" stop-opacity=".4"/>
+      <stop offset="1" stop-color="#ffd76a" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="glow-blur" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur stdDeviation="14"/>
+    </filter>
+    <filter id="tower-shadow" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="10" stdDeviation="12" flood-color="#000000" flood-opacity=".45"/>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="116" fill="url(#night-sky)"/>
+
+  <!-- 星空 -->
+  <g fill="#ffffff" opacity=".55">
+    <circle cx="92" cy="88" r="3"/>
+    <circle cx="430" cy="70" r="2.4"/>
+    <circle cx="392" cy="150" r="3.4"/>
+    <circle cx="120" cy="196" r="2.2"/>
+    <circle cx="462" cy="240" r="2.6"/>
+    <circle cx="58" cy="290" r="2"/>
+    <circle cx="330" cy="52" r="2.8"/>
+    <circle cx="214" cy="110" r="2"/>
+    <circle cx="468" cy="330" r="2.2"/>
+    <circle cx="76" cy="380" r="2.6"/>
+  </g>
+  <g fill="#cfe4ff" opacity=".4">
+    <circle cx="64" cy="150" r="1.6"/>
+    <circle cx="446" cy="118" r="1.8"/>
+    <circle cx="160" cy="60" r="1.6"/>
+    <circle cx="260" cy="40" r="1.4"/>
+    <circle cx="388" cy="300" r="1.5"/>
+  </g>
+
+  <!-- 海面 -->
+  <path d="M0 352h512v160H0z" fill="url(#sea)"/>
+  <path d="M0 352h512v26H0z" fill="#0b2545" opacity=".7"/>
+
+  <!-- 灯光：上方的光柱（左侧主光） -->
+  <g filter="url(#glow-blur)">
+    <path d="M218 172 46 324l170-26Z" fill="url(#light-beam)" opacity=".5"/>
+  </g>
+  <path d="M218 172 46 324l170-26Z" fill="url(#light-beam)" opacity=".5"/>
+  <!-- 右侧次光 -->
+  <g filter="url(#glow-blur)">
+    <path d="M262 172 436 296l-166-32Z" fill="url(#light-beam)" opacity=".34" transform="scale(-1 1) translate(-512 0)"/>
+  </g>
+  <path d="M262 172 436 296l-166-32Z" fill="url(#light-beam)" opacity=".34"/>
+
+  <!-- 灯塔塔身（远景剪影风格，简洁） -->
+  <g filter="url(#tower-shadow)">
+    <!-- 塔基 -->
+    <path d="M206 372h152l-18-40h-116Z" fill="#2c405e"/>
+    <path d="M210 386h148l-10 22h-128Z" fill="#22354f"/>
+    <!-- 塔身 -->
+    <path d="M228 332h106l-14 88h-78Z" fill="url(#tower)"/>
+    <!-- 红条纹 -->
+    <path d="M221 356h120l-5 26h-110Z" fill="#e05a45"/>
+    <path d="M218 394h126l-6 34h-114Z" fill="#d94b38"/>
+    <!-- 塔檐（支撑平台） -->
+    <path d="M216 216h130l-12 26h-106Z" fill="#fff7ea"/>
+    <path d="M221 242h120l-9 20h-102Z" fill="#e05a45"/>
+    <!-- 塔顶走廊 -->
+    <path d="M238 182h86v16h-86z" fill="#fdf6ec"/>
+    <!-- 灯室玻璃 -->
+    <rect x="244" y="196" width="74" height="22" rx="6" fill="#ffd76a"/>
+    <rect x="244" y="196" width="74" height="22" rx="6" fill="#fff8e0" opacity=".5"/>
+    <!-- 灯室帽 -->
+    <path d="M236 190h92l-8 16h-76Z" fill="#e05a45"/>
+    <path d="M263 152h38l-14 42h-10Z" fill="#cfd8e6"/>
+    <circle cx="282" cy="150" r="11" fill="#cfd8e6"/>
+    <!-- 避雷针 -->
+    <rect x="279.5" y="116" width="5" height="36" rx="2.5" fill="#9fb2cc"/>
+  </g>
+
+  <!-- 灯室主光晕 -->
+  <ellipse cx="281" cy="207" rx="120" ry="120" fill="url(#lamp-glow)" opacity=".9" filter="url(#glow-blur)"/>
+
+  <!-- 海面光反射 -->
+  <g opacity=".7">
+    <ellipse cx="281" cy="400" rx="150" ry="34" fill="url(#reflection)"/>
+    <path d="M240 402h82v4H240z" fill="#ffd76a" opacity=".5"/>
+    <path d="M188 420h40M296 420h40" stroke="#ffd76a" stroke-width="3" stroke-linecap="round" opacity=".38"/>
+    <path d="M150 440h52M310 440h52" stroke="#ffd76a" stroke-width="2.5" stroke-linecap="round" opacity=".26"/>
+  </g>
+
+  <!-- 飞鸟剪影（归途意象） -->
+  <g fill="#0a1424" opacity=".75">
+    <path d="M330 120c6-7 16-8 24-3-2 5-8 8-14 8s-8-2-10-5Z"/>
+    <path d="M358 104c5-5 13-6 19-2-2 4-6 6-11 6s-6-2-8-4Z"/>
+  </g>
+  <path d="M312 132c5-6 13-7 19-3" stroke="#0a1424" stroke-width="2.6" stroke-linecap="round" fill="none" opacity=".7"/>
+
+  <!-- 月亮 -->
+  <circle cx="412" cy="96" r="30" fill="#f4f7ff" opacity=".9"/>
+  <circle cx="424" cy="88" r="30" fill="url(#night-sky)" opacity=".85"/>
+</svg>

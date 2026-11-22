@@ -1,0 +1,14 @@
+{
+  "name": "xinchao-tenant-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Lazy per-tenant Xinchao instance gateway for DengTa",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node gateway.cjs",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

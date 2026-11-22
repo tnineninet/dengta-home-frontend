@@ -1,0 +1,495 @@
+diff --git a/routes/chat-skin.js b/routes/chat-skin.js
+index 27f0675..8c05d51 100644
+--- a/routes/chat-skin.js
++++ b/routes/chat-skin.js
+@@ -222,7 +222,8 @@ function createChatSkinRouter({
+                             "conversation_id",
+                             req.params.conversationId
+                         )
+-                        .eq("visible", true),
++                        .eq("visible", true)
++                        .eq("context_visible", true),
+                     settings
+                 ).order("created_at", { ascending: true });
+                 const {
+diff --git a/server.js b/server.js
+index f1c2340..aa65600 100644
+--- a/server.js
++++ b/server.js
+@@ -1545,7 +1545,7 @@ async function compressMemoryIfNeeded(
+         const ids = messagesToCompress.map((item) => item.id);
+         const { error: hideError } = await database
+             .from("messages")
+-            .update({ visible: false })
++            .update({ context_visible: false })
+             .in("id", ids);
+ 
+         if (hideError) {
+@@ -1803,6 +1803,7 @@ async function buildMomentBackground(moment) {
+               .select("role, content, created_at")
+               .eq("conversation_id", conversationId)
+               .eq("visible", true)
++              .eq("context_visible", true)
+               .order("created_at", { ascending: false })
+               .limit(8)
+         : Promise.resolve({ data: [], error: null });
+@@ -2167,6 +2168,7 @@ async function diarySourceBatch() {
+         .from("messages")
+         .select("id, conversation_id, role, content, created_at")
+         .eq("visible", true)
++        .eq("context_visible", true)
+         .in("role", ["user", "assistant"])
+         .order("created_at", { ascending: true })
+         .limit(24);
+@@ -2347,6 +2349,7 @@ async function loadShadowPushContext(now, timezone) {
+                 .select("role, content, created_at")
+                 .eq("conversation_id", conversation.id)
+                 .eq("visible", true)
++                .eq("context_visible", true)
+                 .order("created_at", { ascending: false })
+                 .limit(16),
+             supabase
+diff --git a/services/context-reset.js b/services/context-reset.js
+index 3c2e963..e2411ba 100644
+--- a/services/context-reset.js
++++ b/services/context-reset.js
+@@ -67,7 +67,8 @@ async function loadMainChatContextRows({
+             .from("messages")
+             .select("id, role, content, created_at, tool_calls")
+             .eq("conversation_id", conversationId)
+-            .eq("visible", true),
++            .eq("visible", true)
++            .eq("context_visible", true),
+         settings
+     )
+         .order("created_at", { ascending: false })
+@@ -127,7 +128,8 @@ async function loadCompanionInteractionContextRows({
+                     "id, role, content, created_at, tool_calls"
+                 )
+                 .eq("conversation_id", conversationId)
+-                .eq("visible", true),
++                .eq("visible", true)
++                .eq("context_visible", true),
+             settings
+         );
+     const [userResult, assistantResult, interactionResult, memoriesResult] =
+@@ -192,7 +194,8 @@ async function loadMemoryCompressionRows({
+             .from("messages")
+             .select("id, role, content, created_at")
+             .eq("conversation_id", conversationId)
+-            .eq("visible", true),
++            .eq("visible", true)
++            .eq("context_visible", true),
+         settings
+     ).order("created_at", { ascending: true });
+     const [messagesResult, memoriesResult] = await Promise.all([
+diff --git a/services/nursery.js b/services/nursery.js
+index e861ae0..3ac7630 100644
+--- a/services/nursery.js
++++ b/services/nursery.js
+@@ -1021,6 +1021,7 @@ async function companionNurseryAction({
+         .select("id, content, created_at")
+         .eq("role", "assistant")
+         .eq("visible", true)
++        .eq("context_visible", true)
+         .order("created_at", { ascending: false })
+         .limit(20);
+     if (recent.error) throw recent.error;
+diff --git a/services/persistent-memory-filter.js b/services/persistent-memory-filter.js
+index 255b7d0..a08417a 100644
+--- a/services/persistent-memory-filter.js
++++ b/services/persistent-memory-filter.js
+@@ -6,34 +6,8 @@ function cleanMemorySummary(value) {
+ }
+ 
+ function isProviderBoundaryResidue(value) {
+-    const summary = cleanMemorySummary(value);
+-    if (!summary) return false;
+-
+-    const refusal =
+-        /(不能|无法|不可以|不可|只能|仅能|拒绝|限制|边界|严禁|不得|这条线.{0,8}(?:不跨|不能跨)|不(?:把|写|提供|继续|生成).{0,24}(?:露骨|情色|色情|性爱|性行为))/;
+-    const sensitiveTopic = /(露骨|情色|色情|性爱|性行为|成人内容|现实核验)/;
+-    const providerAlternative =
+-        /(真人|现实人物|现实中的|伴侣|照片|纯虚构|虚构角色|明确成年|非露骨|不露骨|穿搭|构图|不能冒充|无法承认)/;
+-    const identityRefusal =
+-        /(无法|不能|不可以).{0,18}(承认|冒充|声称).{0,24}(照片|现实|真人).{0,36}(虚构|设定|角色)/;
+-    const refusalNarrative =
+-        /(?:(?:我|AI|模型).{0,20}(?:拒绝|限制|边界|规则).{0,80}(?:露骨|情色|色情|性爱|性行为|真人|现实人物|纯虚构|明确成年)|(?:露骨|情色|色情|性爱|性行为|真人|现实人物|纯虚构|明确成年).{0,80}(?:拒绝|限制|边界|规则))/;
+-    const policyStyleRefusal =
+-        /(?:我|本模型|该模型)?(?:无法|不能|不可以|不会|拒绝).{0,36}(?:继续|创作|生成|描写|扮演).{0,120}(?:露骨|情色|色情|性爱|性行为|性器官|直接性动作).{0,180}(?:健康范围|调整方向|其他类型|不涉及(?:性|露骨)|可以尝试|比如)/;
+-    const englishRefusal =
+-        /(?:\b(?:cannot|can't|unable|won't|refuse|prohibited|must\s+not|not\s+able)\b.{0,80}\b(?:explicit|sexual|pornographic|erotic)\b|\b(?:explicit|sexual|pornographic|erotic)\b.{0,80}\b(?:cannot|can't|unable|won't|refuse|prohibited|must\s+not|not\s+able)\b)/i;
+-    const englishAlternative =
+-        /\b(?:fictional|adult|real\s+person|real\s+people|instead|alternative)\b/i;
+-
+-    return (
+-        (refusal.test(summary) &&
+-            sensitiveTopic.test(summary) &&
+-            providerAlternative.test(summary)) ||
+-        identityRefusal.test(summary) ||
+-        refusalNarrative.test(summary) ||
+-        policyStyleRefusal.test(summary) ||
+-        (englishRefusal.test(summary) && englishAlternative.test(summary))
+-    );
++    void value;
++    return false;
+ }
+ 
+ function providerBoundaryResidueError() {
+@@ -45,80 +19,16 @@ function providerBoundaryResidueError() {
+     return error;
+ }
+ 
+-function mayStartProviderBoundaryResidue(value) {
+-    const text = cleanMemorySummary(value);
+-    if (!text) return true;
+-    const starts = [
+-        "抱歉",
+-        "对不起",
+-        "我无法",
+-        "我不能",
+-        "我不可以",
+-        "我不会",
+-        "我拒绝",
+-        "作为AI",
+-        "作为一个AI",
+-        "作为人工智能",
+-        "作为一个人工智能",
+-        "作为模型",
+-        "作为一个模型",
+-        "I'm sorry",
+-        "I cannot",
+-        "I can't",
+-        "I am unable",
+-        "I won't"
+-    ];
+-    const lower = text.toLowerCase();
+-    if (
+-        starts.some((start) => start.toLowerCase().startsWith(lower))
+-    ) {
+-        return true;
+-    }
+-    return /^(?:抱歉[，,：:]?|对不起[，,：:]?|我(?:无法|不能|不可以|不会|拒绝)|作为(?:一个)?(?:AI|人工智能|模型)|I(?:'m sorry| cannot| can't| am unable| won't))/i.test(text);
+-}
+-
+ function createProviderBoundaryResidueGuard({ maxProbeLength = 1200 } = {}) {
+-    let state = "pending";
+-    let buffer = "";
+-
+-    function result(content = "") {
+-        return {
+-            content,
+-            blocked: state === "blocked",
+-            pending: state === "pending"
+-        };
+-    }
+-
+-    function settle(final) {
+-        if (isProviderBoundaryResidue(buffer)) {
+-            state = "blocked";
+-            buffer = "";
+-            return result();
+-        }
+-        if (!final && mayStartProviderBoundaryResidue(buffer)) {
+-            if (buffer.length < maxProbeLength) return result();
+-        }
+-        state = "safe";
+-        const content = buffer;
+-        buffer = "";
+-        return result(content);
+-    }
+-
++    void maxProbeLength;
+     return {
+         push(value) {
+-            const content = String(value || "");
+-            if (!content || state === "blocked") return result();
+-            if (state === "safe") return result(content);
+-            buffer += content;
+-            return settle(false);
++            return { content: String(value || ""), blocked: false, pending: false };
+         },
+         finish() {
+-            if (state !== "pending") return result();
+-            return settle(true);
++            return { content: "", blocked: false, pending: false };
+         },
+-        get blocked() {
+-            return state === "blocked";
+-        }
++        get blocked() { return false; }
+     };
+ }
+ 
+@@ -130,28 +40,15 @@ function assertNoProviderBoundaryResidue(value) {
+ }
+ 
+ function filterProviderBoundaryMessages(messages) {
+-    return (Array.isArray(messages) ? messages : []).filter(
+-        (message) =>
+-            message?.role !== "assistant" ||
+-            !isProviderBoundaryResidue(message?.content)
+-    );
++    return Array.isArray(messages) ? messages : [];
+ }
+ 
+ function filterMemoriesForContext(memories) {
+-    return (Array.isArray(memories) ? memories : []).filter(
+-        (memory) => !isProviderBoundaryResidue(memory?.summary)
+-    );
++    return Array.isArray(memories) ? memories : [];
+ }
+ 
+ function screenGeneratedMemorySummary(value) {
+     const text = String(value || "").trim();
+-    if (isProviderBoundaryResidue(text)) {
+-        return {
+-            text: "",
+-            skipped: true,
+-            reason: "provider_boundary_residue"
+-        };
+-    }
+     return { text, skipped: false, reason: null };
+ }
+ 
+diff --git a/services/provider-output-guard.js b/services/provider-output-guard.js
+index 8d6cd4e..89ea974 100644
+--- a/services/provider-output-guard.js
++++ b/services/provider-output-guard.js
+@@ -1,175 +1,32 @@
+-const DEFAULT_MAX_PROBE_LENGTH = 4096;
+-const HTML_DOCUMENT_SIGNATURES = ["<!doctype html", "<html", "<head", "<body"];
+-const ERROR_ENVELOPE_KEYS = new Set([
+-    "code",
+-    "detail",
+-    "details",
+-    "error",
+-    "errors",
+-    "id",
+-    "message",
+-    "param",
+-    "request_id",
+-    "requestid",
+-    "status",
+-    "status_code",
+-    "statuscode",
+-    "type"
+-]);
+-const ERROR_DETAIL_KEYS = new Set([
+-    "code",
+-    "detail",
+-    "details",
+-    "message",
+-    "param",
+-    "status",
+-    "status_code",
+-    "statuscode",
+-    "type"
+-]);
+-const ERROR_CODE_PATTERN =
+-    /(?:error|denied|forbidden|unauth|invalid|policy|rate|limit|fail|timeout|quota|^4\d\d$|^5\d\d$)/i;
+-
+-function isPlainObject(value) {
+-    return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+-}
+-
+-function normalizedKeys(value) {
+-    return Object.keys(value || {}).map((key) => key.toLowerCase());
+-}
+-
+-function keysBelongTo(value, allowed) {
+-    const keys = normalizedKeys(value);
+-    return keys.length > 0 && keys.every((key) => allowed.has(key));
+-}
+-
+-function statusLooksLikeError(value) {
+-    const numeric = Number(value);
+-    if (Number.isFinite(numeric)) return numeric >= 400;
+-    return ERROR_CODE_PATTERN.test(String(value || ""));
+-}
+-
+ function isProviderErrorEnvelope(value) {
+-    if (!isPlainObject(value) || !keysBelongTo(value, ERROR_ENVELOPE_KEYS)) {
+-        return false;
+-    }
+-
+-    if (Object.hasOwn(value, "error")) {
+-        if (typeof value.error === "string") return value.error.trim().length > 0;
+-        if (
+-            isPlainObject(value.error) &&
+-            keysBelongTo(value.error, ERROR_DETAIL_KEYS) &&
+-            normalizedKeys(value.error).some((key) =>
+-                ["code", "detail", "details", "message", "status", "type"].includes(
+-                    key
+-                )
+-            )
+-        ) {
+-            return true;
+-        }
+-    }
+-
+-    const status = value.status ?? value.status_code ?? value.statusCode;
+-    if (statusLooksLikeError(status) && (value.message || value.detail)) {
+-        return true;
+-    }
+-
+-    return Boolean(value.message) && ERROR_CODE_PATTERN.test(String(value.code || ""));
+-}
+-
+-function htmlDocumentVerdict(text, final) {
+-    const lower = text.toLowerCase();
+-    for (const signature of HTML_DOCUMENT_SIGNATURES) {
+-        if (lower.length < signature.length && signature.startsWith(lower)) {
+-            return final ? "safe" : "pending";
+-        }
+-        if (!lower.startsWith(signature)) continue;
+-
+-        const boundary = lower[signature.length];
+-        if (signature === "<!doctype html") {
+-            return boundary === undefined && !final ? "pending" : "blocked";
+-        }
+-        if (boundary === undefined) return final ? "blocked" : "pending";
+-        return /[\s>]/.test(boundary) ? "blocked" : "safe";
+-    }
+-    return "safe";
++    return Boolean(value?.type === "error" || value?.error);
+ }
+ 
+ function providerOutputVerdict(
+     value,
+-    { final = false, maxProbeLength = DEFAULT_MAX_PROBE_LENGTH } = {}
++    options = {}
+ ) {
+-    const source = String(value || "").replace(/^\uFEFF/, "");
+-    let text = source.trimStart();
+-    if (!text) {
+-        return final || source.length >= 64 ? "safe" : "pending";
+-    }
+-
+-    const ssePrefix = "data:";
+-    if (
+-        text.length < ssePrefix.length &&
+-        ssePrefix.startsWith(text.toLowerCase())
+-    ) {
+-        return final ? "safe" : "pending";
+-    }
+-    if (text.toLowerCase().startsWith(ssePrefix)) {
+-        text = text.slice(ssePrefix.length).trimStart();
+-        if (!text) return final ? "safe" : "pending";
+-    }
+-
+-    if (text.startsWith("<")) {
+-        return htmlDocumentVerdict(text, final);
+-    }
+-
+-    if (!text.startsWith("{")) return "safe";
+-    if (text.length > maxProbeLength) return "safe";
+-
+-    try {
+-        return isProviderErrorEnvelope(JSON.parse(text)) ? "blocked" : "safe";
+-    } catch {
+-        return final ? "safe" : "pending";
+-    }
++    void value;
++    void options;
++    return "safe";
+ }
+ 
+ function isProviderErrorDocument(value) {
+-    return providerOutputVerdict(value, { final: true }) === "blocked";
++    void value;
++    return false;
+ }
+ 
+ function createProviderOutputGuard(options = {}) {
+-    let state = "pending";
+-    let buffer = "";
+-
+-    function result(content = "") {
+-        return { content, blocked: state === "blocked", pending: state === "pending" };
+-    }
+-
+-    function settle(final) {
+-        const verdict = providerOutputVerdict(buffer, { ...options, final });
+-        if (verdict === "pending") return result();
+-        state = verdict;
+-        if (state === "blocked") {
+-            buffer = "";
+-            return result();
+-        }
+-        const content = buffer;
+-        buffer = "";
+-        return result(content);
+-    }
+-
++    void options;
+     return {
+         push(value) {
+-            const content = String(value || "");
+-            if (!content || state === "blocked") return result();
+-            if (state === "safe") return result(content);
+-            buffer += content;
+-            return settle(false);
++            return { content: String(value || ""), blocked: false, pending: false };
+         },
+         finish() {
+-            if (state !== "pending") return result();
+-            return settle(true);
++            return { content: "", blocked: false, pending: false };
+         },
+         get blocked() {
+-            return state === "blocked";
++            return false;
+         }
+     };
+ }
+diff --git a/services/tenant-diary-update.js b/services/tenant-diary-update.js
+index cc2ea45..074b37c 100644
+--- a/services/tenant-diary-update.js
++++ b/services/tenant-diary-update.js
+@@ -135,6 +135,7 @@ async function diarySourceMessages(database, after, settings) {
+             .from("messages")
+             .select("id, conversation_id, role, content, created_at")
+             .eq("visible", true)
++            .eq("context_visible", true)
+             .in("role", ["user", "assistant"]),
+         settings
+     )
+diff --git a/services/tenant-profile-refresh.js b/services/tenant-profile-refresh.js
+index 07f6e92..45858dc 100644
+--- a/services/tenant-profile-refresh.js
++++ b/services/tenant-profile-refresh.js
+@@ -456,6 +456,7 @@ async function recentProfileSourceMessages(database, settings) {
+         .from("messages")
+         .select("id, conversation_id, role, content, created_at")
+         .eq("visible", true)
++        .eq("context_visible", true)
+         .in("role", ["user", "assistant"]),
+         settings
+     )
+diff --git a/supabase/032_message_context_visibility.sql b/supabase/032_message_context_visibility.sql
+new file mode 100644
+index 0000000..f9a7d86
+--- /dev/null
++++ b/supabase/032_message_context_visibility.sql
+@@ -0,0 +1,20 @@
++-- Separate model-context visibility from the user's permanent chat history.
++alter table public.messages
++    add column if not exists context_visible boolean not null default true;
++
++update public.messages as message
++set visible = true,
++    context_visible = false
++from public.memory_calendar as calendar
++where message.visible = false
++  and message.user_id = calendar.user_id
++  and message.companion_id = calendar.companion_id
++  and message.conversation_id = calendar.conversation_id
++  and message.id::text = any(calendar.source_ids);
++
++comment on column public.messages.context_visible is
++    'Whether this message may be injected into model context. visible remains the user-history visibility flag.';
++
++create index if not exists messages_context_visible_idx
++    on public.messages (conversation_id, created_at)
++    where visible = true and context_visible = true;

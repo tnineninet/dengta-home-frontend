@@ -1,0 +1,72 @@
+diff --git a/services/calendar-consolidation.js b/services/calendar-consolidation.js
+index e0755ef..66b42a7 100644
+--- a/services/calendar-consolidation.js
++++ b/services/calendar-consolidation.js
+@@ -12,7 +12,7 @@ let lastConsolidationAt = 0;
+ async function loadActiveCalendarRows(database, limit = 500) {
+     const { data, error } = await database
+         .from("memory_calendar")
+-        .select("id, period_type, period_start, period_end, superseded, summary")
++        .select("id, user_id, companion_id, conversation_id, period_type, period_start, period_end, superseded, summary")
+         .eq("superseded", false)
+         .order("period_start", { ascending: true })
+         .limit(limit);
+@@ -54,6 +54,21 @@ function mergeSummaries(sourceRows) {
+         .join("\n\n");
+ }
+ 
++function groupRowsByTenant(rows) {
++    const groups = new Map();
++    for (const row of rows) {
++        const key = JSON.stringify([
++            row.user_id,
++            row.companion_id,
++            row.conversation_id || null
++        ]);
++        const group = groups.get(key) || [];
++        group.push(row);
++        groups.set(key, group);
++    }
++    return groups.values();
++}
++
+ async function runCalendarConsolidation({
+     database,
+     logger = console,
+@@ -82,14 +97,19 @@ async function runCalendarConsolidation({
+         return { skipped: true, reason: "no_active_rows" };
+     }
+ 
+-    const jobs = consolidateCalendar(activeRows, new Date(currentTime));
++    const jobs = [];
++    for (const tenantRows of groupRowsByTenant(activeRows)) {
++        for (const job of consolidateCalendar(tenantRows, new Date(currentTime))) {
++            jobs.push({ ...job, sourceRows: tenantRows });
++        }
++    }
+     if (jobs.length === 0) {
+         return { skipped: true, reason: "no_jobs", activeRows: activeRows.length };
+     }
+ 
+     const results = [];
+     for (const job of jobs) {
+-        const sourceRows = activeRows.filter((r) => job.sourceIds.includes(r.id));
++        const sourceRows = job.sourceRows.filter((r) => job.sourceIds.includes(r.id));
+         const bounds = periodBounds(job.target, sourceRows);
+         if (!bounds) continue;
+ 
+@@ -100,6 +120,7 @@ async function runCalendarConsolidation({
+             await insertCalendarSummary(database, {
+                 user_id: sourceRows[0]?.user_id,
+                 companion_id: sourceRows[0]?.companion_id,
++                conversation_id: sourceRows[0]?.conversation_id || null,
+                 period_type: job.target,
+                 period_start: bounds.period_start,
+                 period_end: bounds.period_end,
+@@ -137,4 +158,4 @@ async function runCalendarConsolidation({
+ module.exports = {
+     CONSOLIDATION_COOLDOWN_MS,
+     runCalendarConsolidation
+-};
+\ No newline at end of file
++};

@@ -1,0 +1,11 @@
+{
+  "issue_name": "content-boundary-history-visibility-20260813",
+  "brt_path": "E:\\chatgpt\\dengta-home-backend\\.bugfix\\content-boundary-history-visibility-20260813\\reproduction\\content-boundary.repro.test.js",
+  "reproduction_result": "REPRODUCED",
+  "localization_mode": "dynamic",
+  "trace_path": "E:\\chatgpt\\dengta-home-backend\\.bugfix\\content-boundary-history-visibility-20260813\\reproduction\\diagnostic_observations.txt",
+  "localization_result": "confirmed",
+  "root_cause_summary": "provider-output-guard 在没有 HTTP 状态码或 SSE error 事件上下文时，仍按正文 JSON 的字段和语义猜测供应商错误，导致合法模型 JSON/HTML 正文被阻断；同类正文语义过滤已在持久化过滤器中被移除但测试仍断言旧策略。",
+  "affected_code": "E:\\chatgpt\\dengta-home-backend\\services\\provider-output-guard.js#providerOutputVerdict/createProviderOutputGuard/assertProviderOutputSafe；E:\\chatgpt\\dengta-home-frontend\\src\\chat-errors.js#providerTextVerdict/createProviderTextGuard/isProviderErrorDocument；E:\\chatgpt\\dengta-home-backend\\services\\persistent-memory-filter.js#isProviderBoundaryResidue/createProviderBoundaryResidueGuard/filter*",
+  "localization_analysis": "reproduction_result.json 为 REPRODUCED。stderr.txt 的断言失败发生在合法模型 JSON {message,code} 经过 providerOutputVerdict 后，诊断追踪确认正文进入 JSON envelope 分支；这直接证明仅凭正文语义阻断。持久化过滤器当前恒 false/透传实现与边界正文断言相符，但旧测试仍要求删除和阻断。server.js 的压缩 update visible=false 与 routes/v2/core.js 的 visible=true 查询构成历史丢失路径；迁移链最后为 031，需以新增 context_visible 字段隔离上下文可见性。前端 API 在 text 事件路径再次调用正文猜测器，需改为信任后端 text 事件，仅处理明确 error/done 协议状态。"
+}

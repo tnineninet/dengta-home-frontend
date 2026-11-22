@@ -1,0 +1,8 @@
+node_modules/
+.env
+*.log
+voice-design.local/
+supabase/.temp/
+qq-bridge.local.json
+
+coverage/

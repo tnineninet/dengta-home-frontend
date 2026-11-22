@@ -1,0 +1,15 @@
+{
+  "instrumented_locations": [
+    {
+      "location_type": "project_source",
+      "path": "E:\\chatgpt\\dengta-home-backend\\services\\provider-output-guard.js",
+      "symbol": "providerOutputVerdict",
+      "debug_question": "Does a JSON-shaped model正文 enter the provider error envelope decision?",
+      "trace_kind": "branch_input_and_verdict",
+      "intended_values": ["final", "text"]
+    }
+  ],
+  "trace_output_observed": true,
+  "diagnostic_output_path": "E:\\chatgpt\\dengta-home-backend\\.bugfix\\content-boundary-history-visibility-20260813\\reproduction\\diagnostic_observations.txt",
+  "missing_trace_output_reason": ""
+}

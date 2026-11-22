@@ -1,0 +1,20 @@
+node:internal/modules/run_main:107
+    triggerUncaughtException(
+    ^
+
+AssertionError [ERR_ASSERTION]: 刷新请求必须自行超时并释放交互状态
++ actual - expected
+
++ 'pending'
+- 'settled'
+
+    at file:///E:/chatgpt/dengta-home-frontend/.bugfix/together-music-local-audio-2.9.3-20260814/reproduction/refresh-freeze.repro.test.js:17:8 {
+  generatedMessage: false,
+  code: 'ERR_ASSERTION',
+  actual: 'pending',
+  expected: 'settled',
+  operator: 'strictEqual',
+  diff: 'simple'
+}
+
+Node.js v24.18.0

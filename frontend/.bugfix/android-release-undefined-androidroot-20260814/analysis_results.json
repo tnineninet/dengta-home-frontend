@@ -1,0 +1,34 @@
+{
+  "preconditions": {
+    "inputs": {
+      "dataset_or_case": "执行 test/android-release.test.js 对 Android release 集成进行专项验证",
+      "size_or_boundary": "",
+      "other": "测试读取 NeteasePlaybackPlugin.java"
+    },
+    "environments": {
+      "version": "",
+      "other": "仓库 E:\\chatgpt\\dengta-home-frontend，使用 npm run test:android-release"
+    }
+  },
+  "expected_behavior": {
+    "description": "test/android-release.test.js 应按同文件既有 projectRoot 风格，从 projectRoot/android/app/... 定位并读取 NeteasePlaybackPlugin.java，专项测试可正常执行。"
+  },
+  "actual_behavior": {
+    "description": "test/android-release.test.js 读取 NeteasePlaybackPlugin.java 时引用未定义的 androidRoot，导致 npm run test:android-release 被阻塞。"
+  },
+  "possible_root_cause": "问题描述指出 test/android-release.test.js 使用了未定义的 androidRoot，而同文件已有可用的 projectRoot 路径风格。",
+  "reproduction_seed_snippet": "test/android-release.test.js 读取 NeteasePlaybackPlugin.java 时使用了未定义的 androidRoot。",
+  "minimal_reproduction_steps": "1. 在仓库根目录执行 npm run test:android-release。\n2. 观察 test/android-release.test.js 在读取 NeteasePlaybackPlugin.java 时因 androidRoot 未定义而失败。",
+  "log_excerpt": "",
+  "log_evidence": {
+    "log_path": "",
+    "start_line": "",
+    "end_line": "",
+    "summary": "",
+    "content": ""
+  },
+  "workflow_readiness": {
+    "decision": "PASS",
+    "missing_or_insufficient_information": ""
+  }
+}

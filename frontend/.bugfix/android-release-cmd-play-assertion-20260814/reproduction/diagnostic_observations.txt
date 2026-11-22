@@ -1,0 +1,2 @@
+[BUGFIX_REPRO_TRACE] {"runtimeJsonPattern":false,"javaSourcePattern":true}
+The trace precedes the AssertionError for /"cmd":"play"/ and demonstrates the observable source-text distinction.

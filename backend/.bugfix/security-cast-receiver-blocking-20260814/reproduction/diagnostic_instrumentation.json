@@ -1,0 +1,18 @@
+{
+  "trace_prefix": "[BUGFIX_REPRO_TRACE]",
+  "instrumentation_added": true,
+  "instrumented_locations": [
+    {
+      "file": "services/cast-receiver.js",
+      "location_type": "project_source",
+      "method_or_region": "encryptMediaUrl",
+      "debug_question": "当前 Receiver service 是否只有 AES-GCM 加密输出而没有对称解密能力？",
+      "trace_kind": "state_and_control_flow",
+      "observed_values_or_branches": ["encryptMediaUrl 被执行", "输入是否为 HTTPS", "输出路径为 encrypted-only"]
+    }
+  ],
+  "trace_output_observed": true,
+  "diagnostic_output_path": ".bugfix/security-cast-receiver-blocking-20260814/reproduction/diagnostic_observations.txt",
+  "missing_trace_output_reason": "",
+  "summary": "执行观察到 Receiver 媒体路径只产生 encrypted-only 输出；跟踪未输出 URL、ciphertext 或 token。"
+}

@@ -1,0 +1,8 @@
+{
+  "dti": "CODE_INTERFACE",
+  "entry_point": "services/provider-output-guard.js#providerOutputVerdict",
+  "invocation_shape": "Call the provider verdict and persistent-memory pass-through APIs with ordinary boundary discussion, adult-theme text, complete HTML, and JSON model content.",
+  "template_paths": ["E:\\chatgpt\\dengta-home-backend\\test\\provider-output-guard.test.js", "E:\\chatgpt\\dengta-home-backend\\test\\persistent-memory-filter.test.js"],
+  "selected_template_path": "E:\\chatgpt\\dengta-home-backend\\test\\provider-output-guard.test.js",
+  "fallback": false
+}

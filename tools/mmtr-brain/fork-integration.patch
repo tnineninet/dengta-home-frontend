@@ -1,0 +1,243 @@
+diff --git a/.env.example b/.env.example
+index bbeca42..1cc4757 100644
+--- a/.env.example
++++ b/.env.example
+@@ -49,3 +49,9 @@ JIEBA_CUSTOM_WORDS=
+ # OpenRouter 需要的额外请求头
+ EXTRA_REFERER=https://kiwi-mem.local
+ EXTRA_TITLE=kiwi-mem
++
++# ----- MMTR × kiwi 融合（P1 脑层）-----
++# 启动时给 public/租户 schema 补三通道列与 relation/promise/activation 表。
++MMTR_P1_ENABLED=1
++# 每日整理完成后执行 MMTR consolidate（关系回归/承诺判定/压缩阶梯）。
++MMTR_P1_CONSOLIDATE_ENABLED=1
+diff --git a/README.md b/README.md
+index 31321d2..bf632e2 100644
+--- a/README.md
++++ b/README.md
+@@ -764,3 +764,9 @@ kiwi-mem 使用 [GNU Affero General Public License v3.0 or later](LICENSE)（AGP
+ > *"记忆不是存储，是理解。"*
+ 
+ *Built with love, for anyone who wants their AI to truly remember.*
++
++## MMTR 脑层融合（P1）
++
++三通道强度/压缩阶梯/关系向量/承诺状态已落库（mmtr_brain/，P1），但**检索仍走旧 heat**
++（weights/promise 进 /memory/recall 是 P2；正式替换前两套并存），
++详见 [docs/MMTR-P1.md](docs/MMTR-P1.md)。开关：MMTR_P1_ENABLED、MMTR_P1_CONSOLIDATE_ENABLED。
+diff --git a/daily_digest.py b/daily_digest.py
+index bfb42fe..c4b40b3 100644
+--- a/daily_digest.py
++++ b/daily_digest.py
+@@ -533,6 +533,44 @@ async def _run_daily_digest_once(yesterday: str):
+         print(f"⚠️ 碎片清理出错: {e}")
+ 
+ 
++async def _run_mmtr_consolidate_once(schema: str, label: str) -> None:
++    """MMTR P1 每日巩固（关系回归/承诺判定/压缩阶梯）。
++
++    调用方已持有该租户的 run_memory_job 锁；这里失败只告警，不影响日整理。
++    需要 MMTR_P1_ENABLED 与 MMTR_P1_CONSOLIDATE_ENABLED 同时开启。
++    """
++    if os.getenv("MMTR_P1_ENABLED", "1") == "0":
++        return
++    if os.getenv("MMTR_P1_CONSOLIDATE_ENABLED", "1") == "0":
++        return
++    try:
++        from database import get_pool
++        from mmtr_brain import p1 as mmtr_p1
++
++        pool = await get_pool()
++        async with pool.acquire() as conn:
++            # 老租户可能从未发过请求（P1 表未建）：每日任务先惰性升级
++            if not (await conn.fetchval(
++                "SELECT EXISTS (SELECT 1 FROM information_schema.tables "
++                "WHERE table_schema=$1 AND table_name='relation_state')",
++                schema,
++            )):
++                await mmtr_p1.apply_p1_schema(conn, schema, create_indexes=False)
++            summary = await mmtr_p1.consolidate_schema(
++                conn,
++                schema,
++                datetime.now(timezone.utc).timestamp() * 1000.0,
++            )
++        print(
++            f"🧠 [{label}] MMTR 巩固：回填 {summary.get('backfilled', 0)} 条，"
++            f"压缩 {len(summary.get('compressed', []))} 条，"
++            f"承诺 broken {summary.get('promises_broken', 0)}，"
++            f"surfaced {summary.get('promises_surfaced', 0)}"
++        )
++    except Exception as exc:
++        print(f"⚠️ [{label}] MMTR 巩固失败：{type(exc).__name__}: {exc}")
++
++
+ async def daily_digest_scheduler():
+     """
+     后台定时任务，每天东八区 0:05 执行（多租户：对每个租户 schema 各跑一轮）。
+@@ -573,14 +611,21 @@ async def daily_digest_scheduler():
+             for schema in targets:
+                 token = set_tenant_schema(schema)
+                 label = schema or "public"
++                async def _digest_and_consolidate():
++                    # 日整理失败也要继续做 MMTR 巩固（两个任务互相独立，各自告警）
++                    try:
++                        await _run_daily_digest_once(yesterday)
++                    except Exception as exc:
++                        print(f"⚠️ [{label}] 日整理出错: {type(exc).__name__}: {exc}")
++                    await _run_mmtr_consolidate_once(schema or "public", label)
++
+                 try:
+-                    # 与同一租户的 Dream 互斥（不同租户并行）
+-                    await run_memory_job(lambda: _run_daily_digest_once(yesterday))
+-                except Exception as e:
+-                    print(f"⚠️ [{label}] 日整理出错: {type(e).__name__}: {e}")
++                    # 与同一租户的 Dream 互斥（不同租户并行）；巩固在同一把租户锁内
++                    await run_memory_job(_digest_and_consolidate)
+                 finally:
+                     reset_tenant_schema(token)
+ 
++
+         except asyncio.CancelledError:
+             print("🕐 每日整理调度器已停止")
+             break
+diff --git a/database.py b/database.py
+index 26f9281..f2a2b0f 100644
+--- a/database.py
++++ b/database.py
+@@ -92,6 +92,56 @@ _tenant_var: _contextvars.ContextVar = _contextvars.ContextVar(
+     "kiwi_tenant_schema", default=""
+ )
+ 
++# MMTR × kiwi P1：脑层 schema / 回填 / 每日巩固（默认开启，MMTR_P1_ENABLED=0 关闭）
++try:
++    from mmtr_brain import p1 as mmtr_p1
++except Exception:  # pragma: no cover - 移植模块缺失时保持旧行为
++    mmtr_p1 = None
++
++
++def mmtr_p1_enabled() -> bool:
++    return os.getenv("MMTR_P1_ENABLED", "1") != "0"
++
++
++# 每进程只对每个 schema 做一次 P1 补列/建表：启动迁移是一次性成本，
++# 不能每个租户请求都跑 20+ 次 information_schema 查询（复审 B：26→49 查询/请求）。
++_mmtr_p1_ready_schemas: set = set()
++
++
++async def _mmtr_p1_memory_ready(conn) -> bool:
++    """当前请求 schema 的 memories 是否已有 floor_level 列（P1 未启用/未迁移时 False）。"""
++    if not (mmtr_p1_enabled() and mmtr_p1 is not None):
++        return False
++    schema = get_tenant_schema() or "public"
++    try:
++        return bool(
++            await conn.fetchval(
++                """
++                SELECT EXISTS (
++                    SELECT 1 FROM information_schema.columns
++                    WHERE table_schema = $1 AND table_name = 'memories'
++                      AND column_name = 'floor_level'
++                )
++                """,
++                schema,
++            )
++        )
++    except Exception:
++        return False
++
++
++async def _mmtr_p1_ensure_schema(conn, schema: str) -> None:
++    if not (mmtr_p1_enabled() and mmtr_p1 is not None):
++        return
++    if schema in _mmtr_p1_ready_schemas:
++        return
++    try:
++        await mmtr_p1.apply_p1_schema(conn, schema, create_indexes=False)
++        _mmtr_p1_ready_schemas.add(schema)
++    except Exception as exc:
++        # 不缓存失败：下次请求/启动再试（失败只告警，不影响租户请求）
++        print(f"⚠️ [{schema}] MMTR P1 schema 应用失败（稍后重试）：{type(exc).__name__}: {exc}")
++
+ TENANT_DATA_TABLES = [
+     "conversations",
+     "memories",
+@@ -929,6 +979,20 @@ async def init_tables():
+ 
+     print("✅ 数据库表结构已就绪（v6.2b 模型级 API 格式支持）")
+ 
++    # MMTR × kiwi P1：给 public 模板补列/表（幂等；失败不影响 kiwi 启动）
++    if mmtr_p1_enabled() and mmtr_p1 is not None:
++        try:
++            async with pool.acquire() as mmtr_conn:
++                applied = await mmtr_p1.apply_p1_schema(mmtr_conn, "public")
++            _mmtr_p1_ready_schemas.add("public")
++            if applied.get("columns") or applied.get("tables"):
++                print(
++                    f"✅ MMTR P1 schema 已应用：+{applied.get('columns')} 列 / "
++                    f"{applied.get('tables')} 表"
++                )
++        except Exception as exc:
++            print(f"⚠️ MMTR P1 schema 应用失败（kiwi 继续运行）：{type(exc).__name__}: {exc}")
++
+ 
+ # ============================================================
+ # 多租户 schema 管理
+@@ -979,6 +1043,10 @@ async def ensure_tenant_schema(tenant_id: str) -> str:
+                 await conn.execute(
+                     f'ALTER TABLE "{schema}"."{table}" ADD COLUMN IF NOT EXISTS "{col_name}" {type_sql} {nullable}{default}'
+                 )
++
++        # MMTR × kiwi P1：租户 schema 补脑层列/表（每进程每 schema 只做一次）。
++        # 索引不在请求路径创建（大表锁写），由离线 migrate 用 CONCURRENTLY 建。
++        await _mmtr_p1_ensure_schema(conn, schema)
+     return schema
+ 
+ 
+@@ -2387,6 +2455,15 @@ async def update_memory(memory_id: int, content: str = None, importance: int = N
+             sets.append(f"importance = ${idx}")
+             params.append(importance)
+             idx += 1
++            # MMTR P1：重要度变了，压缩地板要一起重算（与 brain.floor_level_for_importance 等价）；
++            # P1 未启用/当前 schema 还没迁移时不能引用 floor_level，否则更新端点 500。
++            if await _mmtr_p1_memory_ready(conn):
++                sets.append(
++                    f"floor_level = CASE WHEN ${idx} >= 9 THEN 0 "
++                    f"WHEN ${idx} >= 7 THEN 1 WHEN ${idx} >= 4 THEN 2 ELSE 3 END"
++                )
++                params.append(importance)
++                idx += 1
+         
+         # category_id: None = clear category, int = set category, "UNSET" = don't change
+         if category_id != "UNSET":
+diff --git a/docker-compose.yml b/docker-compose.yml
+index 1a6c91a..a5e8e8e 100644
+--- a/docker-compose.yml
++++ b/docker-compose.yml
+@@ -37,6 +37,9 @@ services:
+       MAX_MEMORIES_INJECT: ${MAX_MEMORIES_INJECT:-15}
+       MEMORY_EXTRACT_INTERVAL: ${MEMORY_EXTRACT_INTERVAL:-3}
+       CORS_ORIGINS: ${CORS_ORIGINS:-*}
++      # ---- MMTR × kiwi P1 脑层 ----
++      MMTR_P1_ENABLED: ${MMTR_P1_ENABLED:-1}
++      MMTR_P1_CONSOLIDATE_ENABLED: ${MMTR_P1_CONSOLIDATE_ENABLED:-1}
+       JIEBA_CUSTOM_WORDS: ${JIEBA_CUSTOM_WORDS:-}
+       EXTRA_REFERER: ${EXTRA_REFERER:-https://kiwi-mem.local}
+       EXTRA_TITLE: ${EXTRA_TITLE:-kiwi-mem}
+diff --git a/requirements.txt b/requirements.txt
+index 0db9b0d..9778f96 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -2,9 +2,11 @@ fastapi==0.115.0
+ uvicorn==0.30.0
+ httpx==0.27.0
+ asyncpg==0.30.0
+-mcp>=1.8.0
++mcp==1.12.4
+ python-multipart>=0.0.6
+ pypdf>=4.0.0
+ python-docx>=1.1.0
+ openpyxl>=3.1.0
+ jieba>=0.42.1
++# mcp 1.12.x 依赖 pydantic 的内部 API；新版 pydantic 移除 eval_type_backport 会导致 FastMCP 导入失败
++pydantic==2.11.7

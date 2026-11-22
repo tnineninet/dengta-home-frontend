@@ -1,0 +1,36 @@
+name: Verify production backend deployment
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-backend-deployment
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Wait for Render revision to match this commit
+        env:
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          for attempt in $(seq 1 30); do
+            body="$(curl --fail --silent --show-error --max-time 30 https://dengta-home-backend-rkmq.onrender.com/health || true)"
+            revision="$(printf '%s' "$body" | jq -r '.revision // empty' 2>/dev/null || true)"
+            echo "attempt=${attempt} revision=${revision} expected=${EXPECTED_SHA}"
+            if [ "$revision" = "$EXPECTED_SHA" ]; then
+              echo "Render production deployment succeeded."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for Render revision ${EXPECTED_SHA}." >&2
+          exit 1

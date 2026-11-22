@@ -1,0 +1,109 @@
+{
+  "framework": "vite",
+  "buildCommand": "npm run build:web",
+  "outputDirectory": "dist",
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "SAMEORIGIN"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(self), microphone=(self), geolocation=(self)"
+        },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=63072000"
+        },
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self' 'sha256-Vx/7gid/nVVxUsmBiBTKwbZZERSqQLgmL5c1LoGw9cE=' 'sha256-4BRYCiP4V3Hs7sa/dOdclz5VoWZkpnwVTvSuHQQEn84=' 'sha256-bLhpIWTx5bn5b1BfaiZnKSsZD4UVvewQafCPixRCqWc=' 'sha256-+8/f1tB8VBTEcvxROHMpk4Hyfz63BoVDN3F0ZV3Vkes=' 'sha256-8FVX4MLkdayTx7Jk1GhglPwhZ4n3yI68zGH73BTUay4=' 'sha256-iwxMP24gOxTm79Dps10KjQjTnrSGESyahgx3rFmofS8=' 'sha256-+uze2HqDi7g3r5xs5GuH28CnqqSBp4eXGnNmSR2TVEA=' 'sha256-mGj3OXNwgcLCTp0/NZQv+w87P5c/44Be6eB21zNr6kY=' 'sha256-ZgDgKn4R0q3AAEfNRSZgk4/nIKvRDYfwE8pIfDfTk3o=' 'sha256-8eH6qjuK7lGX+fXeaO+sR0vO/LdWYhybwSElvmfcMX4=' 'sha256-4TrITZBpbDyiI/2Akj2C16YBSYUdb9eHayE4/TEfcQ0=' 'sha256-HOcE2cEbpdLDoHkOcFyIrO8SRTEdc7BzjM0LRasZID4=' 'sha256-uCeCrguVTcBQCotIKMqZRL5FB54LHHn7FCB6E4IsLbw=' 'sha256-KPiLDom1n8nlEtie1cNbRVkbWZFWiRHRs04jdAghTjA=' 'sha256-ZtYiIVI0UGK1vnKsSAf+dIJg40XusywwRkjdUtpQlcI=' 'sha256-Yug1cvsM/dNWtM7YWmvQAXQJ7H/nD7GySrIdt/n78eI=' 'sha256-HHEu/GGmiq6Rqz2tRe6HJUQL7vuuCaZOi0dAZEjYFck=' 'sha256-dZG8pcHgBdb+fTqz2yuV5RbdDPaoYC63d5Dev3+O/2U=' 'sha256-qzm9f2qX+bHQjTvkjHDoqw4zlDo2KcGkDBgSjhmzG6U=' 'sha256-NWmRgod1nNaNh1V/eV6PEegK6m602U5YRpoacMIua4c=' 'sha256-G9fKj2uJaHpz9X5WhDTgG+WkH3N9n780ucohg5Br8Ac='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https: wss:; font-src 'self' data:; frame-src 'self' https:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+        }
+      ]
+    },
+    {
+      "source": "/updates/download.json",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        }
+      ]
+    },
+    {
+      "source": "/updates/android.json",
+      "headers": [
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        }
+      ]
+    },
+    {
+      "source": "/downloads/DengTa-latest.apk",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/vnd.android.package-archive"
+        },
+        {
+          "key": "Content-Disposition",
+          "value": "attachment; filename=\"DengTa-latest.apk\""
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=300"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/download",
+      "destination": "/download.html"
+    },
+    {
+      "source": "/install",
+      "destination": "/download.html"
+    },
+    {
+      "source": "/receive",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/room/join",
+      "destination": "/room-invite.html"
+    },
+    {
+      "source": "/supabase/:path*",
+      "destination": "https://nyyqizwrlmejpfdhgrnd.supabase.co/:path*"
+    }
+  ]
+}

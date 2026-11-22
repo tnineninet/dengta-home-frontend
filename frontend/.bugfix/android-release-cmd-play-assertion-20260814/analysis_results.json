@@ -1,0 +1,34 @@
+{
+  "preconditions": {
+    "inputs": {
+      "dataset_or_case": "test/android-release.test.js 读取 NeteasePlaybackPlugin.java 并验证其构造包含 cmd=play 的 JSON payload",
+      "size_or_boundary": "",
+      "other": "保持生产实现不变并执行 npm run test:android-release"
+    },
+    "environments": {
+      "version": "DengTa Home 2.10.0",
+      "other": "Node.js/npm 专项 Android release 测试"
+    }
+  },
+  "expected_behavior": {
+    "description": "发布测试应匹配 Java 源码字符串字面量中的转义引号，并确认实现构造的 JSON payload 包含 cmd 字段且值为 play。"
+  },
+  "actual_behavior": {
+    "description": "test/android-release.test.js:137 的 /\"cmd\":\"play\"/ 仅匹配无反斜杠的运行时 JSON，无法匹配 NeteasePlaybackPlugin.java 中 Java 字符串字面量的真实转义源码，导致专项测试出现 AssertionError。"
+  },
+  "possible_root_cause": "问题描述指出测试正则按运行时 JSON 形式匹配，但被测文本是包含 Java 字符串转义符的源码。",
+  "reproduction_seed_snippet": "assert.match(neteasePlaybackPlugin, /\"cmd\":\"play\"/);",
+  "minimal_reproduction_steps": "1. 保持 NeteasePlaybackPlugin.java 当前生产实现。\n2. 执行 npm run test:android-release。\n3. 观察 test/android-release.test.js:137 因 /\"cmd\":\"play\"/ 无法匹配 Java 源码中的转义 JSON 字符串而失败。",
+  "log_excerpt": "AssertionError: The input did not match the regular expression /\\\"cmd\\\":\\\"play\\\"/.",
+  "log_evidence": {
+    "log_path": "上一轮 npm run test:android-release 输出",
+    "start_line": "",
+    "end_line": "",
+    "summary": "断言失败输出显示 Java 源码实际包含反斜杠转义的 cmd/play JSON 片段。",
+    "content": "String payload = \"{\\\"type\\\":\\\"\" + resourceType + \"\\\",\\\"id\\\":\\\"\" + resourceId + \"\\\",\\\"cmd\\\":\\\"play\\\"}\";"
+  },
+  "workflow_readiness": {
+    "decision": "PASS",
+    "missing_or_insufficient_information": ""
+  }
+}

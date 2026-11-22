@@ -1,0 +1,11 @@
+{
+  "issue_name": "calendar-consolidation-multitenant-20260813",
+  "brt_path": "E:\\chatgpt\\dengta-home-backend\\.bugfix\\calendar-consolidation-multitenant-20260813\\reproduction\\calendar-consolidation.repro.test.js",
+  "reproduction_result": "REPRODUCED",
+  "localization_mode": "dynamic",
+  "trace_path": "E:\\chatgpt\\dengta-home-backend\\.bugfix\\calendar-consolidation-multitenant-20260813\\reproduction\\diagnostic_observations.txt",
+  "localization_result": "confirmed",
+  "root_cause_summary": "runCalendarConsolidation loads rows without tenant identity and invokes consolidateCalendar once over the global active-row set, so threshold selection and sourceIds are computed across tenant boundaries before insertion and superseding.",
+  "affected_code": "services/calendar-consolidation.js: loadActiveCalendarRows lines 12-20 and runCalendarConsolidation lines 71-110",
+  "localization_analysis": "The executed reproducer reached runCalendarConsolidation and the project-source trace captured fourteen loaded IDs with user_id and companion_id absent, matching the select projection at line 15. The next trace captured a single week job whose sourceIds alternate between user-a and user-b, directly matching the unpartitioned consolidateCalendar(activeRows) call. The failing assertion confirms the runtime impact: one mixed summary was inserted instead of two tenant-local summaries. The subsequent sourceRows filter and markSuperseded consume that mixed sourceIds list, extending the same isolation violation to insertion metadata and source updates. This is a local implementation logic defect in the calendar consolidation orchestration."
+}

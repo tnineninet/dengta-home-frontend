@@ -1,0 +1,13 @@
+{
+  "issue_number": "security-cast-receiver-blocking-20260814",
+  "brt_path": "E:\\chatgpt\\dengta-home-backend\\.bugfix\\security-cast-receiver-blocking-20260814\\reproduction\\cast-receiver-media-repro.test.js",
+  "run_cmd_path": "E:\\chatgpt\\dengta-home-backend\\.bugfix\\security-cast-receiver-blocking-20260814\\reproduction\\run_repro.sh",
+  "evidence_path": [
+    "E:\\chatgpt\\dengta-home-backend\\.bugfix\\security-cast-receiver-blocking-20260814\\reproduction\\stderr.txt",
+    "E:\\chatgpt\\dengta-home-backend\\.bugfix\\security-cast-receiver-blocking-20260814\\reproduction\\exit_code.txt",
+    "E:\\chatgpt\\dengta-home-backend\\.bugfix\\security-cast-receiver-blocking-20260814\\reproduction\\diagnostic_observations.txt"
+  ],
+  "reproduction_result": "REPRODUCED",
+  "reproduction_analysis": "唯一 UT 形式复现器通过 run_repro.sh 实际执行并到达 services/cast-receiver.createReceiverService 的媒体处理接口。stderr.txt 记录 decryptMediaUrl 实际为 undefined 的断言差异，exit_code.txt 为 1；diagnostic_observations.txt 同时确认 AES-GCM encrypted-only 路径被执行，且诊断输出没有泄露 URL、ciphertext 或 token。该证据稳定复现了有效 Receiver 无法将后端密文转换为可播放 media_url 的核心阻断，不在本阶段判定具体修复位置。",
+  "brt_type": "WHITE_BOX"
+}

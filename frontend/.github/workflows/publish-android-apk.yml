@@ -1,0 +1,193 @@
+name: Publish Android APK
+
+on:
+  # Do not publish from every src push. Publish is an explicit action after
+  # tests and real-device verification; a release tag also starts it.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and verify without publishing or committing manifests
+        type: boolean
+        default: false
+  push:
+    tags:
+      - "android-v*"
+      - "android-dryrun-*"
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: publish-android-apk
+  cancel-in-progress: false
+
+jobs:
+  publish-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Verify release tag is on main
+        if: github.event_name == 'push'
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" HEAD
+          echo "Release tag ${GITHUB_REF_NAME} is on main."
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Restore stable Android debug signing key
+        env:
+          ANDROID_STABLE_DEBUG_KEYSTORE_BASE64: ${{ secrets.ANDROID_STABLE_DEBUG_KEYSTORE_BASE64_V2 }}
+        run: |
+          test -n "$ANDROID_STABLE_DEBUG_KEYSTORE_BASE64"
+          install -d -m 700 "$HOME/.android"
+          printf '%s' "$ANDROID_STABLE_DEBUG_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/debug.keystore"
+          chmod 600 "$HOME/.android/debug.keystore"
+          KEYSTORE_CERT_SHA256="$(keytool -exportcert \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storepass android \
+            -alias androiddebugkey \
+            -keypass android | sha256sum | awk '{print $1}')"
+          test "$KEYSTORE_CERT_SHA256" = "0d634aaf6eb10dd4c9042883ddb00fa7c32e01eb6387e1a7238bf96d08a1e0f5"
+
+      - name: Install web dependencies
+        run: npm ci
+
+      - name: Build web app
+        env:
+          VITE_API_URL: https://dengta-home-backend-rkmq.onrender.com
+          VITE_PUBLIC_AUTH_REDIRECT_URL: https://www.dengtahome.com/
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          test -n "$VITE_SUPABASE_URL"
+          test -n "$VITE_SUPABASE_ANON_KEY"
+          npm run build
+          npm run verify:public-auth-build
+
+      - name: Remove old APK from Android web assets
+        run: rm -rf public/downloads dist/downloads
+
+      - name: Sync Android project
+        run: npx cap sync android
+
+      - name: Resolve next version
+        id: version
+        run: |
+          node - <<'JS' >> "$GITHUB_OUTPUT"
+          const fs = require('fs');
+          const manifest = JSON.parse(fs.readFileSync('public/updates/android.json', 'utf8'));
+          const current = manifest?.latest || {};
+          const code = Number(current.version_code) || 177;
+          const parts = String(current.version || '2.12.19').split('.').map(Number);
+          const nextCode = code + 1;
+          const nextName = [parts[0] || 2, parts[1] || 12, (parts[2] || 19) + 1].join('.');
+          console.log(`code=${nextCode}`);
+          console.log(`name=${nextName}`);
+          JS
+
+      - name: Build APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease \
+            -PversionCode=${{ steps.version.outputs.code }} \
+            -PversionName=${{ steps.version.outputs.name }}
+
+      - name: Verify APK signature
+        run: |
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs android/app/build/outputs/apk/release/app-release.apk \
+            | grep -F "certificate SHA-256 digest: 0d634aaf6eb10dd4c9042883ddb00fa7c32e01eb6387e1a7238bf96d08a1e0f5"
+
+      - name: Publish APK and update manifests
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run == true) && !startsWith(github.ref_name, 'android-dryrun-') }}
+        env:
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+          COMMIT_SHA: ${{ github.sha }}
+          APK_PATH: android/app/build/outputs/apk/release/app-release.apk
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: node scripts/publish-site-apk.mjs
+
+      - name: Commit published manifests
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run == true) && !startsWith(github.ref_name, 'android-dryrun-') }}
+        env:
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+          VERSION_NAME: ${{ steps.version.outputs.name }}
+        run: |
+          git config user.name "DengTaHome"
+          git config user.email "306767933+DengTaHome@users.noreply.github.com"
+          git add public/updates/android.json public/updates/download.json
+          if git diff --cached --quiet; then
+            echo "No manifest changes to publish"
+            exit 0
+          fi
+          git commit -m "release: publish Android ${VERSION_NAME} (${VERSION_CODE})" -m "sha: ${COMMIT_SHA}"
+          git push
+
+      - name: Trigger website deployment
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run == true) && !startsWith(github.ref_name, 'android-dryrun-') }}
+        env:
+          VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+        run: |
+          if [ -n "$VERCEL_DEPLOY_HOOK" ]; then
+            curl -fsS -X POST "$VERCEL_DEPLOY_HOOK" >/dev/null
+            echo "Triggered Vercel deployment"
+          else
+            echo "VERCEL_DEPLOY_HOOK is not configured; refusing to publish without a site deploy" >&2
+            exit 1
+          fi
+
+      - name: Wait for the new feed and verify APK checksum
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run == true) && !startsWith(github.ref_name, 'android-dryrun-') }}
+        env:
+          VERSION_CODE: ${{ steps.version.outputs.code }}
+        run: |
+          for attempt in $(seq 1 30); do
+            live_code="$(curl -fsS "https://www.dengtahome.com/updates/android.json?ts=$(date +%s)" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{console.log(JSON.parse(s).latest.version_code)}catch{console.log('')}})")"
+            echo "attempt=${attempt} live_version_code=${live_code} expected=${VERSION_CODE}"
+            if [ "$live_code" = "$VERSION_CODE" ]; then
+              node scripts/verify-apk-integrity.mjs
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for the update feed to expose ${VERSION_CODE}." >&2
+          exit 1
+
+      - name: Prune old versioned APKs
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run == true) && !startsWith(github.ref_name, 'android-dryrun-') }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          APPLY: "1"
+          KEEP_VERSIONED: "3"
+        run: node scripts/prune-supabase-apks.mjs
+
+      - name: Dispatch post-release verification and CNB sync
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run == true) && !startsWith(github.ref_name, 'android-dryrun-') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run verify-production.yml --ref main || echo "verify-production dispatch failed"
+          gh workflow run sync-cnb.yml --ref main || echo "CNB sync dispatch failed"

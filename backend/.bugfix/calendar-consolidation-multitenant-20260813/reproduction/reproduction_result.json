@@ -1,0 +1,14 @@
+{
+  "issue_number": "calendar-consolidation-multitenant-20260813",
+  "brt_path": "E:\\chatgpt\\dengta-home-backend\\.bugfix\\calendar-consolidation-multitenant-20260813\\reproduction\\calendar-consolidation.repro.test.js",
+  "run_cmd_path": "E:\\chatgpt\\dengta-home-backend\\.bugfix\\calendar-consolidation-multitenant-20260813\\reproduction\\run_repro.sh",
+  "evidence_path": [
+    "E:\\chatgpt\\dengta-home-backend\\.bugfix\\calendar-consolidation-multitenant-20260813\\reproduction\\stdout.txt",
+    "E:\\chatgpt\\dengta-home-backend\\.bugfix\\calendar-consolidation-multitenant-20260813\\reproduction\\stderr.txt",
+    "E:\\chatgpt\\dengta-home-backend\\.bugfix\\calendar-consolidation-multitenant-20260813\\reproduction\\exit_code.txt",
+    "E:\\chatgpt\\dengta-home-backend\\.bugfix\\calendar-consolidation-multitenant-20260813\\reproduction\\diagnostic_observations.txt"
+  ],
+  "reproduction_result": "REPRODUCED",
+  "reproduction_analysis": "The dedicated test reached services/calendar-consolidation.runCalendarConsolidation with two tenants and seven completed day rows each. stdout.txt and diagnostic_observations.txt show one generated week job containing source IDs from both tenants while loaded rows lack tenant fields. stderr.txt records the deterministic assertion mismatch 1 !== 2, and exit_code.txt records exit status 1.",
+  "brt_type": "WHITE_BOX"
+}

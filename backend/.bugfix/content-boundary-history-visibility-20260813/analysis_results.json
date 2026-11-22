@@ -1,0 +1,34 @@
+{
+  "preconditions": {
+    "inputs": {
+      "dataset_or_case": "正常拒绝叙事、边界讨论、成人主题、合法完整 HTML 文档、合法 JSON 正文，以及真实 HTTP/SSE 协议错误；同时覆盖压缩旧消息和多租户历史查询",
+      "size_or_boundary": "实时回复、历史消息、持久化记忆和模型上下文均涉及；迁移编号从 031 接续到 032",
+      "other": "后端 API/SSE 与前端错误处理共同参与；现有 visible 表示用户可见，主聊天启用 visibleMonologue:true"
+    },
+    "environments": {
+      "version": "Node.js/Express 后端与前端 npm 工程",
+      "other": "保留多租户、鉴权、RLS、CORS、密钥脱敏、prompt injection 分层、附件/SSRF、幂等、票据验签等安全控制"
+    }
+  },
+  "expected_behavior": {
+    "description": "任何正常正文，包括边界讨论、成人主题、合法 JSON 和完整 HTML，均应在实时回复、历史和记忆中透传或按既有用户可见规则保留；只有明确协议错误上下文才阻断并脱敏。压缩只排除模型上下文，不删除用户历史；迁移安全、幂等且按租户隔离；monologue 缺少标记时仍保留正式回复。"
+  },
+  "actual_behavior": {
+    "description": "语义正则会删除、阻塞或延迟正常正文；provider guard 和前端会把合法模型 JSON/HTML 正文误判为供应商错误；压缩把旧消息 visible 更新为 false，历史 API 因只返回 visible=true 而隐藏旧聊天；固定 monologue 标记可能使正式回复丢失。"
+  },
+  "possible_root_cause": "问题指向 services/persistent-memory-filter.js、services/provider-output-guard.js、前端 src/chat-errors.js、server.js、routes/v2/core.js 及迁移链；报告建议将模型上下文可见性与用户历史可见性拆分，并将协议错误判断限定在明确的 HTTP/SSE error 上下文。",
+  "reproduction_seed_snippet": "services/persistent-memory-filter.js；services/provider-output-guard.js；src/chat-errors.js；server.js compressMemoryIfNeeded 与 visibleMonologue；routes/v2/core.js 历史 API；迁移编号 031/032。",
+  "minimal_reproduction_steps": "1. 将正常拒绝叙事、边界讨论、成人主题、合法 JSON {message:'gateway denied',code:'policy_denied'} 和完整 HTML 作为模型正文，经实时回复、历史、记忆及 provider/API/SSE 调用链处理，核对正文不被删除或阻断。 2. 构造真实 HTTP 状态错误、SSE error 事件和异常路径，核对仍被识别并脱敏。 3. 对多租户会话执行记忆压缩，核对旧消息 visible=true、context_visible=false，历史仍返回而模型上下文排除。 4. 重复执行 032 迁移并核对幂等及租户隔离。 5. 发送缺少 [monologue] 标记的正式回复，核对正式回复保留。",
+  "log_excerpt": "",
+  "log_evidence": {
+    "log_path": "",
+    "start_line": "",
+    "end_line": "",
+    "summary": "",
+    "content": ""
+  },
+  "workflow_readiness": {
+    "decision": "PASS",
+    "missing_or_insufficient_information": ""
+  }
+}

@@ -1,0 +1,1 @@
+[BUGFIX_REPRO_TRACE] provider-output-guard JSON verdict {"final":true,"text":"{\"message\":\"gateway denied\",\"code\":\"policy_denied\"}"}

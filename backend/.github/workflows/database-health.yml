@@ -1,0 +1,35 @@
+name: Database health monitor
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dengta-database-health-monitor
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check deep database health
+        run: |
+          # 三次尝试使用短退避，避免一次冷启动或网络抖动就误报。
+          # 该工作流只失败/通知，不触发任何重启；Render 的 healthCheckPath 仍是 /health。
+          for attempt in 1 2 3; do
+            if curl --fail --silent --show-error \
+              --max-time 30 \
+              https://dengta-home-backend-rkmq.onrender.com/health/database; then
+              echo "Database dependency is up."
+              exit 0
+            fi
+            echo "Database health attempt ${attempt} failed."
+            sleep 15
+          done
+          echo "Database dependency is down after 3 attempts."
+          exit 1

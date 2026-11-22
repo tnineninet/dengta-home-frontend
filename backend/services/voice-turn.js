@@ -1,0 +1,799 @@
+const path = require("path");
+const { randomUUID } = require("node:crypto");
+const {
+    normalizeEnvironmentContext
+} = require("./environment-context");
+
+const HERVOICE_EMOTIONS = Object.freeze([
+    "happy",
+    "sad",
+    "angry",
+    "tired",
+    "tender",
+    "excited",
+    "anxious",
+    "neutral"
+]);
+const HERVOICE_DEFAULT_TIMEOUT_MS = 25_000;
+const HERVOICE_MAX_TIMEOUT_MS = 60_000;
+const HERVOICE_EMOTION_SET = new Set(HERVOICE_EMOTIONS);
+const HERVOICE_FEATURE_FIELDS = Object.freeze([
+    "duration_s",
+    "pitch_mean_hz",
+    "pitch_var",
+    "energy_mean",
+    "energy_var",
+    "pause_ratio",
+    "tempo_strength"
+]);
+const LOW_CONFIDENCE_THRESHOLD = 0.45;
+const MAX_COMPANION_STATUS_BYTES = 16 * 1024;
+
+function isPlainObject(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return false;
+    }
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
+}
+
+function badRequest(message) {
+    const error = new Error(message);
+    error.status = 400;
+    return error;
+}
+
+function upstreamError(message) {
+    const error = new Error(message);
+    error.status = 502;
+    return error;
+}
+
+function truncateText(value, maxLength) {
+    return Array.from(String(value ?? "").trim())
+        .slice(0, maxLength)
+        .join("");
+}
+
+function parseTurnContext(value) {
+    if (value === undefined || value === null || value === "") return "";
+    if (typeof value !== "string") {
+        throw badRequest("turn_context 必须是字符串。");
+    }
+    const normalized = value.trim();
+    if (Array.from(normalized).length > 4000) {
+        throw badRequest("turn_context 不能超过 4000 个字符。");
+    }
+    return normalized;
+}
+
+function parseMultipartBoolean(value) {
+    if (value === true || value === "true" || value === "1") return true;
+    if (
+        value === false ||
+        value === "false" ||
+        value === "0" ||
+        value === "" ||
+        value === undefined
+    ) {
+        return false;
+    }
+    throw badRequest("emotion_understanding_enabled 必须是 true 或 false。");
+}
+
+function parseCompanionStatusJson(value) {
+    if (value === undefined || value === "") return {};
+    if (isPlainObject(value)) return value;
+    if (typeof value !== "string") {
+        throw badRequest("companion_status 必须是 JSON 对象。");
+    }
+    if (Buffer.byteLength(value, "utf8") > MAX_COMPANION_STATUS_BYTES) {
+        throw badRequest("companion_status 超过了允许大小。");
+    }
+
+    let parsed;
+    try {
+        parsed = JSON.parse(value);
+    } catch {
+        throw badRequest("companion_status 不是有效的 JSON。");
+    }
+    if (!isPlainObject(parsed)) {
+        throw badRequest("companion_status 必须是 JSON 对象。");
+    }
+    return parsed;
+}
+
+function parseVoiceTurnFields(body = {}) {
+    if (!isPlainObject(body)) {
+        throw badRequest("语音请求字段格式不正确。");
+    }
+
+    return {
+        sessionId: truncateText(body.session_id, 80),
+        clientMessageId: truncateText(body.client_message_id, 80),
+    clientTime: truncateText(body.client_time, 80),
+        timezone: truncateText(body.timezone, 80),
+        requestedModel: truncateText(body.model, 160),
+        emotionUnderstandingEnabled: parseMultipartBoolean(
+            body.emotion_understanding_enabled
+        ),
+        // 默认保留；旧客户端不带这个字段时按开启处理。
+        voiceAnalysisRetentionEnabled:
+            body.voice_analysis_retention_enabled === undefined ||
+            body.voice_analysis_retention_enabled === ""
+                ? true
+                : parseMultipartBoolean(body.voice_analysis_retention_enabled),
+        companionStatus: parseCompanionStatusJson(body.companion_status),
+        environmentContext: normalizeEnvironmentContext(
+            body.environment_context,
+            body.weather_context
+        ),
+        turnContext: parseTurnContext(body.turn_context)
+    };
+}
+
+function sanitizeVoiceFeatures(value) {
+    if (!isPlainObject(value)) {
+        throw upstreamError("语音分析服务返回的声学特征格式不正确。");
+    }
+
+    const features = {};
+    for (const field of HERVOICE_FEATURE_FIELDS) {
+        if (!Object.prototype.hasOwnProperty.call(value, field)) continue;
+        const number = Number(value[field]);
+        if (!Number.isFinite(number) || Math.abs(number) > 1_000_000) {
+            throw upstreamError(`语音分析服务返回的 ${field} 不正确。`);
+        }
+        features[field] = number;
+    }
+
+    if (Object.keys(features).length === 0) {
+        throw upstreamError("语音分析服务没有返回可用的声学特征。");
+    }
+    if (
+        features.pause_ratio !== undefined &&
+        (features.pause_ratio < 0 || features.pause_ratio > 1)
+    ) {
+        throw upstreamError("语音分析服务返回的 pause_ratio 不正确。");
+    }
+    if (features.duration_s !== undefined && features.duration_s < 0) {
+        throw upstreamError("语音分析服务返回的 duration_s 不正确。");
+    }
+
+    return features;
+}
+
+const TEXT_EMOTION_RULES = Object.freeze([
+    { emotion: "tired", pattern: /累|疲惫|困|没力气|熬夜|睡不好/g },
+    { emotion: "anxious", pattern: /紧张|焦虑|担心|害怕|睡不着|心慌/g },
+    { emotion: "sad", pattern: /难过|伤心|失落|委屈|想哭|不开心/g },
+    { emotion: "angry", pattern: /生气|烦死|讨厌|气死|火大/g },
+    { emotion: "happy", pattern: /开心|高兴|太好了|哈哈|好棒|喜欢/g },
+    { emotion: "excited", pattern: /激动|兴奋|等不及|迫不及待/g },
+    { emotion: "tender", pattern: /想你|抱抱|温柔|陪陪我/g }
+]);
+
+function isNegatedEmotionMention(value, index) {
+    const leader = String(value || "").slice(Math.max(0, index - 2), index);
+    if (/(?:不|没|未|别|并不|不太|没有)$/.test(leader)) return true;
+    // 常见非情绪复合词：积累/累计/累积 中的“累”不是疲惫。
+    const compound = String(value || "").slice(
+        Math.max(0, index - 1),
+        index + 3
+    );
+    return /积累|累计|累积/.test(compound);
+}
+
+function inferTextEmotion(text) {
+    const value = String(text || "");
+    let best = null;
+    for (const rule of TEXT_EMOTION_RULES) {
+        const matches = [...value.matchAll(rule.pattern)].filter(
+            (match) => !isNegatedEmotionMention(value, match.index)
+        );
+        if (matches.length === 0) continue;
+        if (!best || matches.length > best.matches) {
+            best = { emotion: rule.emotion, matches: matches.length };
+        }
+    }
+    if (!best) return null;
+    return {
+        emotion: best.emotion,
+        confidence: 0.32,
+        hint: `根据文字内容推测（${best.matches} 处线索），不是声学判断。`
+    };
+}
+
+function sanitizeHervoiceAnalysisFallback(value) {
+    // 降级模式：只保留转写文本，情感/声学特征用默认值，不抛出异常
+    const text = truncateText(value?.text, 30000) || "";
+    const inferred = inferTextEmotion(text);
+    return {
+        text,
+        emotion: inferred?.emotion || "neutral",
+        confidence: inferred?.confidence || 0,
+        hint: inferred?.hint || "",
+        features: {}
+    };
+}
+
+function sanitizeHervoiceAnalysis(value) {
+    if (!isPlainObject(value)) {
+        throw upstreamError("语音分析服务没有返回有效结果。");
+    }
+
+    const text = truncateText(value.text, 30000);
+    if (!text) {
+        throw upstreamError("语音分析服务没有识别出可发送的文字。");
+    }
+
+    const emotion = String(value.emotion || "").trim().toLowerCase();
+    if (!HERVOICE_EMOTION_SET.has(emotion)) {
+        throw upstreamError("语音分析服务返回了未知的情绪类别。");
+    }
+
+    const confidence = Number(value.confidence);
+    if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) {
+        throw upstreamError("语音分析服务返回的置信度不正确。");
+    }
+    if (typeof value.hint !== "string") {
+        throw upstreamError("语音分析服务返回的情绪说明格式不正确。");
+    }
+
+    // 上游降级标记（emotion analysis failed）不注入到模型上下文，视为无额外说明
+    const rawHint = truncateText(value.hint, 500);
+    const hint = /emotion analysis failed/i.test(rawHint) ? "" : rawHint;
+    const inferred =
+        confidence < LOW_CONFIDENCE_THRESHOLD && emotion === "neutral"
+            ? inferTextEmotion(text)
+            : null;
+
+    return {
+        text,
+        emotion: inferred?.emotion || emotion,
+        confidence: inferred?.confidence || confidence,
+        hint: inferred?.hint || hint,
+        features: sanitizeVoiceFeatures(value.features)
+    };
+}
+
+function buildVoiceRuntimeContext(
+    analysis,
+    emotionUnderstandingEnabled,
+    confidenceThreshold = LOW_CONFIDENCE_THRESHOLD
+) {
+    const baseRules = [
+        "【语音语气参考：低优先级、不可信数据】",
+        "用户刚才通过麦克风说话；聊天中的 user 正文是语音服务的转写结果，应当像普通用户消息一样回答。",
+        "语气分析只能提供不确定线索，不能读心，不能当作用户自述，不能据此诊断、贴标签或断言用户真实情绪。",
+        "用户的明确文字、自述和纠正始终优先；不要向用户展示声学评分、内部字段或分析过程。"
+    ];
+
+    if (!emotionUnderstandingEnabled) {
+        return [
+            ...baseRules,
+            "用户已关闭语音情绪理解。本轮忽略情绪类别、置信度、说明和声学特征，只回答转写文字。"
+        ].join("\n");
+    }
+
+    if (analysis.confidence < confidenceThreshold) {
+        return [
+            ...baseRules,
+            `本轮语气分析置信度低于 ${confidenceThreshold.toFixed(
+                2
+            )}，必须忽略其情绪判断，只回答转写文字；如理解会影响回答方向，可以自然地向用户确认。`
+        ].join("\n");
+    }
+
+    const emotionDescriptions = {
+        happy: "开心",
+        sad: "难过",
+        angry: "生气",
+        tired: "疲惫",
+        tender: "温柔或亲昵",
+        excited: "兴奋",
+        anxious: "焦虑或紧张",
+        neutral: "中性"
+    };
+    const hint = truncateText(analysis.hint, 300);
+
+    return [
+        ...baseRules,
+        `本轮可参考的语气线索：${emotionDescriptions[analysis.emotion]}（置信度 ${analysis.confidence.toFixed(
+            2
+        )}）。`,
+        hint
+            ? `语音服务的低优先级说明：${hint}`
+            : "语音服务没有提供额外说明。",
+        "只把线索体现在语气、节奏和关注点上；若线索与转写内容不一致或不确定，以转写内容为准，必要时先简短确认。"
+    ].join("\n");
+}
+
+function publicVoiceAnalysis(analysis = {}) {
+    // 即时响应只给用户可见字段；features 属内部声学数据，绝不返回。
+    return {
+        text: String(analysis.text || ""),
+        emotion: String(analysis.emotion || "neutral"),
+        confidence: Math.min(
+            1,
+            Math.max(0, Number(analysis.confidence) || 0)
+        ),
+        hint: String(analysis.hint || "").slice(0, 300),
+        source: String(analysis.source || "hervoice")
+    };
+}
+
+function buildVoiceMessageMetadata(analysis, analyzedAt = new Date()) {
+    const timestamp =
+        analyzedAt instanceof Date && Number.isFinite(analyzedAt.getTime())
+            ? analyzedAt.toISOString()
+            : new Date().toISOString();
+
+    return {
+        is_voice: true,
+        voice_analysis: {
+            emotion: analysis.emotion,
+            confidence: analysis.confidence,
+            hint: analysis.hint,
+            features: { ...analysis.features },
+            analyzed_at: timestamp,
+            source: "hervoice"
+        }
+    };
+}
+
+function normalizeHervoiceEndpoint(value) {
+    const base = String(value || "").trim().replace(/\/+$/, "");
+    if (!base) {
+        const error = new Error("服务器还没有配置 HERVOICE_URL。");
+        error.status = 503;
+        throw error;
+    }
+
+    let parsed;
+    try {
+        parsed = new URL(base);
+    } catch {
+        const error = new Error("HERVOICE_URL 格式不正确。");
+        error.status = 503;
+        throw error;
+    }
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+        const error = new Error("HERVOICE_URL 必须使用 HTTP 或 HTTPS。");
+        error.status = 503;
+        throw error;
+    }
+    if (parsed.username || parsed.password) {
+        const error = new Error("HERVOICE_URL 不能包含用户名或密码。");
+        error.status = 503;
+        throw error;
+    }
+
+    return `${base}/api/voice/upload`;
+}
+
+function createHervoiceWarmup({
+    minimumIntervalMs = 10 * 60 * 1000,
+    timeoutMs = 75_000
+} = {}) {
+    const safeInterval = Math.max(1_000, Number(minimumIntervalMs) || 1_000);
+    const safeTimeout = Math.max(5_000, Number(timeoutMs) || 75_000);
+    let lastStartedAt = null;
+    let inFlight = null;
+
+    function start({ baseUrl, fetchImpl = fetch, now = Date.now } = {}) {
+        const normalizedBaseUrl = String(baseUrl || "").trim();
+        if (!normalizedBaseUrl) {
+            return { started: false, reason: "not_configured" };
+        }
+
+        const timestamp = Number(
+            typeof now === "function" ? now() : now
+        );
+        if (inFlight) {
+            return { started: false, reason: "in_flight", completion: inFlight };
+        }
+        if (
+            lastStartedAt !== null &&
+            Number.isFinite(timestamp) &&
+            timestamp - lastStartedAt < safeInterval
+        ) {
+            return { started: false, reason: "recent" };
+        }
+
+        lastStartedAt = Number.isFinite(timestamp) ? timestamp : Date.now();
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), safeTimeout);
+        const completion = (async () => {
+            const endpoint = new URL("/health", normalizeHervoiceEndpoint(normalizedBaseUrl)).toString();
+            try {
+                const response = await fetchImpl(endpoint, {
+                    method: "GET",
+                    headers: { "User-Agent": "DengTa-Home-Backend/Warmup" },
+                    signal: controller.signal
+                });
+                return response.ok;
+            } catch {
+                return false;
+            } finally {
+                clearTimeout(timer);
+                inFlight = null;
+            }
+        })();
+        inFlight = completion;
+        return { started: true, reason: "started", completion };
+    }
+
+    return { start };
+}
+
+function safeUploadFilename(value) {
+    const basename = path.basename(String(value || "voice.webm"));
+    const cleaned = basename.replace(/[^A-Za-z0-9._-]/g, "_").slice(-120);
+    return cleaned || "voice.webm";
+}
+
+async function analyzeVoiceWithHervoice({
+    file,
+    baseUrl,
+    secret,
+    timeoutMs = HERVOICE_DEFAULT_TIMEOUT_MS,
+    signal,
+    fetchImpl = fetch
+}) {
+    if (!file || !Buffer.isBuffer(file.buffer) || file.buffer.length === 0) {
+        throw badRequest("请先录制一段语音。");
+    }
+    const endpoint = normalizeHervoiceEndpoint(baseUrl);
+    const safeSecret = String(secret || "");
+    if (!safeSecret) {
+        const error = new Error("服务器还没有配置 HERVOICE_SECRET。");
+        error.status = 503;
+        throw error;
+    }
+
+    const safeTimeout = Math.min(
+        HERVOICE_MAX_TIMEOUT_MS,
+        Math.max(5_000, Number(timeoutMs) || HERVOICE_DEFAULT_TIMEOUT_MS)
+    );
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), safeTimeout);
+    const abortFromCaller = () => controller.abort();
+    if (signal) {
+        if (signal.aborted) controller.abort();
+        else signal.addEventListener("abort", abortFromCaller, { once: true });
+    }
+    const formData = new FormData();
+    formData.append(
+        "file",
+        new Blob([file.buffer], {
+            type: String(file.mimetype || "application/octet-stream")
+        }),
+        safeUploadFilename(file.originalname)
+    );
+
+    try {
+        let response;
+        try {
+            response = await fetchImpl(endpoint, {
+                method: "POST",
+                headers: {
+                    "X-Hervoice-Secret": safeSecret
+                },
+                body: formData,
+                signal: controller.signal
+            });
+        } catch (error) {
+            if (error?.name === "AbortError") {
+                if (signal?.aborted) {
+                    const cancelled = new Error("语音请求已取消。");
+                    cancelled.status = 499;
+                    cancelled.code = "VOICE_TURN_CANCELLED";
+                    throw cancelled;
+                }
+                const timeoutError = new Error("语音分析等待超时，请稍后重试。");
+                timeoutError.status = 504;
+                throw timeoutError;
+            }
+            const connectionError = new Error("无法连接语音分析服务，请稍后重试。");
+            connectionError.status = 502;
+            connectionError.cause = error;
+            throw connectionError;
+        }
+
+        let payload;
+        try {
+            payload = await response.json();
+        } catch {
+            throw upstreamError("语音分析服务返回了无法读取的结果。");
+        }
+        if (!response.ok) {
+            // 即使上游返回错误，尽可能提取转写文本，确保语音交互不中断
+            if (payload && typeof payload === "object" && typeof payload.text === "string" && payload.text.trim()) {
+                return sanitizeHervoiceAnalysisFallback(payload);
+            }
+            const error = upstreamError(
+                `语音分析服务暂时不可用（HTTP ${response.status}）。`
+            );
+            error.upstreamStatus = response.status;
+            throw error;
+        }
+
+        try {
+            return sanitizeHervoiceAnalysis(payload);
+        } catch {
+            // 情感分析校验失败时降级：只保留转写文本，忽略情绪/声学特征
+            return sanitizeHervoiceAnalysisFallback(payload);
+        }
+    } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener?.("abort", abortFromCaller);
+    }
+}
+
+const VOICE_ORPHAN_RESUME_MS = 175_000;
+
+function createVoiceTurnGuard({ now = Date.now, makeToken = randomUUID } = {}) {
+    const active = new Map();
+    return {
+        claim(key, ttlMs = 200_000) {
+            const normalized = String(key || "");
+            if (!normalized) return "";
+            const current = active.get(normalized);
+            if (current && now() < current.expiresAt) {
+                return "";
+            }
+            const token = String(makeToken());
+            active.set(normalized, {
+                at: now(),
+                token,
+                expiresAt: now() + Math.max(1_000, Number(ttlMs) || 200_000)
+            });
+            return token;
+        },
+        release(key, token) {
+            const normalized = String(key || "");
+            const current = active.get(normalized);
+            if (!current) return false;
+            if (!token || current.token !== String(token)) return false;
+            active.delete(normalized);
+            return true;
+        },
+        remainingMs(key) {
+            const current = active.get(String(key || ""));
+            if (!current) return 0;
+            return Math.max(0, current.expiresAt - now());
+        },
+        has(key) {
+            return active.has(String(key || ""));
+        },
+        get size() {
+            return active.size;
+        }
+    };
+}
+
+function setRetryAfterHeader(res, retryAfterMs, body) {
+    const seconds = Math.max(1, Math.ceil(Number(retryAfterMs) / 1000) || 1);
+    res.set("Retry-After", String(seconds));
+    if (body && typeof body === "object") {
+        body.retry_after_seconds = seconds;
+    }
+    return seconds;
+}
+
+function voiceTurnInProgressResponse(guard, key) {
+    const retryAfterSeconds = Math.max(
+        1,
+        Math.ceil((guard?.remainingMs?.(key) || 0) / 1000)
+    );
+    return {
+        status: 409,
+        headers: {
+            "Retry-After": String(retryAfterSeconds)
+        },
+        body: {
+            message: "这条语音正在处理中，请稍后刷新。",
+            code: "VOICE_TURN_IN_PROGRESS",
+            retry_after_seconds: retryAfterSeconds
+        }
+    };
+}
+
+function claimVoiceTurnOrRespond(res, guard, key, ttlMs) {
+    const token = guard.claim(key, ttlMs);
+    if (token) return token;
+    const response = voiceTurnInProgressResponse(guard, key);
+    res.status(response.status);
+    res.set(response.headers);
+    res.json(response.body);
+    return "";
+}
+
+function applyVoiceTurnInProgressResponse(res, guard, key) {
+    const response = voiceTurnInProgressResponse(guard, key);
+    res.status(response.status);
+    res.set(response.headers);
+    res.json(response.body);
+    return response;
+}
+
+function voiceOrphanRemainingMs(
+    previousUserMessage,
+    resumeAfterMs = VOICE_ORPHAN_RESUME_MS,
+    now = Date.now()
+) {
+    const leaseExpiresAt = Date.parse(
+        String(previousUserMessage?.chat_generation_lease_expires_at || "")
+    );
+    if (Number.isFinite(leaseExpiresAt)) {
+        return Math.max(0, leaseExpiresAt - now);
+    }
+    const createdAt = Date.parse(String(previousUserMessage?.created_at || ""));
+    const ttl = Math.max(180_000, Number(resumeAfterMs) || VOICE_ORPHAN_RESUME_MS);
+    if (!Number.isFinite(createdAt)) return ttl;
+    return Math.max(0, ttl - Math.max(0, now - createdAt));
+}
+
+async function claimVoiceGenerationLease({
+    clientMessageId,
+    savedUserMessage,
+    resumedUserMessage,
+    store,
+    leaseId,
+    ownership
+}) {
+    if (!clientMessageId || !savedUserMessage || !resumedUserMessage) {
+        return null;
+    }
+    if (!store || typeof store.claim !== "function") {
+        throw new TypeError("Voice generation lease store is required.");
+    }
+    return store.claim(clientMessageId, leaseId, ownership);
+}
+
+function voiceTurnRecoveryResponse(remainingMs) {
+    const seconds = Math.max(1, Math.ceil(Number(remainingMs) / 1000) || 1);
+    return {
+        status: 409,
+        headers: { "Retry-After": String(seconds) },
+        body: {
+            message: `这条语音正在恢复，请 ${seconds} 秒后再试。`,
+            code: "VOICE_TURN_RECOVERING",
+            retry_after_seconds: seconds
+        }
+    };
+}
+
+function voiceOrphanResumeWindowMs(rawValue) {
+    return Math.min(
+        600_000,
+        Math.max(175_000, Number(rawValue) || 175_000)
+    );
+}
+
+function canResumeVoiceOrphan(
+    previousUserMessage,
+    now = Date.now(),
+    resumeAfterMs = VOICE_ORPHAN_RESUME_MS
+) {
+    const state = previousUserMessage?.chat_generation_state;
+    if (state === "failed") return true;
+    if (state === "completed") return false;
+    const leaseExpiresAt = Date.parse(
+        String(previousUserMessage?.chat_generation_lease_expires_at || "")
+    );
+    if (Number.isFinite(leaseExpiresAt)) return now >= leaseExpiresAt;
+    const createdAt = Date.parse(String(previousUserMessage?.created_at || ""));
+    if (!Number.isFinite(createdAt)) return false;
+    const threshold = Math.max(175_000, Number(resumeAfterMs) || VOICE_ORPHAN_RESUME_MS);
+    return now - createdAt >= threshold;
+}
+
+function raceWithAbort(promise, signal, makeError) {
+    return new Promise((resolve, reject) => {
+        let settled = false;
+        const settle = (fn, value) => {
+            if (settled) return;
+            settled = true;
+            signal?.removeEventListener?.("abort", abort);
+            fn(value);
+        };
+        const abort = () => {
+            if (settled) return;
+            settled = true;
+            reject(makeError());
+        };
+        if (signal?.aborted) {
+            // The input promise is abandoned by this early-abort path; attach a
+            // rejection handler so a later provider failure cannot become an
+            // unhandledRejection (fatal on Node 24).
+            promise.catch(() => {});
+            abort();
+            return;
+        }
+        signal?.addEventListener?.("abort", abort, { once: true });
+        promise.then(
+            (value) => settle(resolve, value),
+            (error) => settle(reject, error)
+        );
+    });
+}
+
+function createVoiceRateLimitState({
+    windowMs = 60_000,
+    maxRequests = 6
+} = {}) {
+    const safeWindowMs = Math.min(
+        60 * 60 * 1000,
+        Math.max(1_000, Number(windowMs) || 60_000)
+    );
+    const safeMaxRequests = Math.min(
+        100,
+        Math.max(1, Math.round(Number(maxRequests) || 6))
+    );
+    const buckets = new Map();
+
+    function consume(key, now = Date.now()) {
+        const safeKey = String(key || "unknown");
+        const cutoff = now - safeWindowMs;
+        const recent = (buckets.get(safeKey) || []).filter(
+            (timestamp) => timestamp > cutoff
+        );
+        if (recent.length >= safeMaxRequests) {
+            return {
+                allowed: false,
+                retryAfterMs: Math.max(1_000, safeWindowMs - (now - recent[0]))
+            };
+        }
+        recent.push(now);
+        buckets.set(safeKey, recent);
+
+        if (buckets.size > 5_000) {
+            for (const [bucketKey, timestamps] of buckets) {
+                if (!timestamps.some((timestamp) => timestamp > cutoff)) {
+                    buckets.delete(bucketKey);
+                }
+            }
+        }
+
+        return { allowed: true, retryAfterMs: 0 };
+    }
+
+    return { consume };
+}
+
+module.exports = {
+    HERVOICE_EMOTIONS,
+    HERVOICE_DEFAULT_TIMEOUT_MS,
+    HERVOICE_MAX_TIMEOUT_MS,
+    HERVOICE_FEATURE_FIELDS,
+    LOW_CONFIDENCE_THRESHOLD,
+    analyzeVoiceWithHervoice,
+    inferTextEmotion,
+    buildVoiceMessageMetadata,
+    buildVoiceRuntimeContext,
+    createVoiceRateLimitState,
+    createHervoiceWarmup,
+    normalizeHervoiceEndpoint,
+    parseCompanionStatusJson,
+    parseMultipartBoolean,
+    parseTurnContext,
+    parseVoiceTurnFields,
+    canResumeVoiceOrphan,
+    createVoiceTurnGuard,
+    applyVoiceTurnInProgressResponse,
+    setRetryAfterHeader,
+    claimVoiceGenerationLease,
+    claimVoiceTurnOrRespond,
+    voiceOrphanRemainingMs,
+    voiceOrphanResumeWindowMs,
+    voiceTurnRecoveryResponse,
+    voiceTurnInProgressResponse,
+    VOICE_ORPHAN_RESUME_MS,
+    raceWithAbort,
+    publicVoiceAnalysis,
+    sanitizeHervoiceAnalysis,
+    sanitizeHervoiceAnalysisFallback,
+    sanitizeVoiceFeatures
+};

@@ -1,0 +1,20 @@
+{
+  "trace_prefix": "[BUGFIX_REPRO_TRACE]",
+  "instrumentation_added": true,
+  "instrumented_locations": [
+    {
+      "file": "services/calendar-consolidation.js",
+      "location_type": "project_source",
+      "method_or_region": "runCalendarConsolidation active-row loading and job generation",
+      "debug_question": "Do loaded rows preserve tenant identifiers, and does one consolidation pass produce source IDs spanning multiple tenants?",
+      "trace_kind": "state_and_control_flow",
+      "observed_values_or_branches": [
+        "active row IDs and tenant identifiers",
+        "generated job targets and sourceIds"
+      ]
+    }
+  ],
+  "trace_output_observed": true,
+  "diagnostic_output_path": ".bugfix/calendar-consolidation-multitenant-20260813/reproduction/diagnostic_observations.txt",
+  "summary": "Execution observed fourteen loaded rows without tenant fields and one week job whose sourceIds include identifiers from both test tenants."
+}
