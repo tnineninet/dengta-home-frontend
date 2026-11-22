@@ -1,0 +1,683 @@
+diff --git a/android/app/build.gradle b/android/app/build.gradle
+index 5c63aaf..9770f15 100644
+--- a/android/app/build.gradle
++++ b/android/app/build.gradle
+@@ -15,8 +15,8 @@ android {
+         applicationId "home.dengta.app"
+         minSdkVersion rootProject.ext.minSdkVersion
+         targetSdkVersion rootProject.ext.targetSdkVersion
+-        versionCode 49
+-        versionName "2.9.2"
++        versionCode 50
++        versionName "2.9.3"
+         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+         aaptOptions {
+              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+diff --git a/android/app/capacitor.build.gradle b/android/app/capacitor.build.gradle
+index a064f6f..febcb01 100644
+--- a/android/app/capacitor.build.gradle
++++ b/android/app/capacitor.build.gradle
+@@ -9,6 +9,7 @@ android {
+ 
+ apply from: "../capacitor-cordova-android-plugins/cordova.variables.gradle"
+ dependencies {
++    implementation project(':capacitor-clipboard')
+     implementation project(':capacitor-local-notifications')
+ 
+ }
+diff --git a/android/capacitor.settings.gradle b/android/capacitor.settings.gradle
+index 127f1ac..09397b4 100644
+--- a/android/capacitor.settings.gradle
++++ b/android/capacitor.settings.gradle
+@@ -2,5 +2,8 @@
+ include ':capacitor-android'
+ project(':capacitor-android').projectDir = new File('../node_modules/@capacitor/android/capacitor')
+ 
++include ':capacitor-clipboard'
++project(':capacitor-clipboard').projectDir = new File('../node_modules/@capacitor/clipboard/android')
++
+ include ':capacitor-local-notifications'
+ project(':capacitor-local-notifications').projectDir = new File('../node_modules/@capacitor/local-notifications/android')
+diff --git a/package-lock.json b/package-lock.json
+index 2d235b1..25f4980 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,14 +1,15 @@
+ {
+   "name": "dengta-home-react",
+-  "version": "2.9.2",
++  "version": "2.9.3",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "dengta-home-react",
+-      "version": "2.9.2",
++      "version": "2.9.3",
+       "dependencies": {
+         "@capacitor/android": "^8.4.2",
++        "@capacitor/clipboard": "^8.0.1",
+         "@capacitor/core": "^8.4.2",
+         "@capacitor/local-notifications": "^8.0.0",
+         "@supabase/auth-js": "^2.110.8",
+@@ -755,6 +756,15 @@
+         "node": ">=10"
+       }
+     },
++    "node_modules/@capacitor/clipboard": {
++      "version": "8.0.1",
++      "resolved": "https://registry.npmjs.org/@capacitor/clipboard/-/clipboard-8.0.1.tgz",
++      "integrity": "sha512-iOlbTi8MojKyLnYE+M27priXid7vHd0PlDwyHohPzkuQ8Rkp6q7ykwZmPEUD+OnU/Ink7Qw/pUOfKgraKmA6Eg==",
++      "license": "MIT",
++      "peerDependencies": {
++        "@capacitor/core": ">=8.0.0"
++      }
++    },
+     "node_modules/@capacitor/core": {
+       "version": "8.4.2",
+       "resolved": "https://registry.npmjs.org/@capacitor/core/-/core-8.4.2.tgz",
+diff --git a/package.json b/package.json
+index 1294e7e..586e460 100644
+--- a/package.json
++++ b/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "dengta-home-react",
+   "private": true,
+-  "version": "2.9.2",
++  "version": "2.9.3",
+   "type": "module",
+   "scripts": {
+     "pretest": "node --test test/mobile-chat-shell.test.js && node test/settings-folders.test.js && npm run test:music-listening",
+@@ -70,6 +70,7 @@
+   },
+   "dependencies": {
+     "@capacitor/android": "^8.4.2",
++    "@capacitor/clipboard": "^8.0.1",
+     "@capacitor/core": "^8.4.2",
+     "@capacitor/local-notifications": "^8.0.0",
+     "@supabase/auth-js": "^2.110.8",
+diff --git a/src/App.jsx b/src/App.jsx
+index 6665d1a..0714474 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -676,6 +676,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
+   const effectiveAiName =
+     String(settings.ai_name || "").trim() || "伴侣";
+   const [activeView, setActiveView] = useState("chat");
++  const [togetherEntryMode, setTogetherEntryMode] = useState("external");
+   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+   const [settingsCategory, setSettingsCategory] = useState(null);
+   const [settingsFocusTarget, setSettingsFocusTarget] = useState("");
+@@ -6198,6 +6199,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
+     return (
+       <Suspense fallback={<DeferredFeature label="正在打开一起看…" />}>
+         <Together
++          key={`together-${togetherEntryMode}`}
+           aiName={effectiveAiName}
+           accountScope={accountStorageScope}
+           session={coWatchSession}
+@@ -6258,6 +6260,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
+               setIsScreenGlanceBusy(false);
+             }
+           }}
++          initialMode={togetherEntryMode}
+         />
+       </Suspense>
+     );
+@@ -6836,7 +6839,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
+             {settingsCategory === "devices" && (
+               <>
+             <Suspense fallback={<DeferredFeature label="正在打开一起听歌设置…" />}>
+-              <MusicSettings providerStatus={providerStatus} />
++              <MusicSettings providerStatus={providerStatus} onOpenMcpDeviceCenter={() => { setSettingsCategory("devices"); setSettingsFocusTarget("mcp-device-center"); }} />
+             </Suspense>
+             <div className="notification-feature-panel device-activity-panel">
+               <div className="device-activity-heading">
+@@ -7275,7 +7278,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
+             )}
+             {settingsCategory === "devices" && (
+               <Suspense fallback={<DeferredFeature label="正在打开设备连接…" />}>
+-                <McpDeviceCenter />
++                <div id="mcp-device-center"><McpDeviceCenter /></div>
+               </Suspense>
+             )}
+             {settingsCategory === "voice" && (
+@@ -7504,7 +7507,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
+             onChange={setCompanionStatus}
+             onExpandedChange={handleStatusPanelExpandedChange}
+             onInteract={handleCompanionInteraction}
+-            onWatchTogether={() => changeView("together")}
++            onListenTogether={() => { setTogetherEntryMode("music"); changeView("together"); }}
++            onWatchTogether={() => { setTogetherEntryMode("external"); changeView("together"); }}
+             onOpenNavigation={() => setIsSidebarOpen(true)}
+             onOpenSettings={openSettingsPanel}
+           />
+diff --git a/src/CompanionStatus.jsx b/src/CompanionStatus.jsx
+index 3430e4b..3c3bbae 100644
+--- a/src/CompanionStatus.jsx
++++ b/src/CompanionStatus.jsx
+@@ -78,6 +78,7 @@ function CompanionStatus({
+   onExpandedChange,
+   onInteract,
+   onWatchTogether,
++  onListenTogether,
+   onOpenNavigation,
+   onOpenSettings,
+ }) {
+@@ -272,6 +273,7 @@ function CompanionStatus({
+   function runDesireAction(action) {
+     const baseAction = RECOVERY_ACTIONS.find((item) => item.id === "wish");
+     if (!baseAction) return;
++    if (action.id === "music") onListenTogether?.();
+     if (action.id === "watching") onWatchTogether?.();
+     touchZone({
+       ...baseAction,
+diff --git a/src/McpDeviceCenter.jsx b/src/McpDeviceCenter.jsx
+index 52c4248..d59047e 100644
+--- a/src/McpDeviceCenter.jsx
++++ b/src/McpDeviceCenter.jsx
+@@ -11,10 +11,17 @@ const EMPTY_DRAFT = {
+   protocol_version: "2025-03-26",
+ };
+ 
++const NETEASE_MCP_PRESET = Object.freeze({
++  ...EMPTY_DRAFT,
++  name: "网易云音乐 MCP（自托管）",
++  endpoint: "https://你的公网域名/mcp",
++});
++
+ async function mcpRequest(path, { method = "GET", body } = {}) {
+   try {
+     return await apiRequest(path, {
+       method,
++      timeoutMs: 12_000,
+       headers: { Accept: "application/json" },
+       body: body === undefined ? undefined : JSON.stringify(body),
+     });
+@@ -65,10 +72,20 @@ export default function McpDeviceCenter() {
+     setDiscovery(null);
+   }
+ 
++  function validateDraft() {
++    let endpoint;
++    try { endpoint = new URL(draft.endpoint); } catch { throw new Error("请填写完整的公网 HTTPS MCP 地址。"); }
++    if (endpoint.protocol !== "https:") throw new Error("云端 MCP 只支持公网 HTTPS 端点。");
++    if (/网易云|netease/i.test(draft.name) && endpoint.pathname !== "/mcp") throw new Error("网易云 MCP 只支持用户自托管的公网 HTTPS /mcp 端点。");
++    if (draft.auth_type === "custom_header" && draft.auth_header.trim().toLowerCase() === "cookie") throw new Error("DengTa 绝不接收或转发 Cookie 请求头，请改用 MCP 服务自己的 Token/API Key（如有）。");
++    if (/(?:MUSIC_U|__csrf|NETEASE_COOKIE)\s*=/i.test(draft.credential)) throw new Error("请不要向 DengTa 填写 MUSIC_U、__csrf、NETEASE_COOKIE 或任何 Cookie；它们只能配置在你自托管的 MCP 服务端。");
++  }
++
+   async function discover() {
+     setBusy("discover");
+     setFeedback("");
+     try {
++      validateDraft();
+       const data = await mcpRequest("/api/mcp/connections/manage/discover", {
+         method: "POST",
+         body: draft,
+@@ -88,6 +105,7 @@ export default function McpDeviceCenter() {
+     setBusy("create");
+     setFeedback("");
+     try {
++      validateDraft();
+       const data = await mcpRequest("/api/mcp/connections/manage", {
+         method: "POST",
+         body: draft,
+@@ -171,7 +189,7 @@ export default function McpDeviceCenter() {
+         <div>
+           <h3>MCP 设备中心</h3>
+           <p className="card-hint">
+-            接入空调、灯、Home Assistant 或其他 MCP 服务。模型会根据对话选择你明确授权的工具；这是一套可核验的工具调用机制，不是意识。
++            接入空调、灯、Home Assistant、网易云音乐或其他 MCP 服务。模型只会使用你明确授权的工具；这是一套可核验的工具调用机制，不是意识。
+           </p>
+         </div>
+         <span className={`status-chip ${status.available ? "online" : "pending"}`}>
+@@ -184,6 +202,13 @@ export default function McpDeviceCenter() {
+         <p>新连接的所有工具均为“禁止自动执行”。你必须逐项改成允许并启用连接，聊天模型才看得到它。设备凭据只在后端加密保存，不会回传页面。</p>
+       </div>
+ 
++      <div className="mcp-setup-required netease-mcp-preset" role="note">
++        <strong>网易云音乐 MCP · Vael-KY/netease-music-mcp</strong>
++        <p>仅支持你自行部署并公开的 <code>https://你的域名/mcp</code>。请只在自托管服务端配置 <code>MUSIC_U</code>、<code>__csrf</code> 或 <code>NETEASE_COOKIE</code>；DengTa 不接收这些值，也绝不接收 Cookie 请求头。</p>
++        <p>MCP 可用于查询/管理歌单、推荐和收藏。工具返回的 <code>play_music</code> 网页入口只用于前往网易云，不代表能在 DengTa 内播放。</p>
++        <button type="button" className="secondary-button" disabled={Boolean(busy)} onClick={() => { setDraft(NETEASE_MCP_PRESET); setDiscovery(null); setFeedback("已填入网易云 MCP 安全预设，请把域名替换为你自托管的公网 HTTPS 地址。"); }}>使用网易云 MCP 预设</button>
++      </div>
++
+       <div className="mcp-setup-required" role="note">
+         <strong>迁移后设备测试失败 / Device test fails after migration</strong>
+         <p>无需删除连接。在对应卡片的“更新访问令牌”重新填写 Token，保存权限后再测试 / Re-enter the token on the existing connection, save it, then test again.</p>
+@@ -219,7 +244,7 @@ export default function McpDeviceCenter() {
+               <label className="full-width">
+                 完整 MCP 地址
+                 <input value={draft.endpoint} onChange={(event) => updateDraft("endpoint", event.target.value)} placeholder="例如：https://你的-home-assistant.example.com/api/mcp" />
+-                <small>必须填写完整 HTTPS 端点，不要只填网站首页；云端不能访问 192.168.x.x 或 localhost。</small>
++                <small>必须填写完整公网 HTTPS 端点；网易云预设必须以 /mcp 结尾。不要填网站首页、192.168.x.x、localhost 或 Cookie。</small>
+               </label>
+               <label>
+                 授权方式
+@@ -232,7 +257,7 @@ export default function McpDeviceCenter() {
+               {draft.auth_type === "custom_header" && (
+                 <label>
+                   请求头名称
+-                  <input value={draft.auth_header} onChange={(event) => updateDraft("auth_header", event.target.value)} placeholder="X-API-Key" />
++                    <input value={draft.auth_header} onChange={(event) => updateDraft("auth_header", event.target.value)} placeholder="X-API-Key（禁止 Cookie）" />
+                 </label>
+               )}
+               {draft.auth_type !== "none" && (
+diff --git a/src/MusicSettings.jsx b/src/MusicSettings.jsx
+index a8c0bd3..f8e5e4f 100644
+--- a/src/MusicSettings.jsx
++++ b/src/MusicSettings.jsx
+@@ -1,5 +1,7 @@
+-import { useEffect, useState } from "react";
++import { Clipboard } from "@capacitor/clipboard";
++import { useEffect, useRef, useState } from "react";
+ import {
++  detectNeteasePlaylistShare,
+   deleteMusicPlaylist,
+   getMusicPlaylist,
+   importMusicPlaylist,
+@@ -9,10 +11,14 @@ import {
+ const PROVIDERS = [
+   ["local_playlist", "本地歌单", "ready", "可用"],
+   ["direct_https", "HTTPS 音频直链", "ready", "可用"],
+-  ["netease", "网易云音乐", "unconnected", "官方 OAuth 未连接 / 暂不可连接"],
++  ["netease", "网易云音乐 MCP", "unconnected", "等待用户自托管连接"],
+ ];
+ 
+-export default function MusicSettings({ providerStatus = null }) {
++const PLAYLIST_ACCEPT = ".json,.m3u,.m3u8,.txt,application/json,text/plain,audio/x-mpegurl";
++const AUDIO_ACCEPT = ".mp3,.m4a,.aac,.wav,.ogg,.opus,.flac,audio/mpeg,audio/mp4,audio/aac,audio/wav,audio/ogg,audio/opus,audio/flac";
++const AUDIO_EXTENSION = /\.(?:mp3|m4a|aac|wav|ogg|opus|flac)$/i;
++
++export default function MusicSettings({ providerStatus = null, onOpenMcpDeviceCenter }) {
+   const [playlists, setPlaylists] = useState([]);
+   const [selected, setSelected] = useState(null);
+   const [format, setFormat] = useState("auto");
+@@ -20,11 +26,29 @@ export default function MusicSettings({ providerStatus = null }) {
+   const [content, setContent] = useState("");
+   const [fileName, setFileName] = useState("");
+   const [busy, setBusy] = useState(false);
++  const [refreshing, setRefreshing] = useState(false);
++  const [fileBusy, setFileBusy] = useState(false);
++  const [clipboardBusy, setClipboardBusy] = useState(false);
++  const [localAudio, setLocalAudio] = useState(null);
+   const [error, setError] = useState("");
+   const [message, setMessage] = useState("");
+ 
+-  async function refresh() {
+-    try { setPlaylists(await listMusicPlaylists()); } catch (caught) { setError(caught?.message || "歌单暂时无法读取。"); }
++  const localAudioUrlRef = useRef("");
++  const neteaseShare = detectNeteasePlaylistShare(content);
++  const canImport = Boolean(content.trim()) && !busy;
++
++  async function refresh({ quiet = false } = {}) {
++    setRefreshing(true);
++    if (!quiet) setError("");
++    try {
++      setPlaylists(await listMusicPlaylists());
++      return true;
++    } catch (caught) {
++      setError(caught?.message || "歌单暂时无法读取，请稍后重试。");
++      return false;
++    } finally {
++      setRefreshing(false);
++    }
+   }
+   useEffect(() => {
+     let active = true;
+@@ -35,37 +59,103 @@ export default function MusicSettings({ providerStatus = null }) {
+     });
+     return () => { active = false; };
+   }, []);
++  useEffect(() => () => {
++    if (localAudioUrlRef.current) URL.revokeObjectURL(localAudioUrlRef.current);
++  }, []);
+ 
+   async function importPlaylist() {
++    if (neteaseShare) {
++      setError("");
++      setMessage(`已识别 ${neteaseShare.provider} 歌单 ${neteaseShare.playlistId}；网页分享不会导入，请使用网易云 MCP 或合法歌单文件。`);
++      return;
++    }
+     setBusy(true); setError(""); setMessage("");
+     try {
+       await importMusicPlaylist({ format, sourceName: fileName || "粘贴内容", name, content });
+       setContent(""); setFileName(""); setMessage("歌单已导入。曲目地址仍由浏览器直接访问，不经过 DengTa 后端代理。");
+-      await refresh();
++      void refresh({ quiet: true }).then((ok) => {
++        if (!ok) setMessage("歌单已导入；列表刷新失败，可稍后手动刷新，页面仍可继续使用。");
++      });
+     } catch (caught) { setError(caught?.message || "歌单导入失败。"); } finally { setBusy(false); }
+   }
+ 
+   async function removePlaylist(id) {
+     setBusy(true); setError("");
+-    try { await deleteMusicPlaylist(id); setSelected(null); await refresh(); } catch (caught) { setError(caught?.message || "歌单删除失败。"); } finally { setBusy(false); }
++    try {
++      await deleteMusicPlaylist(id); setSelected(null); setMessage("歌单已删除。");
++      void refresh({ quiet: true }).then((ok) => {
++        if (!ok) setMessage("歌单已删除；列表刷新失败，可稍后手动刷新。");
++      });
++    } catch (caught) { setError(caught?.message || "歌单删除失败。"); } finally { setBusy(false); }
++  }
++
++  async function readClipboard() {
++    setClipboardBusy(true); setError("");
++    try {
++      let value = "";
++      try { value = String((await Clipboard.read())?.value || ""); } catch {
++        if (!navigator.clipboard?.readText) throw new Error("当前设备不允许读取剪贴板，请长按输入框手动粘贴。");
++        value = await navigator.clipboard.readText();
++      }
++      if (!value.trim()) throw new Error("剪贴板里没有可读取的文本，请复制歌单内容后重试。");
++      setContent(value);
++      setMessage("已从剪贴板读取文本，请确认识别状态后继续。");
++    } catch (caught) {
++      setError(caught?.message || "剪贴板权限被拒绝。你可以授权后重试，或长按输入框手动粘贴。");
++    } finally { setClipboardBusy(false); }
++  }
++
++  async function choosePlaylistFile(event) {
++    const input = event.currentTarget;
++    setFileBusy(true); setError("");
++    try {
++      const file = input.files?.[0];
++      if (!file) return;
++      const lower = file.name.toLowerCase();
++      setFileName(file.name);
++      setFormat(lower.endsWith(".json") ? "json" : /\.m3u8?$/.test(lower) ? "m3u" : "txt");
++      setContent(await file.text());
++      setMessage(`已读取歌单文件：${file.name}`);
++    } catch (caught) { setError(caught?.message || "歌单文件读取失败，请重新选择。"); }
++    finally { input.value = ""; setFileBusy(false); }
++  }
++
++  function chooseLocalAudio(event) {
++    const input = event.currentTarget;
++    setFileBusy(true); setError("");
++    try {
++      const file = input.files?.[0];
++      if (!file) return;
++      if (!AUDIO_EXTENSION.test(file.name) && !String(file.type).startsWith("audio/")) throw new Error("请选择 MP3、M4A、AAC、WAV、OGG、OPUS 或 FLAC 音频文件。");
++      if (localAudioUrlRef.current) URL.revokeObjectURL(localAudioUrlRef.current);
++      const url = URL.createObjectURL(file);
++      localAudioUrlRef.current = url;
++      setLocalAudio({ name: file.name, url, type: file.type });
++      setMessage(`已在本机载入：${file.name}`);
++    } catch (caught) { setError(caught?.message || "本机音频选择失败，请重试。"); }
++    finally { input.value = ""; setFileBusy(false); }
+   }
+ 
+   return <section className="music-settings settings-card" aria-labelledby="music-settings-title">
+-    <div className="settings-card-heading"><div><span className="settings-kicker">LISTENING</span><h3 id="music-settings-title">一起听歌</h3><p>只播放你提供的公开音频地址，不下载、不代理、不绕过 DRM。</p></div><button type="button" onClick={() => void refresh()} disabled={busy}>刷新</button></div>
++    <div className="settings-card-heading"><div><span className="settings-kicker">LISTENING</span><h3 id="music-settings-title">一起听歌</h3><p>只播放你提供的公开音频地址，不下载、不代理、不绕过 DRM。</p></div><button type="button" onClick={() => void refresh()} disabled={refreshing}>{refreshing ? "刷新中…" : "刷新"}</button></div>
+     <div className="music-provider-grid" aria-label="音乐 Provider 状态">
+       {PROVIDERS.map(([id, label, fallbackStatus, fallbackText]) => {
+         const remote = Array.isArray(providerStatus?.providers) ? providerStatus.providers.find((item) => item?.id === id) : null;
+         const status = remote?.status || fallbackStatus;
+-        return <div className="music-provider-status" key={id}><strong>{label}</strong><span className={`provider-dot ${status}`}>{remote?.display_name || fallbackText}</span>{id === "netease" && <small>仅支持官方 OAuth；当前没有可连接入口。</small>}</div>;
++        return <div className="music-provider-status" key={id}><strong>{label}</strong><span className={`provider-dot ${status}`}>{remote?.display_name || fallbackText}</span>{id === "netease" && <><small>可通过用户自托管的网易云 MCP 管理歌单；网页分享不会被当作音频导入。</small><button type="button" onClick={onOpenMcpDeviceCenter}>去连接网易云 MCP</button></>}</div>;
+       })}
+     </div>
+     <div className="music-import-grid">
+       <label>歌单名称<input value={name} maxLength={180} onChange={(event) => setName(event.target.value)} /></label>
+       <label>格式<select value={format} onChange={(event) => setFormat(event.target.value)}><option value="auto">自动识别</option><option value="json">JSON</option><option value="m3u">M3U / M3U8</option><option value="txt">TXT</option></select></label>
+-      <label className="music-file-label">导入文件<input type="file" accept=".json,.m3u,.m3u8,.txt,application/json,text/plain,audio/x-mpegurl" disabled={busy} onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; setFileName(file.name); setFormat(file.name.toLowerCase().endsWith(".json") ? "json" : file.name.toLowerCase().match(/\.m3u8?$/) ? "m3u" : "txt"); setContent(await file.text()); event.target.value = ""; }} /></label>
++      <label className="music-file-label">导入歌单文件（JSON/M3U/M3U8/TXT）<input type="file" accept={PLAYLIST_ACCEPT} disabled={busy || fileBusy} onChange={(event) => void choosePlaylistFile(event)} /></label>
++      <label className="music-file-label">选择本机音频（MP3/M4A/AAC/WAV/OGG/OPUS/FLAC）<input type="file" accept={AUDIO_ACCEPT} disabled={fileBusy} onChange={chooseLocalAudio} /></label>
+       <label className="music-content-label">粘贴歌单文本<textarea value={content} onChange={(event) => setContent(event.target.value)} rows={7} placeholder="JSON、M3U 或每行一个 HTTPS 音频地址" /></label>
++      <div className="music-clipboard-actions"><button type="button" disabled={clipboardBusy || busy} onClick={() => void readClipboard()}>{clipboardBusy ? "读取中…" : "读取剪贴板"}</button><span role="status">{content.trim() ? `已输入 ${content.trim().length} 个字符，可执行主操作。` : "等待粘贴或读取歌单文本。"}</span></div>
+     </div>
+-    <button type="button" className="together-primary" disabled={busy || !content.trim()} onClick={() => void importPlaylist()}>导入歌单</button>
++    {neteaseShare && <div className="music-share-recognition" role="status"><strong>{neteaseShare.provider}</strong><span>Playlist ID：{neteaseShare.playlistId}</span><span>标题提示：{neteaseShare.title}</span><p>这是网页分享入口，不是音频 URL，DengTa 不会抓取网页或声称已导入。</p><button type="button" onClick={onOpenMcpDeviceCenter}>去连接网易云 MCP</button></div>}
++    <button type="button" className="together-primary" disabled={!canImport} onClick={() => void importPlaylist()}>{busy ? "正在导入…" : neteaseShare ? "确认识别结果（不会导入）" : "导入歌单"}</button>
++    {localAudio && <section className="music-local-audio" aria-label="本机音频播放器"><strong>{localAudio.name}</strong><audio src={localAudio.url} controls playsInline preload="metadata" /><p>仅本机播放，不能投屏/跨设备同步；文件不会上传、发送后端或交给 AI。</p></section>}
+     {error && <p className="music-feedback is-error" role="alert">{error}</p>}{message && <p className="music-feedback" role="status">{message}</p>}
+     <div className="music-playlist-list"><h4>已保存歌单</h4>{playlists.length ? playlists.map((playlist) => <article key={playlist.id}><button type="button" className="music-playlist-summary" onClick={async () => setSelected(await getMusicPlaylist(playlist.id))}><strong>{playlist.name}</strong><span>{playlist.itemCount} 首 · {playlist.provider}</span></button><button type="button" className="danger" disabled={busy} onClick={() => void removePlaylist(playlist.id)}>删除</button></article>) : <p>还没有导入歌单。</p>}</div>
+     {selected && <section className="music-playlist-detail" aria-label="歌单详情"><h4>{selected.name}</h4>{selected.items.map((item, index) => <div key={item.id || index}><span>{index + 1}</span><strong>{item.title}</strong><small>{item.artist || "未知艺术家"}</small></div>)}</section>}
+diff --git a/src/Together.jsx b/src/Together.jsx
+index 9eccb95..52f8d0c 100644
+--- a/src/Together.jsx
++++ b/src/Together.jsx
+@@ -60,6 +60,7 @@ export default function Together({
+   onGenerateCastPairing,
+   dialog = [],
+   onReply,
++  initialMode = "external",
+ }) {
+   const [restoredDirectMedia] = useState(() =>
+     readDirectMediaSession(globalThis.sessionStorage, accountScope),
+@@ -69,7 +70,7 @@ export default function Together({
+       ? "music"
+       : session?.sourceApp === DIRECT_MEDIA_SOURCE_APP || restoredDirectMedia?.url
+       ? "direct"
+-      : "external",
++      : initialMode === "music" ? "music" : "external",
+   );
+   const [title, setTitle] = useState(
+     session?.title || restoredDirectMedia?.title || "",
+@@ -336,7 +337,7 @@ export default function Together({
+         </span>
+       </header>
+ 
+-      <div className="together-mode-switch" role="tablist" aria-label="一起看方式">
++      {selectedMode !== "music" && <div className="together-mode-switch" role="tablist" aria-label="一起看方式">
+         <button
+           type="button"
+           role="tab"
+@@ -359,18 +360,7 @@ export default function Together({
+           <Link2 aria-hidden="true" />
+           DengTa 视频直链
+         </button>
+-        <button
+-          type="button"
+-          role="tab"
+-          aria-selected={selectedMode === "music"}
+-          className={selectedMode === "music" ? "is-selected" : ""}
+-          disabled={modeLocked && selectedMode !== "music"}
+-          onClick={() => setMode("music")}
+-        >
+-          <Music2 aria-hidden="true" />
+-          一起听歌
+-        </button>
+-      </div>
++      </div>}
+ 
+       <div className="together-layout">
+         <div className="together-stage">
+diff --git a/src/TogetherMusic.jsx b/src/TogetherMusic.jsx
+index 5b0e0b8..43d7992 100644
+--- a/src/TogetherMusic.jsx
++++ b/src/TogetherMusic.jsx
+@@ -9,6 +9,7 @@ import {
+   Music2,
+   Pause,
+   Play,
++  RefreshCw,
+   Repeat2,
+   Shuffle,
+   SkipBack,
+@@ -51,6 +52,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
+   const [favorites, setFavorites] = useState([]);
+   const [queue, setQueue] = useState(null);
+   const [loading, setLoading] = useState(true);
++  const [refreshing, setRefreshing] = useState(false);
+   const [queueBusy, setQueueBusy] = useState(false);
+   const [favoriteBusy, setFavoriteBusy] = useState(false);
+   const [playing, setPlaying] = useState(false);
+@@ -153,20 +155,30 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
+     });
+   };
+ 
++  const refreshLibrary = useCallback(async ({ initial = false } = {}) => {
++    if (initial) setLoading(true);
++    else setRefreshing(true);
++    setError("");
++    try {
++      const [playlistResult, favoriteResult] = await Promise.allSettled([listMusicPlaylists(), listMusicFavorites()]);
++      if (!mountedRef.current) return;
++      if (playlistResult.status === "fulfilled") {
++        setPlaylists(playlistResult.value);
++        setStatus(playlistResult.value.length ? "选择歌单后即可开始。" : "还没有可播放歌单，请先在设置中导入。");
++      }
++      if (favoriteResult.status === "fulfilled") setFavorites(favoriteResult.value);
++      const failure = playlistResult.status === "rejected" ? playlistResult.reason : favoriteResult.status === "rejected" ? favoriteResult.reason : null;
++      if (failure) setError(failure?.message || "部分音乐资料暂时无法读取，可稍后重试。");
++    } finally {
++      if (mountedRef.current) { setLoading(false); setRefreshing(false); }
++    }
++  }, []);
++
+   useEffect(() => {
+     mountedRef.current = true;
+-    Promise.all([listMusicPlaylists(), listMusicFavorites()]).then(([nextPlaylists, nextFavorites]) => {
+-      if (!mountedRef.current) return;
+-      setPlaylists(nextPlaylists);
+-      setFavorites(nextFavorites);
+-      setStatus(nextPlaylists.length ? "选择歌单后即可开始。" : "还没有可播放歌单，请先在设置中导入。");
+-    }).catch((caught) => {
+-      if (mountedRef.current) setError(caught?.message || "歌单与收藏暂时无法读取。");
+-    }).finally(() => {
+-      if (mountedRef.current) setLoading(false);
+-    });
++    void Promise.resolve().then(() => refreshLibrary({ initial: true }));
+     return () => { mountedRef.current = false; };
+-  }, []);
++  }, [refreshLibrary]);
+ 
+   useEffect(() => {
+     if (!active || !session.id) {
+@@ -392,6 +404,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onEnd, o
+       <Music2 aria-hidden="true" />
+       <div><strong>{item?.title || (loading ? "正在读取音乐档案…" : "选择一首歌")}</strong><span>{item?.artist || "一起听歌"}</span></div>
+       <button type="button" className={favorite ? "is-favorite" : ""} aria-label={favorite ? "取消收藏当前曲目" : "收藏当前曲目"} aria-pressed={favorite} disabled={!item || favoriteBusy} onClick={() => void toggleFavorite()}><Heart aria-hidden="true" /></button>
++      <button type="button" aria-label="刷新音乐资料" disabled={refreshing} onClick={() => void refreshLibrary()}><RefreshCw aria-hidden="true" />{refreshing ? "刷新中" : "刷新"}</button>
+     </div>
+     <label>{active ? "加入曲目的来源歌单" : "歌单"}<select value={playlist?.id || ""} disabled={loading} onChange={(event) => void selectPlaylist(event.target.value)}><option value="">选择已导入歌单</option>{playlists.map((entry) => <option key={entry.id} value={entry.id}>{entry.name} · {entry.itemCount} 首</option>)}</select></label>
+     {!active && playlist && <label>曲目<select value={localIndex} onChange={(event) => setLocalIndex(Number(event.target.value))}>{playlist.items.map((entry, itemIndex) => <option key={entry.id || itemIndex} value={itemIndex}>{itemIndex + 1}. {entry.title}{entry.artist ? ` · ${entry.artist}` : ""}</option>)}</select></label>}
+diff --git a/src/api.js b/src/api.js
+index b02efeb..664d8b5 100644
+--- a/src/api.js
++++ b/src/api.js
+@@ -86,11 +86,14 @@ async function fetchFromApi(path, options = {}) {
+       if (authContext?.companionId) {
+         headers.set("X-DengTa-Companion-Id", authContext.companionId);
+       }
+-      const response = await fetch(`${API_BASE_URL}${path}`, {
+-        ...requestOptions,
+-        headers,
+-        ...(controller ? { signal: controller.signal } : {}),
+-      });
++      const response = await awaitWithAbortSignal(
++        fetch(`${API_BASE_URL}${path}`, {
++          ...requestOptions,
++          headers,
++          ...(controller ? { signal: controller.signal } : {}),
++        }),
++        controller?.signal,
++      );
+       authSession?.captureCompanionFromResponse?.(response);
+       if (
+         attempt < retryDelays.length - 1 &&
+diff --git a/src/music-listening.js b/src/music-listening.js
+index 546bb1d..d662a16 100644
+--- a/src/music-listening.js
++++ b/src/music-listening.js
+@@ -3,6 +3,8 @@ import { isPrivateMediaHostname } from "./direct-media.js";
+ 
+ const MAX_TEXT = 500;
+ const MAX_ITEMS = 2_000;
++const READ_TIMEOUT_MS = 12_000;
++const WRITE_TIMEOUT_MS = 15_000;
+ 
+ function text(value, maximum = MAX_TEXT) {
+   return String(value ?? "").trim().slice(0, maximum);
+@@ -26,6 +28,15 @@ export function validateDirectAudioUrl(value) {
+   return { ok: true, code: "ok", url: url.href, message: "" };
+ }
+ 
++export function detectNeteasePlaylistShare(value) {
++  const raw = String(value || "").trim();
++  const match = raw.match(/https?:\/\/(?:y\.)?music\.163\.com\/(?:m\/)?playlist\?[^\s]*\bid=(\d+)/i);
++  if (!match) return null;
++  const beforeLink = raw.slice(0, match.index).replace(/^(?:分享|复制).*?[:：]\s*/i, "").trim();
++  const title = beforeLink.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).at(-1) || "网易云歌单";
++  return Object.freeze({ provider: "网易云音乐", providerId: "netease", playlistId: match[1], title: text(title, 180) });
++}
++
+ function normalizeItem(item, index = 0) {
+   const source = typeof item === "string" ? { url: item } : item || {};
+   const url = text(source.url || source.audio_url || source.src, 4096);
+@@ -106,30 +117,33 @@ function resolveImportFormat(content, format) {
+ }
+ 
+ export async function importMusicPlaylist({ format = "auto", sourceName = "粘贴内容", name = "我的歌单", content }) {
++  if (detectNeteasePlaylistShare(content)) {
++    throw new Error("这是网易云歌单网页分享，不是音频直链或歌单文件，不能直接导入。");
++  }
+   const resolvedFormat = resolveImportFormat(content, format);
+   const items = parseMusicText(content, resolvedFormat);
+   if (!items.length) throw new Error("没有解析到可播放曲目。");
+   return normalizeMusicPlaylist(await apiRequest("/api/v2/music/playlists/import", {
+-    method: "POST", timeoutMs: 15_000,
++    method: "POST", timeoutMs: WRITE_TIMEOUT_MS,
+     body: JSON.stringify({ format: resolvedFormat, source_name: text(sourceName, 180), name: text(name, 180), content: String(content || "") }),
+   }));
+ }
+ 
+ export async function listMusicPlaylists() {
+-  const data = await apiRequest("/api/v2/music/playlists");
++  const data = await apiRequest("/api/v2/music/playlists", { timeoutMs: READ_TIMEOUT_MS });
+   return (Array.isArray(data?.playlists) ? data.playlists : []).map(normalizeMusicPlaylist);
+ }
+ 
+ export async function getMusicPlaylist(id) {
+-  return normalizeMusicPlaylist(await apiRequest(`/api/v2/music/playlists/${encodeURIComponent(id)}`));
++  return normalizeMusicPlaylist(await apiRequest(`/api/v2/music/playlists/${encodeURIComponent(id)}`, { timeoutMs: READ_TIMEOUT_MS }));
+ }
+ 
+ export async function deleteMusicPlaylist(id) {
+-  return apiRequest(`/api/v2/music/playlists/${encodeURIComponent(id)}`, { method: "DELETE" });
++  return apiRequest(`/api/v2/music/playlists/${encodeURIComponent(id)}`, { method: "DELETE", timeoutMs: WRITE_TIMEOUT_MS });
+ }
+ 
+ export async function listMusicFavorites() {
+-  const data = await apiRequest("/api/v2/music/favorites");
++  const data = await apiRequest("/api/v2/music/favorites", { timeoutMs: READ_TIMEOUT_MS });
+   const favorites = Array.isArray(data?.favorites) ? data.favorites : Array.isArray(data) ? data : [];
+   return Object.freeze(favorites.map(normalizeFavorite).filter((entry) => entry.itemId));
+ }
+@@ -137,6 +151,7 @@ export async function listMusicFavorites() {
+ export async function putMusicFavorite(itemId) {
+   const data = await apiRequest(`/api/v2/music/favorites/${encodeURIComponent(itemId)}`, {
+     method: "PUT",
++    timeoutMs: WRITE_TIMEOUT_MS,
+     body: "{}",
+   });
+   return normalizeFavorite(data?.favorite || data);
+@@ -145,6 +160,7 @@ export async function putMusicFavorite(itemId) {
+ export async function deleteMusicFavorite(itemId) {
+   const data = await apiRequest(`/api/v2/music/favorites/${encodeURIComponent(itemId)}`, {
+     method: "DELETE",
++    timeoutMs: WRITE_TIMEOUT_MS,
+   });
+   return Object.freeze({
+     itemId: text(data?.deleted?.item_id ?? itemId, 100),
+diff --git a/src/together.css b/src/together.css
+index e9ed1c3..e3b2ad1 100644
+--- a/src/together.css
++++ b/src/together.css
+@@ -117,6 +117,11 @@
+ .music-playlist-detail { margin-top: 16px; }
+ .music-playlist-detail div { display: grid; grid-template-columns: 28px 1fr auto; gap: 8px; padding: 8px 0; border-bottom: 1px solid rgba(42, 67, 56, .1); }
+ .music-feedback.is-error { color: #a34444; }
++.music-clipboard-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
++.music-clipboard-actions span { color: var(--together-muted); font-size: 12px; }
++.music-share-recognition, .music-local-audio { display: grid; gap: 8px; margin: 12px 0; padding: 12px; border: 1px solid rgba(42, 67, 56, .16); border-radius: 8px; background: rgba(255,255,255,.45); }
++.music-share-recognition p, .music-local-audio p { margin: 0; color: var(--together-muted); font-size: 12px; line-height: 1.5; }
++.music-local-audio audio { width: 100%; }
+ .together-time-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+ .together-direct-actions { display: grid; grid-template-columns: 1fr 1.15fr; gap: 8px; }
+ .together-page button { min-height: 44px; border: 1px solid rgba(42, 67, 56, .18); border-radius: 7px; background: rgba(255, 255, 255, .75); color: inherit; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font: inherit; }

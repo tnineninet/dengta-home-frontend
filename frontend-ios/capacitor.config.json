@@ -1,0 +1,20 @@
+{
+  "appId": "home.dengta.app",
+  "appName": "DengTa home",
+  "webDir": "dist",
+  "appendUserAgent": " DengTaHome/2 (+https://www.dengtahome.com/)",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": false
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#f7f2ed"
+  },
+  "ios": {
+    "backgroundColor": "#f7f2ed",
+    "contentInset": "never",
+    "preferredContentMode": "mobile",
+    "loggingBehavior": "none"
+  }
+}

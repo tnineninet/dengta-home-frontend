@@ -1,0 +1,13 @@
+{
+  "dti_type": "INPUT_ARTIFACT",
+  "build_cmd": "",
+  "run_cmd": "powershell -ExecutionPolicy Bypass -Command \"& ([scriptblock]::Create((Get-Content -Raw 'E:\\chatgpt\\dengta-home-frontend\\.bugfix\\android-black-screen-2.8.24-20260814\\reproduction\\run_repro.sh')))\"",
+  "artifacts": [
+    "E:\\chatgpt\\builds\\DengTa-Home-2.8.24-world-book-runtime-debug.apk",
+    "E:\\chatgpt\\dengta-home-frontend\\.bugfix\\android-black-screen-2.8.24-20260814\\reproduction\\apk\\assets\\public\\index.html",
+    "E:\\chatgpt\\dengta-home-frontend\\.bugfix\\android-black-screen-2.8.24-20260814\\reproduction\\apk\\assets\\public\\assets\\index-B6eo9gM1.js"
+  ],
+  "configs": [],
+  "env": [],
+  "evidence": "旧 APK 的登录后 App 懒加载入口使用空 Suspense fallback，且入口 bundle 没有可恢复运行时错误边界。"
+}

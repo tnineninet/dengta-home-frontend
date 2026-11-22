@@ -1,0 +1,333 @@
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  ArrowDown, ArrowUp, AtSign, BookOpen, Brain, Brush, Clapperboard, Compass,
+  CornerDownLeft, FolderKanban, Heart, Map, MessageCircle, MessagesSquare, Music,
+  PawPrint, Plus, Search, Settings, Sparkles, Swords, Trophy, Tv, Utensils, X,
+} from "lucide-react";
+import "./command-palette.css";
+import { FEATURE_DETAILS, FEATURE_LABELS } from "./feature-navigation.js";
+
+const VIEW_ICONS = {
+  chat: MessageCircle,
+  cotton: PawPrint,
+  moments: Sparkles,
+  diary: BookOpen,
+  art: Brush,
+  together: Clapperboard,
+  cast: Tv,
+  music: Music,
+  duel: Swords,
+  nursery: Heart,
+  memories: Brain,
+  treasure: Map,
+  achievements: Trophy,
+  discover: Compass,
+  takeout: Utensils,
+  workspace: FolderKanban,
+  x: AtSign,
+  wechat: MessageCircle,
+  qq: MessagesSquare,
+};
+
+function normalize(value) {
+  return String(value || "").normalize("NFKC").toLowerCase().trim();
+}
+
+function matches(entry, terms) {
+  return terms.every(term => entry.searchText.includes(term));
+}
+
+function focusTarget(selector) {
+  const node = globalThis.document?.querySelector?.(selector);
+  if (node && typeof node.focus === "function") node.focus({ preventScroll: true });
+}
+
+const RECENT_KEY = "dengta.command.recent.v1";
+
+function readRecentIds() {
+  try {
+    const raw = globalThis.localStorage?.getItem?.(RECENT_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string").slice(0, 6) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeRecentIds(ids) {
+  try {
+    globalThis.localStorage?.setItem?.(RECENT_KEY, JSON.stringify(ids.slice(0, 6)));
+  } catch {
+    // Private mode/storage denial shouldn't break the palette.
+  }
+}
+
+export default function CommandPalette({
+  open,
+  onClose,
+  onNavigate,
+  onCreateSession,
+  onOpenSettings,
+  onReturnActivity,
+  onSetBackground,
+  features = [],
+  settingsCategories = [],
+  sessions = [],
+  returnFocusRef = null,
+}) {
+  const [query, setQuery] = useState("");
+  const [highlighted, setHighlighted] = useState(0);
+  const [recentIds, setRecentIds] = useState(readRecentIds);
+  const inputRef = useRef(null);
+  const dialogRef = useRef(null);
+  const previouslyFocused = useRef(null);
+  const shouldRestoreRef = useRef(true);
+  const titleId = useId();
+  const listId = useId();
+
+  const actions = useMemo(() => {
+    const result = [{ id: "new-chat", label: "新建对话", hint: "打开一个新的聊天", kind: "action", run: onCreateSession, icon: <Plus aria-hidden="true" /> }];
+    result.push({ id: "open-settings", label: "打开设置", hint: "模型、外观、语音与数据", kind: "settings", icon: <Settings aria-hidden="true" /> });
+    if (onReturnActivity) result.push({ id: "return-activity", label: "回到本次活动", hint: "返回一起看或一起听", kind: "action", run: onReturnActivity, icon: <CornerDownLeft aria-hidden="true" /> });
+    if (onSetBackground) {
+      result.push({ id: "background:legacy", label: "背景 · 旧版海岸", hint: "切回你喜欢的经典海岸背景", kind: "action", run: () => onSetBackground("legacy"), icon: <Brush aria-hidden="true" /> });
+      result.push({ id: "background:auto", label: "背景 · 日出日落", hint: "跟随时钟，从晨光到星夜", kind: "action", run: () => onSetBackground("auto"), icon: <Sparkles aria-hidden="true" /> });
+      result.push({ id: "background:coast", label: "背景 · 实时海岸", hint: "查看海岸与天气", kind: "action", run: () => onSetBackground("coast"), icon: <Brush aria-hidden="true" /> });
+    }
+    return result;
+  }, [onCreateSession, onReturnActivity, onSetBackground]);
+
+  const entries = useMemo(() => {
+    const rows = features.map(item => ({
+      id: `view:${item.id}`,
+      label: FEATURE_LABELS[item.id] || item.label || item.id,
+      hint: FEATURE_DETAILS[item.id]?.hint || "打开页面",
+      kind: "view",
+      view: item.id,
+      icon: VIEW_ICONS[item.id] ? (() => { const Icon = VIEW_ICONS[item.id]; return <Icon aria-hidden="true" />; })() : (item.icon || "•"),
+      searchText: normalize([FEATURE_LABELS[item.id], item.label, FEATURE_DETAILS[item.id]?.hint, FEATURE_DETAILS[item.id]?.keywords].filter(Boolean).join(" ")),
+    }));
+    for (const category of settingsCategories) {
+      rows.push({
+        id: `settings:${category.id}`,
+        label: `设置 · ${category.label}`,
+        hint: category.description || "打开设置分类",
+        kind: "settings",
+        category: category.id,
+        icon: <Settings aria-hidden="true" />,
+        searchText: normalize([category.label, category.description, category.keywords].filter(Boolean).join(" ")),
+      });
+    }
+    for (const session of sessions) {
+      rows.push({
+        id: `session:${session.id}`,
+        label: session.title || "未命名对话",
+        hint: "打开最近对话",
+        kind: "session",
+        sessionId: session.id,
+        icon: <MessageCircle aria-hidden="true" />,
+        searchText: normalize(session.title || ""),
+      });
+    }
+    for (const action of actions) {
+      rows.push({ ...action, searchText: normalize([action.label, action.hint].join(" ")) });
+    }
+    return rows;
+  }, [actions, features, sessions, settingsCategories]);
+
+  const filtered = useMemo(() => {
+    const terms = normalize(query).split(/\s+/).filter(Boolean);
+    if (!terms.length) return entries;
+    return entries.filter(entry => matches(entry, terms));
+  }, [entries, query]);
+
+  const recentEntries = useMemo(
+    () => recentIds.map((id) => entries.find((entry) => entry.id === id)).filter(Boolean).slice(0, 4),
+    [entries, recentIds],
+  );
+
+  const remember = (id) => {
+    setRecentIds((current) => {
+      const next = [id, ...current.filter((item) => item !== id)].slice(0, 6);
+      writeRecentIds(next);
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    if (!open) {
+      const target = previouslyFocused.current;
+      previouslyFocused.current = null;
+      if (shouldRestoreRef.current && target && typeof target.focus === "function") target.focus({ preventScroll: true });
+      shouldRestoreRef.current = true;
+      return;
+    }
+    shouldRestoreRef.current = true;
+    previouslyFocused.current = globalThis.document?.activeElement || returnFocusRef?.current || null;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset transient search state when the dialog opens
+    setQuery("");
+    setHighlighted(0);
+    const timer = globalThis.setTimeout(() => inputRef.current?.focus({ preventScroll: true }), 0);
+    return () => globalThis.clearTimeout(timer);
+  }, [open, returnFocusRef]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKeyDown = event => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose?.();
+      }
+    };
+    globalThis.document?.addEventListener?.("keydown", onKeyDown);
+    return () => globalThis.document?.removeEventListener?.("keydown", onKeyDown);
+  }, [onClose, open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onTab = event => {
+      if (event.key !== "Tab") return;
+      const dialog = dialogRef.current;
+      if (!dialog) return;
+      const focusable = [...dialog.querySelectorAll(
+        'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+      )].filter(node => node.offsetParent !== null || node === globalThis.document?.activeElement);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = globalThis.document?.activeElement;
+      if (event.shiftKey ? active === first : active === last) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus({ preventScroll: true });
+      }
+    };
+    globalThis.document?.addEventListener?.("keydown", onTab);
+    return () => globalThis.document?.removeEventListener?.("keydown", onTab);
+  }, [open]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- keep the highlighted row inside the filtered list
+    setHighlighted(index => Math.min(index, Math.max(0, filtered.length - 1)));
+  }, [filtered.length]);
+
+  useEffect(() => {
+    const entry = filtered[highlighted];
+    if (!entry || typeof document === "undefined") return;
+    const row = document.getElementById(`${listId}-${entry.id}`);
+    const list = row?.closest("ul");
+    if (!list) return;
+    const rowBox = row.getBoundingClientRect();
+    const listBox = list.getBoundingClientRect();
+    if (rowBox.top < listBox.top) list.scrollTop += rowBox.top - listBox.top;
+    else if (rowBox.bottom > listBox.bottom) list.scrollTop += rowBox.bottom - listBox.bottom;
+  }, [filtered, highlighted, listId]);
+
+  function closeAndRestore() {
+    onClose?.();
+  }
+
+  function execute(entry) {
+    if (!entry) return;
+    remember(entry.id);
+    if (entry.kind === "view") {
+      shouldRestoreRef.current = false;
+      onNavigate?.(entry.view);
+      onClose?.({ navigate: true });
+      globalThis.setTimeout(() => focusTarget("#main-content, .view-content"), 0);
+    } else if (entry.kind === "settings") {
+      shouldRestoreRef.current = false;
+      onOpenSettings?.(entry.category);
+      onClose?.({ navigate: true });
+    } else if (entry.kind === "session") {
+      shouldRestoreRef.current = false;
+      onNavigate?.("chat", entry.sessionId);
+      onClose?.({ navigate: true });
+      globalThis.setTimeout(() => focusTarget("#main-content, .view-content"), 0);
+    } else {
+      entry.run?.();
+      onClose?.({ navigate: true });
+    }
+  }
+
+  function onInputKeyDown(event) {
+    if (event.isComposing || event.nativeEvent?.isComposing || event.keyCode === 229 || event.nativeEvent?.keyCode === 229) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setHighlighted(index => Math.min(index + 1, filtered.length - 1));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setHighlighted(index => Math.max(index - 1, 0));
+    } else if (event.key === "Enter") {
+      event.preventDefault();
+      execute(filtered[highlighted]);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      closeAndRestore();
+    }
+  }
+
+  if (!open) return null;
+  return (
+    <div className="command-palette-backdrop" role="presentation" onPointerDown={event => { if (event.target === event.currentTarget) closeAndRestore(); }}>
+      <section ref={dialogRef} className="command-palette" role="dialog" aria-modal="true" aria-labelledby={titleId} onPointerDown={event => event.stopPropagation()}>
+        <span className="command-palette-grabber" aria-hidden="true" />
+        <header className="command-palette-header">
+          <h2 id={titleId}>命令面板</h2>
+          <button type="button" className="command-palette-close" aria-label="关闭命令面板" onClick={closeAndRestore}><X aria-hidden="true" /></button>
+        </header>
+        <div className="command-palette-search">
+          <Search aria-hidden="true" />
+          <input
+            ref={inputRef}
+            type="search"
+            value={query}
+            onChange={event => { setQuery(event.target.value); setHighlighted(0); }}
+            onKeyDown={onInputKeyDown}
+            placeholder="搜索玩法、设置、最近对话…"
+            aria-label="搜索命令"
+            aria-controls={listId}
+            aria-activedescendant={filtered[highlighted] ? `${listId}-${filtered[highlighted].id}` : undefined}
+            autoComplete="off"
+          />
+          {query ? <button type="button" className="command-palette-clear" aria-label="清空搜索" onClick={() => { setQuery(""); setHighlighted(0); inputRef.current?.focus(); }}><X aria-hidden="true" /></button> : null}
+        </div>
+        <ul id={listId} className="command-palette-results" role="listbox" aria-label="命令结果"
+          onMouseDown={event => {
+            // Keep the keyboard geometry stable between touching a result and its click.
+            if (event.button === 0 && document.activeElement === inputRef.current && event.target.closest("button")) event.preventDefault();
+          }}>
+          {!query && recentEntries.length ? (
+            <li className="command-palette-recent-item">
+              <div className="command-palette-recent" aria-label="最近使用">
+                <span>最近</span>
+                {recentEntries.map((entry) => (
+                  <button type="button" key={`recent-${entry.id}`} onClick={() => execute(entry)}>
+                    <span aria-hidden="true">{entry.icon}</span>
+                    {entry.label}
+                  </button>
+                ))}
+              </div>
+            </li>
+          ) : null}
+          {filtered.length ? filtered.map((entry, index) => (
+            <li key={entry.id}>
+              <button
+                type="button"
+                id={`${listId}-${entry.id}`}
+                className={`command-palette-row${index === highlighted ? " is-highlighted" : ""}`}
+                aria-selected={index === highlighted}
+                onMouseEnter={() => setHighlighted(index)}
+                onClick={() => execute(entry)}
+              >
+                <span className="command-palette-row-icon" aria-hidden="true">{entry.icon}</span>
+                <span className="command-palette-row-copy"><strong>{entry.label}</strong><small>{entry.hint}</small></span>
+                {index === highlighted ? <CornerDownLeft aria-hidden="true" /> : null}
+              </button>
+            </li>
+          )) : <li className="command-palette-empty" role="status">没有找到匹配的入口，换个词试试</li>}
+        </ul>
+        <footer className="command-palette-footer"><span className="command-palette-count">{filtered.length} 项</span><span><ArrowUp aria-hidden="true" /><ArrowDown aria-hidden="true" />选择</span><span><CornerDownLeft aria-hidden="true" />确认</span><span>Esc 关闭</span></footer>
+      </section>
+    </div>
+  );
+}

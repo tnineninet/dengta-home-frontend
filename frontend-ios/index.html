@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content" />
+    <meta name="theme-color" content="#4e3f46" />
+    <meta name="description" content="DengTa home — 给 AI 一个家" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="DengTa home" />
+    <link rel="icon" type="image/png" href="/app-icon-192.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="preconnect" href="https://dengta-home-backend-rkmq.onrender.com" crossorigin />
+    <link rel="dns-prefetch" href="https://dengta-home-backend-rkmq.onrender.com" />
+    <script>
+      try {
+        // Some OEM WebViews (seen on Redmi K30 / MIUI desktop-mode WebViews)
+        // report a 980px layout viewport even though the physical handset is
+        // narrow. Force the handset layout off screen width, not just CSS.
+        const coarsePointer =
+          window.matchMedia?.("(pointer: coarse)")?.matches === true ||
+          Number(navigator.maxTouchPoints) > 0;
+        const shortSide = Math.min(
+          Number(window.screen?.width) || window.innerWidth,
+          Number(window.screen?.height) || window.innerHeight,
+        );
+        const mobileUserAgent = /Android|iPhone|iPad|Mobile|HarmonyOS/i.test(navigator.userAgent || "");
+        const forceMobile = coarsePointer && mobileUserAgent && shortSide > 0 && shortSide <= 1200;
+        document.documentElement.dataset.dengtaForceMobile = forceMobile ? "true" : "false";
+      } catch {
+        document.documentElement.dataset.dengtaForceMobile = "false";
+      }
+    </script>
+    <script>
+      try {
+        const stored = localStorage.getItem("dengta.font-mode.v1");
+        const mobile =
+          typeof window.matchMedia === "function" &&
+          window.matchMedia("(max-width: 820px)").matches;
+        const mode = stored || (mobile ? "system" : "standard");
+        document.documentElement.dataset.dengtaFontMode = mode;
+        // Do not preload the 7.4MB CJK face here: font-display:optional already
+        // lets the system font paint first, and the preload competed with the
+        // app bundle on cold start.
+      } catch {
+        // The standard font still loads from CSS when private storage is unavailable.
+      }
+    </script>
+    <title>DengTa home</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

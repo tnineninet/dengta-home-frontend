@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0d0f18" />
+<title>加入 DengTa 放映厅</title>
+<style>
+  :root { color-scheme: dark; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", sans-serif; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 28px 18px; background: radial-gradient(120% 80% at 12% 0%, #23354f 0%, #0d0f18 58%, #090a10 100%); color: #f2f5ff; }
+  main { width: min(520px, 100%); border: 1px solid rgba(190,210,255,.18); border-radius: 28px; padding: 28px 24px 24px; background: rgba(18,22,34,.82); box-shadow: 0 28px 80px rgba(0,0,0,.45); backdrop-filter: blur(18px); }
+  .mark { width: 54px; height: 54px; border-radius: 17px; display: grid; place-items: center; background: linear-gradient(145deg, #6d8cff, #c45dff); color: #fff; font-size: 24px; font-weight: 800; box-shadow: 0 10px 28px rgba(109,140,255,.35); }
+  h1 { margin: 18px 0 6px; font-size: 27px; letter-spacing: -.03em; }
+  .sub { margin: 0 0 20px; color: #a7b2cc; font-size: 14px; line-height: 1.7; }
+  .code { margin: 0 0 16px; padding: 14px 16px; border-radius: 18px; background: rgba(109,140,255,.12); border: 1px solid rgba(109,140,255,.28); }
+  .code small { display: block; color: #8f9cbb; font-size: 12px; margin-bottom: 4px; }
+  .code strong { font-size: 26px; letter-spacing: .16em; color: #dfe6ff; }
+  .primary, .secondary { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 52px; margin: 8px 0 0; border-radius: 16px; text-decoration: none; font-size: 15px; font-weight: 700; border: 0; }
+  .primary { background: linear-gradient(120deg, #5f82ff, #9a63ff); color: #fff; box-shadow: 0 12px 28px rgba(95,130,255,.3); }
+  .secondary { background: rgba(255,255,255,.08); color: #dbe4ff; border: 1px solid rgba(255,255,255,.14); }
+  .primary:active, .secondary:active { transform: scale(.985); }
+  .hint { margin: 14px 0 0; color: #7986a3; font-size: 12px; line-height: 1.65; }
+  .status { min-height: 18px; margin: 10px 0 0; color: #8ec5ff; font-size: 12px; }
+  a { color: inherit; }
+</style>
+</head>
+<body>
+<main>
+  <div class="mark">D</div>
+  <h1>加入 DengTa 放映厅</h1>
+  <p class="sub">朋友在 DengTa 里和你一起看电影、追剧或听歌。安装 App 后打开邀请即可加入。</p>
+  <div class="code">
+    <small>邀请码</small>
+    <strong id="room-code">------</strong>
+  </div>
+  <a id="open-app" class="primary" href="dengta://room/join">打开 DengTa 加入</a>
+  <button id="copy-code" class="secondary" type="button">复制邀请码</button>
+  <p id="status" class="status" role="status"></p>
+  <p class="hint">还没有安装 DengTa？<a id="download" href="/download">先下载 Android 安装包</a>。邀请码 30 分钟内有效。</p>
+</main>
+<script>
+(() => {
+  const params = new URLSearchParams(location.search);
+  const code = String(params.get("room_code") || params.get("code") || "").trim().toUpperCase();
+  const roomCode = document.getElementById("room-code");
+  const openApp = document.getElementById("open-app");
+  const copy = document.getElementById("copy-code");
+  const status = document.getElementById("status");
+  if (code) {
+    roomCode.textContent = code;
+    openApp.href = `dengta://room/join?code=${encodeURIComponent(code)}`;
+  } else {
+    status.textContent = "链接里没有邀请码，请让朋友重新分享。";
+  }
+  copy.addEventListener("click", async () => {
+    if (!code) return;
+    try {
+      await navigator.clipboard.writeText(code);
+      status.textContent = "邀请码已复制";
+    } catch {
+      status.textContent = `邀请码：${code}`;
+    }
+  });
+})();
+</script>
+</body>
+</html>

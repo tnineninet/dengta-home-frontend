@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#4e3f46" />
+    <meta name="description" content="DengTa home — 给 AI 一个家" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="DengTa home" />
+    <link rel="icon" type="image/svg+xml" href="/app-icon.svg" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <script>
+      try {
+        const mode = localStorage.getItem("dengta.font-mode.v1") || "standard";
+        document.documentElement.dataset.dengtaFontMode = mode;
+        if (mode !== "system") {
+          const preload = document.createElement("link");
+          preload.rel = "preload";
+          preload.href = "/fonts/DengTaSans-cjk-v2.woff2";
+          preload.as = "font";
+          preload.type = "font/woff2";
+          preload.crossOrigin = "anonymous";
+          document.head.append(preload);
+        }
+      } catch {
+        // The standard font still loads from CSS when private storage is unavailable.
+      }
+    </script>
+    <title>DengTa home</title>
+    <script type="module" crossorigin src="/assets/index-B6eo9gM1.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/react-core-DieaS26h.js">
+    <link rel="modulepreload" crossorigin href="/assets/supabase-auth-CT-VwRcT.js">
+    <link rel="modulepreload" crossorigin href="/assets/account-storage-BU9lbujP.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-BQCZAHNz.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "issue_number": "android-release-cmd-play-assertion-20260814",
+  "brt_path": "E:\\chatgpt\\dengta-home-frontend\\test\\android-release.test.js",
+  "run_cmd_path": "E:\\chatgpt\\dengta-home-frontend\\.bugfix\\android-release-cmd-play-assertion-20260814\\reproduction\\run_repro.sh",
+  "evidence_path": [
+    "E:\\chatgpt\\dengta-home-frontend\\.bugfix\\android-release-cmd-play-assertion-20260814\\reproduction\\stderr.txt",
+    "E:\\chatgpt\\dengta-home-frontend\\.bugfix\\android-release-cmd-play-assertion-20260814\\reproduction\\exit_code.txt",
+    "E:\\chatgpt\\dengta-home-frontend\\.bugfix\\android-release-cmd-play-assertion-20260814\\reproduction\\diagnostic_observations.txt"
+  ],
+  "reproduction_result": "REPRODUCED",
+  "reproduction_analysis": "stderr.txt records the line-137 AssertionError and the loaded Java payload source. diagnostic_observations.txt records runtimeJsonPattern=false and javaSourcePattern=true. exit_code.txt is 1.",
+  "brt_type": "WHITE_BOX"
+}

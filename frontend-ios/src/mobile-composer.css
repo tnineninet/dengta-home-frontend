@@ -1,0 +1,92 @@
+/* Shared phone layout, after the theme and OEM viewport fallbacks. The chat
+   has no bottom navigation bar: reserve the safe area once, at the composer. */
+@media (max-width: 820px), (pointer: coarse) and (max-width: 1200px) {
+  .main-panel.view-chat,
+  html[data-dengta-force-mobile="true"] .main-panel.view-chat {
+    padding-bottom: 0 !important;
+    min-height: 0;
+  }
+
+  .main-panel.view-chat .composer-wrap {
+    flex: 0 0 auto;
+    gap: 6px;
+    padding: 6px max(8px, env(safe-area-inset-right))
+      max(6px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left)) !important;
+  }
+
+  .main-panel.view-chat .composer,
+  :root[data-dengta-appearance="night"] .main-panel.view-chat .composer {
+    display: grid;
+    box-sizing: border-box;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    min-height: 54px !important;
+    padding: 4px !important;
+    grid-template-columns: 44px minmax(0, 1fr) 44px 44px 44px !important;
+    grid-template-rows: auto !important;
+    gap: 4px !important;
+    align-items: end;
+    border-radius: 26px !important;
+  }
+
+  .main-panel.view-chat .composer-toolbar { display: contents; }
+  .main-panel.view-chat .composer :is(.chat-attach-button, .composer-voice-button, .composer-reply-options-button, .send-button) {
+    align-self: end;
+  }
+  .main-panel.view-chat .composer .chat-attach-button { grid-area: 1 / 1; }
+  .main-panel.view-chat .composer .composer-voice-button { grid-area: 1 / 3; }
+  .main-panel.view-chat .composer .composer-reply-options-button { grid-area: 1 / 4; }
+  .main-panel.view-chat .composer .send-button { grid-area: 1 / 5; }
+
+  .main-panel.view-chat .composer textarea {
+    box-sizing: border-box;
+    grid-area: 1 / 2;
+    /* Inline height is owned by resizeComposerInput; allow growth to five
+       lines, then scroll inside the field without moving the bottom edge. */
+    min-height: 44px !important;
+    max-height: min(132px, 30dvh) !important;
+    padding: 11px 0 !important;
+    font-size: 16px;
+    line-height: 22px !important;
+    resize: none;
+  }
+
+  .main-panel.view-chat .composer textarea:placeholder-shown,
+  .main-panel.view-chat .composer textarea::placeholder {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  :root[data-keyboard-open="true"] .main-panel.view-chat .composer-wrap {
+    padding-bottom: 6px !important;
+  }
+
+  /* The draggable shortcut can otherwise cover Send after the viewport
+     contracts. The command panel remains available from the app menu. */
+  :root[data-keyboard-open="true"] .mobile-command-dock,
+  body:has(.main-panel.view-chat .composer textarea:focus) .mobile-command-dock {
+    display: none !important;
+  }
+}
+
+/* Safari may pan to the caret after the chat has shrunk to the keyboard.
+   Only the single-column layout can pin its panel across the whole viewport. */
+@media (max-width: 820px) {
+  html[data-keyboard-open="true"] .main-panel.view-chat:has(.composer textarea:focus) {
+    position: fixed !important;
+    inset: var(--app-viewport-top, 0px) 0 auto;
+    height: var(--app-height, 100dvh);
+  }
+}
+
+/* Some handset WebViews report a desktop width. The shell's own mobile marker
+   distinguishes those from touch tablets that still show a sidebar. */
+@media (max-width: 1200px) {
+  html[data-dengta-force-mobile="true"][data-keyboard-open="true"] .main-panel.view-chat:has(.composer textarea:focus) {
+    position: fixed !important;
+    inset: var(--app-viewport-top, 0px) 0 auto;
+    height: var(--app-height, 100dvh);
+  }
+}

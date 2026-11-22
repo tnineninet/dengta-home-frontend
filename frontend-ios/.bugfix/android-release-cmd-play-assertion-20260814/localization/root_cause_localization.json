@@ -1,0 +1,13 @@
+{
+  "localization_outcome": "confirmed",
+  "root_cause_summary": "发布测试使用匹配无转义运行时 JSON 的正则检查 Java 源文件，未匹配 Java 字符串字面量中保留的反斜杠转义。",
+  "faulty_file": "test/android-release.test.js",
+  "faulty_method_or_region": "NetEase payload assertion at line 137",
+  "runtime_symptom": "npm run test:android-release exits with code 1 at the cmd/play assertion.",
+  "faulty_logic": "断言 /\"cmd\":\"play\"/ 要求源码文本出现无反斜杠引号，但 NeteasePlaybackPlugin.java 合法地以 \\" 表示 JSON 引号；生产代码的 payload 语义正确。",
+  "impact_scope": ["test/android-release.test.js NetEase payload release assertion"],
+  "evidence": [
+    ".bugfix/android-release-cmd-play-assertion-20260814/reproduction/stderr.txt",
+    ".bugfix/android-release-cmd-play-assertion-20260814/reproduction/diagnostic_observations.txt"
+  ]
+}

@@ -1,0 +1,121 @@
+.xhs-write-panel {
+  margin: 14px 0;
+  padding: 16px;
+  border: 1px solid var(--line, #e5dad5);
+  border-radius: 16px;
+  background: var(--paper, #fffdfb);
+  color: var(--ink, #3d3338);
+}
+
+.xhs-write-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.xhs-write-heading > div {
+  display: grid;
+  gap: 4px;
+}
+
+.xhs-write-heading strong {
+  font-size: 14px;
+}
+
+.xhs-write-heading span {
+  font-size: 12px;
+  opacity: .7;
+}
+
+.xhs-write-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.xhs-write-form label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.xhs-write-form input,
+.xhs-write-form select,
+.xhs-write-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--line, #e5dad5);
+  border-radius: 10px;
+  background: var(--paper, #fffdfb);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+}
+
+.xhs-write-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.xhs-write-actions button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--accent-border, #d7ced1);
+  border-radius: 10px;
+  background: var(--rose-soft, #f1dbe3);
+  color: inherit;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.xhs-write-actions button:disabled {
+  cursor: default;
+  opacity: .55;
+}
+
+.xhs-write-actions .xhs-write-secondary {
+  background: transparent;
+}
+
+.xhs-write-preview {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px dashed var(--line, #e5dad5);
+  border-radius: 12px;
+}
+
+.xhs-write-preview-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.xhs-write-preview-head strong {
+  font-size: 14px;
+}
+
+.xhs-write-preview-head span,
+.xhs-write-preview p,
+.xhs-write-result {
+  font-size: 12px;
+  opacity: .75;
+}
+
+.xhs-write-preview p {
+  margin: 8px 0 0;
+}
+
+.xhs-write-success {
+  color: #2d6a4f;
+}
+
+.xhs-write-error {
+  color: #9b2c2c;
+  font-size: 12px;
+}

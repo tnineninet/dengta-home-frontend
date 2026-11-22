@@ -1,0 +1,233 @@
+/*
+ * 夜间主题可读性补丁：设置面板里仍沿用浅色主题文字色的元素，
+ * 在深色玻璃卡片上会变成“深字 + 深底”。这里只覆盖夜间外观下的设置页，
+ * 不改变浅色主题、用户已选主题色和任何用户内容。
+ */
+
+:root[data-dengta-appearance="night"] .settings-sheet .install-button,
+:root[data-dengta-appearance="night"] .settings-app-actions .install-button {
+  border: 1px solid rgb(255 255 255 / 0.22);
+  color: #f5f5f7;
+  background: rgb(255 255 255 / 0.12);
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .install-button:hover,
+:root[data-dengta-appearance="night"] .settings-app-actions .install-button:hover {
+  color: #ffffff;
+  background: rgb(255 255 255 / 0.22);
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .eyebrow,
+:root[data-dengta-appearance="night"] .settings-sheet .settings-kicker,
+:root[data-dengta-appearance="night"] .settings-page .eyebrow {
+  color: #f0a9bd;
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .prompt-name-field,
+:root[data-dengta-appearance="night"] .settings-sheet .prompt-name-field > span,
+:root[data-dengta-appearance="night"] .settings-sheet .mcp-form-grid label,
+:root[data-dengta-appearance="night"] .settings-sheet .settings-grid label {
+  color: #f2f2f7;
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .prompt-name-field > small,
+:root[data-dengta-appearance="night"] .settings-sheet .settings-grid label small,
+:root[data-dengta-appearance="night"] .settings-sheet .card-hint {
+  color: #c7c7cc;
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .service-status,
+:root[data-dengta-appearance="night"] .settings-sheet .notification-feature-panel,
+:root[data-dengta-appearance="night"] .settings-sheet .voice-privacy-note,
+:root[data-dengta-appearance="night"] .settings-sheet .voice-analysis-card {
+  border-color: rgb(255 255 255 / 0.14);
+  color: #f2f2f7;
+  background: rgb(44 44 46 / 0.66);
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .service-status-title strong,
+:root[data-dengta-appearance="night"] .settings-sheet .service-expiry-panel label {
+  color: #f5f5f7;
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .service-status-title em,
+:root[data-dengta-appearance="night"] .settings-sheet .service-status p,
+:root[data-dengta-appearance="night"] .settings-sheet .voice-privacy-note p,
+:root[data-dengta-appearance="night"] .settings-sheet .notification-feature-panel p,
+:root[data-dengta-appearance="night"] .settings-sheet .notification-feature-panel small {
+  color: #c7c7cc;
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .service-status a,
+:root[data-dengta-appearance="night"] .settings-sheet .service-quick-links a {
+  color: #ffb3c7;
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .autosave-status strong {
+  color: #8fd6a0;
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .autosave-status small,
+:root[data-dengta-appearance="night"] .settings-sheet .autosave-hint {
+  color: #c7c7cc;
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .service-expiry-panel {
+  border-color: rgb(255 255 255 / 0.14);
+  color: #f2f2f7;
+  background: rgb(44 44 46 / 0.66);
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .notification-feature-feedback {
+  color: #e5e5ea;
+  background: rgb(255 255 255 / 0.08);
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .notification-feature-feedback.checking {
+  color: #e7c8ff;
+  background: rgb(255 255 255 / 0.1);
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .notification-feature-feedback.success {
+  color: #8fd6a0;
+  background: rgb(143 214 160 / 0.12);
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .notification-feature-feedback.error {
+  color: #ffb4b4;
+  background: rgb(255 180 180 / 0.12);
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .device-activity-heading span,
+:root[data-dengta-appearance="night"] .settings-sheet .screen-glance-heading span,
+:root[data-dengta-appearance="night"] .settings-sheet .notification-feature-panel .device-activity-heading small {
+  color: #a1a1a6;
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .theme-live-dot {
+  color: #f5f5f7;
+  background: rgb(255 255 255 / 0.14);
+}
+
+/* 主题色卡本身始终是浅色，勾选标记不能跟随夜间文字色，否则会看不见。 */
+.theme-preset-swatch em {
+  color: #1d1d1f;
+}
+
+/* 外观切换的选中项：部分主题色在浅色玻璃上偏亮，白字会看不清。 */
+.theme-appearance-control button.active {
+  border: 1px solid rgb(0 0 0 / 0.1);
+  color: #1d1d1f;
+  background: #ffffff;
+}
+
+/* 数据导入页：hero 与内容卡在两种外观下都是深色卡片，标题必须用浅色。 */
+.content-import-hero h3 {
+  color: #f5f5f7;
+}
+
+.content-import-hero p {
+  color: #c7c7cc;
+}
+
+.content-import-hero .eyebrow {
+  color: #f0a9bd;
+}
+
+.content-import-segments button[aria-pressed="true"],
+.content-import-decision button[aria-pressed="true"] {
+  color: #ffffff;
+  background: linear-gradient(135deg, #4a63a0, #7d4678);
+}
+
+/* 白天外观下，导入来源卡是浅色，标签与图例不能沿用夜间浅灰。 */
+:root[data-dengta-appearance="day"] .content-import label,
+:root[data-dengta-appearance="day"] .content-import-segments legend,
+:root[data-dengta-appearance="day"] .content-import small {
+  color: #5a5770;
+}
+
+/* 夜间聊天页与记忆页的次级文字：部分模块仍沿用浅色主题的深灰。 */
+:root[data-dengta-appearance="night"] .memory-page .section-intro .eyebrow {
+  color: #f0a9bd;
+}
+
+:root[data-dengta-appearance="night"] .visible-monologue-disclosure,
+:root[data-dengta-appearance="night"] .visible-monologue-status,
+:root[data-dengta-appearance="night"] .thinking-panel summary small,
+:root[data-dengta-appearance="night"] .thinking-panel-body ol {
+  color: #c7c7cc;
+}
+
+:root[data-dengta-appearance="night"] .message-reference-button,
+:root[data-dengta-appearance="night"] .text-impact-trigger {
+  color: #d9b8c6;
+}
+
+:root[data-dengta-appearance="night"] .companion-profile-loading {
+  border-color: rgb(255 255 255 / 0.12);
+  color: #c7c7cc;
+  background: rgb(44 44 46 / 0.62);
+}
+
+:root[data-dengta-appearance="night"] .connection-recovery-restart {
+  color: #ffffff;
+}
+
+:root[data-dengta-appearance="night"] .notification-feature-panel p,
+:root[data-dengta-appearance="night"] .notification-feature-panel small,
+:root[data-dengta-appearance="night"] .fun-achievements-wrap > small {
+  color: #c7c7cc;
+}
+
+/* 夜间成就页：卡片标题与说明仍沿用浅色主题深灰。 */
+:root[data-dengta-appearance="night"] .fun-achievement-card {
+  border-color: rgb(255 255 255 / 0.12);
+  color: #f5f5f7;
+  background: rgb(44 44 46 / 0.55);
+}
+
+:root[data-dengta-appearance="night"] .fun-achievement-card:not(.is-unlocked) {
+  background: rgb(255 255 255 / 0.05);
+}
+
+:root[data-dengta-appearance="night"] .fun-achievement-card strong {
+  color: #f5f5f7;
+}
+
+:root[data-dengta-appearance="night"] .fun-achievement-card small {
+  color: #c7c7cc;
+}
+
+:root[data-dengta-appearance="night"] .fun-onboarding-button,
+:root[data-dengta-appearance="night"] .fun-labs-retry,
+:root[data-dengta-appearance="night"] .device-activity-actions button {
+  color: #0a84ff;
+}
+
+:root[data-dengta-appearance="night"] .device-activity-heading span {
+  color: #a1a1a6;
+}
+
+:root[data-dengta-appearance="night"] .fun-labs-feedback,
+:root[data-dengta-appearance="night"] .fun-view .fun-achievement-form > small,
+:root[data-dengta-appearance="night"] .fun-view .achievement-starter-actions small {
+  color: #c7c7cc;
+}
+
+:root[data-dengta-appearance="night"] .music-cookie-desktop-hint {
+  color: #d1b9a8;
+  background: rgb(255 255 255 / 0.06);
+}
+
+/* 夜间一起看：表单标签与提示仍用浅色主题的灰。 */
+:root[data-dengta-appearance="night"] .together-page .together-setup label,
+:root[data-dengta-appearance="night"] .together-page .together-heading small,
+:root[data-dengta-appearance="night"] .together-page .together-now span,
+:root[data-dengta-appearance="night"] .together-page .together-dialog header span,
+:root[data-dengta-appearance="night"] .together-page .together-progress small,
+:root[data-dengta-appearance="night"] .together-page .together-device-note,
+:root[data-dengta-appearance="night"] .together-page .together-feedback,
+:root[data-dengta-appearance="night"] .together-page .together-cadence {
+  color: #a1a1a6;
+}

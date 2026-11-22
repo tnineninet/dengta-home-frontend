@@ -1,0 +1,12 @@
+diff --git a/test/android-release.test.js b/test/android-release.test.js
+--- a/test/android-release.test.js
++++ b/test/android-release.test.js
+@@ -134,7 +134,7 @@ assert.doesNotMatch(
+   "native background notifications must not ship a private companion identity",
+ );
+ assert.match(neteasePlaybackPlugin, /Pattern\.compile\("\^\[0-9\]\{1,20\}\$"\)/);
+-assert.match(neteasePlaybackPlugin, /\"cmd\":\"play\"/);
++assert.match(neteasePlaybackPlugin, /\\\"cmd\\\":\\\"play\\\"/);
+ assert.match(neteasePlaybackPlugin, /Base64\.NO_WRAP/);
+ assert.match(neteasePlaybackPlugin, /Uri\.parse\("orpheus:\/\/" \+ encoded\)/);
+ assert.match(neteasePlaybackPlugin, /new AlertDialog\.Builder/);

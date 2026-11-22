@@ -1,0 +1,123 @@
+:root {
+  --dengta-jelly-enter: 220ms;
+  --dengta-jelly-release: cubic-bezier(.2, .8, .2, 1);
+}
+
+/* Every popup keeps its existing material; only its compositor motion changes. */
+.settings-sheet,
+.dialog-card,
+.ombre-detail-sheet,
+.composer-tool-menu,
+.sticker-picker,
+.status-panel,
+.account-menu-popover {
+  backface-visibility: hidden;
+  animation: dengta-jelly-pop var(--dengta-jelly-enter) var(--dengta-jelly-release) both;
+}
+
+.settings-sheet {
+  transform-origin: 50% 100%;
+  animation-name: dengta-jelly-sheet-pop;
+  animation-duration: 280ms;
+}
+
+.dialog-card,
+.ombre-detail-sheet,
+.status-panel,
+.account-menu-popover {
+  transform-origin: 50% 42%;
+}
+
+.composer-tool-menu,
+.sticker-picker {
+  transform-origin: 50% 100%;
+}
+
+.settings-sheet-backdrop,
+.dialog-backdrop,
+.ombre-detail-backdrop,
+.composer-tool-scrim,
+.image-viewer {
+  animation: dengta-jelly-backdrop-in 220ms ease-out both;
+}
+
+.feature-page {
+  animation: dengta-jelly-page-arrive 200ms ease-out both;
+}
+
+:where(
+  .topbar,
+  .sidebar,
+  .composer,
+  .companion-status,
+  .status-panel,
+  .settings-sheet,
+  .dialog-card,
+  .composer-tool-menu,
+  .sticker-picker,
+  .account-menu-popover,
+  .feature-page
+) button:not(:disabled) {
+  -webkit-tap-highlight-color: transparent;
+  transition-property: transform, opacity;
+  transition-duration: 160ms, 140ms;
+  transition-timing-function: var(--dengta-jelly-release), ease-out;
+}
+
+:where(
+  .topbar,
+  .sidebar,
+  .composer,
+  .companion-status,
+  .status-panel,
+  .settings-sheet,
+  .dialog-card,
+  .composer-tool-menu,
+  .sticker-picker,
+  .account-menu-popover,
+  .feature-page
+) button:not(:disabled):active {
+  transform: translate3d(0, 1px, 0) scale3d(.98, .98, 1);
+  transition-duration: 72ms, 72ms;
+  transition-timing-function: ease-out;
+}
+
+@keyframes dengta-jelly-pop {
+  from { opacity: 0; transform: translate3d(0, 8px, 0) scale3d(.98, .98, 1); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale3d(1, 1, 1); }
+}
+@keyframes dengta-jelly-sheet-pop {
+  from { opacity: 0; transform: translate3d(0, 20px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+@keyframes dengta-jelly-backdrop-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes dengta-jelly-page-arrive {
+  from { opacity: 0; transform: translate3d(0, 4px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-sheet,
+  .dialog-card,
+  .ombre-detail-sheet,
+  .composer-tool-menu,
+  .sticker-picker,
+  .status-panel,
+  .account-menu-popover,
+  .settings-sheet-backdrop,
+  .dialog-backdrop,
+  .ombre-detail-backdrop,
+  .composer-tool-scrim,
+  .image-viewer,
+  .feature-page,
+  .message-list {
+    animation: none;
+  }
+
+  :where(button) {
+    transition-duration: 0ms;
+  }
+}

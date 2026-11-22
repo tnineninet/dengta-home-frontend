@@ -1,0 +1,11 @@
+{
+  "dti_type": "API_CALL",
+  "build_cmd": "",
+  "run_cmd": "\"C:\\Program Files\\nodejs\\node.exe\" \"E:\\chatgpt\\dengta-home-frontend\\.bugfix\\together-music-local-audio-2.9.3-20260814\\reproduction\\refresh-freeze.repro.test.js\"",
+  "artifacts": [
+    "E:\\chatgpt\\dengta-home-frontend\\.bugfix\\together-music-local-audio-2.9.3-20260814\\reproduction\\refresh-freeze.repro.test.js"
+  ],
+  "configs": [],
+  "env": ["Node.js 24.x"],
+  "evidence": "Repository-native Node assertion test adapted from test/music-listening.test.js."
+}

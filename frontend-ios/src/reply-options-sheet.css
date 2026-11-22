@@ -1,0 +1,211 @@
+.composer-wrap { position: relative; }
+.composer { position: relative; }
+
+.composer-reply-options-button {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  border: 1px solid rgb(22 28 40 / 0.1);
+  border-radius: 999px;
+  color: #6b625e;
+  background: rgb(255 255 255 / 0.58);
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.composer-reply-options-button:hover {
+  color: #302a28;
+  background: rgb(255 255 255 / 0.9);
+}
+
+.composer-reply-options-button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+@media (max-width: 640px) {
+  .composer-reply-options-button span {
+    display: none;
+  }
+
+  .composer-reply-options-button {
+    width: 44px;
+    min-width: 44px;
+    justify-content: center;
+    padding: 0;
+  }
+}
+
+.reply-options-popover {
+  position: absolute;
+  z-index: 46;
+  right: 0;
+  bottom: 100%;
+  left: 0;
+  display: grid;
+  width: auto;
+  max-height: min(42dvh, 340px);
+  margin: 0;
+  overflow: hidden auto;
+  border: 1px solid rgb(255 255 255 / 0.78);
+  border-bottom: 0;
+  border-radius: 20px 20px 0 0;
+  color: #2d3037;
+  background: rgb(249 249 250 / 0.97);
+  box-shadow: 0 14px 34px rgb(18 22 30 / 0.2);
+  backdrop-filter: blur(18px) saturate(1.2);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  animation: reply-options-pop 170ms cubic-bezier(0.16, 0.86, 0.26, 1.08) both;
+}
+
+.reply-options-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 4px;
+  color: #8a8f99;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.reply-options-popover-header button {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  color: #8a8f99;
+  background: transparent;
+  cursor: pointer;
+}
+
+.reply-options-popover-header button:hover { background: rgb(0 0 0 / 0.05); }
+.reply-options-popover-header svg { width: 14px; height: 14px; }
+
+.reply-options-popover-list {
+  display: grid;
+  gap: 6px;
+  padding: 2px 10px 8px;
+}
+
+.reply-options-popover-list button {
+  display: flex;
+  min-height: 38px;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgb(22 28 40 / 0.08);
+  border-radius: 12px;
+  color: #30323a;
+  background: #fff;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.reply-options-popover-list button:hover {
+  border-color: rgb(105 91 78 / 0.32);
+  background: #fbfaf8;
+}
+
+.reply-options-popover-list button > span {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  place-items: center;
+  border-radius: 6px;
+  color: #8b8378;
+  background: #f1efec;
+  font-size: 10px;
+  font-weight: 720;
+}
+
+.reply-options-popover-list button > strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 560;
+  white-space: pre-wrap;
+}
+
+.reply-options-popover-hint {
+  padding: 0 14px 10px;
+  color: #979da7;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.reply-options-popover-loading,
+.reply-options-popover-error {
+  display: flex;
+  min-height: 76px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 10px 14px 14px;
+  color: #70757e;
+  font-size: 12px;
+  text-align: center;
+}
+
+.reply-options-popover-loading > span {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  border: 2px solid rgb(45 48 55 / 0.16);
+  border-top-color: #2d3037;
+  border-radius: 50%;
+  animation: reply-options-spin 800ms linear infinite;
+}
+
+.reply-options-popover-error {
+  flex-direction: column;
+}
+
+.reply-options-popover-error p { margin: 0; }
+.reply-options-popover-error button {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  color: #fff;
+  background: #2d3037;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+@keyframes reply-options-pop {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes reply-options-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 720px) {
+  .reply-options-popover {
+    max-height: 38dvh;
+    border-radius: 16px 16px 0 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reply-options-popover,
+  .reply-options-popover-loading > span { animation: none; }
+}
+
+/* reply-options close touch target */
+.reply-options-popover-header button {
+  width: 44px;
+  height: 44px;
+}

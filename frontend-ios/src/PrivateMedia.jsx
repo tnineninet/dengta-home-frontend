@@ -1,0 +1,87 @@
+import { useEffect, useRef, useState } from "react";
+import { usePrivateMediaSource } from "./use-private-media";
+import AnimatedPrivateImage from "./AnimatedPrivateImage.jsx";
+
+export function AuthenticatedImage(props) {
+  return props.animationControls ? <AnimatedPrivateImage {...props} /> : <StillImage {...props} />;
+}
+
+function StillImage({
+  src,
+  alt = "",
+  className,
+  buttonClassName,
+  loading = "lazy",
+  fetchPriority = "auto",
+  onPreview,
+  fallback = null,
+  scopeKey = "",
+}) {
+  const placeholderRef = useRef(null);
+  const [visibleSource, setVisibleSource] = useState(null);
+  const [failedUrl, setFailedUrl] = useState("");
+  const needsObservation = loading !== "eager" && typeof IntersectionObserver === "function";
+  const mayLoad = !needsObservation || visibleSource === src;
+  const media = usePrivateMediaSource(src, { enabled: mayLoad, scopeKey });
+  const renderFailed = Boolean(media.url) && failedUrl === media.url;
+
+  useEffect(() => {
+    if (mayLoad || !placeholderRef.current) return;
+    let active = true;
+    const observer = new IntersectionObserver((entries) => {
+      if (!active || !entries.some((entry) => entry.isIntersecting)) return;
+      setVisibleSource(src);
+      observer.disconnect();
+    });
+    observer.observe(placeholderRef.current);
+    return () => { active = false; observer.disconnect(); };
+  }, [mayLoad, src]);
+
+  if (!mayLoad || media.loading) {
+    return (
+      <span
+        ref={placeholderRef}
+        className={`private-media-placeholder is-loading${className ? ` ${className}` : ""}`}
+        aria-label="图片加载中"
+      />
+    );
+  }
+  if (!media.url || renderFailed) {
+    if (fallback) return fallback;
+    return (
+      <span
+        className="private-media-placeholder is-error"
+        role="status"
+        title={media.error}
+      >
+        图片暂时无法显示
+        <button type="button" aria-label={alt ? `重新加载${alt}` : "重新加载图片"} onClick={() => { setFailedUrl(""); media.retry(); }}>
+          重试加载图片
+        </button>
+      </span>
+    );
+  }
+
+  const image = (
+    <img
+      className={className}
+      src={media.url}
+      alt={alt}
+      loading={loading}
+      decoding="async"
+      fetchPriority={fetchPriority}
+      onError={() => setFailedUrl(media.url)}
+    />
+  );
+  if (!onPreview) return image;
+  return (
+    <button
+      type="button"
+      className={buttonClassName}
+      aria-label={alt ? `查看${alt}` : "查看图片"}
+      onClick={() => onPreview(media.url, alt)}
+    >
+      {image}
+    </button>
+  );
+}
