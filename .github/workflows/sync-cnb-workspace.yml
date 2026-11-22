@@ -1,0 +1,43 @@
+name: Sync workspace snapshot to CNB
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sync-cnb-workspace
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out selected ref
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
+      - name: Mirror selected ref to CNB workspace-main
+        env:
+          CNB_USERNAME: ${{ secrets.CNB_USERNAME }}
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+        run: |
+          test -n "$CNB_USERNAME"
+          test -n "$CNB_TOKEN"
+          AUTH="$(printf '%s:%s' "$CNB_USERNAME" "$CNB_TOKEN" | base64 -w0)"
+          git -c "http.https://cnb.cool/.extraheader=Authorization: Basic ${AUTH}" push "https://cnb.cool/dengtahome/dengtahome.git" "HEAD:refs/heads/workspace-main"
+
+      - name: Verify CNB workspace-main matches this commit
+        env:
+          CNB_USERNAME: ${{ secrets.CNB_USERNAME }}
+          CNB_TOKEN: ${{ secrets.CNB_TOKEN }}
+        run: |
+          test -n "$CNB_USERNAME"
+          test -n "$CNB_TOKEN"
+          AUTH="$(printf '%s:%s' "$CNB_USERNAME" "$CNB_TOKEN" | base64 -w0)"
+          REMOTE_SHA="$(git -c "http.https://cnb.cool/.extraheader=Authorization: Basic ${AUTH}" ls-remote "https://cnb.cool/dengtahome/dengtahome.git" refs/heads/workspace-main | awk '{print $1}')"
+          echo "cnb=${REMOTE_SHA} github=${GITHUB_SHA}"
+          test "$REMOTE_SHA" = "$GITHUB_SHA"
