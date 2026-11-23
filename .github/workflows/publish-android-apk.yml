@@ -1,8 +1,12 @@
 name: Publish Android APK
 
 on:
-  # Do not publish from every src push. Publish is an explicit action after
-  # tests and real-device verification; a release tag also starts it.
+  # Publish after the main APK build has passed on main, so every source
+  # update produces both a new web deployment and an in-app update package.
+  # A release tag or manual dispatch can still force a release.
+  workflow_run:
+    workflows: ["Build Android APK"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       dry_run:
@@ -24,6 +28,7 @@ concurrency:
 
 jobs:
   publish-apk:
+    if: ${{ github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -31,7 +36,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          ref: main
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || 'main' }}
           fetch-depth: 0
 
       - name: Verify release tag is on main
@@ -154,8 +159,10 @@ jobs:
             curl -fsS -X POST "$VERCEL_DEPLOY_HOOK" >/dev/null
             echo "Triggered Vercel deployment"
           else
-            echo "VERCEL_DEPLOY_HOOK is not configured; refusing to publish without a site deploy" >&2
-            exit 1
+            # The manifest commit is pushed to main, so the Vercel Git
+            # integration deploys it. The old deploy hook was tied to the
+            # previous repository link and is intentionally optional now.
+            echo "No VERCEL_DEPLOY_HOOK; relying on Vercel Git integration"
           fi
 
       - name: Wait for the new feed and verify APK checksum
@@ -184,10 +191,11 @@ jobs:
           KEEP_VERSIONED: "3"
         run: node scripts/prune-supabase-apks.mjs
 
-      - name: Dispatch post-release verification and CNB sync
+      - name: Dispatch post-release verification
         if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run == true) && !startsWith(github.ref_name, 'android-dryrun-') }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh workflow run verify-production.yml --ref main || echo "verify-production dispatch failed"
-          gh workflow run sync-cnb.yml --ref main || echo "CNB sync dispatch failed"
+          echo "CNB full-workspace mirror is updated by tools/sync-all-platforms.ps1"
+          echo "The per-repository sync-cnb.yml only mirrors the frontend branch and is not the full CNB snapshot."
