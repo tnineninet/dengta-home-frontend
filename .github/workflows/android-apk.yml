@@ -22,6 +22,10 @@ permissions:
 
 jobs:
   build-debug-apk:
+    # The publish workflow commits public/updates/*.json back to main. That
+    # commit must not start another APK build, otherwise it would recursively
+    # trigger another release.
+    if: ${{ github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'release: publish Android') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
