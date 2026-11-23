@@ -3,6 +3,8 @@ import tls from "node:tls";
 const FEED = "https://www.dengtahome.com/updates/android.json";
 const BACKEND = "https://dengta-home-backend-rkmq.onrender.com/health";
 const SITE = "https://www.dengtahome.com/";
+const PWA_MANIFEST = "https://www.dengtahome.com/manifest.webmanifest";
+const SERVICE_WORKER = "https://www.dengtahome.com/sw.js";
 
 async function head(url) {
   const response = await fetch(url, { method: "HEAD", redirect: "follow" });
@@ -41,7 +43,7 @@ async function certExpiry(hostname) {
 
 async function main() {
   const checkedAt = new Date().toISOString();
-  const result = { checkedAt, site: null, feed: null, apk: null, backend: null, errors: [] };
+  const result = { checkedAt, site: null, pwa: null, feed: null, apk: null, backend: null, errors: [] };
   try {
     const response = await fetch(SITE, { cache: "no-store" });
     const html = await response.text();
@@ -63,6 +65,45 @@ async function main() {
     for (const failure of result.site.assets.failed) result.errors.push(`site asset: ${failure}`);
   } catch (error) {
     result.errors.push(`site: ${error.message}`);
+  }
+  try {
+    const [manifestResponse, swResponse] = await Promise.all([
+      fetch(PWA_MANIFEST, { cache: "no-store" }),
+      fetch(SERVICE_WORKER, { cache: "no-store" }),
+    ]);
+    const manifest = await manifestResponse.json().catch(() => null);
+    const sw = await swResponse.text();
+    const icons = Array.isArray(manifest?.icons) ? manifest.icons : [];
+    const iconSizes = new Set(icons.map((icon) => String(icon?.sizes || "")));
+    const manifestOk =
+      manifestResponse.ok &&
+      manifest &&
+      typeof manifest.name === "string" &&
+      typeof manifest.short_name === "string" &&
+      manifest.start_url &&
+      manifest.display === "standalone" &&
+      iconSizes.has("192x192") &&
+      iconSizes.has("512x512");
+    const swOk =
+      swResponse.ok &&
+      /javascript/i.test(swResponse.headers.get("content-type") || "") &&
+      sw.includes('addEventListener("install"') &&
+      sw.includes('addEventListener("fetch"') &&
+      sw.includes("CACHE_NAME");
+    result.pwa = {
+      manifestStatus: manifestResponse.status,
+      swStatus: swResponse.status,
+      manifestOk: Boolean(manifestOk),
+      swOk: Boolean(swOk),
+      name: manifest?.name || null,
+      startUrl: manifest?.start_url || null,
+      display: manifest?.display || null,
+      icons: icons.map((icon) => icon?.sizes).filter(Boolean),
+    };
+    if (!manifestOk) result.errors.push("PWA manifest is missing required install fields");
+    if (!swOk) result.errors.push("PWA service worker is missing or not cacheable");
+  } catch (error) {
+    result.errors.push(`pwa: ${error.message}`);
   }
   try {
     const response = await fetch(`${FEED}?ts=${Date.now()}`, { cache: "no-store" });
@@ -141,6 +182,8 @@ async function main() {
     siteBytes: result.site?.bytes ?? null,
     siteAssetsChecked: result.site?.assets?.checked ?? 0,
     siteAssetFailures: result.site?.assets?.failed?.length ?? 0,
+    pwaManifest: result.pwa?.manifestOk ?? false,
+    pwaServiceWorker: result.pwa?.swOk ?? false,
     feedVersion: result.feed?.latest?.version || null,
     feedVersionCode: result.feed?.latest?.version_code || null,
     feedApkUrl: result.feed?.latest?.apk_url || null,
