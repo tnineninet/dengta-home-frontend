@@ -1,10 +1,10 @@
 export const FEATURE_GROUPS = [
   { label: "日常陪伴", ids: ["chat", "cotton", "moments", "diary", "art"] },
   { label: "一起体验", ids: ["together", "cast", "duel", "nursery"] },
-  { label: "一起听与连接", ids: ["music-studio", "music", "x", "wechat", "qq"] },
-  { label: "记录与探索", ids: ["memories", "treasure", "achievements", "discover", "takeout", "workspace"] },
+  { label: "一起听与连接", ids: ["music-studio", "music", "x", "creator-world", "agent-studio", "wechat", "qq"] },
+  { label: "记录与探索", ids: ["memories", "medical", "knowledge", "treasure", "achievements", "discover", "takeout", "workspace"] },
 ];
-export const FEATURE_LABELS = { chat: "聊天", moments: "动态", diary: "日记", art: "涂鸦画室", nursery: "家庭", cotton: "小棉花", together: "一起看", cast: "放映厅", "music-studio": "音乐工作室", music: "一起听 · 同步", x: "X / Twitter", wechat: "微信", qq: "QQ", duel: "互动挑战", memories: "记忆", treasure: "藏宝地图", achievements: "成就", discover: "发现", takeout: "外卖", workspace: "工作区" };
+export const FEATURE_LABELS = { chat: "聊天", moments: "动态", diary: "日记", art: "涂鸦画室", nursery: "家庭", cotton: "小棉花", together: "一起看", cast: "放映厅", "music-studio": "音乐工作室", music: "一起听 · 同步", x: "X / Twitter", "creator-world": "AI 视界·创作者", "agent-studio": "AI 工作台·剪映", wechat: "微信", qq: "QQ", duel: "互动挑战", memories: "记忆", medical: "医疗 AI 专区", knowledge: "知识库与药箱", treasure: "藏宝地图", achievements: "成就", discover: "发现", takeout: "外卖", workspace: "工作区" };
 export const QUICK_FEATURES = ["chat", "music-studio", "wechat", "x"];
 
 export const FEATURE_DETAILS = {
@@ -17,11 +17,15 @@ export const FEATURE_DETAILS = {
   cast: { hint: "投屏到这里，和别人一起看", keywords: "放映厅 投屏 DLNA 一起看 房间 邀请码 电视" },
   "music-studio": { hint: "完整网易云歌单、每日推荐、搜索与播放", keywords: "音乐 工作室 歌单 网易云 搜索 播放器" }, music: { hint: "DengTa 一起听同步播放", keywords: "音乐 歌单 一起听 同步 播放 听歌" },
   x: { hint: "X / Twitter 发帖、搜索与私信", keywords: "X Twitter 推特 发帖 推文 搜索 私信" },
+  "creator-world": { hint: "B站/抖音看世界、自我唤醒、做视频、数据复盘与安全审批", keywords: "B站 哔哩哔哩 抖音 创作者 AI博主 做视频 分镜 脚本 评论 唤醒 MCP MoneyPrinterTurbo biliup" },
+  "agent-studio": { hint: "一键授权本机剪映/阿杜导演、读音视频文档资源包、本机AI工作区、知识库与手机安装", keywords: "剪映 阿杜导演 adudir motion 剪辑 本机工作区 知识库 资源包 ZIP PDF 手机安装 APK PWA Antigravity" },
   wechat: { hint: "微信绑定与人设/记忆同步", keywords: "微信 wechat 绑定 通道 同步 人设 记忆" },
   qq: { hint: "QQ 绑定与人设/记忆同步", keywords: "QQ 绑定 通道 同步 人设 记忆 SnowLuma" },
   duel: { hint: "来一场互动挑战", keywords: "对决 比赛 游戏 duel" },
   nursery: { hint: "看看你们的小家庭", keywords: "养成 家人 孩子 宝宝 family" },
   memories: { hint: "查看和管理聊天记忆", keywords: "长期记忆 MCP Ombre ombrrbrain Kiwi 回忆" },
+  medical: { hint: "眼科临床校验、混合语义 RAG、27种眼科药典与脱敏科研队列", keywords: "医疗 AI 眼科 屈光手术 圆锥角膜 眼压 RSB PTA RAG 药典 围术期 报告解读 IOLMaster Pentacam ZEISS" },
+  knowledge: { hint: "混合语义检索、世界书与28种常备药安全查询", keywords: "语义知识库 世界书 药品 药箱 相互作用 OTC 感冒 发烧 BM25 RRF" },
   treasure: { hint: "走近一封信，发现沿途小惊喜", keywords: "地图 定位 藏宝 来信 公共 惊喜 letter map" },
   achievements: { hint: "看看入门路线和小纪念", keywords: "引导 新手 教程 任务 奖励 徽章" },
   discover: { hint: "找找新的兴趣和灵感", keywords: "推荐 兴趣 探索 小红书" },

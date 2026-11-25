@@ -27,9 +27,26 @@ export function saveGuidePreferences(key, value) {
 export const ACHIEVEMENT_ACTIONS = {
   first_chat: { label: "去聊一句", view: "chat" },
   onboarding_1: { label: "看看入门路线", view: "guide" },
+  chat_10: { label: "继续聊几句", view: "chat" },
+  chat_50: { label: "去聊日常", view: "chat" },
+  chat_100: { label: "续写百轮对话", view: "chat" },
+  streak_3: { label: "今天打个招呼", view: "chat" },
+  streak_7: { label: "续写七日陪伴", view: "chat" },
+  early_bird: { label: "清晨来道早安", view: "chat" },
+  night_owl: { label: "深夜聊聊心事", view: "chat" },
   moment_1: { label: "去写动态", view: "moments" },
+  moment_5: { label: "记一条新动态", view: "moments" },
   music_1: { label: "去保存音乐分析", view: "music" },
+  music_10: { label: "去听歌收藏", view: "music" },
   watch_1: { label: "去一起看", view: "together" },
+  art_1: { label: "去涂鸦画室", view: "art" },
+  takeout_1: { label: "去挑顿外卖", view: "takeout" },
+  date_1: { label: "去记纪念日", view: "discover" },
+  shot_1: { label: "去拍一张日常", view: "moments" },
+  compat_1: { label: "去测默契度", view: "duel" },
+  diy_1: { label: "写下专属目标", view: "custom-form" },
+  explorer_1: { label: "去逛逛玩法", view: "discover" },
+  explorer_10: { label: "继续探索灯塔", view: "discover" },
 };
 
 export function freshAchievements(previous, items) {

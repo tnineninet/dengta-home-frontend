@@ -1,18 +1,35 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useMemoryUiRequest } from "./memory-ui-feedback.js";
 import { formatMemorySummaryDate, memorySummaryFailure, memorySummaryListReceipt, memorySummaryPatchReceipt, readMemorySummaryDelete, readMemorySummaryJson } from "./memory-summary-feedback.js";
 import { recordOperationFailure } from "./operation-diagnostics.js";
 import "./memory-summary-list.css";
 
 const PATH = "/api/v2/memories";
+const MEMORY_CONTEXT_CHAR_BUDGET = 8000;
+const PREVIEW_MEMORY_SUMMARIES = Object.freeze([
+  {
+    id: "preview-memory-1",
+    summary: "桃桃喜欢晚上散步和听舒缓纯音乐，聊天时偏好温暖、直接、不说教的回应节奏。",
+    updated_at: "2026-11-24T21:15:00+08:00",
+    created_at: "2026-11-24T21:15:00+08:00",
+  },
+  {
+    id: "preview-memory-2",
+    summary: "常备药箱与眼科复查提醒已归档至灯塔医疗 AI 专区，重要症状建议结合病历原文核对。",
+    updated_at: "2026-11-25T09:30:00+08:00",
+    created_at: "2026-11-25T09:30:00+08:00",
+  },
+]);
 
-export default function LocalMemorySummaries({ scopeKey, conversationId = "", items = [], drafts = {}, onItemsChange, onDraftsChange, onNotice }) {
+export default function LocalMemorySummaries({ scopeKey, conversationId = "", items = [], drafts = {}, onItemsChange, onDraftsChange, onNotice, visualPreview = false }) {
   const { request, isCurrent } = useMemoryUiRequest(scopeKey);
   const [reading, setReading] = useState(false);
   const [consolidating, setConsolidating] = useState(false);
-  const [confirmed, setConfirmed] = useState(false);
+  const [confirmed, setConfirmed] = useState(visualPreview);
   const [busyId, setBusyId] = useState("");
   const [feedback, setFeedback] = useState(null);
+  const [filterQuery, setFilterQuery] = useState("");
+  const [authHint, setAuthHint] = useState("");
   const readVersion = useRef(0);
   const writeLock = useRef(null);
   const pendingRefresh = useRef(false);
@@ -27,8 +44,19 @@ export default function LocalMemorySummaries({ scopeKey, conversationId = "", it
     onNotice?.(detail.message);
   }, [scopeKey, onNotice]);
 
-  const refresh = useCallback(async () => {
-    if (!isCurrent()) return;
+  const refresh = useCallback(async ({ manual = false } = {}) => {
+    if (visualPreview) {
+      setConfirmed(true);
+      if (manual) {
+        setFeedback({ error: false, message: "当前为无登录本地预览模式，已展示离线示例摘要；请前往主入口登录后读取真实 Supabase 长期记忆。" });
+      }
+      return;
+    }
+    if (!isCurrent()) {
+      if (manual) setAuthHint("请先在主入口登录账号并选择伴侣，再读取云端对话摘要。");
+      return;
+    }
+    setAuthHint("");
     if (writeLock.current) { pendingRefresh.current = true; return; }
     pendingRefresh.current = false;
     const version = ++readVersion.current;
@@ -45,9 +73,13 @@ export default function LocalMemorySummaries({ scopeKey, conversationId = "", it
     } finally {
       if (isCurrent() && readVersion.current === version) setReading(false);
     }
-  }, [isCurrent, request, onItemsChange, showFailure]);
+  }, [isCurrent, request, onItemsChange, showFailure, visualPreview]);
 
   const consolidate = useCallback(async () => {
+    if (visualPreview) {
+      setFeedback({ error: false, message: "本地预览模式下不会向云端写入摘要；请在主入口登录后整理当前对话。" });
+      return;
+    }
     if (!conversationId || consolidating || !isCurrent()) return;
     setConsolidating(true);
     setFeedback(null);
@@ -80,15 +112,16 @@ export default function LocalMemorySummaries({ scopeKey, conversationId = "", it
     } finally {
       if (isCurrent()) setConsolidating(false);
     }
-  }, [conversationId, consolidating, isCurrent, onNotice, refresh, request, showFailure]);
+  }, [conversationId, consolidating, isCurrent, onNotice, refresh, request, showFailure, visualPreview]);
 
   useEffect(() => {
+    if (visualPreview) return undefined;
     let cancelled = false;
     Promise.resolve().then(() => { if (!cancelled) void refresh(); });
     const imported = () => { void refresh(); };
     window.addEventListener("dengta:memories-imported", imported);
     return () => { cancelled = true; pendingRefresh.current = false; readVersion.current += 1; window.removeEventListener("dengta:memories-imported", imported); };
-  }, [refresh]);
+  }, [refresh, visualPreview]);
 
   function edit(id, value) {
     draftVersions.current[id] = (draftVersions.current[id] || 0) + 1;
@@ -103,6 +136,10 @@ export default function LocalMemorySummaries({ scopeKey, conversationId = "", it
   }
 
   async function mutate(item, deleting = false) {
+    if (visualPreview) {
+      setFeedback({ error: false, message: "当前为本地预览示例，登录后可修改或删除真实长期记忆。" });
+      return;
+    }
     if (!isCurrent() || writeLock.current) return;
     const draft = draftsRef.current[item.id];
     const summary = String(draft || "").trim();
@@ -148,46 +185,102 @@ export default function LocalMemorySummaries({ scopeKey, conversationId = "", it
     }
   }
 
-  const itemIds = new Set(items.map(item => item.id));
-  const orphanDrafts = Object.entries(drafts).filter(([id]) => !itemIds.has(id));
+  const effectiveItems = visualPreview ? PREVIEW_MEMORY_SUMMARIES : items;
+  const normalizedFilter = filterQuery.trim().toLowerCase();
+  const visibleItems = useMemo(() => {
+    if (!normalizedFilter) return effectiveItems;
+    return effectiveItems.filter(item => String(item?.summary || "").toLowerCase().includes(normalizedFilter));
+  }, [effectiveItems, normalizedFilter]);
+  const totalChars = useMemo(
+    () => effectiveItems.reduce((sum, item) => sum + String(item?.summary || "").length, 0),
+    [effectiveItems],
+  );
+  const budgetPercent = Math.min(100, Math.round((totalChars / MEMORY_CONTEXT_CHAR_BUDGET) * 100));
+  const budgetTone = budgetPercent >= 95 ? "is-full" : budgetPercent >= 75 ? "is-warn" : "";
+
+  async function copySummariesMarkdown() {
+    if (!visibleItems.length) return;
+    const markdown = visibleItems
+      .map((item, idx) => `${idx + 1}. [${formatMemorySummaryDate(item.updated_at || item.created_at)}] ${String(item.summary || "").trim()}`)
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(markdown);
+      setFeedback({ error: false, message: `已复制 ${visibleItems.length} 条记忆摘要（Markdown）。` });
+    } catch {
+      setFeedback({ error: false, message: "浏览器未允许剪贴板复制，请手动选中卡片文字复制。" });
+    }
+  }
+
+  const itemIds = new Set(effectiveItems.map(item => item.id));
+  const orphanDrafts = visualPreview ? [] : Object.entries(drafts).filter(([id]) => !itemIds.has(id));
 
   return (
     <section className="local-memory-summaries" aria-label="对话摘要">
       <div className="memory-source-heading local-memory-heading">
         <div><span className="eyebrow">SUPABASE</span><h3>对话摘要</h3></div>
-        <span className="local-memory-count">{confirmed || items.length ? `${items.length} 条${!confirmed ? " · 上次读取" : ""}` : "尚未确认"}</span>
+        <span className="local-memory-count">{visualPreview ? `${effectiveItems.length} 条 · 本地预览` : confirmed || items.length ? `${items.length} 条${!confirmed ? " · 上次读取" : ""}` : "尚未确认"}</span>
       </div>
+      {visualPreview && (
+        <div className="memory-preview-banner" role="note">
+          <span>当前为无登录本地预览模式，下方为离线演示摘要；前往主入口登录后读取并整理真实 Supabase 长期记忆。</span>
+          <a href="/">前往主入口登录</a>
+        </div>
+      )}
       <div className="memory-summary-toolbar">
-        <p role="status">{reading ? "正在读取对话摘要…" : feedback?.error && (confirmed || items.length) ? "保留上次确认的摘要，本次结果尚未确认。" : confirmed ? "已读取当前账号与伴侣的摘要。" : items.length ? "保留上次读取的摘要，本次尚未确认。" : "尚未成功读取对话摘要。"}</p>
-        <button type="button" onClick={() => void refresh()} disabled={reading || Boolean(busyId)}>{reading ? "读取中…" : "重新读取摘要"}</button>
+        <p role="status">{visualPreview ? "本地预览模式：展示对话摘要布局与检索能力。" : reading ? "正在读取对话摘要…" : authHint ? authHint : feedback?.error && (confirmed || items.length) ? "保留上次确认的摘要，本次结果尚未确认。" : confirmed ? "已读取当前账号与伴侣的摘要。" : items.length ? "保留上次读取的摘要，本次尚未确认。" : "尚未成功读取对话摘要。"}</p>
+        <button type="button" onClick={() => void refresh({ manual: true })} disabled={reading || Boolean(busyId)}>{reading ? "读取中…" : "重新读取摘要"}</button>
         <button
           type="button"
           className="memory-consolidate-button"
           onClick={() => void consolidate()}
-          disabled={!conversationId || consolidating || reading}
-          title={conversationId ? "立即整理当前聊天，不等待自动阈值" : "请先在聊天里打开一个会话"}
+          disabled={(!conversationId && !visualPreview) || consolidating || reading}
+          title={visualPreview ? "登录后可立即整理当前聊天" : conversationId ? "立即整理当前聊天，不等待自动阈值" : "请先在聊天里打开一个会话"}
         >
           {consolidating ? "整理中…" : "立即整理当前对话"}
         </button>
       </div>
+      {(effectiveItems.length > 0 || filterQuery) && (
+        <div className="memory-summary-controls">
+          <input
+            type="search"
+            className="memory-summary-search"
+            value={filterQuery}
+            onChange={event => setFilterQuery(event.target.value)}
+            placeholder="关键词筛选摘要…"
+            aria-label="筛选对话摘要"
+            maxLength={120}
+          />
+          <span className="memory-summary-budget" title={`后端单次上下文记忆注入上限为 ${MEMORY_CONTEXT_CHAR_BUDGET} 字符`}>
+            <span>注入预算 {totalChars}/{MEMORY_CONTEXT_CHAR_BUDGET} 字</span>
+            <span className={`memory-summary-budget-bar ${budgetTone}`} aria-hidden="true">
+              <i style={{ width: `${budgetPercent}%` }} />
+            </span>
+          </span>
+          <button type="button" onClick={() => void copySummariesMarkdown()} disabled={visibleItems.length === 0}>
+            复制摘要
+          </button>
+        </div>
+      )}
       {feedback && <div className={`memory-summary-feedback${feedback.error ? " is-error" : ""}`} role={feedback.error ? "alert" : "status"}>
         <p>{feedback.message}</p>
         {feedback.error && <details><summary>技术详情</summary><dl><dt>错误代码</dt><dd>{feedback.code}</dd>{feedback.status && <><dt>后端 HTTP</dt><dd>{feedback.status}</dd></>}{feedback.logId && <><dt>日志编号</dt><dd>{feedback.logId}</dd></>}</dl></details>}
       </div>}
       <div className="memory-grid">
-        {confirmed && items.length === 0 ? <div className="empty-card">暂时没有长期记忆。达到设置中的 token 阈值后会自动整理。</div> : items.map(item => (
+        {confirmed && effectiveItems.length === 0 ? <div className="empty-card">暂时没有长期记忆。每聊满 3 轮或说出「记住…」时会自动提炼，也可随时点击上方「立即整理当前对话」。</div> : visibleItems.length === 0 && normalizedFilter ? <div className="empty-card">没有匹配“{filterQuery.trim()}”的记忆摘要。</div> : visibleItems.map(item => (
           <article className="memory-card" key={item.id}>
             <span>{formatMemorySummaryDate(item.updated_at || item.created_at)}</span>
-            {Object.hasOwn(drafts, item.id) ? <textarea className="memory-editor" value={drafts[item.id]} onChange={event => edit(item.id, event.target.value)} maxLength={4000} rows={5} aria-label="修改长期记忆" /> : <p>{item.summary}</p>}
-            <div className="memory-card-actions">
-              {Object.hasOwn(drafts, item.id) ? <>
-                <button type="button" onClick={() => void mutate(item)} disabled={Boolean(busyId)}>{busyId === item.id ? "保存中…" : "保存"}</button>
-                <button type="button" onClick={() => cancelEdit(item.id)} disabled={busyId === item.id}>取消</button>
-              </> : <>
-                <button type="button" onClick={() => edit(item.id, item.summary)} disabled={busyId === item.id}>修改</button>
-                <button type="button" className="danger" onClick={() => void mutate(item, true)} disabled={Boolean(busyId)}>{busyId === item.id ? "删除中…" : "删除"}</button>
-              </>}
-            </div>
+            {Object.hasOwn(drafts, item.id) && !visualPreview ? <textarea className="memory-editor" value={drafts[item.id]} onChange={event => edit(item.id, event.target.value)} maxLength={4000} rows={5} aria-label="修改长期记忆" /> : <p>{item.summary}</p>}
+            {!visualPreview && (
+              <div className="memory-card-actions">
+                {Object.hasOwn(drafts, item.id) ? <>
+                  <button type="button" onClick={() => void mutate(item)} disabled={Boolean(busyId)}>{busyId === item.id ? "保存中…" : "保存"}</button>
+                  <button type="button" onClick={() => cancelEdit(item.id)} disabled={busyId === item.id}>取消</button>
+                </> : <>
+                  <button type="button" onClick={() => edit(item.id, item.summary)} disabled={busyId === item.id}>修改</button>
+                  <button type="button" className="danger" onClick={() => void mutate(item, true)} disabled={Boolean(busyId)}>{busyId === item.id ? "删除中…" : "删除"}</button>
+                </>}
+              </div>
+            )}
           </article>
         ))}
       </div>

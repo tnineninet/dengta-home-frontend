@@ -90,6 +90,7 @@ function releaseVideo(video) {
 }
 
 export default function Together({
+  visualPreview = false,
   aiName = "伴侣",
   accountScope = "",
   companionScope = "",
@@ -872,6 +873,7 @@ export default function Together({
           {selectedMode === "music" ? (
             <TogetherMusic
               key={JSON.stringify([accountScope, companionScope, musicRequest?.id || "music"])}
+              visualPreview={visualPreview}
               accountScope={accountScope}
               companionScope={companionScope}
               request={musicRequest}

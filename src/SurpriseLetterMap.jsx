@@ -8,7 +8,23 @@ const MESSAGES = {
   timeout: "地图加载超时，可重试；也能直接从卡片领取来信。（map_tiles_timeout）",
   failed: "地图组件未能加载，可重试。来信仍保留。（map_display_failed）",
 };
-export default function SurpriseLetterMap({ items, position, selectedId, onSelect, onViewport, picker = false, pickerPoint = null, onPick, tileSource = null, tiles = true, mount = mountSurpriseMap, onTilesUnavailable = null }) {
+
+export default function SurpriseLetterMap({
+  items,
+  position,
+  selectedId,
+  onSelect,
+  onViewport,
+  picker = false,
+  pickerPoint = null,
+  onPick,
+  tileSource = null,
+  tiles = true,
+  mount = mountSurpriseMap,
+  onTilesUnavailable = null,
+  onLocateRequest = null,
+  locating = false,
+}) {
   const host = useRef(null), runtime = useRef(null), select = useRef(onSelect), viewport = useRef(onViewport), pick = useRef(onPick), source = useRef(tileSource), fallback = useRef(onTilesUnavailable);
   const [status, setStatus] = useState("loading"), [attempt, setAttempt] = useState(0);
   const unavailableNotified = useRef(false);
@@ -35,10 +51,31 @@ export default function SurpriseLetterMap({ items, position, selectedId, onSelec
     return () => { controller.destroy(); if (runtime.current === controller) runtime.current = null; };
   }, [mount, attempt, picker, tileSourceKey, tiles]);
   useEffect(() => { runtime.current?.update({ items, position, selectedId, pickerPoint }); }, [items, position, selectedId, pickerPoint, attempt]);
+
+  function handleLocateControl() {
+    if (position && runtime.current?.centerOnUser?.()) {
+      onLocateRequest?.({ recentered: true });
+      return;
+    }
+    onLocateRequest?.({ recentered: false });
+  }
+
   return <section className={`surprise-map-interactive${tiles ? "" : " is-radar"}`} data-status={status} aria-label={picker ? "选择公共落点的地图" : "沿途信件地图"}>
     <div className="surprise-map-canvas" ref={host} role="region" aria-label={picker ? "拖动或点击选择公共落点" : "可拖动缩放的地理地图"} />
     {tiles && status === "loading" && <div className="surprise-map-loading-veil" aria-hidden="true"><span>正在加载街道地图…</span></div>}
     <p role="status" className={`surprise-map-map-status ${status === "ready" && tiles ? "is-ready" : ""}`}>{picker && status === "ready" ? "拖动地图或点击公共地点，选择后仍需按确认按钮。也可使用地图方向键移动和加减号缩放。" : !tiles && status === "ready" ? "雷达图只显示模糊范围；需要真实街区时再打开街道地图。" : MESSAGES[status] || MESSAGES.failed}</p>
+    {!picker && onLocateRequest && (
+      <button
+        type="button"
+        className={`surprise-map-locate-control${position ? " has-fix" : ""}`}
+        aria-label={position ? "居中到我的当前位置" : "获取我的位置并在地图上探索"}
+        disabled={locating}
+        onClick={handleLocateControl}
+        title={position ? "回到我的位置" : "定位我的位置"}
+      >
+        <span aria-hidden="true">{locating ? "…" : "◎"}</span>
+      </button>
+    )}
     {tiles && ["unavailable", "timeout", "failed"].includes(status) ? <button type="button" className="surprise-map-fit" onClick={() => { setStatus("loading"); setAttempt(value => value + 1); }}>重试地图</button> : !picker && items.length > 0 && <button type="button" className="surprise-map-fit" onClick={() => runtime.current?.fit()}>查看全部信件范围</button>}
   </section>;
 }

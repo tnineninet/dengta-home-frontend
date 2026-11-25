@@ -25,3 +25,17 @@
 .memory-summary-toolbar p { flex: 1 1 220px; }
 .memory-consolidate-button { white-space: nowrap; }
 @media (max-width: 420px) { .memory-consolidate-button { width: 100%; } }
+.memory-summary-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0 0 14px; }
+.memory-summary-search { flex: 1 1 200px; min-width: 0; min-height: 44px; padding: 8px 12px; border: 1px solid var(--theme-control-border, rgba(105, 125, 118, .22)); border-radius: 12px; color: inherit; background: rgb(var(--theme-card-rgb, 255 255 255) / .65); font: inherit; font-size: 13px; }
+.memory-summary-budget { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--theme-muted, #667075); white-space: nowrap; }
+.memory-summary-budget-bar { width: 72px; height: 6px; border-radius: 99px; background: rgba(128, 128, 128, .2); overflow: hidden; display: inline-block; }
+.memory-summary-budget-bar > i { display: block; height: 100%; border-radius: 99px; background: var(--theme-accent, #52776c); transition: width .2s ease; }
+.memory-summary-budget-bar.is-warn > i { background: #c58a2d; }
+.memory-summary-budget-bar.is-full > i { background: #b84a39; }
+.memory-preview-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 14px; padding: 12px 14px; border: 1px dashed var(--theme-control-border, rgba(105, 125, 118, .32)); border-radius: 14px; background: rgb(var(--theme-card-rgb, 255 255 255) / .52); font-size: 13px; line-height: 1.6; }
+.memory-preview-banner a, .memory-preview-banner button { min-height: 36px; padding: 6px 12px; border-radius: 10px; font-size: 12px; text-decoration: none; }
+.memory-gateway-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(175px, 1fr)); gap: 8px; margin: 10px 0; }
+.memory-gateway-metric { padding: 10px 12px; border-radius: 12px; border: 1px solid var(--theme-control-border, rgba(105, 125, 118, .22)); background: rgb(var(--theme-card-rgb, 255 255 255) / .45); }
+.memory-gateway-metric small { display: block; font-size: 11px; color: var(--theme-muted, #667075); margin-bottom: 2px; }
+.memory-gateway-metric strong { display: block; font-size: 13px; line-height: 1.45; }
+.memory-gateway-metric span { display: block; font-size: 11px; color: var(--theme-muted, #667075); margin-top: 2px; }

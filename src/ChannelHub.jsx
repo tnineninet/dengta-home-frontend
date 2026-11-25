@@ -96,12 +96,19 @@ function QQMemoryCandidates() {
   );
 }
 
-export default function ChannelHub({ channel = "wechat", aiName = "伴侣" }) {
+export default function ChannelHub({ channel = "wechat", aiName = "伴侣", visualPreview = false }) {
   const meta = CHANNEL_META[channel] || CHANNEL_META.wechat;
   const [tab, setTab] = useState("sync");
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!visualPreview);
   const [error, setError] = useState("");
-  const [sections, setSections] = useState([]);
+  const [sections, setSections] = useState(() => (
+    visualPreview
+      ? [
+          { id: "preview-sec-1", category: "normal", title: "日常相处节奏", content: "温柔、直接、不敷衍，优先倾听与陪伴。" },
+          { id: "preview-sec-2", category: "style", title: "通道短句风格", content: "移动端回复尽量精炼自然，保留口语温度。" },
+        ]
+      : []
+  ));
   const [prefs, setPrefs] = useState(() => normalizePrefs(null, channel));
   const [memories, setMemories] = useState([]);
   const [bindings, setBindings] = useState([]);
@@ -130,6 +137,10 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣" }) {
   }, [sections]);
 
   const load = useCallback(async () => {
+    if (visualPreview) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -148,14 +159,15 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣" }) {
     } finally {
       setLoading(false);
     }
-  }, [channel, meta.label]);
+  }, [channel, meta.label, visualPreview]);
 
   useEffect(() => {
+    if (visualPreview) return undefined;
     const timer = window.setTimeout(() => {
       void load();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [load]);
+  }, [load, visualPreview]);
 
   // Keep the one-time code honest: count down to expiry and poll the bridge
   // automatically so the user does not have to guess when binding succeeded.
@@ -222,6 +234,10 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣" }) {
   }
 
   async function savePreferences() {
+    if (visualPreview) {
+      setSaved("当前为无登录本地预览模式，请前往主入口登录后保存真实通道同步设置。");
+      return;
+    }
     if (saving) return;
     setSaving(true);
     setSaved("");
@@ -251,6 +267,10 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣" }) {
   }
 
   async function startBinding() {
+    if (visualPreview) {
+      setBindingError("当前为无登录本地预览模式，请前往主入口登录后再生成一次性绑定码。");
+      return;
+    }
     if (bindingBusy) return;
     setBindingBusy("start");
     setBindingError("");
@@ -420,7 +440,14 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣" }) {
             ) : null}
             <label className="channel-hub-switch">
               <input type="checkbox" checked={prefs.media_enabled} onChange={(event) => updatePrefs({ media_enabled: event.target.checked })} />
-              <span><strong>允许同步媒体</strong><small>图片/语音/视频收发受桥接端能力限制；默认关闭。</small></span>
+              <span>
+                <strong>允许同步媒体</strong>
+                <small>
+                  {channel === "wechat"
+                    ? "支持图片与 MP4 / MOV 短视频（对齐 wechat-ilink-bridge-hardened 媒体发送能力）；请留意微信 iLink 频率与连接风控，默认关闭。"
+                    : "图片/语音/视频收发受桥接端能力限制；默认关闭。"}
+                </small>
+              </span>
             </label>
           </section>
 
@@ -447,7 +474,12 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣" }) {
       ) : (
         <>
           <section className="channel-hub-card" aria-labelledby="channel-bind-title">
-            {channel === "qq" && <QQCloudConnect onReady={setQQCloudReady} onConfigureSync={() => setTab("sync")} />}
+            {channel === "qq" && !visualPreview && <QQCloudConnect onReady={setQQCloudReady} onConfigureSync={() => setTab("sync")} />}
+            {channel === "qq" && (
+              <p className="channel-hub-note" role="note">
+                上游维护提示：GitHub 仓库 Derpyu520/qq-bridge 已归档（v0.2.2-final），SnowLuma 公开上游仓库已不可访问（404）。建议优先使用灯塔云端通道或已核验的本机 SnowLuma 安装包，勿引入已归档桥接插件。
+              </p>
+            )}
             <div className="channel-hub-card-heading">
               <div><span className="eyebrow">BINDING</span><h3 id="channel-bind-title">绑定 {meta.label}</h3></div>
               <Link2 aria-hidden="true" />

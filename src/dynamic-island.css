@@ -1,0 +1,664 @@
+/* Apple Dynamic Island upgrade for DengTa Rainbow Capsule + NetEase Music Live Spectrum */
+
+.di-audio-spectrum {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 14px;
+  margin-left: 4px;
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
+.di-audio-spectrum > i {
+  display: block;
+  width: 2.5px;
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ff7eb3 0%, #ffd86f 52%, #5ce1e6 100%);
+  transform-origin: bottom center;
+  opacity: 0.55;
+}
+
+.di-audio-spectrum.is-playing > i {
+  opacity: 0.96;
+  animation: di-eq-bounce 900ms cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.di-audio-spectrum.is-playing > i:nth-child(1) { animation-duration: 720ms; animation-delay: 0ms; }
+.di-audio-spectrum.is-playing > i:nth-child(2) { animation-duration: 940ms; animation-delay: -180ms; }
+.di-audio-spectrum.is-playing > i:nth-child(3) { animation-duration: 640ms; animation-delay: -320ms; }
+.di-audio-spectrum.is-playing > i:nth-child(4) { animation-duration: 860ms; animation-delay: -90ms; }
+.di-audio-spectrum.is-playing > i:nth-child(5) { animation-duration: 760ms; animation-delay: -260ms; }
+
+@keyframes di-eq-bounce {
+  0%, 100% { height: 4px; }
+  45% { height: 14px; }
+  75% { height: 7px; }
+}
+
+.sun-glass-now-playing-title-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* Dynamic Island Live Activity Satellite Pills around the Rainbow Capsule */
+.di-live-satellites {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 2px;
+  pointer-events: auto;
+  z-index: 6;
+}
+
+@media (min-width: 821px) {
+  .main-panel.view-chat .sun-glass-floating-status-shell .di-live-satellites {
+    position: absolute;
+    top: 18px;
+    left: calc(50% + 132px);
+    margin-top: 0;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+  }
+}
+
+.di-satellite-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 26px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 0.58);
+  background: rgb(var(--theme-card-rgb, 255 253 248) / calc(var(--dengta-glass-control-alpha, 0.2) + 0.16));
+  color: var(--theme-ink);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.65),
+    0 6px 16px rgb(16 24 44 / 0.14);
+  backdrop-filter: blur(12px) saturate(1.35);
+  -webkit-backdrop-filter: blur(12px) saturate(1.35);
+  cursor: pointer;
+  transition:
+    transform 220ms cubic-bezier(0.22, 1.28, 0.36, 1),
+    background 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.di-satellite-pill:hover {
+  transform: translateY(-1px) scale(1.03);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.8),
+    0 8px 20px rgb(16 24 44 / 0.2);
+}
+
+.di-satellite-pill:active {
+  transform: scale(0.95);
+}
+
+.di-satellite-pill svg {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.di-satellite-pill.is-music {
+  border-color: rgb(232 67 98 / 0.45);
+}
+
+.di-satellite-pill.is-weather {
+  border-color: rgb(56 189 248 / 0.52);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+  padding: 3px 11px;
+}
+
+.di-satellite-pill.is-weather.is-synced {
+  border-color: rgb(34 197 94 / 0.5);
+}
+
+.di-satellite-pill.is-takeout {
+  border-color: rgb(245 158 11 / 0.52);
+}
+
+.di-satellite-pill.is-timer {
+  border-color: rgb(56 189 248 / 0.55);
+  font-variant-numeric: tabular-nums;
+}
+
+.di-satellite-pill.is-alert {
+  border-color: rgb(239 68 68 / 0.58);
+  color: #dc2626;
+}
+
+:root[data-dengta-appearance="night"] .di-satellite-pill {
+  background: rgb(18 24 38 / 0.62);
+  border-color: rgb(255 255 255 / 0.24);
+  color: #eef2ff;
+}
+
+:root[data-dengta-appearance="night"] .di-satellite-pill.is-alert {
+  color: #fca5a5;
+}
+
+.di-pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 8px rgb(34 197 94 / 0.8);
+  animation: di-dot-pulse 1.8s ease-in-out infinite;
+}
+
+.di-satellite-pill.is-alert .di-pulse-dot {
+  background: #ef4444;
+  box-shadow: 0 0 8px rgb(239 68 68 / 0.85);
+}
+
+.di-satellite-pill.is-takeout .di-pulse-dot {
+  background: #f59e0b;
+  box-shadow: 0 0 8px rgb(245 158 11 / 0.85);
+}
+
+@keyframes di-dot-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.95; }
+  50% { transform: scale(1.38); opacity: 0.55; }
+}
+
+/* Dynamic Island Expanded Control Deck inside Status Panel */
+.di-control-deck {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  margin-bottom: 12px;
+  border-radius: 20px;
+  border: 1px solid rgb(255 255 255 / 0.44);
+  background: linear-gradient(
+    145deg,
+    rgb(var(--theme-card-rgb, 255 253 248) / 0.55),
+    rgb(var(--theme-card-rgb, 255 253 248) / 0.28)
+  );
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.65),
+    0 10px 26px rgb(15 23 42 / 0.1);
+}
+
+:root[data-dengta-appearance="night"] .di-control-deck {
+  border-color: rgb(255 255 255 / 0.16);
+  background: linear-gradient(145deg, rgb(20 28 46 / 0.72), rgb(14 20 34 / 0.54));
+}
+
+.di-deck-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.di-deck-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--theme-accent, #a96854);
+}
+
+.di-deck-status {
+  font-size: 11px;
+  color: var(--theme-muted);
+}
+
+.di-music-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid rgb(232 67 98 / 0.22);
+  background: linear-gradient(125deg, rgb(232 67 98 / 0.1), rgb(99 102 241 / 0.08));
+}
+
+.di-music-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.di-music-copy strong {
+  font-size: 13px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.di-music-copy small {
+  font-size: 11px;
+  color: var(--theme-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.di-music-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.di-music-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgb(var(--theme-ink-rgb, 36 33 31) / 0.14);
+  background: rgb(var(--theme-card-rgb, 255 253 248) / 0.72);
+  color: var(--theme-ink);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 150ms ease, background 150ms ease;
+}
+
+.di-music-actions button:hover {
+  transform: translateY(-1px);
+  background: rgb(var(--theme-accent-rgb, 169 104 84) / 0.18);
+}
+
+.di-music-actions button.is-primary {
+  background: linear-gradient(135deg, #e84362, #f97316);
+  border-color: transparent;
+  color: #fff;
+}
+
+.di-quick-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.di-quick-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  border: 1px solid rgb(var(--theme-ink-rgb, 36 33 31) / 0.12);
+  background: rgb(var(--theme-card-rgb, 255 253 248) / 0.45);
+  color: var(--theme-ink);
+  text-align: left;
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.di-quick-tile:hover {
+  transform: translateY(-1px);
+  border-color: rgb(var(--theme-accent-rgb, 169 104 84) / 0.48);
+  background: rgb(var(--theme-card-rgb, 255 253 248) / 0.75);
+}
+
+.di-quick-tile strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 680;
+}
+
+.di-quick-tile small {
+  font-size: 10.5px;
+  color: var(--theme-muted);
+  line-height: 1.3;
+}
+
+.di-quick-tile.is-alert {
+  border-color: rgb(239 68 68 / 0.42);
+}
+
+/* Live Location, Time & Weather card inside Dynamic Island & SunGlassTimeDeck */
+.di-weather-card {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid rgb(56 189 248 / 0.28);
+  background: linear-gradient(125deg, rgb(56 189 248 / 0.12), rgb(251 191 36 / 0.08));
+}
+
+.di-weather-main {
+  display: grid;
+  gap: 8px;
+}
+
+.di-weather-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.di-weather-copy strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--theme-ink);
+}
+
+.di-weather-clock {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  color: var(--theme-accent, #4f78d3);
+}
+
+.di-weather-copy small {
+  font-size: 11px;
+  color: var(--theme-ink-soft, var(--theme-ink));
+  line-height: 1.35;
+}
+
+.di-weather-copy small.di-weather-sub {
+  font-size: 10.5px;
+  color: var(--theme-muted);
+}
+
+.di-weather-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.di-weather-actions button,
+.sun-glass-location-btns button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 28px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid rgb(var(--theme-ink-rgb, 36 33 31) / 0.14);
+  background: rgb(var(--theme-card-rgb, 255 253 248) / 0.72);
+  color: var(--theme-ink);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 150ms ease, background 150ms ease;
+}
+
+.di-weather-actions button:hover,
+.sun-glass-location-btns button:hover {
+  transform: translateY(-1px);
+  background: rgb(56 189 248 / 0.18);
+}
+
+.di-weather-actions button.is-primary {
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  border-color: transparent;
+  color: #fff;
+}
+
+.di-weather-actions button:disabled,
+.sun-glass-location-btns button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.di-weather-city-picker,
+.sun-glass-city-picker {
+  display: grid;
+  gap: 7px;
+  padding-top: 6px;
+  border-top: 1px dashed rgb(var(--theme-ink-rgb, 36 33 31) / 0.14);
+}
+
+.di-city-search-row {
+  display: flex;
+  gap: 6px;
+}
+
+.di-city-search-row input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgb(var(--theme-ink-rgb, 36 33 31) / 0.18);
+  background: rgb(var(--theme-card-rgb, 255 253 248) / 0.84);
+  color: var(--theme-ink);
+  font-size: 11.5px;
+}
+
+.di-city-search-row button {
+  min-height: 30px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 0;
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.di-city-error {
+  font-size: 11px;
+  color: #dc2626;
+}
+
+.di-city-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.di-city-chips button {
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid rgb(var(--theme-ink-rgb, 36 33 31) / 0.14);
+  background: rgb(var(--theme-card-rgb, 255 253 248) / 0.62);
+  color: var(--theme-ink);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.di-city-chips button:hover {
+  border-color: rgb(56 189 248 / 0.55);
+  background: rgb(56 189 248 / 0.15);
+}
+
+.di-city-results {
+  display: grid;
+  gap: 4px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.di-city-results button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgb(var(--theme-ink-rgb, 36 33 31) / 0.12);
+  background: rgb(var(--theme-card-rgb, 255 253 248) / 0.72);
+  color: var(--theme-ink);
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.di-city-results button small {
+  color: var(--theme-muted);
+  font-size: 10.5px;
+}
+
+.sun-glass-live-temp {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--theme-muted);
+}
+
+.sun-glass-location-box {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 14px;
+  border: 1px solid rgb(var(--theme-ink-rgb, 36 33 31) / 0.12);
+  background: rgb(var(--theme-card-rgb, 255 253 248) / 0.42);
+}
+
+.sun-glass-location-head {
+  display: grid;
+  gap: 6px;
+}
+
+.sun-glass-location-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-size: 11.5px;
+  color: var(--theme-ink);
+}
+
+.sun-glass-location-meta svg,
+.sun-glass-location-btns svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+.sun-glass-location-meta em {
+  font-style: normal;
+  color: var(--theme-muted);
+  font-size: 11px;
+}
+
+.sun-glass-location-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.sun-glass-location-sub {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--theme-muted);
+}
+
+:root[data-dengta-appearance="night"] .di-weather-card {
+  border-color: rgb(125 211 252 / 0.34);
+  background: linear-gradient(125deg, rgb(30 58 95 / 0.72), rgb(15 23 42 / 0.78));
+}
+
+:root[data-dengta-appearance="night"] .di-weather-copy strong,
+:root[data-dengta-appearance="night"] .di-weather-copy small {
+  color: #f1f5f9;
+}
+
+:root[data-dengta-appearance="night"] .di-weather-copy small.di-weather-sub {
+  color: #cbd5e1;
+}
+
+:root[data-dengta-appearance="night"] .di-weather-clock {
+  color: #7dd3fc;
+}
+
+:root[data-dengta-appearance="night"] .di-weather-actions button:not(.is-primary),
+:root[data-dengta-appearance="night"] .di-city-chips button,
+:root[data-dengta-appearance="night"] .di-city-results button {
+  background: rgb(30 41 59 / 0.85);
+  border-color: rgb(148 163 184 / 0.32);
+  color: #f8fafc;
+}
+
+:root[data-dengta-appearance="night"] .di-city-error {
+  color: #fca5a5;
+}
+
+/* The floating status sheet uses a deep dark obsidian surface in both day and night themes;
+   ensure every Dynamic Island control card inside it stays crisp and legible. */
+.sun-glass-floating-status-panel .di-control-deck {
+  border-color: rgb(255 255 255 / 0.16);
+  background: linear-gradient(145deg, rgb(255 255 255 / 0.08), rgb(255 255 255 / 0.03));
+  color: #f3f4f6;
+}
+
+.sun-glass-floating-status-panel .di-deck-badge {
+  color: #f4b79b;
+}
+
+.sun-glass-floating-status-panel .di-deck-status,
+.sun-glass-floating-status-panel .di-music-copy small,
+.sun-glass-floating-status-panel .di-quick-tile small,
+.sun-glass-floating-status-panel .di-weather-copy small.di-weather-sub {
+  color: rgb(226 232 240 / 0.78);
+}
+
+.sun-glass-floating-status-panel .di-weather-card {
+  border-color: rgb(125 211 252 / 0.3);
+  background: linear-gradient(125deg, rgb(56 189 248 / 0.16), rgb(99 102 241 / 0.12));
+}
+
+.sun-glass-floating-status-panel .di-weather-copy strong,
+.sun-glass-floating-status-panel .di-weather-copy small,
+.sun-glass-floating-status-panel .di-music-copy strong,
+.sun-glass-floating-status-panel .di-quick-tile strong {
+  color: #f8fafc;
+}
+
+.sun-glass-floating-status-panel .di-weather-clock {
+  color: #7dd3fc;
+}
+
+.sun-glass-floating-status-panel .di-quick-tile,
+.sun-glass-floating-status-panel .di-music-actions button:not(.is-primary),
+.sun-glass-floating-status-panel .di-weather-actions button:not(.is-primary),
+.sun-glass-floating-status-panel .di-city-chips button,
+.sun-glass-floating-status-panel .di-city-results button {
+  border-color: rgb(255 255 255 / 0.18);
+  background: rgb(255 255 255 / 0.08);
+  color: #f1f5f9;
+}
+
+.sun-glass-floating-status-panel .di-quick-tile:hover {
+  background: rgb(255 255 255 / 0.14);
+  border-color: rgb(255 255 255 / 0.3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .di-audio-spectrum.is-playing > i,
+  .di-pulse-dot {
+    animation: none !important;
+  }
+}
+
+:root[data-dengta-reduced-motion="true"] .di-audio-spectrum.is-playing > i,
+:root[data-dengta-reduced-motion="true"] .di-pulse-dot {
+  animation: none !important;
+}

@@ -307,3 +307,178 @@ body.surprise-map-active .download-app-chip{display:none!important}
   line-height: 1 !important;
   transition: none !important;
 }
+
+
+/* ---------------------------------------------------------------------------
+   Phone GPS Permission Deck, LocateControl, Compass & Proximity Progress v2
+   --------------------------------------------------------------------------- */
+.surprise-map-interactive .surprise-map-locate-control {
+  position: absolute;
+  right: 10px;
+  top: 52px;
+  z-index: 402;
+  width: 38px;
+  height: 38px;
+  min-height: 38px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(240, 223, 190, 0.45);
+  background: rgba(12, 28, 35, 0.82);
+  color: #f4e6ca;
+  font-size: 16px;
+  line-height: 1;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 14px rgba(5, 16, 24, 0.32);
+}
+.surprise-map-interactive .surprise-map-locate-control.has-fix {
+  border-color: #6ad1c2;
+  color: #82f0e0;
+  box-shadow: 0 0 0 3px rgba(106, 209, 194, 0.18), 0 4px 14px rgba(5, 16, 24, 0.35);
+}
+
+.surprise-map-location-deck {
+  margin: 10px 0 14px;
+  padding: 10px 13px;
+  border-radius: 18px;
+  border: 1px solid rgba(226, 206, 175, 0.24);
+  background: linear-gradient(155deg, rgba(22, 43, 64, 0.88), rgba(16, 33, 51, 0.94));
+  display: grid;
+  gap: 8px;
+}
+.surprise-map-location-deck.has-position {
+  border-color: rgba(106, 209, 194, 0.44);
+}
+.surprise-map-location-deck.is-live {
+  border-color: rgba(130, 240, 224, 0.72);
+  box-shadow: 0 0 22px rgba(72, 189, 174, 0.18);
+}
+.surprise-map-location-deck .surprise-map-location-row {
+  margin: 0;
+  font-size: 11px;
+  color: #e4ded3;
+}
+.surprise-map-location-deck .surprise-map-location-row button {
+  min-height: 34px;
+  padding: 5px 13px;
+  border: 1px solid rgba(235, 205, 152, 0.45);
+  background: rgba(235, 205, 152, 0.14);
+  color: #f9e6c1;
+  font-weight: 600;
+}
+
+.surprise-map-explore-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 7px;
+  border-top: 1px dashed rgba(232, 214, 187, 0.16);
+}
+.surprise-map-perm-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.08);
+  color: #d6e1e6;
+}
+.surprise-map-perm-pill.is-granted {
+  background: rgba(58, 178, 158, 0.22);
+  color: #9bf2e4;
+}
+.surprise-map-perm-pill.is-denied {
+  background: rgba(217, 94, 84, 0.24);
+  color: #ffc3bc;
+}
+.surprise-map-explore-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.surprise-map-page .surprise-map-mini-btn {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 11px;
+  border: 1px solid rgba(226, 206, 175, 0.3);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e8dfd0;
+}
+.surprise-map-page .surprise-map-mini-btn.is-on {
+  border-color: #6ad1c2;
+  background: rgba(58, 178, 158, 0.26);
+  color: #e6fffb;
+}
+
+.surprise-map-nearby-summary {
+  padding: 8px 11px;
+  border-radius: 12px;
+  background: rgba(106, 209, 194, 0.14);
+  border: 1px solid rgba(106, 209, 194, 0.26);
+  color: #dffaf5;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.surprise-map-warmth {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.surprise-map-warmth.is-hot {
+  background: #daf5ea;
+  color: #156649;
+}
+.surprise-map-warmth.is-warm {
+  background: #fcebd2;
+  color: #8f4f15;
+}
+.surprise-map-warmth.is-near {
+  background: #e3f0f5;
+  color: #235a70;
+}
+.surprise-map-warmth.is-far {
+  background: #eee9e2;
+  color: #70665b;
+}
+
+.surprise-map-proximity-meter {
+  display: grid;
+  gap: 4px;
+  margin: 2px 0 4px;
+}
+.surprise-map-proximity-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(138, 116, 95, 0.16);
+  overflow: hidden;
+}
+.surprise-map-proximity-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: #795365;
+  transition: width 0.28s ease;
+}
+.surprise-map-proximity-fill.is-hot {
+  background: linear-gradient(90deg, #279d7b, #4ccfa5);
+}
+.surprise-map-proximity-fill.is-warm {
+  background: linear-gradient(90deg, #c98639, #ebae57);
+}
+.surprise-map-proximity-fill.is-near {
+  background: linear-gradient(90deg, #3c8aa3, #66b8cc);
+}
+.surprise-map-proximity-meter small {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: #6b5848;
+}

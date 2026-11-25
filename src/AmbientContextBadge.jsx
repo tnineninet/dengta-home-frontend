@@ -6,18 +6,20 @@ import {
   clearCachedCoordinates,
   clearCachedWeather,
   describeGeolocationError,
-  formatShanghaiClock,
+  formatLocalClock,
   normalizeWeather,
   normalizeCoordinates,
   readEnabledAmbientCache,
   readCachedCoordinates,
   readCachedWeather,
+  resolveActiveTimeZone,
   resolveAmbientStartupAction,
   resolveAmbientSwipe,
   storeAmbientPreferences,
   storeCachedCoordinates,
   storeCachedWeather,
 } from "./ambient-context";
+import { estimateApproximateLocationByIp } from "./live-location-weather";
 
 const OFF_STATE = Object.freeze({
   state: "off",
@@ -36,6 +38,9 @@ function AmbientContextBadge({
   onLoadWeather,
   onContextChange,
   onCoordinatesChange,
+  onStatusChange,
+  onLocationSynced,
+  controlRef,
   celestialSnapshot,
   accountScope = "",
   className = "",
@@ -110,10 +115,34 @@ function AmbientContextBadge({
     };
   }, [locationEnabled]);
 
-  const clock = useMemo(() => formatShanghaiClock(now), [now]);
+  const activeTimeZone = useMemo(
+    () =>
+      resolveActiveTimeZone(
+        weather?.timeZone || coordinates?.timeZone || "",
+      ),
+    [coordinates?.timeZone, weather?.timeZone],
+  );
+  const activeLocationLabel = useMemo(
+    () =>
+      (locationEnabled
+        ? weather?.locationLabel || coordinates?.label || ""
+        : ""),
+    [coordinates?.label, locationEnabled, weather?.locationLabel],
+  );
+  const clock = useMemo(
+    () => formatLocalClock(now, activeTimeZone),
+    [activeTimeZone, now],
+  );
   const ambientContext = useMemo(
-    () => buildAmbientContext({ clock, weather, locationEnabled }),
-    [clock, locationEnabled, weather],
+    () =>
+      buildAmbientContext({
+        clock,
+        weather,
+        locationEnabled,
+        timeZone: activeTimeZone,
+        locationLabel: activeLocationLabel,
+      }),
+    [activeLocationLabel, activeTimeZone, clock, locationEnabled, weather],
   );
 
   useEffect(() => {
@@ -127,6 +156,29 @@ function AmbientContextBadge({
     onCoordinatesChange?.(locationEnabled ? coordinates : null);
   }, [coordinates, locationEnabled, onCoordinatesChange]);
 
+  useEffect(() => {
+    onStatusChange?.({
+      status,
+      online,
+      locationEnabled,
+      locationLabel: activeLocationLabel,
+      timeZone: activeTimeZone,
+      clock,
+      coordinates: locationEnabled ? coordinates : null,
+      weather: locationEnabled ? weather : null,
+    });
+  }, [
+    activeLocationLabel,
+    activeTimeZone,
+    clock,
+    coordinates,
+    locationEnabled,
+    onStatusChange,
+    online,
+    status,
+    weather,
+  ]);
+
   useEffect(
     () => () => {
       operationRef.current += 1;
@@ -134,7 +186,7 @@ function AmbientContextBadge({
     [cacheStorage],
   );
 
-  const loadWeather = useCallback(async (coordinates, operation) => {
+  const loadWeather = useCallback(async (nextCoordinates, operation, { notifySynced = false } = {}) => {
     if (!browserIsOnline()) {
       if (operation === operationRef.current) {
         setStatus({
@@ -158,19 +210,48 @@ function AmbientContextBadge({
         throw new Error("天气服务尚未接入，请稍后再试。");
       }
       const result = await onLoadWeather({
-        latitude: coordinates.latitude,
-        longitude: coordinates.longitude,
+        latitude: nextCoordinates.latitude,
+        longitude: nextCoordinates.longitude,
       });
       if (operation !== operationRef.current) return;
 
-      const normalized = normalizeWeather(result);
+      const mergedRaw = {
+        ...result,
+        ...(nextCoordinates.label && !result?.locationLabel && !result?.location_label && !result?.city
+          ? { locationLabel: nextCoordinates.label }
+          : {}),
+        ...(nextCoordinates.timeZone && !result?.timeZone && !result?.timezone
+          ? { timeZone: nextCoordinates.timeZone }
+          : {}),
+      };
+      const normalized = normalizeWeather(mergedRaw);
       if (!normalized) {
         throw new Error("天气服务没有返回可用温度");
+      }
+      const enrichedCoords = normalizeCoordinates({
+        ...nextCoordinates,
+        ...(normalized.locationLabel ? { label: normalized.locationLabel } : {}),
+        ...(normalized.timeZone ? { timeZone: normalized.timeZone } : {}),
+      });
+      if (enrichedCoords) {
+        storeCachedCoordinates(enrichedCoords, cacheStorage);
+        setCoordinates(enrichedCoords);
       }
       weatherRef.current = normalized;
       setWeather(normalized);
       storeCachedWeather(normalized, cacheStorage);
-      setStatus({ state: "ready", message: "天气已更新" });
+      setStatus({
+        state: "ready",
+        message: normalized.locationLabel
+          ? `已同步 ${normalized.locationLabel} 天气与时间`
+          : "天气与当地时间已更新",
+      });
+      if (notifySynced) {
+        onLocationSynced?.({
+          coordinates: enrichedCoords || nextCoordinates,
+          weather: normalized,
+        });
+      }
     } catch (error) {
       if (operation !== operationRef.current) return;
       setStatus({
@@ -180,14 +261,14 @@ function AmbientContextBadge({
           : "当前没有网络，暂时无法更新天气。",
       });
     }
-  }, [onLoadWeather, cacheStorage]);
+  }, [onLoadWeather, onLocationSynced, cacheStorage]);
 
-  const requestCurrentPosition = useCallback((operation, cacheState) => {
+  const requestCurrentPosition = useCallback((operation, cacheState, { notifySynced = false } = {}) => {
     const geolocation = globalThis.navigator?.geolocation;
     if (!geolocation?.getCurrentPosition) {
       setStatus({
         state: "unavailable",
-        message: "这台设备暂不支持定位。",
+        message: "这台设备暂不支持定位，可改用网络定位或城市搜索。",
       });
       return;
     }
@@ -197,31 +278,31 @@ function AmbientContextBadge({
       message:
         cacheState === "expired"
           ? "位置缓存已过期，正在重新定位"
-          : "正在获取位置，只用于查询附近天气",
+          : "正在获取位置，用于更新当地时间与天气",
     });
     geolocation.getCurrentPosition(
       (position) => {
         if (operation !== operationRef.current) return;
-        const coordinates = normalizeCoordinates({
+        const nextCoords = normalizeCoordinates({
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
           accuracy: position.coords.accuracy,
         });
-        if (!coordinates) {
+        if (!nextCoords) {
           setStatus({ state: "unavailable", message: "定位未返回有效坐标，请重试。" });
           return;
         }
         const previous = readCachedCoordinates(cacheStorage).coordinates;
-        if (!previous || previous.latitude !== coordinates.latitude || previous.longitude !== coordinates.longitude) {
+        if (!previous || previous.latitude !== nextCoords.latitude || previous.longitude !== nextCoords.longitude) {
           clearCachedWeather(cacheStorage);
           weatherRef.current = null;
           setWeather(null);
         }
-        storeCachedCoordinates(coordinates, cacheStorage);
+        storeCachedCoordinates(nextCoords, cacheStorage);
         setCoordinates(readCachedCoordinates(cacheStorage).coordinates);
         persistPreferences({ enabled: true, permissionDenied: false });
         setLocationEnabled(true);
-        void loadWeather(coordinates, operation);
+        void loadWeather(nextCoords, operation, { notifySynced });
       },
       (error) => {
         if (operation !== operationRef.current) return;
@@ -321,7 +402,7 @@ function AmbientContextBadge({
     };
   }, [resumeWeather]);
 
-  function enableWeather() {
+  const enableWeather = useCallback(({ forceRelocate = false } = {}) => {
     const operation = operationRef.current + 1;
     operationRef.current = operation;
     setLocationEnabled(true);
@@ -343,15 +424,64 @@ function AmbientContextBadge({
     }
 
     const cached = readCachedCoordinates(cacheStorage);
-    if (cached.state === "fresh" && !permissionWasDenied) {
+    if (!forceRelocate && cached.state === "fresh" && !permissionWasDenied) {
       persistPreferences({ enabled: true, permissionDenied: false });
-      void loadWeather(cached.coordinates, operation);
+      void loadWeather(cached.coordinates, operation, { notifySynced: true });
       return;
     }
-    requestCurrentPosition(operation, cached.state);
-  }
+    requestCurrentPosition(operation, cached.state, { notifySynced: true });
+  }, [cacheStorage, loadWeather, onLoadWeather, persistPreferences, requestCurrentPosition]);
 
-  function disableWeather() {
+  const applyManualLocation = useCallback((location) => {
+    const nextCoords = normalizeCoordinates(location);
+    if (!nextCoords) return;
+    const operation = operationRef.current + 1;
+    operationRef.current = operation;
+    clearCachedWeather(cacheStorage);
+    weatherRef.current = null;
+    setWeather(null);
+    storeCachedCoordinates(nextCoords, cacheStorage);
+    setCoordinates(nextCoords);
+    persistPreferences({ enabled: true, permissionDenied: false });
+    setLocationEnabled(true);
+    void loadWeather(nextCoords, operation, { notifySynced: true });
+  }, [cacheStorage, loadWeather, persistPreferences]);
+
+  const estimateLocationByIp = useCallback(async () => {
+    if (!browserIsOnline()) {
+      setStatus({
+        state: "offline",
+        message: "当前没有网络，暂时无法估算位置。",
+      });
+      return;
+    }
+    const operation = operationRef.current + 1;
+    operationRef.current = operation;
+    setLocationEnabled(true);
+    setStatus({
+      state: "locating",
+      message: "正在根据网络估算大致城市与时区…",
+    });
+    try {
+      const estimated = await estimateApproximateLocationByIp();
+      if (operation !== operationRef.current) return;
+      clearCachedWeather(cacheStorage);
+      weatherRef.current = null;
+      setWeather(null);
+      storeCachedCoordinates(estimated, cacheStorage);
+      setCoordinates(estimated);
+      persistPreferences({ enabled: true, permissionDenied: false });
+      await loadWeather(estimated, operation, { notifySynced: true });
+    } catch (error) {
+      if (operation !== operationRef.current) return;
+      setStatus({
+        state: "unavailable",
+        message: error?.message || "网络位置估算失败，可手动搜索城市。",
+      });
+    }
+  }, [cacheStorage, loadWeather, persistPreferences]);
+
+  const disableWeather = useCallback(() => {
     operationRef.current += 1;
     clearCachedCoordinates(cacheStorage);
     clearCachedWeather(cacheStorage);
@@ -361,7 +491,39 @@ function AmbientContextBadge({
     weatherRef.current = null;
     setWeather(null);
     setStatus(OFF_STATE);
-  }
+  }, [cacheStorage, persistPreferences]);
+
+  useEffect(() => {
+    if (!controlRef) return undefined;
+    controlRef.current = {
+      enableWeather: () => enableWeather({ forceRelocate: false }),
+      relocate: () => enableWeather({ forceRelocate: true }),
+      refreshWeather: () => {
+        const cached = readCachedCoordinates(cacheStorage);
+        if (cached.coordinates) {
+          const operation = operationRef.current + 1;
+          operationRef.current = operation;
+          void loadWeather(cached.coordinates, operation, { notifySynced: true });
+        } else {
+          enableWeather({ forceRelocate: true });
+        }
+      },
+      applyManualLocation,
+      estimateLocationByIp,
+      disableWeather,
+    };
+    return () => {
+      if (controlRef.current) controlRef.current = null;
+    };
+  }, [
+    applyManualLocation,
+    cacheStorage,
+    controlRef,
+    disableWeather,
+    enableWeather,
+    estimateLocationByIp,
+    loadWeather,
+  ]);
 
   const statusCanRetry =
     ["denied", "timeout", "unavailable", "offline", "error"].includes(
@@ -475,7 +637,13 @@ function AmbientContextBadge({
       }}
     >
       <div className="ambient-context-time">
-        <span className="ambient-context-kicker">中国时间</span>
+        <span className="ambient-context-kicker">
+          {activeLocationLabel
+            ? `${activeLocationLabel}时间`
+            : activeTimeZone === "Asia/Shanghai"
+              ? "中国时间"
+              : "当地时间"}
+        </span>
         <time dateTime={clock.dateTime}>{clock.time}</time>
         <span className="ambient-context-date">{clock.date}</span>
       </div>
@@ -484,7 +652,9 @@ function AmbientContextBadge({
 
       <div className="ambient-context-weather">
         <div className="ambient-context-weather-copy">
-          <span className="ambient-context-kicker">你身边</span>
+          <span className="ambient-context-kicker">
+            {activeLocationLabel || "你身边"}
+          </span>
           {weather ? (
             <strong>
               {weather.description} {weather.temperatureC}°C

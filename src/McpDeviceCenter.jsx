@@ -42,6 +42,61 @@ const FALLBACK_MCP_APPS = Object.freeze([
     ],
     security_notes: ["X Cookie 等同账号密码，不要上传。", "发推/私信/删推不可逆，建议先禁用写工具。"],
   },
+  {
+    id: "bilibili-creator-mcp",
+    name: "B 站视界与创作者 MCP (bilibili-mcp + biliup)",
+    summary: "刷热门/搜索视频、读字幕与评论区、看本人稿件与粉丝数据，并配合 biliup 生成投稿草稿。",
+    transport: "stdio → HTTP 包装",
+    auth: "Bearer / 随机路径",
+    repo: "https://github.com/sandraschi/bilibili-mcp",
+    steps: [
+      { title: "部署只读 MCP", detail: "部署 sandraschi/bilibili-mcp 或 222wcnm/BiliStalkerMCP，支持热门/搜索/字幕/创作者数据。" },
+      { title: "包装 HTTPS 端点", detail: "用 supergateway/mcp-proxy 转为 Streamable HTTP 并加 Bearer 鉴权，SESSDATA 绝不填进 DengTa。" },
+      { title: "按需授权", detail: "先仅开启只读工具；评论与投稿走 DengTa「AI 视界 · 创作者」人工审批队列。" },
+    ],
+    security_notes: ["SESSDATA 仅留在自托管主机，绝不上传。", "控制请求频率，AI 视频请标注「AI辅助创作」。"],
+  },
+  {
+    id: "douyin-creator-mcp",
+    name: "抖音创作者开放接口 & MCP",
+    summary: "对接抖音开放平台 Open API 或 flyerhzm/douyin-mcp-server：热点解析、看本人作品数据、上传视频草稿。",
+    transport: "Open API / MCP",
+    auth: "OAuth2 / Bearer",
+    repo: "https://github.com/flyerhzm/douyin-mcp-server",
+    steps: [
+      { title: "优先开放平台", detail: "优先在 developer.open-douyin.com 申请官方视频发布与数据接口。" },
+      { title: "或自托管 MCP", detail: "个人本地运行 521w/douyin-mcp 或 flyerhzm/douyin-mcp-server 并通过 HTTPS 网关接入。" },
+      { title: "人工审阅放行", detail: "结合 DengTa 审批队列确认成片文案与 AI 标识后再提交草稿箱。" },
+    ],
+    security_notes: ["仅限本人授权单账号使用，严禁批量刷评或绕过验证码。", "发布内容请附带 AI 创作声明。"],
+  },
+  {
+    id: "ai-video-factory",
+    name: "AI 视频工坊 (MoneyPrinterTurbo)",
+    summary: "MIT 开源短视频自动生成引擎：从 DengTa 脚本自动配音、配字幕、混剪输出 9:16/16:9 成片。",
+    transport: "HTTP REST / MCP",
+    auth: "Bearer 令牌",
+    repo: "https://github.com/harry0703/MoneyPrinterTurbo",
+    steps: [
+      { title: "部署视频引擎", detail: "本地部署 harry0703/MoneyPrinterTurbo 并启动 REST API 服务。" },
+      { title: "一键导出任务", detail: "在 DengTa「AI 视界 · 创作者 → 做视频」生成标准渲染载荷并提交。" },
+    ],
+    security_notes: ["注意无版权素材与 BGM 授权范围，成片建议保留 AI 标识。"],
+  },
+  {
+    id: "adudir-jianying-studio",
+    name: "阿杜导演 (adudir-open) × 本机剪映工作台 MCP",
+    summary: "开源 .motion 剪辑引擎 + 本机剪映草稿箱控制 + 全格式音视频/文档/ZIP读取 + 本机 AI 工作区与知识库。",
+    transport: "Streamable HTTP MCP",
+    auth: "本机一键授权 / 可选 Bearer",
+    repo: "https://github.com/adunext/adudir-open",
+    steps: [
+      { title: "一键启动本机助手", detail: "双击运行 dengta-creator-bridge-mcp/一键启动DengTa本机AI助手.bat（端点 http://127.0.0.1:18088/mcp）。" },
+      { title: "在 AI 工作台授权", detail: "打开 DengTa「AI 工作台·剪映」勾选允许的权限，即可操控本机剪映、读取素材包并建个人知识库。" },
+      { title: "手机跨端联动", detail: "手机和电脑连同一 Wi-Fi，扫码即可从手机指挥电脑剪映与工作区。" },
+    ],
+    security_notes: ["默认仅限本机与同局域网配对，自动备份剪映 root_meta_info.json 且不破解专有加密。"],
+  },
 ]);
 
 const NETEASE_MCP_PRESET = Object.freeze({

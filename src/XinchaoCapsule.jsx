@@ -1,21 +1,9 @@
 import { useMemo } from "react";
+import {
+  XINCHAO_DRIVE_LABELS,
+  localizeXinchaoEmotion,
+} from "./emotion-state";
 import "./xinchao-capsule.css";
-
-const DRIVE_LABELS = {
-  possess: "想靠近",
-  monitor: "惦记",
-  share: "想分享",
-  libido: "渴望",
-  curiosity: "好奇",
-  social: "想聊",
-  crave: "馋",
-  boredom: "空落",
-  reflection: "想心事",
-  grieve: "难过",
-  anger: "生气",
-  safety: "安全感",
-  confidence: "自信"
-};
 
 function shortNumber(value) {
   return Math.round(Math.max(0, Math.min(1, Number(value) || 0)) * 100);
@@ -27,15 +15,15 @@ export default function XinchaoCapsule({ state }) {
       Object.entries(state?.drives || {})
         .map(([key, value]) => ({
           key,
-          label: DRIVE_LABELS[key] || key,
-          value: Number(value) || 0
+          label: XINCHAO_DRIVE_LABELS[key] || key,
+          value: Number(value) || 0,
         }))
         .sort((left, right) => right.value - left.value)
         .slice(0, 5),
-    [state]
+    [state],
   );
   const top = drives[0];
-  const emotion = state?.emotion?.label || "平静";
+  const emotion = localizeXinchaoEmotion(state?.emotion?.label);
   const description = drives.length
     ? `${emotion} · ${drives
         .map((drive) => `${drive.label}${shortNumber(drive.value)}`)
@@ -51,17 +39,17 @@ export default function XinchaoCapsule({ state }) {
             key={drive.key}
             style={{
               "--xinchao-level": Math.max(0.08, drive.value),
-              "--xinchao-index": index
+              "--xinchao-index": index,
             }}
           />
         ))}
       </span>
       <span className="xinchao-capsule-copy">
         <small>{emotion}</small>
-        <strong>{top ? top.label : "心潮"}</strong>
+        <strong>{top ? top.label : "心潮轻涌"}</strong>
       </span>
       <span className="xinchao-capsule-revision" aria-hidden="true">
-        {state?.revision ? `#${state.revision}` : ""}
+        {state?.revision ? `·${state.revision}` : ""}
       </span>
     </span>
   );

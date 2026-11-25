@@ -114,7 +114,7 @@ export default function SettingsHome({ categories = [], onSelectCategory, prefer
       <div className="settings-home-search">
         <label htmlFor={searchId}>查找设置</label>
         <div className="settings-home-search-field">
-          <Search aria-hidden="true" />
+          <Search strokeWidth={1.85} aria-hidden="true" />
           <input
             id={searchId}
             ref={searchRef}
@@ -128,7 +128,7 @@ export default function SettingsHome({ categories = [], onSelectCategory, prefer
           />
           {query ? (
             <button type="button" aria-label="清空设置搜索" onClick={clearSearch}>
-              <X aria-hidden="true" />
+              <X strokeWidth={1.9} aria-hidden="true" />
             </button>
           ) : null}
         </div>
@@ -184,8 +184,14 @@ export default function SettingsHome({ categories = [], onSelectCategory, prefer
       ) : null}
 
       <div className="settings-home-groups" aria-label="设置分类">
-        {groups.map((group) => (
-          <section className="settings-home-group" key={group.id} aria-labelledby={`${searchId}-${group.id}`}>
+        {groups.map((group, groupIndex) => (
+          <section
+            className="settings-home-group"
+            key={group.id}
+            data-settings-group={group.id}
+            style={{ "--group-stagger": groupIndex }}
+            aria-labelledby={`${searchId}-${group.id}`}
+          >
             <div className="settings-home-group-heading">
               <h3 id={`${searchId}-${group.id}`}>{group.label}</h3>
               <p>{group.description}</p>
@@ -199,9 +205,13 @@ export default function SettingsHome({ categories = [], onSelectCategory, prefer
                   data-settings-category={id}
                   onClick={event => selectSearchResult(id, event)}
                 >
-                  {Icon ? <span className="settings-home-entry-icon" aria-hidden="true"><Icon /></span> : null}
+                  {Icon ? (
+                    <span className="settings-home-entry-icon" data-icon-tone={id} aria-hidden="true">
+                      <Icon strokeWidth={1.85} />
+                    </span>
+                  ) : null}
                   <span className="settings-home-entry-text"><strong>{label}</strong><small>{description}</small></span>
-                  <ArrowRight className="settings-home-entry-arrow" aria-hidden="true" />
+                  <ArrowRight className="settings-home-entry-arrow" strokeWidth={1.85} aria-hidden="true" />
                 </button>
               ))}
             </div>

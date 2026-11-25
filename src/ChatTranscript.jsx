@@ -31,15 +31,17 @@ function hasVisibleAssistantContent(item) {
     toolCalls.custom_sticker_id ||
     toolCalls.artwork_id ||
     toolCalls.music_card ||
+    toolCalls.dbskill_card ||
     (Array.isArray(toolCalls.activity_actions) && toolCalls.activity_actions.length) ||
     (Array.isArray(toolCalls.mcp_actions) && toolCalls.mcp_actions.length)
   );
 }
 
 export default function ChatTranscript({ messages, preferences, innerMonologues, innerMonologuePending,
-  innerMonologueErrors, onPreview, onReference, onDismissError, onOpenActivity, onRequestInnerMonologue, onCancelInnerMonologue, hideProcess = false, recentAssistantMessageId = "", ...props }) {
+  innerMonologueErrors, onPreview, onReference, onDismissError, onOpenActivity, onOpenDbskillVideo, onRequestInnerMonologue, onCancelInnerMonologue, hideProcess = false, recentAssistantMessageId = "", ...props }) {
   const preview = useLatestCallback(onPreview), reference = useLatestCallback(onReference);
   const dismiss = useLatestCallback(onDismissError), activity = useLatestCallback(onOpenActivity);
+  const openDbskillVideo = useLatestCallback(onOpenDbskillVideo);
   const requestMonologue = useLatestCallback(onRequestInnerMonologue);
   const cancelMonologue = useLatestCallback(onCancelInnerMonologue);
   const visibleMessages = hideProcess
@@ -78,7 +80,7 @@ export default function ChatTranscript({ messages, preferences, innerMonologues,
           previousRole={visibleMessages[absoluteIndex - 1]?.role} nextRole={visibleMessages[absoluteIndex + 1]?.role} preferences={preferences}
           monologueRecord={innerMonologues?.[item.id]} innerMonologuePending={innerMonologuePending?.[item.id] === true}
           innerMonologueError={innerMonologueErrors?.[item.id] || ""} onPreview={preview} onReference={reference}
-          onDismissError={dismiss} onOpenActivity={activity} onRequestInnerMonologue={requestMonologue}
+          onDismissError={dismiss} onOpenActivity={activity} onOpenDbskillVideo={openDbskillVideo} onRequestInnerMonologue={requestMonologue}
           onCancelInnerMonologue={typeof onCancelInnerMonologue === "function" ? cancelMonologue : undefined} />;
       })}
     </>

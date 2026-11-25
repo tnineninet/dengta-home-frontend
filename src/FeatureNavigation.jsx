@@ -146,7 +146,7 @@ export default function FeatureNavigation({ items = [], activeView, onNavigate, 
                 const isActive = activeView === item.id;
                 const badge = badges[item.id];
                 const countText = badgeText(badge);
-                return <button type="button" data-feature-item={item.id} ref={isActive ? activeItemRef : undefined} className={`${isActive ? "active" : ""}${badge?.action ? " is-action" : ""}`} aria-current={isActive ? "page" : undefined} aria-haspopup={badge?.action ? "dialog" : undefined} key={item.id} onClick={() => onNavigate?.(item.id)}>
+                return <button type="button" data-feature-item={item.id} data-dt-tip={`${FEATURE_LABELS[item.id] || item.label}${FEATURE_DETAILS[item.id]?.hint ? ` · ${FEATURE_DETAILS[item.id].hint}` : ""}`} ref={isActive ? activeItemRef : undefined} className={`${isActive ? "active" : ""}${badge?.action ? " is-action" : ""}`} aria-current={isActive ? "page" : undefined} aria-haspopup={badge?.action ? "dialog" : undefined} key={item.id} onClick={() => onNavigate?.(item.id)}>
                   <span aria-hidden="true">{item.icon}</span>
                   <span>{FEATURE_LABELS[item.id] || item.label}{FEATURE_DETAILS[item.id]?.hint ? <small>{FEATURE_DETAILS[item.id].hint}</small> : null}</span>
                   {countText ? <span key={countText} className="feature-navigation-badge" aria-label={badge?.label || `未读 ${countText} 条`}>{countText}</span> : badge?.dot ? <span className="feature-navigation-badge is-dot" aria-label={badge?.label || "有新内容"}>•</span> : null}

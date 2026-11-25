@@ -139,8 +139,24 @@ export function mountSurpriseMap(container, { load = loadLibrary, onStatus = () 
     const selected = state.items.find(item => item.id === state.selectedId);
     const coarse = coarseMapCenter(state.position), projectedCoarse = projectPoint(coarse);
     if (projectedCoarse && typeof library.circleMarker === "function") {
-      library.circleMarker([projectedCoarse.latitude, projectedCoarse.longitude], { radius: 6, color: "#f6dfae", weight: 2, fillColor: "#f6dfae", fillOpacity: 0.9 })
-        .bindTooltip?.("你在这附近", { direction: "top", opacity: 0.9 }).addTo(markers);
+      // Accuracy / exploration halo inspired by leaflet.locatecontrol (uses coarsened center only — exact GPS never reaches the tile layer)
+      const haloRadius = Math.max(120, Math.min(800, Math.round((Number(state.position?.accuracy) || 80) * 2)));
+      library.circle([projectedCoarse.latitude, projectedCoarse.longitude], {
+        radius: haloRadius,
+        color: "#6ad1c2",
+        weight: 1.5,
+        dashArray: "4 4",
+        fillColor: "#6ad1c2",
+        fillOpacity: 0.14,
+        interactive: false,
+      }).addTo(markers);
+      library.circleMarker([projectedCoarse.latitude, projectedCoarse.longitude], {
+        radius: 7,
+        color: "#ffffff",
+        weight: 2.5,
+        fillColor: "#2eb8a6",
+        fillOpacity: 0.96,
+      }).bindTooltip?.("你在这附近", { direction: "top", opacity: 0.92 }).addTo(markers);
     }
     const focus = displayArea(selected?.area);
     const focusKey = focus ? `letter:${selected.id}` : projectedCoarse ? `near:${projectedCoarse.latitude}:${projectedCoarse.longitude}` : "";
@@ -191,6 +207,13 @@ export function mountSurpriseMap(container, { load = loadLibrary, onStatus = () 
       if (!map || disposed) return;
       const points = state.items.map(item => displayArea(item?.area)).filter(Boolean).map(area => [area.latitude, area.longitude]);
       if (points.length) map.fitBounds(markers.getBounds(), { padding: [30, 30], maxZoom: 14, animate: false });
+    },
+    centerOnUser() {
+      if (!map || disposed) return false;
+      const coarse = coarseMapCenter(state.position), projected = projectPoint(coarse);
+      if (!projected) return false;
+      map.setView([projected.latitude, projected.longitude], 14, { animate: false });
+      return true;
     },
     destroy() {
       if (disposed) return;

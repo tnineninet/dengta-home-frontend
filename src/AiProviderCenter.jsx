@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Cpu, RefreshCw, Sparkles, Zap } from "lucide-react";
 import { apiFetch } from "./api";
 import { authSession } from "./auth-session";
 import { createScopedSettingsSession, settingsSaveScope } from "./settings-save-scope";
@@ -41,22 +42,105 @@ const PROTOCOL_OPTIONS = [
   {
     value: "openai-chat",
     label: "OpenAI Chat 兼容接口",
-    help: "适合 New API、LiteLLM 和大多数中转站，聊天请求使用 /v1/chat/completions。",
+    help: "适合 New API、LiteLLM、DeepSeek 和大多数中转站，聊天请求使用 /v1/chat/completions（支持前缀 KV 缓存）。",
   },
   {
     value: "openai-responses",
     label: "OpenAI Responses / Sub2API / Codex 网关",
-    help: "适合明确要求 Responses 协议的网关，聊天请求使用 /v1/responses。",
+    help: "适合明确要求 Responses 协议的网关，聊天请求使用 /v1/responses（官方地址自动启用 prompt_cache_key）。",
   },
   {
     value: "anthropic",
     label: "Claude / Anthropic 原生接口",
-    help: "直接使用 Anthropic Messages 协议，不是 OpenAI 兼容模式。",
+    help: "直接使用 Anthropic Messages 协议，官方地址自动附带 Ephemeral Prompt Cache 断点。",
   },
   {
     value: "gemini",
     label: "Gemini 原生接口",
-    help: "直接使用 Google Gemini generateContent 协议。",
+    help: "直接使用 Google Gemini generateContent 协议，适配百万级长上下文。",
+  },
+];
+
+const PROVIDER_QUICK_PRESETS = [
+  {
+    id: "deepseek",
+    label: "DeepSeek 官方",
+    tag: "自动前缀缓存",
+    name: "DeepSeek 官方",
+    protocol: "openai-chat",
+    base_url: "https://api.deepseek.com/v1",
+    default_model: "deepseek-chat",
+    billing_url: "https://platform.deepseek.com/usage",
+  },
+  {
+    id: "openai",
+    label: "OpenAI Responses",
+    tag: "Prefix Cache",
+    name: "OpenAI 官方",
+    protocol: "openai-responses",
+    base_url: "https://api.openai.com/v1",
+    default_model: "gpt-5",
+    billing_url: "https://platform.openai.com/usage",
+  },
+  {
+    id: "anthropic",
+    label: "Claude 原生",
+    tag: "Ephemeral 缓存",
+    name: "Anthropic Claude",
+    protocol: "anthropic",
+    base_url: "https://api.anthropic.com",
+    default_model: "claude-sonnet-4-20250514",
+    billing_url: "https://console.anthropic.com/",
+  },
+  {
+    id: "gemini",
+    label: "Gemini 原生",
+    tag: "1M+ 长窗",
+    name: "Google Gemini",
+    protocol: "gemini",
+    base_url: "https://generativelanguage.googleapis.com/v1beta",
+    default_model: "gemini-2.5-pro",
+    billing_url: "https://aistudio.google.com/",
+  },
+  {
+    id: "openrouter",
+    label: "OpenRouter",
+    tag: "多模型聚合",
+    name: "OpenRouter",
+    protocol: "openai-chat",
+    base_url: "https://openrouter.ai/api/v1",
+    default_model: "anthropic/claude-sonnet-4",
+    billing_url: "https://openrouter.ai/credits",
+  },
+  {
+    id: "siliconflow",
+    label: "硅基流动",
+    tag: "国内直连",
+    name: "硅基流动 SiliconFlow",
+    protocol: "openai-chat",
+    base_url: "https://api.siliconflow.cn/v1",
+    default_model: "deepseek-ai/DeepSeek-V3",
+    billing_url: "https://cloud.siliconflow.cn/account/ak",
+  },
+  {
+    id: "moonshot",
+    label: "Kimi / Moonshot",
+    tag: "长上下文",
+    name: "Moonshot Kimi",
+    protocol: "openai-chat",
+    base_url: "https://api.moonshot.cn/v1",
+    default_model: "kimi-k2-0905-preview",
+    billing_url: "https://platform.moonshot.cn/console/account",
+  },
+  {
+    id: "newapi",
+    label: "New API 中转",
+    tag: "通用兼容",
+    name: "我的 New API",
+    protocol: "openai-chat",
+    base_url: "https://",
+    default_model: "",
+    billing_url: "",
   },
 ];
 
@@ -670,6 +754,25 @@ export default function AiProviderCenter({
     }
   }
 
+  function applyQuickPreset(preset) {
+    draftRevisionRef.current += 1;
+    setDraft((current) => ({
+      ...current,
+      name: preset.name,
+      protocol: preset.protocol,
+      base_url: preset.base_url,
+      default_model: preset.default_model,
+      billing_url: preset.billing_url || current.billing_url || "",
+      reasoning_effort: reasoningEffortForProvider(
+        preset.protocol,
+        current.reasoning_effort,
+      ),
+    }));
+    setDraftModels([]);
+    autoCatalogRef.current = null;
+    setFeedback(`已填入「${preset.label}」预设参数，粘贴你的 API Key 后会自动读取模型目录。`);
+  }
+
   function retryCatalog() {
     autoCatalogRef.current = null;
     setCatalogInfo({ status: "waiting", message: "正在重试读取模型目录…" });
@@ -1003,6 +1106,7 @@ export default function AiProviderCenter({
           disabled={Boolean(busy)}
           onClick={() => void refreshCenter()}
         >
+          <RefreshCw size={14} strokeWidth={1.9} aria-hidden="true" />
           刷新接口列表
         </button>
       </div>
@@ -1036,6 +1140,33 @@ export default function AiProviderCenter({
           <div>
             <strong>粘贴地址与密钥，自动读目录并启用</strong>
             <small>默认只要下面 5 项；其余选项收在「高级设置」里，默认不用管。</small>
+          </div>
+        </div>
+        <div className="provider-preset-bar" role="group" aria-label="常用供应商一键预设">
+          <span className="provider-preset-heading">
+            <Sparkles size={13} strokeWidth={1.9} aria-hidden="true" />
+            一键填入常用接口模板：
+          </span>
+          <div className="provider-preset-list">
+            {PROVIDER_QUICK_PRESETS.map((preset) => {
+              const active =
+                draft.protocol === preset.protocol &&
+                preset.base_url.length > 8 &&
+                draft.base_url === preset.base_url;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  className={`provider-preset-chip${active ? " is-active" : ""}`}
+                  disabled={Boolean(busy)}
+                  onClick={() => applyQuickPreset(preset)}
+                >
+                  <Cpu size={13} strokeWidth={1.85} aria-hidden="true" />
+                  <span>{preset.label}</span>
+                  <em>{preset.tag}</em>
+                </button>
+              );
+            })}
           </div>
         </div>
         <ProviderPrimaryFields
@@ -1073,6 +1204,7 @@ export default function AiProviderCenter({
             disabled={Boolean(busy)}
             aria-busy={busy === "create"}
           >
+            <Zap size={15} strokeWidth={2} aria-hidden="true" />
             保存并启用
           </button>
         </div>

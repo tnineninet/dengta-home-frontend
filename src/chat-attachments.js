@@ -5,22 +5,42 @@ export const CHAT_ATTACHMENT_MAX_TOTAL_BYTES = 20 * 1024 * 1024;
 const DOCUMENT_MIME_TYPES = new Set([
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/zip",
+  "application/x-zip-compressed",
   "application/json",
   "application/xml",
   "text/plain",
   "text/csv",
   "text/markdown",
   "text/xml",
+  "text/vtt",
+  "text/html",
+  "application/x-subrip",
 ]);
 
 const DOCUMENT_EXTENSIONS = new Set([
   "csv",
   "docx",
+  "xlsx",
+  "pptx",
   "json",
   "md",
   "pdf",
   "txt",
   "xml",
+  "srt",
+  "vtt",
+  "ass",
+  "zip",
+  "motion",
+  "html",
+  "yaml",
+  "yml",
+  "py",
+  "js",
+  "ts",
 ]);
 
 const IMAGE_EXTENSION_TYPES = new Map([
@@ -59,12 +79,18 @@ const VIDEO_EXTENSION_TYPES = new Map([
   ["mp4", "video/mp4"],
   ["mov", "video/quicktime"],
   ["webm", "video/webm"],
+  ["mkv", "video/x-matroska"],
+  ["m4v", "video/x-m4v"],
+  ["avi", "video/x-msvideo"],
 ]);
 
 const VIDEO_EXTENSION_ALLOWED_TYPES = new Map([
   ["mp4", new Set(["video/mp4"])],
   ["mov", new Set(["video/quicktime"])],
   ["webm", new Set(["video/webm"])],
+  ["mkv", new Set(["video/x-matroska", "application/octet-stream"])],
+  ["m4v", new Set(["video/x-m4v", "video/mp4"])],
+  ["avi", new Set(["video/x-msvideo", "video/avi"])],
 ]);
 
 const DOCUMENT_EXTENSION_TYPES = new Map([
@@ -73,11 +99,30 @@ const DOCUMENT_EXTENSION_TYPES = new Map([
     "docx",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   ],
+  [
+    "xlsx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ],
+  [
+    "pptx",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ],
   ["txt", "text/plain"],
   ["md", "text/markdown"],
   ["csv", "text/csv"],
   ["json", "application/json"],
-  ["xml", "application/xml"],
+  ["xml", "text/xml"],
+  ["srt", "text/plain"],
+  ["vtt", "text/vtt"],
+  ["ass", "text/plain"],
+  ["zip", "application/zip"],
+  ["motion", "application/zip"],
+  ["html", "text/html"],
+  ["yaml", "text/plain"],
+  ["yml", "text/plain"],
+  ["py", "text/plain"],
+  ["js", "text/plain"],
+  ["ts", "text/plain"],
 ]);
 
 const DOCUMENT_EXTENSION_ALLOWED_TYPES = new Map([
@@ -88,11 +133,34 @@ const DOCUMENT_EXTENSION_ALLOWED_TYPES = new Map([
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ]),
   ],
+  [
+    "xlsx",
+    new Set([
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ]),
+  ],
+  [
+    "pptx",
+    new Set([
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    ]),
+  ],
   ["txt", new Set(["text/plain"])],
   ["md", new Set(["text/markdown", "text/plain"])],
   ["csv", new Set(["text/csv", "application/csv", "text/plain"])],
   ["json", new Set(["application/json", "text/json", "text/plain"])],
   ["xml", new Set(["application/xml", "text/xml", "text/plain"])],
+  ["srt", new Set(["text/plain", "application/x-subrip"])],
+  ["vtt", new Set(["text/vtt", "text/plain"])],
+  ["ass", new Set(["text/plain"])],
+  ["zip", new Set(["application/zip", "application/x-zip-compressed"])],
+  ["motion", new Set(["application/zip", "application/x-zip-compressed"])],
+  ["html", new Set(["text/html", "text/plain"])],
+  ["yaml", new Set(["text/plain"])],
+  ["yml", new Set(["text/plain"])],
+  ["py", new Set(["text/plain"])],
+  ["js", new Set(["text/plain"])],
+  ["ts", new Set(["text/plain"])],
 ]);
 
 function cleanText(value, limit = 500) {

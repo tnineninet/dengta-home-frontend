@@ -1,3 +1,31 @@
+// Clean-room quiet-event grading inspired by Vael-KY/netease-music-mcp (MIT, af20456):
+// natural track completions and routine pauses sync quietly to the room relay instead
+// of interrupting the companion chat stream with noisy alerts.
+export function classifyPlaybackRelayEvent(previous = {}, next = {}) {
+  const prevTrack = String(previous?.musicPlaylistItemId || previous?.trackId || "");
+  const nextTrack = String(next?.musicPlaylistItemId || next?.trackId || "");
+  const trackChanged = Boolean(nextTrack && prevTrack && nextTrack !== prevTrack);
+  const reason = String(next?.reason || "").toLowerCase();
+  const nextState = String(next?.playbackState || "").toLowerCase();
+  const prevState = String(previous?.playbackState || "").toLowerCase();
+
+  if (reason === "ended" || nextState === "ended") {
+    return Object.freeze({ kind: "ended", quiet: true, shouldNotifyRoom: false });
+  }
+  if (!trackChanged && nextState === "paused" && (prevState === "playing" || prevState === "paused" || !prevState)) {
+    return Object.freeze({ kind: "paused", quiet: true, shouldNotifyRoom: false });
+  }
+  if (trackChanged) {
+    return Object.freeze({ kind: "track_change", quiet: false, shouldNotifyRoom: true });
+  }
+  const prevPos = Number(previous?.mediaPositionSeconds);
+  const nextPos = Number(next?.mediaPositionSeconds);
+  if (Number.isFinite(prevPos) && Number.isFinite(nextPos) && Math.abs(nextPos - prevPos) >= 15) {
+    return Object.freeze({ kind: "seek", quiet: false, shouldNotifyRoom: true });
+  }
+  return Object.freeze({ kind: nextState === "playing" ? "playing" : "update", quiet: false, shouldNotifyRoom: true });
+}
+
 export function createMusicPlaybackSync({ getIdentity, getSession, capture, current, patchPlayback, readSession, onApplied, onError }) {
   let run = null, pending = null;
   const accepted = token => run === token && current(token.stamp) && getSession()?.id === token.sessionId && getSession()?.status === "active" && !token.controller.signal.aborted;

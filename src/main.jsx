@@ -35,6 +35,8 @@ import {
 import {
   installChunkRecovery,
 } from "./app-startup-recovery.js";
+import { installClientDiagnostics } from "./client-diagnostics.js";
+import { diagnosticScopeKey } from "./operation-diagnostics.js";
 
 const isReceiverRoute = window.location.pathname === "/receive";
 
@@ -98,6 +100,12 @@ function installAndroidTouchRecovery() {
 if (!isReceiverRoute) {
   installAndroidCompatibility();
   installChunkRecovery();
+  installClientDiagnostics({
+    getScope: () => {
+      const snap = authSession.getSnapshot?.();
+      return diagnosticScopeKey(snap?.user?.id, snap?.activeCompanionId) || "global";
+    },
+  });
   installAndroidTouchRecovery();
   void prewarmBackend();
   pwaInstallController.start();

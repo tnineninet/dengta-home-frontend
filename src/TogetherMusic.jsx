@@ -76,7 +76,7 @@ function CookieReadFeedback({ kind, read, busy, onRetry, readyMessage = "" }) {
   return <div className="music-provider-feedback"><p role={read.phase === "error" ? "alert" : "status"}>{message}</p>{["error", "cancelled"].includes(read.phase) && <button type="button" disabled={busy} onClick={onRetry}>{COOKIE_READ_FEEDBACK[kind][2]}</button>}</div>;
 }
 
-export default function TogetherMusic({ session, busy = false, onStart, onStartRandom, onEnd, onPlaybackChange, onLocalPlaybackChange, onPositionChange, onUnderstandingSaved, onOpenMcpDeviceCenter, request = null, accountScope = "", companionScope = "" }) {
+export default function TogetherMusic({ visualPreview = false, session, busy = false, onStart, onStartRandom, onEnd, onPlaybackChange, onLocalPlaybackChange, onPositionChange, onUnderstandingSaved, onOpenMcpDeviceCenter, request = null, accountScope = "", companionScope = "" }) {
   const musicScope = useMusicScope(accountScope, companionScope);
   const audioRef = useRef(null);
   const attachAudio = useCallback((node) => {
@@ -355,6 +355,12 @@ export default function TogetherMusic({ session, busy = false, onStart, onStartR
   };
 
   const refreshLibrary = useCallback(async ({ initial = false } = {}) => {
+    if (visualPreview) {
+      setLoading(false);
+      setRefreshing(false);
+      setStatus("本地预览模式：请前往主入口登录后读取个人歌单与网易云收藏，也可以直接点击“随心听”体验内置播放。");
+      return;
+    }
     const token = musicScope.begin("library");
     if (!token) return;
     if (initial) setLoading(true);
@@ -384,7 +390,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onStartR
       musicScope.finish(token);
       if (musicScope.current(token)) { setLoading(false); setRefreshing(false); }
     }
-  }, [musicScope]);
+  }, [musicScope, visualPreview]);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -789,6 +795,13 @@ export default function TogetherMusic({ session, busy = false, onStart, onStartR
 
 
   useEffect(() => {
+    if (visualPreview) {
+      let cancelled = false;
+      Promise.resolve().then(() => {
+        if (!cancelled) setCookieStatus({ checking: false, connected: false, account_name: "" });
+      });
+      return () => { cancelled = true; };
+    }
     const token = musicScope.begin("cookie-check");
     if (!token) return;
     readNeteaseCookieSession(token.options).then((data) => {
@@ -804,7 +817,7 @@ export default function TogetherMusic({ session, busy = false, onStart, onStartR
       if (musicScope.current(token)) { cookieIdentityRef.current.connected = false; setCookieGeneration(cookieIdentityRef.current.generation); clearCookieResults(); setCookieBusy(false); setCookieSearchBusy(false); setCookieOpBusy(false); setCookieStatus({ checking: false, connected: false, account_name: "" }); setError(musicErrorMessage(caught, "网易云登录状态暂时无法检查，请刷新或重试连接。")); }
     }).finally(() => musicScope.finish(token));
     return () => musicScope.cancel(token);
-  }, [musicScope, accountScope, companionScope, clearCookieResults]);
+  }, [musicScope, accountScope, companionScope, clearCookieResults, visualPreview]);
 
   const importShare = async (event) => {
     event.preventDefault();

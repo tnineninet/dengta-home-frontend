@@ -1,4 +1,5 @@
 import { diagnosticScopeKey, recordOperationFailure } from "./operation-diagnostics.js";
+import { createTraceId, recordBreadcrumb, sanitizeDiagnosticRoute, sanitizeTraceId } from "./client-diagnostics.js";
 import { requestErrorLog } from "./error-log-request.js";
 import { isChatGenerationInProgress } from "./chat-idempotency.js";
 import { authSession as defaultAuthSession } from "./auth-session.js";
@@ -88,12 +89,15 @@ async function fetchFromApi(path, options = {}) {
         effectiveSignal,
       );
       const headers = new Headers(requestOptions.headers || {});
+      const traceId = sanitizeTraceId(headers.get("X-DengTa-Trace-Id")) || createTraceId();
+      headers.set("X-DengTa-Trace-Id", traceId);
       if (authContext?.accessToken) {
         headers.set("Authorization", `Bearer ${authContext.accessToken}`);
       }
       if (authContext?.companionId) {
         headers.set("X-DengTa-Companion-Id", authContext.companionId);
       }
+      const startedAt = Date.now();
       const response = await awaitWithAbortSignal(
         fetch(`${API_BASE_URL}${path}`, {
           ...requestOptions,
@@ -102,6 +106,29 @@ async function fetchFromApi(path, options = {}) {
         }),
         effectiveSignal,
       );
+      const durationMs = Math.max(0, Date.now() - startedAt);
+      const responseTraceId = sanitizeTraceId(response.headers?.get?.("X-DengTa-Trace-Id")) || traceId;
+      try {
+        const snapshot = authSession?.getSnapshot?.();
+        const scope = diagnosticScopeKey(snapshot?.user?.id, snapshot?.activeCompanionId) || "global";
+        recordBreadcrumb(scope, {
+          kind: "api",
+          target: `${method} ${sanitizeDiagnosticRoute(path)}`,
+          detail: response.ok ? "ok" : `HTTP ${response.status}`,
+          status: response.status,
+          durationMs,
+          traceId: responseTraceId,
+          ok: response.ok,
+        });
+      } catch {
+        // Diagnostics never block API traffic.
+      }
+      try {
+        response.__dengtaTraceId = responseTraceId;
+        response.__dengtaDurationMs = durationMs;
+      } catch {
+        // Synthetic frozen Response mocks in tests may disallow property writes.
+      }
       authSession?.captureCompanionFromResponse?.(response);
       if (
         attempt < retryDelays.length - 1 &&
@@ -201,6 +228,10 @@ async function requestJson(path, options = {}) {
     if (data.upstream_status) error.upstream_status = data.upstream_status;
     if (data.error_location) error.error_location = data.error_location;
     if (data.error_log_id) error.error_log_id = data.error_log_id;
+    if (data.trace_id || response.__dengtaTraceId) error.trace_id = data.trace_id || response.__dengtaTraceId;
+    if (data.error_fingerprint) error.error_fingerprint = data.error_fingerprint;
+    if (data.error_subsystem) error.error_subsystem = data.error_subsystem;
+    if (Number.isFinite(response.__dengtaDurationMs)) error.duration_ms = response.__dengtaDurationMs;
     throw error;
   }
 
@@ -290,9 +321,11 @@ export async function streamChat(
     );
     error.status = response.status;
     error.code = data.code || "stream_request_failed";
-    for (const key of ["provider_code", "error_source", "provider_phase", "upstream_status", "error_location", "error_log_id"]) {
+    for (const key of ["provider_code", "error_source", "provider_phase", "upstream_status", "error_location", "error_log_id", "trace_id", "error_fingerprint", "error_subsystem"]) {
       if (data[key] !== undefined) error[key] = data[key];
     }
+    if (!error.trace_id && response.__dengtaTraceId) error.trace_id = response.__dengtaTraceId;
+    if (Number.isFinite(response.__dengtaDurationMs)) error.duration_ms = response.__dengtaDurationMs;
     throw error;
   }
 

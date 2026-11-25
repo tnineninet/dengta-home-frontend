@@ -2,10 +2,68 @@ import { useEffect, useRef, useState } from "react";
 import { COAST_VIDEO_SCENES, coastSceneForSky, createCoastVideoLifecycle } from "./coast-video-lifecycle.js";
 import "./coast-video-backdrop.css";
 
+const preloadedPosters = new Set();
+
+function preloadCoastPosters() {
+  if (typeof globalThis.Image !== "function") return;
+  for (const scene of Object.values(COAST_VIDEO_SCENES)) {
+    if (!scene?.poster || preloadedPosters.has(scene.poster)) continue;
+    preloadedPosters.add(scene.poster);
+    const img = new globalThis.Image();
+    img.decoding = "async";
+    img.src = scene.poster;
+  }
+}
+
+function isTimeScrubbingNow() {
+  return globalThis.document?.documentElement?.dataset?.timeScrubbing === "true";
+}
+
 export default function CoastVideoBackdrop({ sky, weatherMode = "clear", reducedMotion = false }) {
-  const scene = coastSceneForSky(sky);
+  const requestedScene = coastSceneForSky(sky);
+  const [settledScene, setSettledScene] = useState(requestedScene);
   const videoRef = useRef(null);
   const layerRef = useRef(null);
+
+  // Preload all 3 coastline still posters once so cross-phase poster swaps never blank/flicker.
+  useEffect(() => {
+    preloadCoastPosters();
+  }, []);
+
+  // Defer <video> decoder swaps ONLY while actively dragging the time scrubber to prevent
+  // rapid video.load() teardown flashes; normal prop updates switch immediately.
+  useEffect(() => {
+    if (!isTimeScrubbingNow()) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- sync immediately when not scrubbing
+      setSettledScene(requestedScene);
+      return undefined;
+    }
+    const root = globalThis.document?.documentElement;
+    let settled = false;
+    let timer = null;
+    const commit = () => {
+      if (settled) return;
+      settled = true;
+      setSettledScene(requestedScene);
+    };
+    timer = setTimeout(() => {
+      if (!isTimeScrubbingNow()) commit();
+    }, 180);
+    let observer = null;
+    if (root && typeof globalThis.MutationObserver === "function") {
+      observer = new globalThis.MutationObserver(() => {
+        if (!isTimeScrubbingNow()) commit();
+      });
+      observer.observe(root, { attributes: true, attributeFilter: ["data-time-scrubbing"] });
+    }
+    return () => {
+      settled = true;
+      clearTimeout(timer);
+      observer?.disconnect();
+    };
+  }, [requestedScene]);
+
+  const scene = isTimeScrubbingNow() ? settledScene : requestedScene;
   const [playback, setPlayback] = useState({ scene, posterScene: scene, state: "static" });
   const asset = COAST_VIDEO_SCENES[scene];
   const poster = COAST_VIDEO_SCENES[playback.posterScene];

@@ -16,7 +16,7 @@ export function validUpdateDownload(value) {
     const githubApk =
       url.protocol === "https:" &&
       url.hostname === "github.com" &&
-      /^\/DengTaHome\/dengta-home(?:-frontend)?\/releases\/download\/v[\d.]+\/[-\w.]+\.apk$/.test(url.pathname);
+      /^\/(?:DengTaHome|tnineninet)\/dengta-home(?:-frontend)?\/releases\/download\/v[\d.]+\/[-\w.]+\.apk$/.test(url.pathname);
     const storageApk =
       url.protocol === "https:" &&
       url.hostname === APK_STORAGE_HOST &&

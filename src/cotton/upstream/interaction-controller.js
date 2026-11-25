@@ -9,6 +9,7 @@ export const ACTIONS={
  drink:{label:'递水喝',duration:6,priority:3,cooldown:8,commit:3.6},
  rest:{label:'坐着打盹',duration:0,priority:1,cooldown:2},wake:{label:'醒来看看',duration:2.5,priority:4,cooldown:2},
  ball:{label:'拨球玩',duration:6,priority:3,cooldown:4},brush:{label:'梳梳毛',duration:4,priority:2,cooldown:3},
+ dance:{label:'随音乐起舞',duration:10,priority:3,cooldown:2},nod:{label:'开心点头',duration:2.8,priority:2,cooldown:2},
 };
 export const ease=t=>{t=Math.min(1,Math.max(0,t));return t*t*t*(10+t*(-15+6*t));};
 export class InteractionController{
@@ -24,7 +25,7 @@ export class InteractionController{
  update(dt){if(!Number.isFinite(dt)||dt<0)return;this.time+=Math.min(.1,dt);const {id,at}=this.active,def=ACTIONS[id],age=this.time-at;
   if(def.commit&&!this.active.committed&&age>=def.commit){this.active.committed=true;this.change(id==='feed'?'satiety':'water',18);this.change('mood',3);this.history.push({type:'consume',id,serial:this.active.serial,time:this.time});}
   if(id==='rest')this.change('energy',dt*.12);
-  if(def.duration&&age>=def.duration){if(['pet','paw','pawRight','ball','brush'].includes(id)){this.change('mood',2);this.change('intimacy',1);}if(id==='brush')this.change('cleanliness',8);this.history.push({type:'finish',id,time:this.time});this.active={id:'idle',at:this.time,committed:false};}
+  if(def.duration&&age>=def.duration){if(['pet','paw','pawRight','ball','brush','dance','nod'].includes(id)){this.change('mood',id==='dance'?4:2);this.change('intimacy',1);}if(id==='brush')this.change('cleanliness',8);this.history.push({type:'finish',id,time:this.time});this.active={id:'idle',at:this.time,committed:false};}
  }
  change(key,delta){this.stats[key]=Math.min(100,Math.max(0,this.stats[key]+delta));}
  get age(){return this.time-this.active.at;}

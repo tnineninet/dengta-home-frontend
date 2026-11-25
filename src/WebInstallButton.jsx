@@ -6,6 +6,7 @@ export default function WebInstallButton({
   className = "web-install-button",
   promptLabel = "安装到这部手机",
   guidanceLabel = "添加网页版本到手机",
+  leadingIcon = null,
   onFeedback,
   showFeedback = true,
 }) {
@@ -27,7 +28,8 @@ export default function WebInstallButton({
   return (
     <div className="web-install">
       <button type="button" className={className} onClick={install}>
-        {canPrompt ? promptLabel : guidanceLabel}
+        {leadingIcon}
+        <span>{canPrompt ? promptLabel : guidanceLabel}</span>
       </button>
       {showFeedback && feedback && (
         <p className="web-install-guidance" role="status">

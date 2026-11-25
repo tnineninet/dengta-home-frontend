@@ -36,14 +36,17 @@ import { LocalNotifications } from "@capacitor/local-notifications";
 import { App as CapacitorApp } from "@capacitor/app";
 import {
   ArrowLeft,
+  BellRing,
   BrainCircuit,
   DatabaseZap,
+  Download,
   Eye,
   FileDown,
   Mic2,
   MonitorSmartphone,
   Music,
   Palette,
+  RefreshCw,
   ScrollText,
   ServerCog,
   Sparkles,
@@ -60,7 +63,8 @@ import TypewriterText from "./TypewriterText.jsx";
 import DlnaCastPlayer from "./DlnaCastPlayer.jsx";
 import { activityRequestInScope, buildCompanionActivityRequest, normalizeCompanionActivities } from "./companion-activities.js";
 import TakeoutAssistant, { TakeoutTaskCard } from "./TakeoutAssistant.jsx";
-import { updateTakeoutTask } from "./takeout-assistant.js";
+import { buildTakeoutPlatformUrl, updateTakeoutTask } from "./takeout-assistant.js";
+import { GlobalHoverTooltipLayer, SmartTooltipProvider } from "./SmartTooltip.jsx";
 import {
   BackgroundNotifications,
   openReminderNotificationSettings,
@@ -72,6 +76,12 @@ import {
   writeAccountStorage,
 } from "./account-storage";
 import CompanionStatus from "./CompanionStatus";
+import { localizeMoodWord } from "./emotion-state";
+import {
+  buildCompanionDbskillReply,
+  detectCreatorTopicIntent,
+  requestDbskillAnalysis,
+} from "./dbskill-intent.js";
 import CompanionGenderFields from "./CompanionGenderFields";
 import ReplyOptionsSheet from "./ReplyOptionsSheet.jsx";
 import { canAutoOpenReplyOptions, shouldAutoOpenReplyOptions } from "./reply-options-trigger.js";
@@ -112,7 +122,7 @@ import { authSession } from "./auth-session.js";
 import { createScopedSettingsSession, registerSettingsSaveGuard, settingsSaveScope } from "./settings-save-scope.js";
 import { createCoWatchViewScope } from "./co-watch-view-scope.js";
 import LocalDiagnostics from "./LocalDiagnostics.jsx";
-import { diagnosticScopeKey } from "./operation-diagnostics.js";
+import { diagnosticScopeKey, readOperationFailures } from "./operation-diagnostics.js";
 import FeatureNavigation from "./FeatureNavigation.jsx";
 import { FEATURE_LABELS, QUICK_FEATURES } from "./feature-navigation.js";
 import AchievementNotice from "./AchievementNotice.jsx";
@@ -120,7 +130,10 @@ import FunLabsFeedback from "./FunLabsFeedback.jsx";
 import { emptyFunLabsState, refreshFunLabsSections, removeFunDate, FUN_LABS_ERROR_FEEDBACK } from "./fun-labs-refresh.js";
 import { validateAchievementReceipt, achievementFailure, withAchievementDeadline, ACHIEVEMENT_ERROR_FEEDBACK } from "./achievement-action.js";
 import { recordOperationFailure } from "./operation-diagnostics.js";
-import { ACHIEVEMENT_ACTIONS, freshAchievements, guideStorageKey } from "./achievement-guide.js";
+import { freshAchievements, guideStorageKey } from "./achievement-guide.js";
+import { CUSTOM_ACHIEVEMENT_IDEAS, PREVIEW_ACHIEVEMENTS } from "./achievement-system.js";
+const AchievementShowcaseWall = lazy(() => import("./AchievementShowcaseWall.jsx"));
+const PromptPipelineInspector = lazy(() => import("./PromptPipelineInspector.jsx"));
 import { appendActivityDraft } from "./chat-activities.js";
 import { useChatDraft } from "./use-chat-draft.js";
 import ChatBackground from "./ChatBackground";
@@ -247,8 +260,13 @@ import { readReplySuggestions, resolveReplyOptionSeed } from "./chat-reply-sugge
 import DlnaDiscoveryFeedback from "./DlnaDiscoveryFeedback.jsx";
 import {
   readEnabledAmbientCache,
+  resolveActiveTimeZone,
   SHANGHAI_TIME_ZONE,
 } from "./ambient-context";
+import {
+  fetchOpenMeteoWeather,
+  reverseGeocodeCity,
+} from "./live-location-weather";
 import {
   DEVICE_ACTIVITY_REFRESH_MS,
   DEVICE_ACTIVITY_WINDOW_MINUTES,
@@ -416,6 +434,12 @@ const VoiceProviderSettings = lazy(
 const WorkspaceManager = lazy(() => import("./WorkspaceManager"));
 const CottonPet = lazy(() => import("./CottonPet.jsx"));
 const CottonChatDock = lazy(() => import("./CottonChatDock.jsx"));
+const CottonDesktopPet = lazy(() => import("./CottonDesktopPet.jsx"));
+const KnowledgeMedicineHub = lazy(() => import("./KnowledgeMedicineHub.jsx"));
+const MedicalAiStudio = lazy(() => import("./MedicalAiStudio.jsx"));
+const CreatorWorldStudio = lazy(() => import("./CreatorWorldStudio.jsx"));
+const LocalAgentStudio = lazy(() => import("./LocalAgentStudio.jsx"));
+const TakeoutWorkspace = lazy(() => import("./TakeoutWorkspace.jsx"));
 
 function DeferredFeature({ label }) {
   return (
@@ -893,9 +917,13 @@ const navItems = [
   { id: "music-studio", icon: "🎧", label: "音乐工作室" },
   { id: "music", icon: "🎵", label: "一起听 · 同步" },
   { id: "x", icon: "𝕏", label: "X / Twitter" },
+  { id: "creator-world", icon: "🌐", label: "AI 视界·创作者" },
+  { id: "agent-studio", icon: "🎬", label: "AI 工作台·剪映" },
   { id: "wechat", icon: "微", label: "微信" },
   { id: "qq", icon: "Q", label: "QQ" },
   { id: "memories", icon: "◇", label: "Memory" },
+  { id: "medical", icon: "🏥", label: "医疗 AI 专区" },
+  { id: "knowledge", icon: "💊", label: "知识库与药箱" },
   { id: "treasure", icon: "✉", label: "藏宝地图" },
   { id: "takeout", icon: "🛵", label: "外卖" },
   { id: "achievements", icon: "🏆", label: "成就" },
@@ -1308,14 +1336,23 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [ambientWeather, setAmbientWeather] = useState(
     () => readEnabledAmbientCache(undefined, accountStorageScope).weather.weather,
   );
+  const [ambientLive, setAmbientLive] = useState(null);
+  const ambientControlRef = useRef(null);
   const [weatherPreviewMode, setWeatherPreviewMode] = useState(null);
+  const activeTimeZone = useMemo(
+    () =>
+      resolveActiveTimeZone(
+        ambientWeather?.timeZone || celestialCoordinates?.timeZone || "",
+      ),
+    [ambientWeather?.timeZone, celestialCoordinates?.timeZone],
+  );
   const {
     preferences: themePreferences,
     snapshot: celestialSnapshot,
     updateTheme,
     previewMinute,
     setPreviewMinute,
-  } = useDengTaTheme(celestialCoordinates, accountStorageScope);
+  } = useDengTaTheme(celestialCoordinates, accountStorageScope, activeTimeZone);
   const [memories, setMemories] = useState([]);
   const [memoryDrafts, setMemoryDrafts] = useState({});
   const [moments, setMoments] = useState([]);
@@ -1696,6 +1733,27 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [companionInteractionStats, setCompanionInteractionStats] = useState(
     () => readCompanionInteractionStats(privateMediaScope),
   );
+  const [achievementIdeaPage, setAchievementIdeaPage] = useState(0);
+  const [previewAchievements, setPreviewAchievements] = useState(() => PREVIEW_ACHIEVEMENTS);
+  const [creatorStudioDraftTopic, setCreatorStudioDraftTopic] = useState(null);
+  const [cottonDesktopPetEnabled, setCottonDesktopPetEnabled] = useState(() => {
+    try {
+      return globalThis.localStorage?.getItem("dengta:cotton-desktop-pet:enabled") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleCottonDesktopPet = useCallback((next) => {
+    setCottonDesktopPetEnabled((current) => {
+      const value = typeof next === "boolean" ? next : !current;
+      try {
+        globalThis.localStorage?.setItem("dengta:cotton-desktop-pet:enabled", value ? "1" : "0");
+      } catch {
+        // Ignore storage errors
+      }
+      return value;
+    });
+  }, []);
   const [innerMonologues, setInnerMonologues] = useState(() =>
     readInnerMonologues(globalThis.localStorage, accountStorageScope),
   );
@@ -2075,12 +2133,53 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     pendingChatClientMessageRef.current?.generationInProgress === true;
 
   const loadAmbientWeather = useCallback(async ({ latitude, longitude }) => {
-    const data = await apiRequest("/api/weather/current", {
-      method: "POST",
-      body: JSON.stringify({ latitude, longitude }),
-      timeoutMs: BACKEND_WAKE_TIMEOUT_MS,
-    });
-    return data?.weather || data;
+    const cityLookup = reverseGeocodeCity({ latitude, longitude }).catch(() => "");
+    let weatherPayload = null;
+    if (!visualPreview) {
+      try {
+        const data = await apiRequest("/api/weather/current", {
+          method: "POST",
+          body: JSON.stringify({ latitude, longitude, timezone: "auto" }),
+          timeoutMs: BACKEND_WAKE_TIMEOUT_MS,
+        });
+        weatherPayload = data?.weather || data;
+      } catch {
+        weatherPayload = null;
+      }
+    }
+    if (!weatherPayload) {
+      weatherPayload = await fetchOpenMeteoWeather({ latitude, longitude });
+    }
+    const locationLabel = await cityLookup;
+    if (locationLabel && !weatherPayload?.locationLabel && !weatherPayload?.location_label) {
+      return { ...weatherPayload, locationLabel };
+    }
+    return weatherPayload;
+  }, [visualPreview]);
+
+  const handleAmbientLocationSynced = useCallback(() => {
+    setPreviewMinute(null);
+    setWeatherPreviewMode(null);
+  }, [setPreviewMinute]);
+
+  const handleSyncLocation = useCallback(() => {
+    ambientControlRef.current?.relocate?.();
+  }, []);
+
+  const handleRefreshWeather = useCallback(() => {
+    ambientControlRef.current?.refreshWeather?.();
+  }, []);
+
+  const handleEstimateLocationByIp = useCallback(() => {
+    ambientControlRef.current?.estimateLocationByIp?.();
+  }, []);
+
+  const handleSelectLocation = useCallback((location) => {
+    ambientControlRef.current?.applyManualLocation?.(location);
+  }, []);
+
+  const handleDisableLocation = useCallback(() => {
+    ambientControlRef.current?.disableWeather?.();
   }, []);
 
   const handleAmbientContextChange = useCallback((context) => {
@@ -2809,12 +2908,26 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         ...emptySettings,
         ai_name: "小灯",
       };
+      const previewFingerprint = settingsPayloadFingerprint(
+        createSettingsPayload(previewSettings),
+      );
       confirmedSettingsRef.current = previewSettings;
       draftSettingsRef.current = previewSettings;
+      lastSavedSettingsFingerprintRef.current = previewFingerprint;
+      latestDraftFingerprintRef.current = previewFingerprint;
       hasLoadedSettingsRef.current = true;
       setSettings(previewSettings);
       setDraftSettings(previewSettings);
       setHasLoadedSettings(true);
+      const previewSession = {
+        id: "preview-session",
+        title: "和小灯聊日常与选题",
+        updated_at: new Date().toISOString(),
+      };
+      activeSessionIdRef.current = previewSession.id;
+      messagesSessionIdRef.current = previewSession.id;
+      setActiveSessionId(previewSession.id);
+      setSessions((current) => (current.length ? current : [previewSession]));
       setIsLoading(false);
       setStartupConnection({
         status: "connected",
@@ -3786,6 +3899,26 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   useEffect(() => {
     if (activeView === "moments") {
+      if (visualPreview) {
+        let cancelled = false;
+        Promise.resolve().then(() => {
+          if (cancelled) return;
+          setMomentsAvailable(true);
+          setMomentsLoadError("");
+          setMomentsLoading(false);
+          setMoments([
+            {
+              id: "preview-moment-1",
+              author: "companion",
+              content: "刚泡了一杯温热的洋甘菊茶，窗外晚风很轻。当前是本地视觉预览页，前往主入口登录后会同步你的真实动态流。",
+              created_at: "2026-11-25T10:20:00+08:00",
+              reactions: [],
+              comments: [],
+            },
+          ]);
+        });
+        return () => { cancelled = true; };
+      }
       const cached = readMomentsCache(privateMediaScope);
       if (cached) {
         setMoments(cached.entries);
@@ -3814,7 +3947,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
 
     return undefined;
-  }, [activeView, loadMoments, privateMediaScope]);
+  }, [activeView, loadMoments, privateMediaScope, visualPreview]);
 
   useEffect(() => {
     if (!activeSessionId || activeView !== "chat") return undefined;
@@ -5346,7 +5479,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       setInteractionFeedback(companionInteractionQueueRef.current.length
         ? { state: "queued", message: "新的互动也记下了，正在等待下一次回应。" }
         : statusUnavailable
-          ? { state: "fallback", message: "互动回复已收到，这次未生成新的心理和感受；保留上次状态，可再点一次互动。" }
+          ? { state: "fallback", message: "互动已经记下啦，这次先留住刚才的心绪，再碰一碰就会更新。" }
           : { state: "idle", message: "" });
 
       if (voiceAutoSpeakEnabled) {
@@ -5851,24 +5984,32 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
     try {
       if (!sessionId) {
-        const created = await apiRequest("/api/v2/sessions", {
-          method: "POST",
-          body: JSON.stringify({
-            title: (text || attachmentsToSend[0]?.name || "附件对话").slice(
-              0,
-              30,
-            ),
-          }),
-          signal: request.controller.signal,
-        });
-        sessionId = created.session.id;
-        activeSessionIdRef.current = sessionId;
-        moveSessionDraft(null, sessionId);
-        messagesSessionIdRef.current = sessionId;
-        streamingSessionIdRef.current = sessionId;
-        setSessions((current) => [created.session, ...current]);
-        setActiveSessionId(sessionId);
-        initializeSessionChatModel(sessionId, created.session.model_id);
+        if (visualPreview) {
+          sessionId = "preview-session";
+          activeSessionIdRef.current = sessionId;
+          messagesSessionIdRef.current = sessionId;
+          streamingSessionIdRef.current = sessionId;
+          setActiveSessionId(sessionId);
+        } else {
+          const created = await apiRequest("/api/v2/sessions", {
+            method: "POST",
+            body: JSON.stringify({
+              title: (text || attachmentsToSend[0]?.name || "附件对话").slice(
+                0,
+                30,
+              ),
+            }),
+            signal: request.controller.signal,
+          });
+          sessionId = created.session.id;
+          activeSessionIdRef.current = sessionId;
+          moveSessionDraft(null, sessionId);
+          messagesSessionIdRef.current = sessionId;
+          streamingSessionIdRef.current = sessionId;
+          setSessions((current) => [created.session, ...current]);
+          setActiveSessionId(sessionId);
+          initializeSessionChatModel(sessionId, created.session.model_id);
+        }
       }
 
       const clientMessage = resolveChatClientMessage(
@@ -5995,12 +6136,117 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       });
 
       // Device context refresh is optional; an unresponsive native plugin must not hold the message.
+      // On web/desktop, avoid stalling 80ms on a native-only plugin.
       await Promise.race([
         deviceActivityRefresh,
-        new Promise((resolve) => window.setTimeout(resolve, 80)),
+        new Promise((resolve) =>
+          window.setTimeout(resolve, Capacitor.isNativePlatform() ? 80 : 10),
+        ),
       ]);
 
+      const dbskillIntent = detectCreatorTopicIntent(text);
+      if (visualPreview) {
+        if (dbskillIntent.matched) {
+          const dbsResult = await requestDbskillAnalysis({
+            topic: dbskillIntent.topic,
+            message: text,
+            platform: dbskillIntent.platform,
+            mode: dbskillIntent.mode,
+            visualPreview: true,
+          });
+          const card = dbsResult?.card || null;
+          setMessages((current) =>
+            current.map((item) =>
+              item.id === localAssistantId
+                ? {
+                    ...item,
+                    content: buildCompanionDbskillReply(card, effectiveAiName),
+                    isStreaming: false,
+                    tool_calls: card ? { ...(item.tool_calls || {}), dbskill_card: card } : item.tool_calls,
+                  }
+                : item,
+            ),
+          );
+        } else {
+          setMessages((current) =>
+            current.map((item) =>
+              item.id === localAssistantId
+                ? {
+                    ...item,
+                    content: `收到啦～当前是本地预览模式，随时和我聊聊你的**视频选题、标题封面、黄金前3秒**或直接发 \`/dbs 你的想法\`，我就会自动调用内置 **dbskill 选题插件**给你出完整策划诊断卡片！`,
+                    isStreaming: false,
+                  }
+                : item,
+            ),
+          );
+        }
+        sendSucceeded = true;
+        isSendingRef.current = false;
+        if (componentMountedRef.current) setIsSending(false);
+        pendingChatClientMessageRef.current = clearChatClientMessage(
+          pendingChatClientMessageRef.current,
+          request.clientMessageId,
+        );
+        releaseChatRequestAttachments(request);
+        if (chatRequestRef.current === request) {
+          chatRequestRef.current = null;
+        }
+        return;
+      }
+
+      const effectiveTurnContext = [
+        turnContextSnapshot,
+        dbskillIntent.matched
+          ? `【内置 dbskill 选题插件主动触发提示】检测到用户正在聊短视频/中视频选题、包装或脚本（平台：${dbskillIntent.platform}，模式：${dbskillIntent.mode}），请主动自发调用 dbskill_analyze_topic 工具完成结构化诊断，再用自然贴心的口吻给出建议。`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n");
+
       void loadEarlyMusicCard(text);
+      // Frame-coalesced streaming queue: first token renders immediately (0ms visual TTFT),
+      // subsequent rapid SSE chunks coalesce to one React state update per paint frame (~60fps).
+      let pendingStreamText = "";
+      let pendingStreamBubbles = null;
+      let streamFrameHandle = 0;
+      let hasFlushedFirstToken = false;
+      const flushStreamTextBuffer = () => {
+        if (streamFrameHandle && typeof cancelAnimationFrame === "function") {
+          cancelAnimationFrame(streamFrameHandle);
+        }
+        streamFrameHandle = 0;
+        if (!pendingStreamText && !pendingStreamBubbles) return;
+        const deltaText = pendingStreamText;
+        const deltaBubbles = pendingStreamBubbles;
+        pendingStreamText = "";
+        pendingStreamBubbles = null;
+        if (
+          request.controller.signal.aborted ||
+          chatRequestRef.current !== request ||
+          !componentMountedRef.current ||
+          activeSessionIdRef.current !== sessionId
+        ) {
+          return;
+        }
+        setMessages((current) =>
+          current.map((item) => {
+            if (item.id !== localAssistantId) return item;
+            const nextContent = item.content + deltaText;
+            if (!deltaBubbles) {
+              return { ...item, content: nextContent };
+            }
+            const bubbles = Array.isArray(item.bubbles)
+              ? [...item.bubbles]
+              : [];
+            for (const [idx, chunk] of deltaBubbles.entries()) {
+              while (bubbles.length <= idx) bubbles.push("");
+              bubbles[idx] = (bubbles[idx] || "") + chunk;
+            }
+            return { ...item, content: nextContent, bubbles, bubbleMode: true };
+          }),
+        );
+      };
+      try {
       await streamChat(
         {
           session_id: sessionId,
@@ -6013,7 +6259,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           attachment_storage_mode: attachmentStorageMode,
           companion_status: companionStatusForRequest(companionStatus),
           environment_context: environmentContextRef.current,
-          turn_context: turnContextSnapshot,
+          turn_context: effectiveTurnContext,
           message_reference: messageReferenceAtRequest,
           public_reasoning_summary: publicReasoningSummaryAtRequest,
           files: attachmentsToSend,
@@ -6029,6 +6275,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             return;
           }
           if (activeSessionIdRef.current !== sessionId) return;
+
+          if (event.type !== "text" && (pendingStreamText || pendingStreamBubbles)) {
+            flushStreamTextBuffer();
+          }
 
           if (event.type === "meta" && event.user_message) {
             userMessageCommitted = true;
@@ -6118,24 +6368,23 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             // Do not force a synchronous render for every streamed token. On
             // Android WebView a flushSync per character blocks the UI thread
             // and makes a fast provider stream look like one character every
-            // couple of seconds. React batches these updates; the next paint
-            // shows all text that arrived in the meantime.
-            setMessages((current) =>
-              current.map((item) => {
-                if (item.id !== localAssistantId) return item;
-                const nextContent = item.content + event.content;
-                if (!Number.isInteger(event.bubble_index)) {
-                  return { ...item, content: nextContent };
-                }
-                const bubbles = Array.isArray(item.bubbles)
-                  ? [...item.bubbles]
-                  : [];
-                const index = Math.max(0, event.bubble_index);
-                while (bubbles.length <= index) bubbles.push("");
-                bubbles[index] = (bubbles[index] || "") + event.content;
-                return { ...item, content: nextContent, bubbles, bubbleMode: true };
-              }),
-            );
+            // couple of seconds. Flush the very first token immediately for
+            // 0ms visual TTFT, then coalesce rapid chunks to one paint frame.
+            pendingStreamText += event.content;
+            if (Number.isInteger(event.bubble_index)) {
+              const index = Math.max(0, event.bubble_index);
+              if (!pendingStreamBubbles) pendingStreamBubbles = new Map();
+              pendingStreamBubbles.set(
+                index,
+                (pendingStreamBubbles.get(index) || "") + event.content,
+              );
+            }
+            if (!hasFlushedFirstToken || typeof requestAnimationFrame !== "function") {
+              hasFlushedFirstToken = true;
+              flushStreamTextBuffer();
+            } else if (!streamFrameHandle) {
+              streamFrameHandle = requestAnimationFrame(flushStreamTextBuffer);
+            }
           }
 
           if (event.type === "error") {
@@ -6252,6 +6501,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         },
         { signal: request.controller.signal },
       );
+      } finally {
+        flushStreamTextBuffer();
+      }
 
       if (streamFailed) {
         const error = new Error(
@@ -6759,7 +7011,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   async function flushLatestSettingsDraft({ keepalive = false } = {}) {
-    if (!hasLoadedSettingsRef.current) return true;
+    if (visualPreview || !hasLoadedSettingsRef.current) return true;
 
     const payload = createSettingsPayload(draftSettingsRef.current);
     const fingerprint = settingsPayloadFingerprint(payload);
@@ -6962,9 +7214,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     if (takeoutLifetimeRef.current !== owner || !componentMountedRef.current || settingsSaveScope(authSession.getSnapshot()) !== privateMediaScope) return;
     setTakeoutTask(current => ownsTask(current) ? { ...current, status: "manual_review", message: outcome.message || "自动操作已暂停，网页与登录资料保留，请核对购物车。" } : current);
   }
-  async function openTakeoutPlatform() {
-    if (!takeoutPluginAvailable()) return;
-    const outcome = await resumeTakeoutPage({ url: "https://h5.ele.me/msite/cart" });
+  async function openTakeoutPlatform(platformId = "eleme") {
+    const url = buildTakeoutPlatformUrl(platformId, "cart");
+    if (!takeoutPluginAvailable()) {
+      try {
+        window.open(url, "_blank", "noopener,noreferrer");
+      } catch {
+        // Ignore popup block in constrained environments.
+      }
+      return;
+    }
+    const outcome = await resumeTakeoutPage({ url });
     if (!outcome.ok) {
       setTakeoutLoginFeedback(current => ({ ...current, status: "error", code: outcome.code || "", message: outcome.message }));
     }
@@ -7002,6 +7262,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   useLayoutEffect(() => { discoverFeedRef.current = { scope: funToken, videos: discoverState.recommend?.videos || [] }; }, [funToken, discoverState.recommend]);
 
   const loadDiscover = useCallback(async () => {
+    if (visualPreview) return null;
     const request = getMomentsRequestScope();
     if (!request || discoverLockRef.current?.scope === funToken) return;
     const controller = new AbortController();
@@ -7023,15 +7284,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       parent.removeEventListener("abort", cancel);
       if (discoverControllerRef.current === controller) discoverControllerRef.current = null;
     }
-  }, [funToken, getMomentsRequestScope]);
+  }, [funToken, getMomentsRequestScope, visualPreview]);
 
   useEffect(() => {
+    if (visualPreview) return undefined;
     void loadDiscover();
     return () => {
       discoverControllerRef.current?.abort();
       if (discoverLockRef.current?.scope === funToken) discoverLockRef.current = null;
     };
-  }, [funToken, loadDiscover]);
+  }, [funToken, loadDiscover, visualPreview]);
 
   const [distillState, setDistillState] = useState({
     busy: false,
@@ -7364,12 +7626,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }
 
   useEffect(() => {
+    if (visualPreview) return undefined;
     void refreshFunLabs();
     const timer = setInterval(() => {
       if (document.visibilityState !== "hidden") void refreshFunLabs();
     }, 90_000);
     return () => clearInterval(timer);
-  }, [refreshFunLabs]);
+  }, [refreshFunLabs, visualPreview]);
 
 
   async function saveScreenGlanceConfig(nextValue = screenGlanceConfig) {
@@ -8008,6 +8271,20 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 onReference={selectMessageForReference}
                 onDismissError={dismissChatError}
                 onOpenActivity={openCompanionActivity}
+                onOpenDbskillVideo={(card) => {
+                  if (!card?.topic) return;
+                  setCreatorStudioDraftTopic({
+                    topic: card.topic,
+                    platform:
+                      card.platform === "bilibili"
+                        ? "bilibili"
+                        : card.platform === "douyin"
+                          ? "douyin"
+                          : "both",
+                    at: Date.now(),
+                  });
+                  changeView("creator-world");
+                }}
                 onOpenProviderSettings={openProviderRecovery}
                 innerMonologues={innerMonologues}
                 innerMonologuePending={innerMonologuePending}
@@ -8078,6 +8355,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               companionScope={companionScope}
               blocked={isSettingsOpen || isSidebarOpen || isMobileNavOpen || isComposerMenuOpen || isStatusPanelExpanded || Boolean(imageViewer)}
               onOpenHouse={() => changeView("cotton")}
+              desktopPetEnabled={cottonDesktopPetEnabled}
+              onToggleDesktopPet={toggleCottonDesktopPet}
             />
           </Suspense>
           {isComposerMenuOpen && (
@@ -8347,6 +8626,15 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 onGlassLevel={(value) =>
                   updateTheme({ cardOpacity: Number(value) / 100 })
                 }
+                backgroundMode={themePreferences.background}
+                onBackgroundMode={(background) =>
+                  updateTheme({ background, appearance: "auto" })
+                }
+                ambientLive={ambientLive}
+                onSyncLocation={handleSyncLocation}
+                onRefreshWeather={handleRefreshWeather}
+                onEstimateLocationByIp={handleEstimateLocationByIp}
+                onSelectLocation={handleSelectLocation}
               />
               <div className="composer-tool-grid">
                 <button
@@ -8816,8 +9104,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       <div className="fun-view" aria-busy={discoverState.busy}>
         <header className="fun-view-header">
           <h2>🔭 发现</h2>
-          <p>基于你的一起看记录,AI 帮你从 B 站找到感兴趣的视频</p>
+          <p>{visualPreview ? "当前为无登录本地视觉预览模式，前往主入口登录后读取个人兴趣画像与视频推荐。" : "基于你的一起看记录,AI 帮你从 B 站找到感兴趣的视频"}</p>
         </header>
+        {visualPreview && (
+          <div className="fun-labs-feedback" role="note" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", flexWrap: "wrap" }}>
+            <span>本地预览模式：已暂停云端推荐请求，避免未登录 401 报错。</span>
+            <button type="button" onClick={() => { window.location.href = "/"; }}>前往主入口登录</button>
+          </div>
+        )}
         <div className="notification-feature-panel device-activity-panel">
           <div className="device-activity-heading">
             <div>
@@ -8930,19 +9224,33 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
   function renderTakeout() {
     return (
-      <div className="fun-view">
-        <header className="fun-view-header">
-          <h2>🛵 外卖点单</h2>
-          <p>让 AI 帮你搜店、挑店、加购；付款永远由你在页面里亲自确认。</p>
-        </header>
-        <button type="button" onClick={() => changeView("takeout")}>在聊天里打开外卖助手</button>
-        <div className="notification-feature-panel device-activity-panel">
-          <p>
-            <strong>怎么用：</strong>
-            回到聊天页直接说“帮我点个吃的”，AI 会先搜索店铺挑出最合适的一家，再把商品加进购物车并停在结算页，由你人工确认付款。
-          </p>
-        </div>
-      </div>
+      <Suspense fallback={<DeferredFeature label="正在打开外卖工作台…" />}>
+        <TakeoutWorkspace
+          scope={privateMediaScope}
+          aiName={effectiveAiName}
+          task={takeoutTask?.scope === privateMediaScope ? takeoutTask : null}
+          available={takeoutPluginAvailable()}
+          onStartQuick={startTakeoutFromChat}
+          onSendPlanToChat={(text) => {
+            setMessage((current) => (current ? `${current}\n${text}` : text));
+            changeView("chat");
+          }}
+          onReviewPlatform={(platformId) => void openTakeoutPlatform(platformId)}
+          onOpenSheet={() => setIsTakeoutOpen(true)}
+          onOpenMedicineHub={() => changeView("knowledge")}
+          onOpenDiagnostics={() => {
+            openSettingsPanel();
+            setSettingsCategory("logs");
+          }}
+          loginPanel={
+            <TakeoutLoginPanel
+              key={diagnosticScopeKey(accountStorageScope, companionScope)}
+              scope={diagnosticScopeKey(accountStorageScope, companionScope)}
+              feedback={takeoutLoginFeedback}
+            />
+          }
+        />
+      </Suspense>
     );
   }
 
@@ -8955,11 +9263,19 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         <header className="fun-view-header">
           <h2>🏆 成就</h2>
           <p>
-            {funLabsState.achievements.length > 0
-              ? `已经留下 ${unlockedCount} 份小纪念 · 按自己的节奏慢慢发现`
-              : funLabsState.sections.achievements.status === "error" ? "暂时无法读取，刷新后继续。" : funLabsState.sections.achievements.status === "success" ? "还没有小纪念，可以留一个自己的目标。" : "正在读取小纪念…"}
+            {visualPreview
+              ? "当前为无登录本地预览模式，前往主入口登录后同步你的成就、纪念日与每日一拍。"
+              : funLabsState.achievements.length > 0
+                ? `已经留下 ${unlockedCount} 份小纪念 · 按自己的节奏慢慢发现`
+                : funLabsState.sections.achievements.status === "error" ? "暂时无法读取，刷新后继续。" : funLabsState.sections.achievements.status === "success" ? "还没有小纪念，可以留一个自己的目标。" : "正在读取小纪念…"}
           </p>
         </header>
+        {visualPreview && (
+          <div className="fun-labs-feedback" role="note" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", flexWrap: "wrap" }}>
+            <span>本地预览模式：云端成就与每日一拍将在主入口登录后自动同步。</span>
+            <button type="button" onClick={() => { window.location.href = "/"; }}>前往主入口登录</button>
+          </div>
+        )}
         {renderAchievementGuide()}
         <CompanionInspiration key={funScope} disabled={isVoiceInputBusy} onUse={text => {
           setMessage(current => current ? `${current}\n${text}` : text);
@@ -8996,50 +9312,64 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           </div>}
           {
             <div className="fun-achievements-wrap">
-              <div className="fun-achievements-grid">
-                {funLabsState.achievements.map((item) => (
-                  <div
-                    key={item.code || item.id}
-                    className={`fun-achievement-card${
-                      item.unlocked ? " is-unlocked" : ""
-                    }`}
-                  >
-                    <span className="fun-achievement-emoji" aria-hidden="true">
-                      {item.emoji || "✧"}
-                    </span>
-                    <strong>{item.title}</strong>
-                    <small>{item.description}</small>
-                    <small>{item.unlocked ? "✓ 已留下这份纪念" : "有兴趣时再试试"}</small>
-                    {!item.unlocked && !item.custom && ACHIEVEMENT_ACTIONS[item.code] && <button type="button" onClick={() => {
-                      const target = ACHIEVEMENT_ACTIONS[item.code].view;
-                      if (target === "guide") openAchievementGuide();
-                      else changeView(target);
-                    }}>{ACHIEVEMENT_ACTIONS[item.code].label}</button>}
-                    {item.custom && !item.unlocked ? (
-                      <div className="fun-achievement-card-actions">
-                        <button
-                          type="button"
-                          disabled={achievementAction?.scope === funToken && achievementAction.status === "busy"}
-                          onClick={() =>
-                            void unlockCustomAchievement(item.code)
-                          }
-                        >
-                          完成
-                        </button>
-                        <button
-                          type="button"
-                          disabled={achievementAction?.scope === funToken && achievementAction.status === "busy"}
-                          onClick={() =>
-                            void removeCustomAchievement(item.id)
-                          }
-                        >
-                          删除
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                ))}
-              </div>
+              <Suspense fallback={null}>
+                <AchievementShowcaseWall
+                  key={funScope}
+                  scopeKey={funScope}
+                  achievements={
+                    visualPreview && funLabsState.achievements.length === 0
+                      ? previewAchievements
+                      : funLabsState.achievements
+                  }
+                  aiName={effectiveAiName}
+                  busy={achievementAction?.scope === funToken && achievementAction.status === "busy"}
+                  onTriggerAction={(target) => {
+                    if (target === "guide") {
+                      openAchievementGuide();
+                    } else if (target === "custom-form") {
+                      const input = document.querySelector('.fun-achievement-form input[aria-label="成就名称"]');
+                      input?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+                      input?.focus?.();
+                    } else {
+                      changeView(target);
+                    }
+                  }}
+                  onUnlockCustom={(code) => {
+                    if (visualPreview && funLabsState.achievements.length === 0) {
+                      const matched = previewAchievements.find((it) => it.code === code);
+                      setPreviewAchievements((prev) =>
+                        prev.map((it) =>
+                          it.code === code
+                            ? { ...it, unlocked: true, unlocked_at: new Date().toISOString() }
+                            : it,
+                        ),
+                      );
+                      if (matched) {
+                        setAchievementPopup({
+                          scope: funToken,
+                          visible: true,
+                          items: [{ ...matched, unlocked: true }],
+                        });
+                      }
+                      return;
+                    }
+                    void unlockCustomAchievement(code);
+                  }}
+                  onRemoveCustom={(id) => {
+                    if (visualPreview && funLabsState.achievements.length === 0) {
+                      setPreviewAchievements((prev) => prev.filter((it) => it.id !== id));
+                      return;
+                    }
+                    void removeCustomAchievement(id);
+                  }}
+                  onCelebrate={(items) => setAchievementPopup({ scope: funToken, visible: true, items })}
+                  onShareToChat={(text) => {
+                    setMessage(text);
+                    changeView("chat");
+                    requestAnimationFrame(() => messageInputRef.current?.focus());
+                  }}
+                />
+              </Suspense>
               <div className="fun-achievement-form">
                 <input
                   value={customAchievement.emoji}
@@ -9099,11 +9429,28 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               </div>
               <small>名称最多 40 字，完成条件最多 120 字，图标最多 4 个字符。手动完成的小目标由你决定。</small>
               <div className="achievement-starter-actions" aria-label="小目标灵感">
-                <span>不知道写什么？</span>
-                {[{ title: "今天分享一首歌", emoji: "🎵", description: "挑一首喜欢的歌，在一起听歌中分享。" },
-                  { title: "一起完成两分钟小任务", emoji: "✨", description: "从一起玩里选个小任务，完成后回来留下纪念。" }].map(starter =>
-                  <button key={starter.title} type="button" disabled={!!customAchievement.title || !!customAchievement.description || !!customAchievement.emoji || customAchievementBusy}
-                    onClick={() => setCustomAchievement(starter)}>{starter.emoji} {starter.title}</button>)}
+                <span>不知道写什么？挑一条灵感填入：</span>
+                {Array.from({ length: 3 }, (_, offset) =>
+                  CUSTOM_ACHIEVEMENT_IDEAS[
+                    (achievementIdeaPage * 3 + offset) % CUSTOM_ACHIEVEMENT_IDEAS.length
+                  ],
+                ).map((starter) => (
+                  <button
+                    key={starter.title}
+                    type="button"
+                    disabled={!!customAchievement.title || !!customAchievement.description || !!customAchievement.emoji || customAchievementBusy}
+                    onClick={() => setCustomAchievement(starter)}
+                  >
+                    {starter.emoji} {starter.title}
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="ach-starter-shuffle"
+                  onClick={() => setAchievementIdeaPage((page) => page + 1)}
+                >
+                  🎲 换一批灵感
+                </button>
                 <small>只填入草稿，点添加后才保存。</small>
               </div>
             </div>
@@ -9176,6 +9523,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             aiName={effectiveAiName}
             onNotice={setNotice}
             onOpenCreativeStudio={() => changeView("art")}
+            visualPreview={visualPreview}
           />
         </Suspense>
         <div className="section-intro">
@@ -9183,9 +9531,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           <h2>留在家里的事情</h2>
           <p>这些摘要会作为真实模型回复时的长期背景。</p>
         </div>
-          <MemoryGatewayStatus key={privateMediaScope} scopeKey={privateMediaScope} />
+          <MemoryGatewayStatus key={privateMediaScope} scopeKey={privateMediaScope} visualPreview={visualPreview} />
         <Suspense fallback={<DeferredFeature label="正在打开记忆档案…" />}>
-          <OmbreMemories onManageConnections={openExternalMemorySettings} />
+          <OmbreMemories onManageConnections={openExternalMemorySettings} visualPreview={visualPreview} />
         </Suspense>
         <Suspense fallback={<DeferredFeature label="正在打开对话摘要…" />}>
           <LocalMemorySummaries
@@ -9197,6 +9545,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             onItemsChange={setMemories}
             onDraftsChange={setMemoryDrafts}
             onNotice={setNotice}
+            visualPreview={visualPreview}
           />
         </Suspense>
       </section>
@@ -9212,6 +9561,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           scopeKey={privateMediaScope}
           aiName={effectiveAiName}
           onNotice={setNotice}
+          visualPreview={visualPreview}
         />
       </Suspense>
       <Suspense fallback={<DeferredFeature label="正在打开故事章节…" />}>
@@ -9238,6 +9588,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           key={privateMediaScope}
           aiName={effectiveAiName}
           onNotice={setNotice}
+          visualPreview={visualPreview}
         />
       </Suspense>
     );
@@ -9311,6 +9662,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       <Suspense fallback={<DeferredFeature label="正在打开一起看…" />}>
         <Together
           key={JSON.stringify(["together", accountStorageScope, companionScope, togetherEntryMode])}
+          visualPreview={visualPreview}
           bilibiliLoginRequest={bilibiliLoginRequest}
           musicRequest={musicActivityRequest?.accountScope === accountStorageScope && musicActivityRequest?.companionScope === companionScope ? musicActivityRequest : null}
           aiName={effectiveAiName}
@@ -9471,13 +9823,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           </div>
           <div className="settings-app-actions"><WebInstallButton
             className="install-button"
-            promptLabel="⤓ 安装到手机/电脑"
-            guidanceLabel="⤓ 安装到手机/电脑"
+            leadingIcon={<MonitorSmartphone size={14} strokeWidth={1.9} aria-hidden="true" />}
+            promptLabel="安装到手机/电脑"
+            guidanceLabel="安装到手机/电脑"
             onFeedback={setNotice}
           />
-          <a className="install-button" href="/download" target="_blank" rel="noreferrer">⤓ 下载安卓安装包</a>
-          <button type="button" className="install-button" onClick={() => window.dispatchEvent(new Event("dengta:check-app-updates"))}>检查应用更新</button>
-          <button type="button" className="install-button" onClick={() => window.dispatchEvent(new Event("dengta:app-update-preferences"))}>更新提醒设置</button>
+          <a className="install-button" href="/download" target="_blank" rel="noreferrer"><Download size={14} strokeWidth={1.9} aria-hidden="true" /><span>下载安卓安装包</span></a>
+          <button type="button" className="install-button" onClick={() => window.dispatchEvent(new Event("dengta:check-app-updates"))}><RefreshCw size={14} strokeWidth={1.9} aria-hidden="true" /><span>检查应用更新</span></button>
+          <button type="button" className="install-button" onClick={() => window.dispatchEvent(new Event("dengta:app-update-preferences"))}><BellRing size={14} strokeWidth={1.9} aria-hidden="true" /><span>更新提醒设置</span></button>
           </div>
         </div>
 
@@ -9493,8 +9846,23 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 aria-label="返回设置分类"
                 onClick={settingsCategoryNavigation.returnHome}
               >
-                <ArrowLeft aria-hidden="true" />
+                <ArrowLeft size={19} strokeWidth={1.9} aria-hidden="true" />
               </button>
+              {(() => {
+                const activeMeta = SETTINGS_CATEGORIES.find(
+                  (category) => category.id === settingsCategory,
+                );
+                const CategoryIcon = activeMeta?.Icon;
+                return CategoryIcon ? (
+                  <span
+                    className="settings-category-icon"
+                    data-icon-tone={settingsCategory}
+                    aria-hidden="true"
+                  >
+                    <CategoryIcon size={18} strokeWidth={1.85} />
+                  </span>
+                ) : null;
+              })()}
               <div>
                 <span className="eyebrow">设置文件夹</span>
                 <h3>
@@ -9672,6 +10040,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                     <CompanionProfile
                       aiName={effectiveAiName}
                       onNotice={setNotice}
+                      visualPreview={visualPreview}
                       onOpenCreativeStudio={() => {
                         closeSettingsPanel();
                         changeView("art");
@@ -9688,6 +10057,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                       onItemsChange={setMemories}
                       onDraftsChange={setMemoryDrafts}
                       onNotice={setNotice}
+                      visualPreview={visualPreview}
                     />
                   </Suspense>
                 </div>
@@ -9748,6 +10118,26 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   : "普通成员"}
               。账号状态、提示词、模型配置、密钥配置与伴侣数据均按账号隔离保存。
             </div>
+
+            <Suspense fallback={<DeferredFeature label="正在加载提示词注入诊断…" />}>
+              <PromptPipelineInspector
+                userDetails={draftSettings.user_details || ""}
+                unifiedPrompt={draftSettings.unified_system_prompt || ""}
+                legacyFields={{
+                  system_prompt: draftSettings.system_prompt || "",
+                  additional_prompt: draftSettings.additional_prompt || "",
+                  personality: draftSettings.personality || "",
+                }}
+                promptMode={draftSettings.prompt_mode || "unified"}
+                memories={memories}
+                provider={settings.provider || ""}
+                model={settings.model || ""}
+                disabled={!hasLoadedSettings || settingsExitBusy}
+                visualPreview={visualPreview}
+                onAppendPrompt={updateUnifiedPrompt}
+                onAppendDetails={(nextValue) => updateDraft("user_details", nextValue)}
+              />
+            </Suspense>
 
             <div className="prompt-layer-list unified-prompt-layout">
               {settingsNeedsUnifiedPromptMigration(draftSettings) && <div className="mcp-setup-required">
@@ -10821,6 +11211,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   };
 
   return (
+    <SmartTooltipProvider>
     <div
       className={`app-shell${
         chatSkinPreferences.reduceMotion ? " reduce-chat-motion" : ""
@@ -10829,6 +11220,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       data-ornament-activity={chatSkinPreferences.ornamentActivity}
       data-chat-streaming={isSending ? "true" : "false"}
     >
+      <GlobalHoverTooltipLayer />
       <Suspense fallback={null}><AppUpdateCenter canPrompt={!isSending && !isTakeoutOpen && !isSettingsOpen && !isStatusPanelExpanded && !isComposerMenuOpen && !isMobileNavOpen && !isSidebarOpen && !dialog && !imageViewer && !distillState.modalOpen} /></Suspense>
       <CommandPalette
         open={commandPaletteOpen}
@@ -10844,6 +11236,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         onCreateSession={createSession}
         onOpenSettings={(category) => { openSettingsPanel(); if (category) setSettingsCategory(category); }}
         onReturnActivity={activityReturn ? returnToActivity : undefined}
+        onSetBackground={(background) => updateTheme({ background, appearance: "auto" })}
         features={navItems}
         settingsCategories={SETTINGS_CATEGORIES}
         sessions={sessions}
@@ -10852,14 +11245,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       <TakeoutAssistant scope={privateMediaScope} open={isTakeoutOpen} onClose={closeTakeoutAssistant} aiName={effectiveAiName}
         initialQuery={activityRequestInScope(takeoutActivityRequest, accountStorageScope, companionScope)?.query || ""}
         task={takeoutTask} available={takeoutPluginAvailable()} busy={isSending || isCompanionResponding || isVoiceInputBusy}
-        onStart={startTakeoutFromChat} onStop={() => void pauseTakeoutFromChat()} onReview={() => void openTakeoutPlatform()}
+        onStart={startTakeoutFromChat} onStop={() => void pauseTakeoutFromChat()} onReview={(platformId) => void openTakeoutPlatform(platformId)}
+        onOpenDiagnostics={() => { closeTakeoutAssistant(); openSettingsPanel(); setSettingsCategory("logs"); }}
         loginPanel={<TakeoutLoginPanel key={diagnosticScopeKey(accountStorageScope, companionScope)}
           scope={diagnosticScopeKey(accountStorageScope, companionScope)} feedback={takeoutLoginFeedback} />} />
-      {themePreferences.background === "auto" ? (
+      {themePreferences.background === "auto" || themePreferences.background === "lumen" ? (
         <CelestialBackdrop
           snapshot={celestialSnapshot}
           weather={ambientWeather}
           weatherModeOverride={weatherPreviewMode}
+          backgroundMode={themePreferences.background}
         />
       ) : (
         <LegacyCoastBackdrop snapshot={celestialSnapshot} />
@@ -10982,7 +11377,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
         <div className="sidebar-footer">
           <span className={`connection-dot ${isOnline ? "online" : ""}`} />
-          {isOnline ? "服务可连接" : "网络已断开"}
+          {isOnline ? "灯塔已连上" : "网络已断开"}
         </div>
       </aside>
 
@@ -10998,6 +11393,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             className="menu-button"
             onClick={() => setIsSidebarOpen(true)}
             aria-label="打开菜单"
+            data-dt-tip="打开功能导航与历史会话侧边栏"
           >
             ☰
           </button>
@@ -11012,8 +11408,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 <span>
                   <i aria-hidden="true" />
                   {companionStatus.resetBlank === true
-                    ? "在这里"
-                    : companionStatus.mood || "平静"}
+                    ? "静静候着"
+                    : localizeMoodWord(companionStatus.mood)}
                 </span>
               </div>
             ) : (
@@ -11031,6 +11427,8 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               aria-label="打开命令面板"
               aria-haspopup="dialog"
               aria-expanded={commandPaletteOpen}
+              data-dt-tip="全局命令面板：快速直达玩法、切天幕背景与设置"
+              data-dt-tip-key="Ctrl+K"
               onClick={() => setCommandPaletteOpen(true)}
             >
               <span aria-hidden="true">⌘K</span>
@@ -11055,6 +11453,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               aria-label="打开设置"
               aria-haspopup="dialog"
               aria-expanded={isSettingsOpen}
+              data-dt-tip="打开系统设置、外观天幕、AI 模型与全链路错误诊断"
               onClick={openSettingsPanel}
             >
               <svg viewBox="0 0 24 24" role="presentation">
@@ -11161,6 +11560,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             onWatchTogether={() => { setTogetherEntryMode("external"); changeView("together"); }}
             onOpenNavigation={() => setIsSidebarOpen(true)}
             onOpenSettings={openSettingsPanel}
+            onStartBuiltInMusic={() => void startBuiltInNowPlaying?.()}
+            onOpenMusicStudio={() => changeView("music-studio")}
+            takeoutTask={takeoutTask?.scope === privateMediaScope ? takeoutTask : null}
+            onOpenTakeout={() => setIsTakeoutOpen(true)}
+            onOpenMedical={() => changeView("medical")}
+            onOpenKnowledge={() => changeView("knowledge")}
+            errorCount={readOperationFailures(diagnosticScopeKey(accountStorageScope, companionScope)).length}
+            onOpenErrorLogs={() => { openSettingsPanel(); setSettingsCategory("logs"); }}
             nowPlaying={
               nowPlaying ||
               (coWatchSession?.status === "active" &&
@@ -11181,12 +11588,22 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             onNowPlayingPlayPause={handleNowPlayingPlayPause}
             onNowPlayingNext={handleNowPlayingNext}
             onDismissNowPlaying={handleDismissNowPlaying}
+            ambientLive={ambientLive}
+            celestialSnapshot={celestialSnapshot}
+            onSyncLocation={handleSyncLocation}
+            onRefreshWeather={handleRefreshWeather}
+            onEstimateLocationByIp={handleEstimateLocationByIp}
+            onSelectLocation={handleSelectLocation}
+            onDisableLocation={handleDisableLocation}
           />
           <AmbientContextBadge
             accountScope={accountStorageScope}
             onLoadWeather={loadAmbientWeather}
             onContextChange={handleAmbientContextChange}
             onCoordinatesChange={setCelestialCoordinates}
+            onStatusChange={setAmbientLive}
+            onLocationSynced={handleAmbientLocationSynced}
+            controlRef={ambientControlRef}
             celestialSnapshot={celestialSnapshot}
           />
         </div>
@@ -11328,19 +11745,59 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           {activeView === "nursery" && renderNursery()}
           {activeView === "cotton" && (
             <Suspense fallback={<DeferredFeature label="正在打开小棉花的小屋…" />}>
-              <CottonPet accountScope={accountStorageScope} companionScope={companionScope} onShare={(text) => { setMessage((current) => current ? `${current}\n${text}` : text); changeView("chat"); }} />
+              <CottonPet
+                accountScope={accountStorageScope}
+                companionScope={companionScope}
+                desktopPetEnabled={cottonDesktopPetEnabled}
+                onToggleDesktopPet={toggleCottonDesktopPet}
+                onShare={(text) => { setMessage((current) => current ? `${current}\n${text}` : text); changeView("chat"); }}
+              />
             </Suspense>
           )}
           {activeView === "together" && renderTogether("together")}
           {activeView === "music-studio" && (
         <Suspense fallback={<DeferredFeature label="正在打开音乐工作室…" />}>
-          <MusicStudio onOpenSync={() => changeView("music")} />
+          <MusicStudio onOpenSync={() => changeView("music")} visualPreview={visualPreview} />
         </Suspense>
       )}
       {activeView === "music" && renderTogether("music")}
           {activeView === "x" && (
             <Suspense fallback={<DeferredFeature label="正在连接 X…" />}>
               <XHub
+                visualPreview={visualPreview}
+                onOpenDeviceCenter={() => {
+                  openProviderRecovery();
+                  setSettingsFocusTarget("mcp-device-center");
+                }}
+              />
+            </Suspense>
+          )}
+          {activeView === "creator-world" && (
+            <Suspense fallback={<DeferredFeature label="正在打开 AI 视界与创作者中控…" />}>
+              <CreatorWorldStudio
+                key={creatorStudioDraftTopic?.at || "cws"}
+                aiName={effectiveAiName}
+                visualPreview={visualPreview}
+                initialTopic={creatorStudioDraftTopic}
+                onSendToChat={(text) => {
+                  setMessage((current) => (current ? `${current}\n${text}` : text));
+                  changeView("chat");
+                }}
+                onOpenDeviceCenter={() => {
+                  openProviderRecovery();
+                  setSettingsFocusTarget("mcp-device-center");
+                }}
+              />
+            </Suspense>
+          )}
+          {activeView === "agent-studio" && (
+            <Suspense fallback={<DeferredFeature label="正在打开本机 AI 工作台与剪映中心…" />}>
+              <LocalAgentStudio
+                aiName={effectiveAiName}
+                onSendToChat={(text) => {
+                  setMessage((current) => (current ? `${current}\n${text}` : text));
+                  changeView("chat");
+                }}
                 onOpenDeviceCenter={() => {
                   openProviderRecovery();
                   setSettingsFocusTarget("mcp-device-center");
@@ -11350,23 +11807,59 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           )}
           {activeView === "wechat" && (
             <Suspense fallback={<DeferredFeature label="正在打开微信通道…" />}>
-              <ChannelHub key={privateMediaScope} channel="wechat" aiName={effectiveAiName} />
+              <ChannelHub key={privateMediaScope} channel="wechat" aiName={effectiveAiName} visualPreview={visualPreview} />
             </Suspense>
           )}
           {activeView === "qq" && (
             <Suspense fallback={<DeferredFeature label="正在打开 QQ 通道…" />}>
-              <ChannelHub key={privateMediaScope} channel="qq" aiName={effectiveAiName} />
+              <ChannelHub key={privateMediaScope} channel="qq" aiName={effectiveAiName} visualPreview={visualPreview} />
             </Suspense>
           )}
           {activeView === "cast" && renderDlnaCastPlayer()}
           {activeView === "memories" && renderMemories()}
-          {activeView === "treasure" && <Suspense fallback={<DeferredFeature label="正在寻找沿途来信…" />}><SurpriseMap key={privateMediaScope} scopeKey={privateMediaScope} aiName={effectiveAiName} /></Suspense>}
+          {activeView === "medical" && (
+            <Suspense fallback={<DeferredFeature label="正在打开灯塔医疗 AI 专区…" />}>
+              <MedicalAiStudio
+                aiName={effectiveAiName}
+                onSendToChat={(text) => {
+                  setMessage((current) => (current ? `${current}\n${text}` : text));
+                  changeView("chat");
+                }}
+                onOpenHouseholdMeds={() => changeView("knowledge")}
+              />
+            </Suspense>
+          )}
+          {activeView === "knowledge" && (
+            <Suspense fallback={<DeferredFeature label="正在打开语义知识库与常备药箱…" />}>
+              <KnowledgeMedicineHub
+                key={privateMediaScope}
+                scope={privateMediaScope}
+                aiName={effectiveAiName}
+                onSendToChat={(text) => {
+                  setMessage((current) => (current ? `${current}\n${text}` : text));
+                  changeView("chat");
+                }}
+                onOrderTakeout={(query) => {
+                  setTakeoutActivityRequest(
+                    buildCompanionActivityRequest(
+                      { id: `knowledge-takeout-${Date.now()}`, kind: "takeout", query },
+                      accountStorageScope,
+                      companionScope,
+                    ),
+                  );
+                  setIsTakeoutOpen(true);
+                  changeView("chat");
+                }}
+              />
+            </Suspense>
+          )}
+          {activeView === "treasure" && <Suspense fallback={<DeferredFeature label="正在寻找沿途来信…" />}><SurpriseMap key={privateMediaScope} scopeKey={privateMediaScope} aiName={effectiveAiName} visualPreview={visualPreview} /></Suspense>}
           {activeView === "takeout" && renderTakeout()}
           {activeView === "achievements" && renderAchievements()}
           {activeView === "workspace" && (
             <div className="workspace-page">
               <Suspense fallback={<DeferredFeature label="正在打开工作区…" />}>
-                <WorkspaceManager key={privateMediaScope} accountScope={accountStorageScope} registerLeaveGuard={registerWorkspaceLeaveGuard} />
+                <WorkspaceManager key={privateMediaScope} accountScope={accountStorageScope} registerLeaveGuard={registerWorkspaceLeaveGuard} visualPreview={visualPreview} />
               </Suspense>
             </div>
           )}
@@ -11458,7 +11951,23 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         <ImageViewer image={imageViewer} scopeKey={privateMediaScope}
           onClose={() => setImageViewer(null)} />
       )}
+
+      <Suspense fallback={null}>
+        <CottonDesktopPet
+          accountScope={accountStorageScope}
+          companionScope={companionScope}
+          enabled={cottonDesktopPetEnabled}
+          suppressed={activeView === "cotton" || isSettingsOpen || Boolean(imageViewer)}
+          onSetEnabled={toggleCottonDesktopPet}
+          onOpenHouse={() => changeView("cotton")}
+          onShareToChat={(text) => {
+            setMessage((current) => (current ? `${current}\n${text}` : text));
+            changeView("chat");
+          }}
+        />
+      </Suspense>
     </div>
+    </SmartTooltipProvider>
   );
 }
 

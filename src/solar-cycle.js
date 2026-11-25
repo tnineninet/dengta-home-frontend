@@ -84,9 +84,21 @@ function solarSetJulian(
   return solarTransitJulian(transit, meanAnomaly, longitude);
 }
 
-function chinaDateParts(date) {
+function resolveSolarTimeZone(timeZone = "Asia/Shanghai") {
+  const candidate = String(timeZone || "").trim();
+  if (!candidate) return "Asia/Shanghai";
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: candidate }).format(new Date(0));
+    return candidate;
+  } catch {
+    return "Asia/Shanghai";
+  }
+}
+
+function zonedDateParts(date, timeZone = "Asia/Shanghai") {
+  const zone = resolveSolarTimeZone(timeZone);
   const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Shanghai",
+    timeZone: zone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -96,6 +108,30 @@ function chinaDateParts(date) {
       .filter((part) => part.type !== "literal")
       .map((part) => [part.type, part.value]),
   );
+}
+
+function offsetMinutesForZone(date, timeZone = "Asia/Shanghai") {
+  const zone = resolveSolarTimeZone(timeZone);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: zone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const pick = (type) => Number(parts.find((item) => item.type === type)?.value || 0);
+  const asUtc = Date.UTC(
+    pick("year"),
+    pick("month") - 1,
+    pick("day"),
+    pick("hour"),
+    pick("minute"),
+    pick("second"),
+  );
+  return Math.round((asUtc - date.getTime()) / 60_000);
 }
 
 function normalizeCoordinates(value) {
@@ -114,30 +150,33 @@ function normalizeCoordinates(value) {
   return { latitude, longitude, source: "location" };
 }
 
-function dateAtChinaNoon(parts, dayOffset = 0) {
+function dateAtZoneNoon(parts, dayOffset = 0, offsetMinutes = 480) {
   return new Date(
     Date.UTC(
       Number(parts.year),
       Number(parts.month) - 1,
       Number(parts.day) + dayOffset,
-      4,
-      0,
+      12,
+      -offsetMinutes,
       0,
     ),
   );
 }
 
-function fallbackSchedule(parts, dayOffset, coordinates) {
+function fallbackSchedule(parts, dayOffset, coordinates, offsetMinutes = 480, timeZone = "Asia/Shanghai") {
   const midnight = Date.UTC(
     Number(parts.year),
     Number(parts.month) - 1,
     Number(parts.day) + dayOffset,
-    -8,
+    0,
+    -offsetMinutes,
   );
   return Object.freeze({
     dateKey: new Date(midnight + 12 * 60 * 60 * 1000)
       .toISOString()
       .slice(0, 10),
+    timeZone,
+    utcOffsetMinutes: offsetMinutes,
     coordinates,
     source: coordinates.source,
     solarNoon: new Date(midnight + 12 * 60 * 60 * 1000),
@@ -152,10 +191,13 @@ export function getSolarSchedule(
   date = new Date(),
   coordinateValue,
   dayOffset = 0,
+  timeZone = coordinateValue?.timeZone || "Asia/Shanghai",
 ) {
+  const zone = resolveSolarTimeZone(timeZone);
   const coordinates = normalizeCoordinates(coordinateValue);
-  const parts = chinaDateParts(date);
-  const anchor = dateAtChinaNoon(parts, dayOffset);
+  const offsetMinutes = offsetMinutesForZone(date, zone);
+  const parts = zonedDateParts(date, zone);
+  const anchor = dateAtZoneNoon(parts, dayOffset, offsetMinutes);
   const longitudeWest = RAD * -coordinates.longitude;
   const latitude = RAD * coordinates.latitude;
   const day = toDays(anchor);
@@ -189,7 +231,7 @@ export function getSolarSchedule(
   );
 
   if (sunsetJulian === null || civilDuskJulian === null) {
-    return fallbackSchedule(parts, dayOffset, coordinates);
+    return fallbackSchedule(parts, dayOffset, coordinates, offsetMinutes, zone);
   }
 
   const solarNoon = fromJulian(solarNoonJulian);
@@ -199,10 +241,12 @@ export function getSolarSchedule(
   const civilDawn = fromJulian(
     solarNoonJulian - (civilDuskJulian - solarNoonJulian),
   );
+  const anchorParts = zonedDateParts(anchor, zone);
 
   return Object.freeze({
-    dateKey: chinaDateParts(anchor).year +
-      `-${chinaDateParts(anchor).month}-${chinaDateParts(anchor).day}`,
+    dateKey: `${anchorParts.year}-${anchorParts.month}-${anchorParts.day}`,
+    timeZone: zone,
+    utcOffsetMinutes: offsetMinutes,
     coordinates,
     source: coordinates.source,
     solarNoon,
@@ -219,9 +263,10 @@ export function phaseProgress(now, start, end) {
   return clamp((now.valueOf() - start.valueOf()) / duration);
 }
 
-export function formatSolarTime(date) {
+export function formatSolarTime(date, timeZone = "Asia/Shanghai") {
+  const zone = resolveSolarTimeZone(timeZone);
   return new Intl.DateTimeFormat("zh-CN", {
-    timeZone: "Asia/Shanghai",
+    timeZone: zone,
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",

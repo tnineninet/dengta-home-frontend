@@ -1,4 +1,4 @@
-﻿const CACHE_NAME = "dengta-home-v38-immersive-chat";
+﻿const CACHE_NAME = "dengta-home-v39-local-agent-studio";
 const APP_SHELL = [
   "/",
   "/manifest.webmanifest",

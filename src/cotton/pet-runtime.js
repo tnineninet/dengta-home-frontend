@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { B1857Character } from './upstream/b1857-character.js';
 import { ACTIONS, InteractionController } from './upstream/interaction-controller.js';
 import { InteractionProps } from './upstream/interaction-props.js';
+import { SpringBoneSystem } from './spring-bone-physics.js';
+import { createMToonGradientTexture, createMToonMaterials, createOutlineMesh, DanceSparkles } from './mtoon-style.js';
 
 function validateAsset(asset) {
   const fail = () => { throw new Error('pet_asset_invalid'); };
@@ -32,6 +34,7 @@ export async function createPetRuntime(canvas, { signal, initial, onChange, onEr
   signal.throwIfAborted();
   validateAsset(asset);
   let renderer, scene, pet, observer, motionObserver, reduced;
+  let hemiLight, dirLight, rimLight, springs, sparkles, outlineMesh, toonGradient, toonMaterials, standardMaterials;
   let disposed = false, raf = 0;
   function dispose() {
     if (disposed) return;
@@ -51,6 +54,8 @@ export async function createPetRuntime(canvas, { signal, initial, onChange, onEr
       if (object.geometry) geometries.add(object.geometry);
       for (const material of [].concat(object.material || [])) if (material) materials.add(material);
     }));
+    for (const material of [...(standardMaterials || []), ...(toonMaterials || [])]) if (material) materials.add(material);
+    if (toonGradient) textures.add(toonGradient);
     for (const material of materials) for (const value of Object.values(material)) if (value?.isTexture) textures.add(value);
     geometries.forEach(geometry => release(() => geometry.dispose()));
     textures.forEach(texture => release(() => texture.dispose()));
@@ -63,20 +68,71 @@ export async function createPetRuntime(canvas, { signal, initial, onChange, onEr
   let camera, behavior, props;
   let quiet = initial.quiet === true, paused = false, pendingQuiet = false, visible = !document.hidden;
   let last = 0, lastNotify = 0, motionUntil = 0, reducedMotion = false, frozenAt = null;
+  let orbitYaw = 0.4, orbitPitch = 0.14, cameraZoom = 1, visualStyle = { toon: false, outline: false, night: false, bigHead: false, skeleton: false };
+  const cameraTarget = new THREE.Vector3(0, 0.24, 0.02);
+  function applyCamera() {
+    if (!camera) return;
+    const radius = 1.48 / THREE.MathUtils.clamp(cameraZoom, 0.65, 1.65);
+    const pitch = THREE.MathUtils.clamp(orbitPitch, -0.22, 0.62);
+    camera.position.set(
+      Math.sin(orbitYaw) * Math.cos(pitch) * radius,
+      0.24 + Math.sin(pitch) * radius,
+      Math.cos(orbitYaw) * Math.cos(pitch) * radius,
+    );
+    camera.lookAt(cameraTarget);
+  }
+  function applyVisualStyle() {
+    if (!pet) return;
+    if (visualStyle.toon) {
+      if (!toonGradient) toonGradient = createMToonGradientTexture();
+      if (!toonMaterials) toonMaterials = createMToonMaterials(toonGradient);
+      pet.mesh.material = toonMaterials;
+    } else if (standardMaterials) {
+      pet.mesh.material = standardMaterials;
+    }
+    if (outlineMesh) outlineMesh.visible = Boolean(visualStyle.outline);
+    if (pet.helper) pet.helper.visible = Boolean(visualStyle.skeleton);
+    pet.setBigHead(visualStyle.bigHead);
+    if (hemiLight && dirLight && rimLight) {
+      if (visualStyle.night) {
+        hemiLight.color.setHex(0xbccbff);
+        hemiLight.groundColor.setHex(0x3a324d);
+        hemiLight.intensity = 1.65;
+        dirLight.color.setHex(0xffd2a8);
+        dirLight.intensity = 1.85;
+        rimLight.intensity = 2.4;
+      } else {
+        hemiLight.color.setHex(0xfffaf1);
+        hemiLight.groundColor.setHex(0x7e8975);
+        hemiLight.intensity = 2.5;
+        dirLight.color.setHex(0xfff8ef);
+        dirLight.intensity = 3.0;
+        rimLight.intensity = 0.35;
+      }
+    }
+  }
   try {
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'low-power' });
   renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio || 1, 1.5));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(36, 1, .01, 20);
-  camera.position.set(.58, .42, 1.35);
-  camera.lookAt(0, .24, .02);
-  scene.add(new THREE.HemisphereLight(0xfffaf1, 0x7e8975, 2.5));
-  const light = new THREE.DirectionalLight(0xfff8ef, 3);
-  light.position.set(-.9, 1.5, 1.3);
-  scene.add(light);
+  applyCamera();
+  hemiLight = new THREE.HemisphereLight(0xfffaf1, 0x7e8975, 2.5);
+  scene.add(hemiLight);
+  dirLight = new THREE.DirectionalLight(0xfff8ef, 3);
+  dirLight.position.set(-.9, 1.5, 1.3);
+  scene.add(dirLight);
+  rimLight = new THREE.DirectionalLight(0xaec6ff, 0.35);
+  rimLight.position.set(1.2, 0.9, -1.4);
+  scene.add(rimLight);
   pet = new B1857Character({ asset });
+  standardMaterials = pet.materials;
+  outlineMesh = createOutlineMesh(pet);
+  pet.group.add(outlineMesh);
   scene.add(pet.group, pet.helper);
+  springs = new SpringBoneSystem(pet);
+  sparkles = new DanceSparkles(scene);
   behavior = new InteractionController();
   Object.assign(behavior.stats, initial.stats);
   props = new InteractionProps(scene, pet);
@@ -110,6 +166,9 @@ export async function createPetRuntime(canvas, { signal, initial, onChange, onEr
     behavior.update(dt);
     pet.setInteraction({ id: behavior.active.id, age: behavior.age, envelope: behavior.envelope });
     pet.update(dt);
+    const dancing = behavior.active.id === 'dance';
+    springs?.update(dt, { beatEnergy: dancing ? 0.95 : 0, swayX: dancing ? Math.sin(behavior.time * 4.4) * 0.65 : 0 });
+    sparkles?.update(dt, dancing || behavior.active.id === 'pet');
     props.update(dt, behavior);
     // The upstream authoring history is diagnostic only; bound it for long visits.
     if (behavior.history.length > 32) behavior.history.splice(0, behavior.history.length - 32);
@@ -161,7 +220,13 @@ export async function createPetRuntime(canvas, { signal, initial, onChange, onEr
     if (disposed || paused) return { accepted: false, reason: '先继续陪伴，再和小棉花互动。' };
     settleStatic();
     const result = behavior.request(id);
-    if (result.accepted) { pet.command(id); allowActionMotion(); notify(); resume(); }
+    if (result.accepted) {
+      pet.command(id);
+      if (['pet', 'dance', 'greet', 'ball', 'nod'].includes(id)) springs?.impulse(id === 'dance' ? 1.4 : 0.75, 0.45, 0);
+      allowActionMotion();
+      notify();
+      resume();
+    }
     return result;
   }
   function lost(event) { event.preventDefault(); settleStatic(); paused = true; resume(); onError(); }
@@ -202,6 +267,43 @@ export async function createPetRuntime(canvas, { signal, initial, onChange, onEr
       quiet = value;
       pendingQuiet = paused;
       if (!paused) { behavior.request(value ? 'rest' : 'wake', { force: true }); allowActionMotion(); notify(); resume(); }
+    },
+    setGaze(nx, ny, active = true) {
+      if (disposed || !pet) return;
+      pet.setGaze(nx, ny, active);
+    },
+    setCameraOrbit(deltaYaw = 0, deltaPitch = 0, nextZoom = null) {
+      if (disposed) return;
+      orbitYaw += Number(deltaYaw) || 0;
+      orbitPitch = THREE.MathUtils.clamp(orbitPitch + (Number(deltaPitch) || 0), -0.22, 0.62);
+      if (nextZoom !== null && Number.isFinite(nextZoom)) cameraZoom = THREE.MathUtils.clamp(nextZoom, 0.65, 1.65);
+      applyCamera();
+      springs?.impulse((Number(deltaYaw) || 0) * 3.5, 0, 0);
+      if (!paused && !document.hidden) draw();
+    },
+    resetCamera() {
+      if (disposed) return;
+      orbitYaw = 0.4; orbitPitch = 0.14; cameraZoom = 1;
+      applyCamera();
+      if (!paused && !document.hidden) draw();
+    },
+    setVisualStyle(patch = {}) {
+      if (disposed) return;
+      visualStyle = { ...visualStyle, ...patch };
+      applyVisualStyle();
+      if (!paused && !document.hidden) draw();
+    },
+    setExpression(name = 'auto') {
+      if (disposed || !pet) return;
+      pet.setExpression(name);
+      if (!paused && !document.hidden) draw();
+    },
+    diagnostics() {
+      return {
+        character: pet?.diagnostics?.() || null,
+        springs: springs?.diagnostics?.() || null,
+        visualStyle: { ...visualStyle },
+      };
     },
     dispose,
   };

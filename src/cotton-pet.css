@@ -48,3 +48,27 @@
   .cotton-pet-compact .cotton-stage { height: 144px; }
   .cotton-dock-bar span { display: none; }
 }
+
+.cotton-stage.is-night { background: radial-gradient(ellipse at 50% 62%, #2e2948 0%, #1d1c33 52%, #111322 100%); border-color: #3d3961; }
+.cotton-stage.is-toon { background: radial-gradient(ellipse at 50% 64%, #fff2df 0%, #f9ead8 48%, #f3e4ef 100%); }
+.cotton-stage.is-night .cotton-state, .cotton-stage.is-night .cotton-silent, .cotton-stage.is-night .cotton-zoom-pill { background: rgba(24, 24, 42, .72); color: #e9e4ff; }
+.cotton-zoom-pill { position: absolute; top: 18px; right: 18px; font-size: 11px; color: #54664c; padding: 6px 10px; background: #ffffffc4; border-radius: 20px; pointer-events: none; }
+.cotton-subsection { margin-top: 14px; }
+.cotton-subsection h4 { margin: 0 0 8px; font-size: 12px; letter-spacing: .04em; color: var(--theme-muted, #708074); }
+.cotton-style-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.cotton-style-row button { min-height: 36px; padding: 6px 10px; font-size: 12px; border-radius: 10px; }
+.cotton-style-row button[data-active=true] { background: #d6e6cb; border-color: #87a675; font-weight: 600; }
+.cotton-desktop-card { margin: 14px 0; padding: 12px 14px; border-radius: 14px; border: 1px dashed #9aab8966; background: #edf1e526; display: grid; gap: 6px; }
+.cotton-desktop-card strong { font-size: 13px; }
+.cotton-desktop-card p { margin: 0; font-size: 12px; line-height: 1.6; }
+.cotton-vrm-download { display: inline-flex; align-items: center; min-height: 36px; padding: 6px 10px; border: 1px solid #cdd7c5; border-radius: 10px; background: #f3f5ed; color: #405b43; font-size: 12px; text-decoration: none; }
+.cotton-vrm-download:hover { background: #dfead6; }
+.cotton-pie-menu { position: absolute; width: 0; height: 0; z-index: 6; }
+.cotton-pie-menu button { position: absolute; transform: translate(-50%, -50%); min-height: 34px; padding: 5px 10px; border-radius: 999px; font-size: 11px; white-space: nowrap; background: rgba(255, 253, 248, .94); box-shadow: 0 8px 20px rgba(20, 28, 22, .18); }
+.cotton-pie-menu .pie-center { width: 34px; height: 34px; padding: 0; font-size: 15px; background: #405b43; color: #fff; border-color: #405b43; }
+.cotton-pie-menu .pie-n { top: -64px; left: 0; }
+.cotton-pie-menu .pie-ne { top: -32px; left: 66px; }
+.cotton-pie-menu .pie-se { top: 34px; left: 66px; }
+.cotton-pie-menu .pie-s { top: 66px; left: 0; }
+.cotton-pie-menu .pie-sw { top: 34px; left: -66px; }
+.cotton-pie-menu .pie-nw { top: -32px; left: -66px; }

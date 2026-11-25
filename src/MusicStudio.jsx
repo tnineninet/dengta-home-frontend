@@ -4,14 +4,15 @@ import { apiRequest } from "./api";
 import { settingsServiceErrorMessage } from "./settings-service-errors";
 import "./music-studio.css";
 
-export default function MusicStudio({ onOpenSync }) {
-  const [state, setState] = useState({ loading: true, url: "", error: "" });
+export default function MusicStudio({ onOpenSync, visualPreview = false }) {
+  const [state, setState] = useState(() => ({ loading: !visualPreview, url: "", error: "" }));
   const [reloadKey, setReloadKey] = useState(0);
   const [frameReady, setFrameReady] = useState(false);
   const [frameSlow, setFrameSlow] = useState(false);
   const iframeRef = useRef(null);
 
   useEffect(() => {
+    if (visualPreview) return undefined;
     let cancelled = false;
     const timer = window.setTimeout(async () => {
       try {
@@ -34,9 +35,10 @@ export default function MusicStudio({ onOpenSync }) {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [reloadKey]);
+  }, [reloadKey, visualPreview]);
 
   const reload = () => {
+    if (visualPreview) return;
     setFrameReady(false);
     setFrameSlow(false);
     setState({ loading: true, url: "", error: "" });
@@ -93,7 +95,19 @@ export default function MusicStudio({ onOpenSync }) {
       </header>
 
       <div className="music-studio-frame-shell">
-        {state.loading ? (
+        {visualPreview ? (
+          <div className="music-studio-state" role="status">
+            <Music2 aria-hidden="true" />
+            <strong>本地预览 · 音乐工作室需登录后连接</strong>
+            <small>完整网易云歌单、每日推荐与独立播放器（dengta-music-mcp）需要个人登录态签名链接。当前处于无登录视觉预览页（/visual-preview.html），可前往主入口登录，或先体验内置一起听同步。</small>
+            <div>
+              <button type="button" onClick={() => { window.location.href = "/"; }}>前往主入口登录</button>
+              {onOpenSync ? <button type="button" onClick={onOpenSync}>体验一起听同步</button> : null}
+            </div>
+          </div>
+        ) : null}
+
+        {!visualPreview && state.loading ? (
           <div className="music-studio-state" role="status">
             <Loader2 className="is-spinning" aria-hidden="true" />
             <strong>正在打开音乐工作室</strong>
@@ -101,12 +115,15 @@ export default function MusicStudio({ onOpenSync }) {
           </div>
         ) : null}
 
-        {!state.loading && state.error ? (
+        {!visualPreview && !state.loading && state.error ? (
           <div className="music-studio-state is-error" role="alert">
             <TriangleAlert aria-hidden="true" />
             <strong>音乐工作室暂时打不开</strong>
             <small>{state.error}</small>
             <div>
+              {state.error.includes("authentication_required") ? (
+                <button type="button" onClick={() => { window.location.href = "/"; }}>前往主入口登录</button>
+              ) : null}
               <button type="button" onClick={reload}>重新连接</button>
               <button type="button" onClick={() => { window.location.href = "/?view=chat"; }}>先回聊天</button>
             </div>

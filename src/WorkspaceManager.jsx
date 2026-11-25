@@ -115,7 +115,20 @@ function downloadTextFile(name, text) {
   } finally { anchor?.remove?.(); }
 }
 
-export default function WorkspaceManager({ accountScope = "", registerLeaveGuard }) {
+export default function WorkspaceManager({ accountScope = "", registerLeaveGuard, visualPreview = false }) {
+  if (visualPreview) {
+    return (
+      <section className="feature-page workspace-manager" aria-label="工作区本地预览">
+        <div className="workspace-header">
+          <div>
+            <h2>工作区（本地预览）</h2>
+            <p>支持云端 Markdown 笔记、agents.md 实时预览、5MiB 文件导入与离线副本缓存。当前为无登录本地预览模式，前往主入口登录后同步你的工作区文件。</p>
+          </div>
+          <button type="button" onClick={() => { window.location.href = "/"; }}>前往主入口登录</button>
+        </div>
+      </section>
+    );
+  }
   return <WorkspaceView key={JSON.stringify([accountScope, settingsSaveScope(authSession.getSnapshot())])} accountScope={accountScope} registerLeaveGuard={registerLeaveGuard} />;
 }
 

@@ -5,6 +5,7 @@ import { MessageAttachments, ThinkingPanel } from "./ChatMessageExtras";
 import { renderChatMarkdown } from "./chat-markdown.jsx";
 import { splitChatSegments } from "./chat-sentences.js";
 import ChatArtwork from "./ChatArtwork.jsx";
+import DbskillChatCard from "./DbskillChatCard.jsx";
 import MusicChatCard from "./MusicChatCard.jsx";
 import { AuthenticatedImage } from "./PrivateMedia";
 import {
@@ -19,6 +20,7 @@ import { privateMediaAsset, privateMediaContentPath } from "./private-media";
 import ChatErrorLog from "./ChatErrorLog";
 import { readChatDisplayContent } from "./chat-display-content.js";
 import ChatTextImpact from "./ChatTextImpact.jsx";
+import { extractMedicalCitationBadges, parseMedicalRagMessage } from "./medical-chat-card.js";
 
 const messageTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
   hour: "2-digit",
@@ -45,6 +47,7 @@ function ChatMessage({
   onReference,
   onDismissError,
   onOpenActivity,
+  onOpenDbskillVideo,
   onOpenProviderSettings,
   innerMonologue,
   innerMonologuePending = false,
@@ -129,6 +132,14 @@ function ChatMessage({
     item.tool_calls?.artwork_alt || `${aiName}创作的图片`;
   const isGenerating = item.isStreaming === true || item.generationInProgress === true;
   const displayContent = useMemo(() => readChatDisplayContent(item), [item]);
+  const medicalPacket = useMemo(
+    () => (isUser ? parseMedicalRagMessage(displayContent.content) : null),
+    [isUser, displayContent.content],
+  );
+  const medicalCitationBadges = useMemo(
+    () => (!isUser ? extractMedicalCitationBadges(displayContent.content) : []),
+    [isUser, displayContent.content],
+  );
   const chatSegments = useMemo(() => {
     if (isUser) return [];
     if (Array.isArray(item.bubbles) && item.bubbles.length > 0) {
@@ -342,13 +353,60 @@ function ChatMessage({
           )}
           {item.content && !(item.chatError && item.partialContent) && (
             <div className={`message-content${isUser ? "" : " chat-sentences"}`}>
-              {isUser
+              {isUser && medicalPacket ? (
+                <div className="dt-med-chat-card" role="region" aria-label="灯塔医疗 AI 结构化问诊卡">
+                  <div className="dt-med-chat-head">
+                    <span className="dt-med-chat-kicker">🏥 医疗 AI · Grounded RAG</span>
+                    <span className={`dt-med-chat-status is-${medicalPacket.status}`}>
+                      {medicalPacket.templateLabel} · {medicalPacket.status}
+                    </span>
+                  </div>
+                  <p className="dt-med-chat-question">{medicalPacket.question}</p>
+                  {medicalPacket.derived.length > 0 && (
+                    <div className="dt-med-chat-chips">
+                      {medicalPacket.derived.slice(0, 5).map((entry, idx) => (
+                        <span key={idx} className="dt-med-chat-chip">{entry}</span>
+                      ))}
+                    </div>
+                  )}
+                  {medicalPacket.alerts.length > 0 && (
+                    <ul className="dt-med-chat-alerts">
+                      {medicalPacket.alerts.slice(0, 4).map((al, idx) => (
+                        <li key={`${al.rule}-${idx}`} className={`is-${al.level}`}>
+                          <strong>[{al.level}] {al.rule}</strong> {al.message}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <details className="dt-med-chat-details">
+                    <summary>
+                      展开完整 L1+L2 临床证据包（{medicalPacket.citations.length} 条引用）
+                    </summary>
+                    {medicalPacket.citations.length > 0 && (
+                      <div className="dt-med-chat-cites">
+                        {medicalPacket.citations.map((c) => (
+                          <span key={c.code} className="dt-med-chat-cite">
+                            [{c.code}] {c.title}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <pre className="dt-med-chat-raw">{medicalPacket.rawText}</pre>
+                  </details>
+                </div>
+              ) : isUser
                 ? renderChatMarkdown(displayContent.content)
                 : chatSegments.map((segment, index) => (
                     <span className="chat-sentence" key={index}>
                       <span className="chat-sentence-inner">{renderChatMarkdown(segment)}</span>
                     </span>
                   ))}
+            </div>
+          )}
+          {!isUser && medicalCitationBadges.length > 0 && (
+            <div className="dt-med-reply-cites" role="note" aria-label="医疗证据引用与免责提示">
+              <span>已锚定临床证据：{medicalCitationBadges.map((c) => `[${c}]`).join(" ")}</span>
+              <small>辅助参考，不替代医师面诊与处方</small>
             </div>
           )}
           {displayContent.nextActions.length > 0 && <aside className="message-next-actions" aria-label="伴侣的小提议"><strong>接下来可以…</strong><ul>{displayContent.nextActions.map((action, index) => <li key={index}>{action}</li>)}</ul></aside>}
@@ -385,6 +443,13 @@ function ChatMessage({
             <MusicChatCard
               key={item.tool_calls.music_card.id}
               music={item.tool_calls.music_card}
+            />
+          )}
+          {!isUser && item.tool_calls?.dbskill_card && (
+            <DbskillChatCard
+              key={item.tool_calls.dbskill_card.id || item.id}
+              card={item.tool_calls.dbskill_card}
+              onOpenVideoStudio={onOpenDbskillVideo}
             />
           )}
           <ChatArtwork

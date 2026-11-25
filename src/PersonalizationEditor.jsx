@@ -112,11 +112,18 @@ export default function PersonalizationEditor({
   return (
     <div className={`personalization-editor${expanded ? " is-expanded" : ""}`}>
       <div className="personalization-editor-toolbar">
-        <output className="personalization-editor-count" aria-label={`${label}字符数`}>
-          {characters === null ? "正在统计…" : `${characters.toLocaleString("zh-CN")} 个字符`}
-        </output>
+        <div className="personalization-editor-stats">
+          <output className="personalization-editor-count" aria-label={`${label}字符数`}>
+            {characters === null ? "正在统计…" : `${characters.toLocaleString("zh-CN")} 个字符`}
+          </output>
+          {characters !== null && characters > 0 ? (
+            <span className="personalization-editor-tokens" aria-hidden="true">
+              约 {Math.max(1, Math.ceil(characters * 0.9)).toLocaleString("zh-CN")} tok
+            </span>
+          ) : null}
+        </div>
         <button type="button" className="personalization-editor-expand" aria-expanded={expanded} aria-controls={`${id}-text`} onClick={toggleExpanded}>
-          {expanded ? <Minimize2 size={14} aria-hidden="true" /> : <Maximize2 size={14} aria-hidden="true" />}
+          {expanded ? <Minimize2 size={14} strokeWidth={1.85} aria-hidden="true" /> : <Maximize2 size={14} strokeWidth={1.85} aria-hidden="true" />}
           {expanded ? "收起编辑" : "展开编辑"}
         </button>
       </div>
@@ -135,11 +142,11 @@ export default function PersonalizationEditor({
       />
       <div className="personalization-editor-actions">
         <button type="button" disabled={disabled || currentOperation.reading} onClick={() => fileRef.current?.click()}>
-          <FileText size={14} aria-hidden="true" />
+          <FileText size={14} strokeWidth={1.85} aria-hidden="true" />
           {currentOperation.reading ? "读取中…" : "导入文本"}
         </button>
         <button type="button" disabled={disabled || currentOperation.reading || value.length === 0} onClick={() => void copyText()}>
-          <Copy size={14} aria-hidden="true" />复制原文
+          <Copy size={14} strokeWidth={1.85} aria-hidden="true" />复制原文
         </button>
         <input ref={fileRef} type="file" accept={PERSONALIZATION_TEXT_FILE_ACCEPT} aria-label={`导入${label}文本`} hidden disabled={disabled} onChange={(event) => void importText(event)} />
       </div>

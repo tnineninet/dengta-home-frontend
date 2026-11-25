@@ -83,3 +83,21 @@
 .art-studio-page .section-intro small { display:block; margin-top:10px; color:var(--theme-muted); line-height:1.6; }
 .art-studio-page .companion-artwork-library .profile-section-heading h3 { color:var(--theme-ink); }
 .art-studio-page .section-intro button,.profile-art-studio-link { min-height:44px; margin-top:12px; padding:10px 14px; border-radius:12px; border:1px solid var(--theme-control-border); color:var(--theme-ink); background:var(--theme-control-background); }
+.dt-med-chat-card { display:grid; gap:8px; text-align:left; }
+.dt-med-chat-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px; font-size:11px; }
+.dt-med-chat-kicker { font-weight:700; color:#0e7490; }
+:root[data-dengta-appearance="night"] .dt-med-chat-kicker { color:#7dd3fc; }
+.dt-med-chat-status { padding:2px 8px; border-radius:999px; font-size:10.5px; font-weight:700; background:rgba(14,116,144,.16); color:#0e7490; }
+.dt-med-chat-status.is-REVIEW { background:#dc2626; color:#fff; }
+.dt-med-chat-status.is-WARN { background:#d97706; color:#fff; }
+.dt-med-chat-status.is-PASS { background:#15803d; color:#fff; }
+.dt-med-chat-question { margin:0; font-size:14px; font-weight:650; line-height:1.5; }
+.dt-med-chat-chips, .dt-med-chat-cites { display:flex; flex-wrap:wrap; gap:5px; }
+.dt-med-chat-chip, .dt-med-chat-cite { padding:2px 8px; border-radius:8px; font-size:11px; background:rgba(14,116,144,.12); border:1px solid rgba(14,116,144,.25); }
+.dt-med-chat-alerts { margin:0; padding:0; list-style:none; display:grid; gap:5px; }
+.dt-med-chat-alerts li { padding:6px 9px; border-radius:9px; font-size:11.5px; line-height:1.45; border-left:3px solid #d97706; background:rgba(217,119,6,.1); }
+.dt-med-chat-alerts li.is-REVIEW { border-left-color:#dc2626; background:rgba(220,38,38,.12); }
+.dt-med-chat-details summary { cursor:pointer; font-size:11.5px; font-weight:600; opacity:.85; }
+.dt-med-chat-raw { margin:6px 0 0; padding:8px; border-radius:8px; font-size:11px; line-height:1.45; white-space:pre-wrap; max-height:180px; overflow-y:auto; background:rgba(15,23,42,.08); }
+.dt-med-reply-cites { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px; margin-top:8px; padding:6px 10px; border-radius:10px; font-size:11px; background:rgba(14,116,144,.1); border:1px solid rgba(14,116,144,.24); }
+.dt-med-reply-cites small { opacity:.78; font-size:10.5px; }

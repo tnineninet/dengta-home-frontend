@@ -1,7 +1,7 @@
 {
   "name": "dengta-home-react",
   "private": true,
-  "version": "2.13.43",
+  "version": "2.13.53",
   "type": "module",
   "scripts": {
     "publish:app-update": "node scripts/publish-app-update.mjs",
@@ -103,10 +103,12 @@
     "@capacitor/core": "8.4.3",
     "@capacitor/local-notifications": "^8.0.0",
     "@capacitor/preferences": "^8.0.1",
+    "@floating-ui/react": "^0.27.20",
     "@noble/hashes": "2.4.0",
     "@supabase/auth-js": "^2.110.8",
     "leaflet": "1.9.4",
     "lucide-react": "^0.468.0",
+    "minisearch": "^7.2.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",

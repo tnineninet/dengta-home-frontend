@@ -1,26 +1,157 @@
+.sun-glass-topbar-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sun-glass-topbar-identity > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgb(var(--theme-card-rgb, 255 253 248) / 0.42);
+  border: 1px solid rgb(255 255 255 / 0.35);
+}
+
 .companion-live-state {
-  margin: 20px 0;
-  padding: 18px 0;
-  border-block: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  margin: 18px 0;
+  padding: 16px 14px;
+  border-radius: 18px;
+  border: 1px solid color-mix(in srgb, var(--emotion-accent, #bb7c99) 28%, transparent);
+  background: color-mix(in srgb, var(--emotion-accent, #bb7c99) 7%, transparent);
   line-height: 1.65;
+  transition: border-color 260ms ease, background-color 260ms ease;
 }
-.companion-live-state-heading, .companion-live-meters span {
+
+.companion-live-state-heading,
+.companion-live-meters span {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
 }
-.companion-live-state-heading > span, .companion-live-state dt,
-.companion-live-feedback { font-size: 12px; opacity: .8; }
-.companion-live-state dl { margin: 16px 0; display: grid; gap: 12px; }
-.companion-live-state dd { margin: 3px 0 0; font-size: 14px; overflow-wrap: anywhere; }
-.companion-live-meters { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-.companion-live-meters span { font-size: 13px; }
-.companion-live-meters strong { font-size: 12px; font-weight: 500; }
-.companion-live-meters meter { width: 100%; height: 8px; accent-color: #bb7c99; }
-.companion-live-meters meter::-webkit-meter-bar { background: #8d8a8a25; border: 0; }
-.companion-live-meters meter::-webkit-meter-optimum-value { background: #b77998; }
-.companion-live-feedback { margin: 12px 0 0; min-height: 2em; }
+
+.companion-emotion-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 550;
+  background: color-mix(in srgb, var(--emotion-accent, #bb7c99) 14%, transparent);
+  color: inherit;
+}
+
+.companion-emotion-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--emotion-accent, #bb7c99);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--emotion-accent, #bb7c99) 65%, transparent);
+  flex-shrink: 0;
+}
+
+.companion-ribbon-mood {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 6px;
+}
+
+.companion-ribbon-hint {
+  font-style: normal;
+  font-size: 10.5px;
+  opacity: 0.72;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--emotion-accent, #bb7c99) 14%, transparent);
+}
+
+.companion-header-mood-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.companion-presence-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--emotion-accent, #bb7c99) 16%, transparent);
+  border: 1px solid color-mix(in srgb, var(--emotion-accent, #bb7c99) 30%, transparent);
+  color: inherit;
+}
+
+.companion-live-state-heading > span,
+.companion-live-state dt,
+.companion-live-feedback {
+  font-size: 12px;
+  opacity: 0.84;
+}
+
+.companion-live-state dl {
+  margin: 14px 0;
+  display: grid;
+  gap: 11px;
+}
+
+.companion-live-state dd {
+  margin: 3px 0 0;
+  font-size: 13.5px;
+  overflow-wrap: anywhere;
+}
+
+.companion-live-meters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.companion-live-meters span {
+  font-size: 12.5px;
+}
+
+.companion-live-meters strong {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--emotion-accent, #bb7c99);
+}
+
+.companion-live-meters meter {
+  width: 100%;
+  height: 7px;
+  margin-top: 4px;
+  accent-color: var(--emotion-accent, #bb7c99);
+}
+
+.companion-live-meters meter::-webkit-meter-bar {
+  background: #8d8a8a26;
+  border: 0;
+  border-radius: 999px;
+}
+
+.companion-live-meters meter::-webkit-meter-optimum-value {
+  background: var(--emotion-accent, #bb7c99);
+  border-radius: 999px;
+}
+
+.companion-live-feedback {
+  margin: 12px 0 0;
+  min-height: 1.8em;
+}
+
 @media (max-width: 360px) {
-  .companion-live-state-heading { align-items: flex-start; flex-direction: column; gap: 2px; }
+  .companion-live-state-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
 }

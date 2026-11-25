@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AtSign, CheckCircle2, ExternalLink, Loader2, MessageCircle, RefreshCw, Search, Send, TriangleAlert } from "lucide-react";
 import { apiRequest } from "./api";
 import { settingsServiceErrorMessage } from "./settings-service-errors";
+import { extractTweetId, formatXResultTimestamps } from "./x-hub-utils.js";
 import "./x-hub.css";
 
 const X_TOOL_LABELS = {
@@ -32,12 +33,13 @@ function normalizeXConnection(connection) {
   };
 }
 
-export default function XHub({ onOpenDeviceCenter }) {
-  const [loading, setLoading] = useState(true);
+export default function XHub({ onOpenDeviceCenter, visualPreview = false }) {
+  const [loading, setLoading] = useState(!visualPreview);
   const [error, setError] = useState("");
   const [status, setStatus] = useState(null);
   const [connection, setConnection] = useState(null);
   const [query, setQuery] = useState("");
+  const [tweetLookup, setTweetLookup] = useState("");
   const [postText, setPostText] = useState("");
   const [confirmPost, setConfirmPost] = useState(false);
   const [action, setAction] = useState("");
@@ -45,6 +47,10 @@ export default function XHub({ onOpenDeviceCenter }) {
   const [actionError, setActionError] = useState("");
 
   const load = async () => {
+    if (visualPreview) {
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -66,13 +72,15 @@ export default function XHub({ onOpenDeviceCenter }) {
   };
 
   useEffect(() => {
+    if (visualPreview) return undefined;
     const timer = window.setTimeout(() => {
       void load();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [visualPreview]);
 
   const availableTools = useMemo(() => connection?.names || [], [connection]);
+  const parsedTweetId = useMemo(() => extractTweetId(tweetLookup), [tweetLookup]);
 
   async function callXTool(toolName, args) {
     if (!connection?.id) throw new Error("还没有连接 X / Twitter。");
@@ -88,7 +96,7 @@ export default function XHub({ onOpenDeviceCenter }) {
       setResult({
         tool: toolName,
         ok: data?.ok !== false && data?.isError !== true,
-        text: String(data?.text || "").slice(0, 6000) || "工具已执行，但没有返回文本结果。",
+        text: formatXResultTimestamps(String(data?.text || "").slice(0, 6000)) || "工具已执行，但没有返回文本结果。",
       });
     } catch (caught) {
       setActionError(settingsServiceErrorMessage(caught, "X 工具暂时没有响应。"));
@@ -113,13 +121,25 @@ export default function XHub({ onOpenDeviceCenter }) {
         </span>
       </header>
 
-      {loading ? (
+      {visualPreview ? (
+        <div className="x-hub-empty" role="note">
+          <MessageCircle aria-hidden="true" />
+          <h3>本地预览 · X / Twitter MCP 通道</h3>
+          <p>支持通过 x-twikit-mcp（MIT）搜索、发帖、按推文链接（x.com/.../status/...）或 ID 读取详情，并自动以 Asia/Shanghai (UTC+8) 展示时间。请在主入口登录后绑定你的 MCP 网关。</p>
+          <div>
+            <button type="button" onClick={() => { window.location.href = "/"; }}>前往主入口登录</button>
+          </div>
+        </div>
+      ) : loading ? (
         <div className="x-hub-loading" role="status"><Loader2 className="spin" aria-hidden="true" />正在读取 X 连接…</div>
       ) : error ? (
         <div className="x-hub-error" role="alert">
           <TriangleAlert aria-hidden="true" />
           <div><strong>X 连接暂时没有读到</strong><p>{error}</p></div>
-          <button type="button" onClick={() => void load()}>重新读取</button>
+          <div style={{ display: "flex", gap: "8px" }}>
+            {error.includes("authentication_required") ? <button type="button" onClick={() => { window.location.href = "/"; }}>前往登录</button> : null}
+            <button type="button" onClick={() => void load()}>重新读取</button>
+          </div>
         </div>
       ) : !connection ? (
         <div className="x-hub-empty">
@@ -166,6 +186,33 @@ export default function XHub({ onOpenDeviceCenter }) {
               </button>
             </div>
           </section>
+
+          {availableTools.includes("get_tweet_by_id") && (
+            <section className="x-hub-card" aria-labelledby="x-lookup-title">
+              <div className="x-hub-card-heading">
+                <div><span className="eyebrow">TWEET URL / ID</span><h3 id="x-lookup-title">按链接或 ID 查看推文</h3></div>
+                <ExternalLink aria-hidden="true" />
+              </div>
+              <div className="x-hub-inline-form">
+                <input
+                  value={tweetLookup}
+                  onChange={(event) => setTweetLookup(event.target.value)}
+                  placeholder="粘贴 https://x.com/.../status/123... 或数字 ID"
+                  aria-label="推文链接或 ID"
+                  maxLength={240}
+                />
+                <button
+                  type="button"
+                  className="x-hub-primary"
+                  disabled={!parsedTweetId || action === "get_tweet_by_id"}
+                  onClick={() => void callXTool("get_tweet_by_id", { tweet_id: parsedTweetId })}
+                >
+                  {action === "get_tweet_by_id" ? <Loader2 className="spin" aria-hidden="true" /> : <Search aria-hidden="true" />}
+                  解析查看
+                </button>
+              </div>
+            </section>
+          )}
 
           <section className="x-hub-card" aria-labelledby="x-post-title">
             <div className="x-hub-card-heading">

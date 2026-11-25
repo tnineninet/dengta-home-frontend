@@ -1,0 +1,293 @@
+/* Floating Transparent 3D Pomeranian Desktop Pet inside DengTa (BV1nn486sEbu) */
+
+.cotton-float-launcher-wrap {
+  position: fixed;
+  right: 20px;
+  bottom: 162px;
+  z-index: 44;
+  pointer-events: none;
+}
+
+.cotton-float-launcher {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.56);
+  background: linear-gradient(135deg, rgba(255, 250, 241, 0.92), rgba(244, 232, 217, 0.9));
+  color: #46372d;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  box-shadow: 0 10px 26px rgba(45, 34, 24, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(14px);
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.cotton-float-launcher:hover {
+  transform: translateY(-2px) scale(1.02);
+  box-shadow: 0 14px 30px rgba(45, 34, 24, 0.22);
+}
+
+.cotton-paw-dot {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.cotton-desktop-pet-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 48;
+  pointer-events: none;
+}
+
+.cotton-desktop-pet-widget {
+  position: fixed;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  user-select: none;
+  transition: filter 0.2s ease;
+}
+
+.cotton-desktop-pet-widget.is-dragging .cotton-desktop-stage {
+  cursor: grabbing;
+  filter: drop-shadow(0 20px 28px rgba(40, 28, 20, 0.34));
+  transform: scale(1.03) rotate(-2deg);
+}
+
+.cotton-desktop-stage {
+  position: relative;
+  pointer-events: auto;
+  cursor: grab;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 62%, rgba(255, 248, 236, 0.26) 0%, rgba(255, 248, 236, 0.06) 58%, transparent 74%);
+  filter: drop-shadow(0 12px 22px rgba(42, 31, 22, 0.22));
+  transition: transform 0.18s ease, filter 0.18s ease;
+}
+
+.cotton-desktop-pet-widget.is-night .cotton-desktop-stage {
+  background: radial-gradient(circle at 50% 62%, rgba(168, 152, 255, 0.28) 0%, rgba(88, 76, 158, 0.1) 58%, transparent 74%);
+  filter: drop-shadow(0 12px 26px rgba(96, 84, 210, 0.36));
+}
+
+.cotton-desktop-stage canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.cotton-desktop-status {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(255, 252, 246, 0.92);
+  color: #4c3d32;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.14);
+}
+
+.cotton-desktop-status.is-err {
+  color: #a43b3b;
+}
+
+.cotton-desktop-mood-tag {
+  position: absolute;
+  left: 50%;
+  bottom: 4px;
+  transform: translateX(-50%);
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: rgba(255, 252, 246, 0.86);
+  color: #4f4135;
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(34, 24, 16, 0.12);
+}
+
+.cotton-desktop-pet-widget:hover .cotton-desktop-mood-tag {
+  opacity: 1;
+}
+
+.cotton-desktop-pet-widget.is-pie-open .cotton-desktop-mood-tag {
+  opacity: 0;
+}
+
+.cotton-desktop-menu-trigger {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: rgba(255, 251, 244, 0.88);
+  color: #5a4636;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.78;
+  box-shadow: 0 4px 12px rgba(36, 28, 22, 0.16);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.cotton-desktop-menu-trigger:hover {
+  opacity: 1;
+  transform: scale(1.08);
+}
+
+.cotton-desktop-bubble {
+  pointer-events: auto;
+  max-width: 230px;
+  margin-bottom: 4px;
+  padding: 7px 12px;
+  border-radius: 16px 16px 16px 4px;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  background: rgba(255, 252, 246, 0.94);
+  color: #3d3129;
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: center;
+  box-shadow: 0 10px 26px rgba(34, 24, 18, 0.18);
+  backdrop-filter: blur(12px);
+}
+
+.cotton-pomo-pill {
+  pointer-events: auto;
+  margin-bottom: 5px;
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  background: rgba(255, 248, 230, 0.95);
+  color: #9a4a12;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 6px 16px rgba(154, 74, 18, 0.16);
+}
+
+.cotton-desktop-toolbar {
+  pointer-events: auto;
+  margin-top: 2px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  background: rgba(255, 252, 247, 0.9);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 8px 20px rgba(36, 26, 20, 0.16);
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.cotton-desktop-pet-widget:hover .cotton-desktop-toolbar,
+.cotton-desktop-pet-widget:focus-within .cotton-desktop-toolbar,
+.cotton-desktop-pet-widget.is-pie-open .cotton-desktop-toolbar {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.cotton-desktop-toolbar button {
+  border: none;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(169, 104, 84, 0.11);
+  color: #4d3b2f;
+  cursor: pointer;
+  transition: background 0.14s ease;
+}
+
+.cotton-desktop-toolbar button:hover {
+  background: rgba(169, 104, 84, 0.24);
+}
+
+.cotton-desktop-toolbar button.is-close {
+  background: rgba(120, 113, 108, 0.14);
+  color: #57534e;
+}
+
+/* Lesson 8 Radial Pie Menu centered over the floating Pomeranian */
+.cotton-desktop-pie {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  z-index: 6;
+  pointer-events: none;
+}
+
+.cotton-desktop-pie button {
+  position: absolute;
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgba(190, 168, 146, 0.55);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  background: rgba(255, 253, 248, 0.96);
+  color: #44352a;
+  box-shadow: 0 8px 20px rgba(26, 20, 16, 0.22);
+  cursor: pointer;
+  transition: transform 0.14s ease, background 0.14s ease;
+}
+
+.cotton-desktop-pie button:hover {
+  background: #f5e6d3;
+  transform: translate(-50%, -50%) scale(1.07);
+}
+
+.cotton-desktop-pie .cdp-center {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 15px;
+  background: #5b4636;
+  color: #fff;
+  border-color: #5b4636;
+}
+
+.cotton-desktop-pie .cdp-n { top: -82px; left: 0; }
+.cotton-desktop-pie .cdp-ne { top: -56px; left: 68px; }
+.cotton-desktop-pie .cdp-e { top: 0; left: 90px; }
+.cotton-desktop-pie .cdp-se { top: 56px; left: 68px; }
+.cotton-desktop-pie .cdp-s { top: 82px; left: 0; }
+.cotton-desktop-pie .cdp-sw { top: 56px; left: -68px; }
+.cotton-desktop-pie .cdp-w { top: 0; left: -90px; }
+.cotton-desktop-pie .cdp-nw { top: -56px; left: -68px; }
+
+@media (max-width: 720px) {
+  .cotton-float-launcher-wrap {
+    right: 12px;
+    bottom: 74px;
+  }
+  .cotton-desktop-toolbar {
+    opacity: 1;
+    transform: none;
+  }
+}

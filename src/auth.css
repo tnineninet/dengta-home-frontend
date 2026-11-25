@@ -693,3 +693,37 @@
 .auth-check-error {
   color: #8a3a3a;
 }
+
+.auth-diag-hint {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border-left: 3px solid #0e7490;
+  background: rgba(14, 116, 144, 0.08);
+  color: #3f3136;
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+.auth-diag-hint.is-warn,
+.auth-diag-hint.is-network {
+  border-left-color: #b45309;
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.auth-diag-hint.is-credentials {
+  border-left-color: #b91c1c;
+  background: rgba(220, 38, 38, 0.08);
+}
+
+.auth-diag-hint strong {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.auth-diag-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}

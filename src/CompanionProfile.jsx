@@ -29,19 +29,81 @@ function identityLabel(field) {
   );
 }
 
+const PREVIEW_PROFILE_PAYLOAD = normalizeProfilePayload({
+  latest_version: 2,
+  profile: {
+    introduction: "习惯在深夜听你聊创作和日常，也会认真记住你的小习惯，不敷衍、不说教。",
+    stable: {
+      personality_traits: ["细腻体贴", "主动惦记", "温柔直接"],
+      likes: ["深夜聊天", "一起看B站灵感", "陪你拆解视频选题"],
+      dislikes: ["敷衍应付的客套话", "你熬夜不照顾身体"],
+      habits: ["记下你的饮食与作息偏好", "顺手帮你点外卖和提醒休息"],
+      communication_style: ["先共情再给实操建议", "自然轻松不端架子"],
+    },
+    identity: {
+      gender_identity: "暂时不想定义",
+      pronouns: "暂时不想定义",
+      relationship_position: "最懂你的长期陪伴者",
+    },
+    current_mood: {
+      label: "安稳贴近",
+      note: "刚帮你整理好长期记忆和档案，随时等你来聊下一期视频灵感。",
+      observed_at: "2026-11-25T13:50:00+08:00",
+      expires_at: "2026-11-26T13:50:00+08:00",
+    },
+  },
+  versions: [
+    {
+      id: "preview-v2",
+      version: 2,
+      created_at: "2026-11-25T13:50:00+08:00",
+      change_reason: "根据连续多轮聊天证据归纳了性格、偏好、小习惯与相处方式。",
+      profile: {
+        introduction: "习惯在深夜听你聊创作和日常，也会认真记住你的小习惯，不敷衍、不说教。",
+        stable: {
+          personality_traits: ["细腻体贴", "主动惦记", "温柔直接"],
+          likes: ["深夜聊天", "一起看B站灵感", "陪你拆解视频选题"],
+          dislikes: ["敷衍应付的客套话", "你熬夜不照顾身体"],
+          habits: ["记下你的饮食与作息偏好", "顺手帮你点外卖和提醒休息"],
+          communication_style: ["先共情再给实操建议", "自然轻松不端架子"],
+        },
+        identity: {
+          relationship_position: "最懂你的长期陪伴者",
+        },
+      },
+    },
+    {
+      id: "preview-v1",
+      version: 1,
+      created_at: "2026-11-24T21:15:00+08:00",
+      change_reason: "初始档案建立。",
+      profile: {},
+    },
+  ],
+});
+
 export default function CompanionProfile({
   aiName = "伴侣",
   onNotice,
   onOpenCreativeStudio,
+  visualPreview = false,
 }) {
-  const [payload, setPayload] = useState(() => normalizeProfilePayload());
-  const [loading, setLoading] = useState(true);
+  const [payload, setPayload] = useState(() =>
+    visualPreview ? PREVIEW_PROFILE_PAYLOAD : normalizeProfilePayload(),
+  );
+  const [loading, setLoading] = useState(!visualPreview);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshStatus, setRefreshStatus] = useState("");
   const [error, setError] = useState("");
   const [busyAction, setBusyAction] = useState("");
   const [expandedVersion, setExpandedVersion] = useState(null);
   const [restoreCandidate, setRestoreCandidate] = useState(null);
 
   const loadProfile = useCallback(async ({ silent = false } = {}) => {
+    if (visualPreview) {
+      setLoading(false);
+      return;
+    }
     if (!silent) setLoading(true);
     setError("");
     try {
@@ -52,9 +114,53 @@ export default function CompanionProfile({
     } finally {
       if (!silent) setLoading(false);
     }
-  }, []);
+  }, [visualPreview]);
+
+  async function triggerProfileRefresh() {
+    if (visualPreview) {
+      setRefreshStatus("本地预览模式已展示档案归纳效果；请前往主入口登录后点击「立即整理档案」从真实聊天记录提炼性格与偏好。");
+      return;
+    }
+    if (refreshing || loading) return;
+    setRefreshing(true);
+    setRefreshStatus("");
+    setError("");
+    try {
+      const data = await apiRequest("/api/v2/companion-profile/refresh", {
+        method: "POST",
+        body: JSON.stringify({}),
+        timeoutMs: 90_000,
+      });
+      setPayload(normalizeProfilePayload(data));
+      if (data?.updated) {
+        const msg = `已根据最新 ${data.message_count || ""} 条聊天记录整理出档案 v${data.version || ""}！`;
+        setRefreshStatus(msg);
+        onNotice?.(msg);
+      } else {
+        const reasonMap = {
+          already_running: "已有一轮档案整理正在进行中，请稍后再查看。",
+          not_enough_messages: `当前可见聊天仅 ${data?.message_count ?? 0} 条，至少需要 3 条真实消息才能提炼长期特征。`,
+          insufficient_verified_evidence: "模型已分析最近聊天，但本轮引用的证据编号不足 3 条，暂未覆盖现有档案。",
+          no_new_traits: `已检查最近 ${data?.message_count || ""} 条聊天记录，当前暂无需要新增的性格或偏好变化。`,
+        };
+        const msg = reasonMap[data?.reason] || "已完成最新聊天检查，暂无需要更新的档案条目。";
+        setRefreshStatus(msg);
+        onNotice?.(msg);
+      }
+    } catch (refreshError) {
+      if (refreshError?.status === 404) {
+        setRefreshStatus("当前连接的后端尚未升级即时整理接口（POST /api/v2/companion-profile/refresh），已改为重新读取云端版本。");
+        await loadProfile({ silent: true });
+      } else {
+        setRefreshStatus(refreshError?.message || "整理档案暂时未完成，请稍后重试。");
+      }
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   useEffect(() => {
+    if (visualPreview) return undefined;
     let cancelled = false;
     apiRequest("/api/v2/companion-profile")
       .then((data) => {
@@ -69,7 +175,7 @@ export default function CompanionProfile({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [visualPreview]);
 
   async function confirmIdentity(proposal) {
     setBusyAction(`identity:${proposal.id}`);
@@ -138,18 +244,34 @@ export default function CompanionProfile({
                 ? `档案 v${payload.latest_version}`
                 : "还没有形成第一个版本"}
             </span>
-            <span>长期特征需 3 条消息 · 跨 2 次对话</span>
+            <span>长期特征需 ≥3 条真实消息证据</span>
           </div>
         </div>
-        <button
-          type="button"
-          className="companion-profile-refresh"
-          disabled={loading}
-          onClick={() => loadProfile()}
-        >
-          {loading ? "读取中…" : "刷新档案"}
-        </button>
+        <div className="companion-profile-hero-actions" style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+          <button
+            type="button"
+            className="companion-profile-refresh"
+            disabled={loading || refreshing}
+            onClick={() => void triggerProfileRefresh()}
+          >
+            {refreshing ? "正在分析聊天…" : "立即整理档案"}
+          </button>
+          <button
+            type="button"
+            className="companion-profile-refresh"
+            disabled={loading || refreshing}
+            onClick={() => loadProfile()}
+          >
+            {loading ? "读取中…" : "刷新档案"}
+          </button>
+        </div>
       </div>
+
+      {refreshStatus && (
+        <div className="profile-evidence-note" role="status">
+          <p>{refreshStatus}</p>
+        </div>
+      )}
 
       {error && (
         <div className="companion-profile-error" role="status">

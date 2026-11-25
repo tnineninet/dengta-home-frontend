@@ -50,10 +50,10 @@ export function VisualPreview() {
       const weather = search.get("weather");
       if (weather) {
         const labels = {
-          cloudy: "寰簯",
-          rain: "闆ㄥ箷",
-          storm: "鏅撮浄",
-          clear: "鏅寸┖",
+          cloudy: "微云",
+          rain: "雨幕",
+          storm: "晴雷",
+          clear: "晴空",
         };
         document
           .querySelector(`.sun-glass-weather-options [aria-label="${labels[weather]}"]`)
@@ -66,7 +66,7 @@ export function VisualPreview() {
     return () => window.clearTimeout(timerId);
   }, []);
 
-  return <App accountControl={null} userName="妗冩" visualPreview />;
+  return <App accountControl={null} userName="桃桃" visualPreview />;
 }
 
 createRoot(document.getElementById("root")).render(

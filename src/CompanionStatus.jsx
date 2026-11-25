@@ -7,14 +7,30 @@ import {
   useState,
 } from "react";
 import {
+  AlertTriangle,
   BatteryMedium,
   BookOpen,
+  CloudLightning,
+  CloudRain,
+  CloudSun,
+  Disc3,
+  Globe2,
   Headphones,
   Heart,
+  LocateFixed,
+  MapPin,
   Menu,
   MessageCircle,
+  Pill,
+  Play,
+  RefreshCw,
+  Search,
   Settings,
+  ShoppingBag,
   Sparkles,
+  Stethoscope,
+  Sun,
+  Timer,
   Tv,
   X,
 } from "lucide-react";
@@ -39,7 +55,14 @@ import XinchaoCapsule from "./XinchaoCapsule.jsx";
 import XinchaoDetails from "./XinchaoDetails.jsx";
 import { apiRequest } from "./api";
 import { createPortal } from "react-dom";
+import { weatherModeFromAmbient } from "./sun-glass-sky";
+import { QUICK_CITY_PRESETS, searchCitiesByName } from "./live-location-weather";
+import {
+  deriveLocalEmotionSnapshot,
+  resolveEmotionPresentation,
+} from "./emotion-state";
 import "./companion-live-status.css";
+import "./dynamic-island.css";
 
 function renderStatusPortal(children, target) {
   return target ? createPortal(children, target) : children;
@@ -98,6 +121,21 @@ function CompanionStatus({
   onListenTogether,
   onOpenNavigation,
   onOpenSettings,
+  onStartBuiltInMusic,
+  onOpenMusicStudio,
+  takeoutTask = null,
+  onOpenTakeout,
+  onOpenMedical,
+  onOpenKnowledge,
+  errorCount = 0,
+  onOpenErrorLogs,
+  ambientLive = null,
+  celestialSnapshot = null,
+  onSyncLocation,
+  onRefreshWeather,
+  onEstimateLocationByIp,
+  onSelectLocation,
+  onDisableLocation,
 }) {
   const displayName = String(aiName || "").trim() || "伴侣";
   const personalized = useCallback(
@@ -134,6 +172,11 @@ function CompanionStatus({
   const [xinchaoState, setXinchaoState] = useState(null);
   const [xinchaoDetailsOpen, setXinchaoDetailsOpen] = useState(false);
   const [xinchaoAnchor, setXinchaoAnchor] = useState({ left: 16, top: 90 });
+  const [cityPickerOpen, setCityPickerOpen] = useState(false);
+  const [cityQuery, setCityQuery] = useState("");
+  const [cityResults, setCityResults] = useState([]);
+  const [citySearching, setCitySearching] = useState(false);
+  const [cityError, setCityError] = useState("");
   const xinchaoButtonRef = useRef(null);
   const xinchaoDetailsRef = useRef(null);
   const rootRef = useRef(null);
@@ -340,8 +383,20 @@ function CompanionStatus({
         30,
         220,
       );
+      const preserveModelText = current.statusSource === "model";
+      const localEmotionPatch = preserveModelText
+        ? {}
+        : {
+            mood: reaction.mood,
+            note: reaction.text,
+            focus: reaction.focus,
+            microState: reaction.microState,
+            statusSource: "interaction_fallback",
+            ...deriveLocalEmotionSnapshot(zone, reaction, current),
+          };
       return {
         ...current,
+        ...localEmotionPatch,
         energyLevel: clamp(
           zone.recoveryAction === true
             ? Math.max(
@@ -458,20 +513,62 @@ function CompanionStatus({
     setClockNow(Date.now());
   }
 
+  const emotionView = useMemo(
+    () => resolveEmotionPresentation(normalized, { isResponding, resetBlank }),
+    [isResponding, normalized, resetBlank],
+  );
+
   const floatingStyle = {
     "--status-pulse-duration": pulseDuration,
+    "--emotion-accent": emotionView.accentColor,
   };
+
+  const weatherPillInfo = useMemo(() => {
+    if (!ambientLive && !onSyncLocation) return null;
+    const liveWeather = ambientLive?.weather || null;
+    const liveStatus = ambientLive?.status?.state || "off";
+    const busy = liveStatus === "locating" || liveStatus === "loading";
+    const mode = liveWeather ? weatherModeFromAmbient(liveWeather) : "clear";
+    const rawCity = ambientLive?.locationLabel || "";
+    const cityTag = rawCity.split(/\s*·\s*/)[0].slice(0, 8);
+    const timeTag = ambientLive?.clock?.time || celestialSnapshot?.timeLabel || "";
+    const pillLabel = busy
+      ? "定位更新中…"
+      : liveWeather
+        ? `${cityTag ? `${cityTag} ` : ""}${timeTag ? `${timeTag} ` : ""}${liveWeather.description} ${Math.round(liveWeather.temperatureC)}°C`
+        : "同步位置与天气";
+    return { liveWeather, busy, mode, pillLabel };
+  }, [ambientLive, celestialSnapshot?.timeLabel, onSyncLocation]);
+
+  const WeatherPillIcon =
+    weatherPillInfo?.mode === "storm"
+      ? CloudLightning
+      : weatherPillInfo?.mode === "rain"
+        ? CloudRain
+        : weatherPillInfo?.mode === "cloudy"
+          ? CloudSun
+          : weatherPillInfo?.liveWeather
+            ? Sun
+            : MapPin;
+
+  const handleWeatherPillClick = useCallback(() => {
+    if (weatherPillInfo?.liveWeather || weatherPillInfo?.busy) {
+      openPanel();
+    } else {
+      onSyncLocation?.();
+    }
+  }, [onSyncLocation, openPanel, weatherPillInfo]);
 
   return (
     <section
       ref={rootRef}
       className={`companion-status sun-glass-floating-status-shell${
         expanded ? " expanded" : ""
-      }${thresholdClass}`}
+      }${thresholdClass} ${emotionView.toneClass}`}
       style={floatingStyle}
       aria-label={`${displayName}的动态状态`}
     >
-      <section className="sun-glass-liquid-action-stage" aria-label="动态状态">
+      <section className="sun-glass-liquid-action-stage" aria-label="动态状态" data-dynamic-island={nowPlaying ? "playing" : expanded ? "expanded" : "idle"}>
         <span className="sun-glass-liquid-color-flow" aria-hidden="true" />
         {nowPlaying ? (
           <NowPlayingCard song={nowPlaying} busy={nowPlayingBusy} expanded={expanded} onToggle={togglePanel} onPlayPause={onNowPlayingPlayPause} onNext={onNowPlayingNext} onDismiss={onDismissNowPlaying} />
@@ -482,6 +579,7 @@ function CompanionStatus({
             className="sun-glass-liquid-capsule-toggle"
             aria-label="查看状态"
             aria-expanded={xinchaoDetailsOpen || expanded}
+            data-dt-tip="彩虹灵动岛：点击查看伴侣实时状态、心潮、网易云听歌与快捷活动"
             onClick={(event) => {
               event.preventDefault();
               const mobile = window.matchMedia?.(
@@ -518,6 +616,77 @@ function CompanionStatus({
         )}
       </section>
 
+      {((!nowPlaying && onStartBuiltInMusic) ||
+        weatherPillInfo ||
+        normalized.countdown.isRunning ||
+        takeoutTask ||
+        errorCount > 0) ? (
+        <div className="di-live-satellites" role="region" aria-label="灵动岛实时活动">
+          {weatherPillInfo ? (
+            <button
+              type="button"
+              className={`di-satellite-pill is-weather${weatherPillInfo.liveWeather ? " is-synced" : ""}`}
+              data-dt-tip={
+                weatherPillInfo.liveWeather
+                  ? "点击展开灵动岛查看详细气象、日出日落或切换所在城市"
+                  : "点击读取你当前的位置与天气，自动同步 DengTa 时间与天空气象"
+              }
+              onClick={handleWeatherPillClick}
+            >
+              {weatherPillInfo.liveWeather ? <span className="di-pulse-dot" aria-hidden="true" /> : null}
+              <WeatherPillIcon aria-hidden="true" />
+              <span>{weatherPillInfo.pillLabel}</span>
+            </button>
+          ) : null}
+          {!nowPlaying && onStartBuiltInMusic ? (
+            <button
+              type="button"
+              className="di-satellite-pill is-music"
+              data-dt-tip="一键随机播放网易云内置歌单并在灵动岛显示声波"
+              onClick={() => onStartBuiltInMusic()}
+            >
+              <Disc3 aria-hidden="true" />
+              <span>网易云随心听</span>
+            </button>
+          ) : null}
+          {normalized.countdown.isRunning && remainingSeconds > 0 ? (
+            <button
+              type="button"
+              className="di-satellite-pill is-timer"
+              data-dt-tip="陪伴倒计时进行中，点击展开调整"
+              onClick={openPanel}
+            >
+              <Timer aria-hidden="true" />
+              <span>{formatCountdown(remainingSeconds)}</span>
+            </button>
+          ) : null}
+          {takeoutTask ? (
+            <button
+              type="button"
+              className="di-satellite-pill is-takeout"
+              data-dt-tip="外卖助手任务进行中，点击查看进度与购物车核对"
+              onClick={() => onOpenTakeout?.()}
+            >
+              <span className="di-pulse-dot" aria-hidden="true" />
+              <ShoppingBag aria-hidden="true" />
+              <span>{takeoutTask.status === "working" ? "外卖选餐中" : "外卖待核对"}</span>
+            </button>
+          ) : null}
+          {errorCount > 0 && onOpenErrorLogs ? (
+            <button
+              type="button"
+              className="di-satellite-pill is-alert"
+              data-dt-tip={`捕获到 ${errorCount} 条操作异常，点击精准定位与复制诊断包`}
+              onClick={() => onOpenErrorLogs()}
+            >
+              <span className="di-pulse-dot" aria-hidden="true" />
+              <AlertTriangle aria-hidden="true" />
+              <span>{errorCount} 条诊断</span>
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       <div
         className="sun-glass-status-ribbon"
         role="button"
@@ -539,7 +708,11 @@ function CompanionStatus({
           <Sparkles />
         </span>
         <span>
-          <small>{resetBlank ? "在这里" : normalized.mood}</small>
+          <small className="companion-ribbon-mood">
+            <i className="companion-emotion-dot" aria-hidden="true" />
+            {emotionView.displayMood}
+            <em className="companion-ribbon-hint">{emotionView.ribbonHint}</em>
+          </small>
           <strong>
             {resetBlank
               ? "等你写下新的此刻。"
@@ -551,9 +724,10 @@ function CompanionStatus({
       {renderStatusPortal(
         <div
           ref={panelRootRef}
-          className={`status-panel sun-glass-floating-status-panel${
+          className={`status-panel sun-glass-floating-status-panel ${emotionView.toneClass}${
             expanded ? " is-open" : ""
           }`}
+          style={{ "--emotion-accent": emotionView.accentColor }}
           role="dialog"
           aria-label={`${displayName}状态`}
           aria-hidden={!expanded}
@@ -562,8 +736,11 @@ function CompanionStatus({
         <StatusFlowField active={expanded} />
         <header className="sun-glass-floating-status-header">
             <div className="sun-glass-status-drag-title">
-              <small>{displayName}此刻</small>
-              <h2>{resetBlank ? "在这里" : normalized.mood}</h2>
+              <small>{displayName} · 此刻心境</small>
+              <div className="companion-header-mood-row">
+                <h2>{emotionView.displayMood}</h2>
+                <span className="companion-presence-pill">{emotionView.presenceLabel}</span>
+              </div>
             </div>
             <div className="sun-glass-status-window-actions">
               <button
@@ -602,6 +779,291 @@ function CompanionStatus({
           </header>
 
           <div ref={panelRef} className="sun-glass-status-scroll">
+            <section className="di-control-deck" aria-label="灵动岛中控台">
+              <div className="di-deck-header">
+                <span className="di-deck-badge">
+                  <Sparkles size={12} aria-hidden="true" />
+                  灵动岛 · 此刻陪伴
+                </span>
+                <span className="di-deck-status">
+                  {isResponding ? "轻声斟酌回复中" : `心跳 ${normalized.pulseBpm} · ${emotionView.pulseLabel}`}
+                </span>
+              </div>
+
+              {(ambientLive || onSyncLocation) ? (() => {
+                const liveWeather = ambientLive?.weather;
+                const liveStatus = ambientLive?.status || { state: "off", message: "" };
+                const busy = liveStatus.state === "locating" || liveStatus.state === "loading";
+                const cityName = ambientLive?.locationLabel || (ambientLive?.locationEnabled ? "当前位置" : "尚未定位");
+                const localTimeText = ambientLive?.clock?.time || celestialSnapshot?.timeLabel || "--:--";
+                const localDateText = ambientLive?.clock?.date || "";
+                const activeTz = ambientLive?.timeZone || celestialSnapshot?.timeZone || "Asia/Shanghai";
+
+                async function runCitySearch(event) {
+                  event?.preventDefault?.();
+                  const keyword = cityQuery.trim();
+                  if (!keyword) {
+                    setCityResults([]);
+                    setCityError("");
+                    return;
+                  }
+                  setCitySearching(true);
+                  setCityError("");
+                  try {
+                    const hits = await searchCitiesByName(keyword);
+                    setCityResults(hits);
+                    if (!hits.length) setCityError("未找到匹配城市，可尝试中文或英文城市名");
+                  } catch (error) {
+                    setCityError(error?.message || "城市检索失败，请稍后重试");
+                  } finally {
+                    setCitySearching(false);
+                  }
+                }
+
+                function pickCity(item) {
+                  onSelectLocation?.({
+                    latitude: item.latitude,
+                    longitude: item.longitude,
+                    label: item.label,
+                    timeZone: item.timeZone,
+                  });
+                  setCityPickerOpen(false);
+                  setCityQuery("");
+                  setCityResults([]);
+                  setCityError("");
+                }
+
+                return (
+                  <div className="di-weather-card" aria-label="当前位置、时间与天气">
+                    <div className="di-weather-main">
+                      <div className="di-weather-copy">
+                        <strong>
+                          <MapPin size={13} aria-hidden="true" />
+                          <span>{cityName}</span>
+                          <span className="di-weather-clock">{localTimeText}</span>
+                        </strong>
+                        <small>
+                          {liveWeather
+                            ? `${liveWeather.description} ${liveWeather.temperatureC}°C${
+                                Number.isFinite(liveWeather.dailyLowC) && Number.isFinite(liveWeather.dailyHighC)
+                                  ? ` · ${liveWeather.dailyLowC}~${liveWeather.dailyHighC}°C`
+                                  : ""
+                              }${
+                                Number.isFinite(liveWeather.humidityPercent)
+                                  ? ` · 湿度 ${liveWeather.humidityPercent}%`
+                                  : ""
+                              }`
+                            : liveStatus.message || "开启定位后自动读取位置与实时天气"}
+                        </small>
+                        <small className="di-weather-sub">
+                          {localDateText ? `${localDateText} · ` : ""}
+                          {activeTz}
+                          {celestialSnapshot?.sunriseLabel && celestialSnapshot?.sunsetLabel
+                            ? ` · 日出 ${celestialSnapshot.sunriseLabel} / 日落 ${celestialSnapshot.sunsetLabel}`
+                            : ""}
+                        </small>
+                      </div>
+                      <div className="di-weather-actions">
+                        {onSyncLocation ? (
+                          <button
+                            type="button"
+                            className="is-primary"
+                            disabled={busy}
+                            onClick={() => onSyncLocation()}
+                            data-dt-tip="调用浏览器定位自动更新当前位置、时区时间与天空天气"
+                          >
+                            <LocateFixed size={12} aria-hidden="true" />
+                            <span>{busy ? "定位中" : "定位更新"}</span>
+                          </button>
+                        ) : null}
+                        {onRefreshWeather && ambientLive?.locationEnabled ? (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            aria-label="刷新实时天气"
+                            onClick={() => onRefreshWeather()}
+                          >
+                            <RefreshCw size={12} aria-hidden="true" />
+                          </button>
+                        ) : null}
+                        {onEstimateLocationByIp ? (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => onEstimateLocationByIp()}
+                            data-dt-tip="桌面端无定位权限时，通过网络快速估算大致城市"
+                          >
+                            <Globe2 size={12} aria-hidden="true" />
+                            <span>网络估算</span>
+                          </button>
+                        ) : null}
+                        {onSelectLocation ? (
+                          <button
+                            type="button"
+                            onClick={() => setCityPickerOpen((open) => !open)}
+                            aria-expanded={cityPickerOpen}
+                          >
+                            <Search size={12} aria-hidden="true" />
+                            <span>切城市</span>
+                          </button>
+                        ) : null}
+                        {onDisableLocation && ambientLive?.locationEnabled ? (
+                          <button
+                            type="button"
+                            onClick={() => onDisableLocation()}
+                          >
+                            关闭
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {cityPickerOpen && onSelectLocation ? (
+                      <div className="di-weather-city-picker">
+                        <form className="di-city-search-row" onSubmit={runCitySearch}>
+                          <input
+                            type="text"
+                            value={cityQuery}
+                            onChange={(event) => setCityQuery(event.target.value)}
+                            placeholder="搜索任意城市（如 上海、北京、广州、Tokyo、London）"
+                            aria-label="搜索城市"
+                          />
+                          <button type="submit" disabled={citySearching}>
+                            {citySearching ? "搜索中" : "搜索"}
+                          </button>
+                        </form>
+                        {cityError ? <small className="di-city-error">{cityError}</small> : null}
+                        {cityResults.length > 0 ? (
+                          <div className="di-city-results">
+                            {cityResults.map((item) => (
+                              <button key={item.id} type="button" onClick={() => pickCity(item)}>
+                                <strong>{item.name}</strong>
+                                <small>{item.detail || item.timeZone || ""}</small>
+                              </button>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="di-city-chips">
+                            {QUICK_CITY_PRESETS.map((preset) => (
+                              <button key={preset.label} type="button" onClick={() => pickCity(preset)}>
+                                {preset.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })() : null}
+
+              <div className="di-music-card">
+                <div className="di-music-copy">
+                  <strong>{nowPlaying ? nowPlaying.title : "网易云音乐 · 随心伴奏"}</strong>
+                  <small>
+                    {nowPlaying
+                      ? `${nowPlaying.artist || "网易云音乐"} · ${nowPlaying.isPlaying ? "正在播放" : "已暂停"}`
+                      : "点一下直接连播网易云歌单，或进入完整音乐工作室"}
+                  </small>
+                </div>
+                <div className="di-music-actions">
+                  {nowPlaying && !nowPlaying.readOnly && onNowPlayingPlayPause ? (
+                    <button
+                      type="button"
+                      className="is-primary"
+                      data-dt-tip={nowPlaying.isPlaying ? "暂停当前播放" : "继续播放"}
+                      onClick={() => onNowPlayingPlayPause()}
+                    >
+                      {nowPlaying.isPlaying ? "暂停" : "播放"}
+                    </button>
+                  ) : onStartBuiltInMusic ? (
+                    <button
+                      type="button"
+                      className="is-primary"
+                      data-dt-tip="从网易云曲库立即随机播放一首伴奏"
+                      onClick={() => onStartBuiltInMusic()}
+                    >
+                      <Play size={12} aria-hidden="true" />
+                      随心播放
+                    </button>
+                  ) : null}
+                  {onOpenMusicStudio ? (
+                    <button
+                      type="button"
+                      data-dt-tip="打开完整网易云歌单、日推与搜索工作室"
+                      onClick={() => {
+                        closePanel();
+                        onOpenMusicStudio();
+                      }}
+                    >
+                      音乐工作室
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              {(onOpenTakeout || onOpenMedical || onOpenKnowledge || onOpenErrorLogs) ? (
+                <div className="di-quick-grid">
+                  {onOpenTakeout ? (
+                    <button
+                      type="button"
+                      className="di-quick-tile"
+                      data-dt-tip="打开多平台外卖助手与场景预设"
+                      onClick={() => {
+                        closePanel();
+                        onOpenTakeout();
+                      }}
+                    >
+                      <strong><ShoppingBag size={13} aria-hidden="true" />点外卖</strong>
+                      <small>{takeoutTask ? (takeoutTask.message || "任务进行中") : "美团/饿了么/京东"}</small>
+                    </button>
+                  ) : null}
+                  {onOpenMedical ? (
+                    <button
+                      type="button"
+                      className="di-quick-tile"
+                      data-dt-tip="打开灯塔医疗 AI 专区：临床报告校验、混合语义 RAG 与眼科药典"
+                      onClick={() => {
+                        closePanel();
+                        onOpenMedical();
+                      }}
+                    >
+                      <strong><Stethoscope size={13} aria-hidden="true" />医疗 AI 专区</strong>
+                      <small>临床校验 · 混合 RAG</small>
+                    </button>
+                  ) : null}
+                  {onOpenKnowledge ? (
+                    <button
+                      type="button"
+                      className="di-quick-tile"
+                      data-dt-tip="打开混合语义知识库、常见药品查询表与联合用药检测"
+                      onClick={() => {
+                        closePanel();
+                        onOpenKnowledge();
+                      }}
+                    >
+                      <strong><Pill size={13} aria-hidden="true" />药箱与知识</strong>
+                      <small>28种常备药 · RRF检索</small>
+                    </button>
+                  ) : null}
+                  {onOpenErrorLogs ? (
+                    <button
+                      type="button"
+                      className={`di-quick-tile${errorCount > 0 ? " is-alert" : ""}`}
+                      data-dt-tip="打开全链路错误日志与 AI 精准修复诊断包"
+                      onClick={() => {
+                        closePanel();
+                        onOpenErrorLogs();
+                      }}
+                    >
+                      <strong><AlertTriangle size={13} aria-hidden="true" />错误诊断</strong>
+                      <small>{errorCount > 0 ? `${errorCount} 条待排查` : "全链路运行正常"}</small>
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </section>
+
             <p className="sun-glass-status-note">
               {resetBlank
                 ? "等你写下新的此刻。"
@@ -618,37 +1080,43 @@ function CompanionStatus({
               </section>
             )}
 
-            <section className="companion-live-state" aria-label="此刻的心理与感受" aria-busy={isResponding || interactionFeedback.state === "queued"}>
+            <section className={`companion-live-state ${emotionView.toneClass}`} aria-label="此刻的心境与感受" aria-busy={isResponding || interactionFeedback.state === "queued"}>
               <div className="companion-live-state-heading">
-                <strong>心理与感受</strong>
-                <span>{normalized.statusSource === "model" ? "AI 生成的角色状态" : normalized.psychology ? "按互动次数实时生成" : "等待这次感受"}</span>
+                <strong>此刻心境</strong>
+                <span className="companion-emotion-badge">
+                  <i className="companion-emotion-dot" aria-hidden="true" />
+                  {emotionView.sourceBadge}
+                </span>
               </div>
               <dl>
-                <div><dt>心理</dt><dd>{normalized.psychology ? personalized(normalized.psychology) : "互动后，会在这里写下此刻的想法。"}</dd></div>
-                <div><dt>感受</dt><dd>{duplicateVisibleState ? "这次模型把心理和感受写成了同一句，下一条回复后会重新生成。" : normalized.feeling ? personalized(normalized.feeling) : "还没有收到新生成的感受。"}</dd></div>
+                <div><dt>心里在想</dt><dd>{normalized.psychology ? personalized(normalized.psychology) : "轻轻碰一下，听听此刻心里在想什么。"}</dd></div>
+                <div><dt>当下感受</dt><dd>{duplicateVisibleState ? (normalized.microState ? personalized(normalized.microState) : "这份心绪正安静地在心底慢慢回味。") : normalized.feeling ? personalized(normalized.feeling) : "正在安静体会身边的温度。"}</dd></div>
               </dl>
               <div className="companion-live-meters">
-                {[["心情", normalized.moodLevel], ["耐心", normalized.patienceLevel]].map(([label, value]) => (
+                {[
+                  ["心情", normalized.moodLevel, emotionView.moodMeter.display],
+                  ["耐心", normalized.patienceLevel, emotionView.patienceMeter.display],
+                ].map(([label, value, display]) => (
                   <div key={label}>
-                    <span>{label}<strong>{value === null ? "待生成" : `${value}/100`}</strong></span>
+                    <span>{label}<strong>{display}</strong></span>
                     {value !== null && <meter min="0" max="100" value={value} aria-label={label}>{value}</meter>}
                   </div>
                 ))}
               </div>
               <p className="companion-live-feedback" role="status" aria-live="polite">
                 {interactionFeedback.state === "queued" ? "互动已收到，正在准备这次感受…"
-                  : interactionFeedback.state === "generating" || isResponding ? "正在感受刚才的互动，生成后会在这里更新…"
-                    : interactionFeedback.state === "failed" || interactionFeedback.state === "fallback" ? interactionFeedback.message || "这次没有收到新的状态，再碰一下可以重试。"
-                      : normalized.statusSource === "model" ? "会随你的互动次数、节奏和刚才的心情变化。"
-                        : normalized.psychology ? "这次没有等到模型状态，已按互动次数实时生成本地版本；心情与耐心会随节奏变化。"
-                          : "等待时保留上次内容；心情与耐心是角色化数值。"}
+                  : interactionFeedback.state === "generating" || isResponding ? "正在细细体会刚才的触碰，稍后就会更新心绪…"
+                    : interactionFeedback.state === "failed" || interactionFeedback.state === "fallback" ? interactionFeedback.message || "这会儿心绪没来得及刷新，再轻碰一下试试吧。"
+                      : normalized.statusSource === "model" ? "心绪、心情与耐心会随你的话语与互动节奏自然起伏。"
+                        : normalized.psychology ? "已随刚才的触碰轻轻泛起涟漪，继续互动会有新的变化。"
+                          : "轻点下方互动，就能感受此刻细腻的情绪与心率变化。"}
               </p>
             </section>
 
             <div className="sun-glass-energy-row">
               <span>
                 <BatteryMedium aria-hidden="true" />
-                能量
+                元气 · {emotionView.energyLabel}
               </span>
               <strong>{normalized.energyLevel}%</strong>
             </div>
@@ -730,7 +1198,7 @@ function CompanionStatus({
                     <span aria-hidden="true">{action.icon}</span>
                     <span>
                       <strong>{action.label.replaceAll("她", aiPronoun)}</strong>
-                      <small>恢复至少 {action.minimumEnergyGain}%</small>
+                      <small>回元气 +{action.minimumEnergyGain}%</small>
                     </span>
                   </button>
                 ))}
@@ -739,8 +1207,8 @@ function CompanionStatus({
 
             <div className="sun-glass-vitals-inline">
               <span>互动 {interactionTotal} 次</span>
-              <span>{normalized.pulseBpm} BPM</span>
-              <span>{isResponding ? "正在回应" : "陪伴在线"}</span>
+              <span>心跳 {normalized.pulseBpm} · {emotionView.pulseLabel}</span>
+              <span>{emotionView.vitalsPresence}</span>
             </div>
 
             <section className="sun-glass-status-section sun-glass-countdown-card">

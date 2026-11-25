@@ -18,7 +18,7 @@ final class AppUpdatePolicy {
             boolean siteApk = ("www.dengtahome.com".equals(host) || "dengtahome.com".equals(host)) &&
                 path.matches("/downloads/[-A-Za-z0-9_.]+\\.apk");
             boolean githubApk = "github.com".equals(host) &&
-                path.matches("/DengTaHome/dengta-home(?:-frontend)?/releases/download/v[0-9.]+/[-A-Za-z0-9_.]+\\.apk");
+                path.matches("/(?:DengTaHome|tnineninet)/dengta-home(?:-frontend)?/releases/download/v[0-9.]+/[-A-Za-z0-9_.]+\\.apk");
             boolean storageApk = APK_STORAGE_HOST.equals(host) &&
                 path.matches("/storage/v1/object/public/dengta-updates/apk/[-A-Za-z0-9_.]+\\.apk");
             return siteApk || githubApk || storageApk;

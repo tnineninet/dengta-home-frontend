@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { buildCottonMorphTargets, computeExpressionWeights, EXPRESSION_NAMES } from '../expressions.js';
 const smooth=t=>{t=Math.max(0,Math.min(1,t));return t*t*t*(10+t*(-15+6*t));};
 export class B1857Character{
  constructor({asset}={}){
@@ -20,15 +21,18 @@ export class B1857Character{
   let start=0;for(let i=0;i<3;i++){g.addGroup(start,buckets[i].length,i);start+=buckets[i].length;}g.setIndex(buckets.flat());
   this.material=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.8});this.materials=[this.material,new THREE.MeshPhysicalMaterial({vertexColors:true,roughness:.15,clearcoat:1,clearcoatRoughness:.1}),new THREE.MeshStandardMaterial({vertexColors:true,roughness:.47})];
   this.mesh=new THREE.SkinnedMesh(g,this.materials);this.mesh.name='Purchased_Pomeranian_Sculpt';this.mesh.castShadow=true;this.mesh.receiveShadow=true;this.group.add(this.mesh);this.mesh.bind(this.skeleton);this.mesh.normalizeSkinWeights();
-  const blink=data.positions.slice();for(let i=0;i<blink.length;i+=3){const x=blink[i],y=blink[i+1],z=blink[i+2],r=((Math.abs(x)-.039)/.019)**2+((y-.383)/.022)**2;if(z>.185&&r<1)blink[i+1]=y-(y-.383)*.96*Math.cos(Math.sqrt(r)*Math.PI/2)**2;}
-  g.morphAttributes.position=[new THREE.Float32BufferAttribute(blink,3)];g.morphAttributes.position[0].name='Blink';this.mesh.updateMorphTargets();
+  g.morphAttributes.position=buildCottonMorphTargets(data.positions);this.mesh.updateMorphTargets();
   this.tongue=new THREE.Mesh(new THREE.SphereGeometry(1,16,10),new THREE.MeshStandardMaterial({color:0xcc7e85,roughness:.65}));this.tongue.name='Pet_tongue';this.named.head.add(this.tongue);this.tongue.visible=false;
   this.channels={liftL:0,liftR:0,close:0,lick:0,excite:.25};this.interaction=null;this.nextBlink=2.4;this.blinkAt=-Infinity;this.blinkDuration=.22;this.blink=0;
+  this.gaze={yaw:0,pitch:0,active:false};this.bigHead=false;this.headScaleCurrent=1;this.manualExpression='auto';this.expressionWeights={Blink:0,Happy:0,Surprised:0,Sleepy:0,Excited:0};
   this.helper=new THREE.SkeletonHelper(this.group);this.helper.material.depthTest=false;this.helper.renderOrder=5;this.helper.visible=false;this.accumulator=0;this.updatePose();
  }
  random(){this.rng=(Math.imul(this.rng,1664525)+1013904223)>>>0;return this.rng/4294967296;}
  command(mode){this.mode=mode;this.started=this.time;}
  setInteraction(frame){this.interaction=frame;}
+ setGaze(nx,ny,active=true){this.gaze={yaw:THREE.MathUtils.clamp(Number(nx)||0,-1,1)*.32,pitch:THREE.MathUtils.clamp(Number(ny)||0,-1,1)*.16,active:Boolean(active)};}
+ setBigHead(enabled){this.bigHead=Boolean(enabled);}
+ setExpression(name){this.manualExpression=name||'auto';}
  update(dt){if(!Number.isFinite(dt)||dt<0)return;this.accumulator+=Math.min(.1,dt);while(this.accumulator>=1/120){this.tick(1/120);this.accumulator-=1/120;}this.updatePose();}
  tick(dt){
   this.time+=dt;const elapsed=this.time-this.started;
@@ -48,17 +52,29 @@ export class B1857Character{
   if(this.mode==='rest'){target.pitch=.13*env;target.roll=.035*env;target.yaw=0;}
   if(this.mode==='wake'){target.pitch=-.05*env;target.roll=0;}
   if(this.mode==='pawRight'){target.yaw=-.055;target.pitch=.035;target.roll=.04;}
+  if(this.mode==='dance'){target.yaw=Math.sin(age*4.4)*.24*env;target.pitch=Math.sin(age*8.8)*.07*env;target.roll=Math.cos(age*4.4)*.14*env;}
+  if(this.mode==='nod'){target.pitch=(-.06+Math.sin(age*7.2)*.095)*env;target.roll=Math.sin(age*3.6)*.03*env;}
+  if(this.gaze?.active&&['idle','rest','pet','greet'].includes(this.mode)){target.yaw=this.gaze.yaw;target.pitch=this.gaze.pitch;}
   const lift=smooth(age/.8)*(1-smooth((age-2.5)/.9));
-  const desired={liftL:['paw','ball'].includes(this.mode)?lift:0,liftR:this.mode==='pawRight'?lift:0,close:this.mode==='rest'?env:this.mode==='pet'?.8*env:0,lick:this.mode==='lick'?Math.max(0,Math.sin(age*9))*env:['feed','drink'].includes(this.mode)&&age>2.1&&age<4.5?Math.max(0,Math.sin(age*14))*env:0,excite:['greet','ball'].includes(this.mode)?1:.25};
+  const danceLiftL=this.mode==='dance'?Math.max(0,Math.sin(age*4.4))*env:0;
+  const danceLiftR=this.mode==='dance'?Math.max(0,-Math.sin(age*4.4))*env:0;
+  const desired={liftL:['paw','ball'].includes(this.mode)?lift:danceLiftL,liftR:this.mode==='pawRight'?lift:danceLiftR,close:this.mode==='rest'?env:this.mode==='pet'?.8*env:0,lick:this.mode==='lick'?Math.max(0,Math.sin(age*9))*env:['feed','drink'].includes(this.mode)&&age>2.1&&age<4.5?Math.max(0,Math.sin(age*14))*env:0,excite:['greet','ball','dance','nod'].includes(this.mode)?1:.25};
   for(const k of Object.keys(this.channels))this.channels[k]+=(desired[k]-this.channels[k])*(1-Math.exp(-(k==='lick'?30:9)*dt));
+  const targetExpr=computeExpressionWeights({mode:this.mode,age,envelope:env,blink:this.blink??0,close:this.channels?.close??0,manualExpression:this.manualExpression});
+  for(const key of EXPRESSION_NAMES)this.expressionWeights[key]+=(targetExpr[key]-this.expressionWeights[key])*(1-Math.exp(-16*dt));
+  this.headScaleCurrent+=((this.bigHead?1.42:1)-this.headScaleCurrent)*(1-Math.exp(-8*dt));
   for(const key of ['yaw','pitch','roll']){const omega=key==='yaw'?7:5.5;this.velocity[key]+=(omega*omega*(target[key]-this.look[key])-2*omega*this.velocity[key])*dt;this.look[key]+=this.velocity[key]*dt;}
  }
  updatePose(){
   const t=this.time;for(const b of this.bones){b.quaternion.identity();b.scale.set(1,1,1);if(b.parent.isBone)b.position.copy(this.rest[b.name]).sub(this.rest[b.parent.name]);else b.position.copy(this.rest[b.name]);}
   const breath=Math.sin(t*2*Math.PI/3.4)*.003;
-  this.named.chest.scale.set(1+breath,1+breath*.45,1+breath*.6);
+  const danceBob=this.mode==='dance'?Math.abs(Math.sin(t*4.4))*.016:0;
+  const danceSway=this.mode==='dance'?Math.sin(t*4.4)*.085:0;
+  this.named.chest.scale.set(1+breath,1+breath*.45+danceBob,1+breath*.6);
+  this.named.chest.rotation.z=danceSway;
   this.named.neck.rotation.set(this.look.pitch*.22,this.look.yaw*.24,this.look.roll*.2);
   this.named.head.rotation.set(this.look.pitch*.78,this.look.yaw*.76,this.look.roll*.8);
+  this.named.head.scale.setScalar(this.headScaleCurrent||1);
   // Short, separate ear reactions rather than permanent symmetric oscillation.
   const ear=Math.max(0,1-Math.abs((t%7.7)-.4)/.22);
   this.named['ear.L'].rotation.z=ear*.055;this.named['ear.R'].rotation.z=-ear*.022;
@@ -74,9 +90,9 @@ export class B1857Character{
     const paw=this.named['fore.'+side+'.paw'],position=this.rest[paw.name].clone();position.y+=(side==='L'?lift:liftR)*.012;
     paw.position.copy(paw.parent.worldToLocal(this.group.localToWorld(position)));paw.quaternion.copy(paw.parent.getWorldQuaternion(new THREE.Quaternion()).invert());paw.updateMatrixWorld(true);
   }
-  this.mesh.morphTargetInfluences[0]=Math.max(this.blink??0,this.channels?.close??0);
+  EXPRESSION_NAMES.forEach((name,idx)=>{if(this.mesh.morphTargetInfluences&&idx<this.mesh.morphTargetInfluences.length)this.mesh.morphTargetInfluences[idx]=idx===0?Math.max(this.blink??0,this.channels?.close??0,this.expressionWeights.Blink??0):(this.expressionWeights[name]??0);});
   const lick=this.channels?.lick??0;this.tongue.visible=lick>.03;this.tongue.scale.set(.0055,.0016,.004+.012*lick);this.tongue.position.set(0,-.015+.016*lick,.111+.007*lick);this.tongue.rotation.x=-.6*lick;
   this.group.updateMatrixWorld(true);this.skeleton.update();this.helper.updateMatrixWorld(true);
  }
- diagnostics(){return{time:this.time,mode:this.mode,look:{...this.look},bones:this.bones.length,triangles:this.mesh.geometry.index.count/3};}
+ diagnostics(){return{time:this.time,mode:this.mode,look:{...this.look},bones:this.bones.length,triangles:this.mesh.geometry.index.count/3,expressions:{...this.expressionWeights},bigHead:this.bigHead};}
 }

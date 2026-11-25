@@ -2,7 +2,7 @@ import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   ArrowDown, ArrowUp, AtSign, BookOpen, Brain, Brush, Clapperboard, Compass,
   CornerDownLeft, FolderKanban, Heart, Map, MessageCircle, MessagesSquare, Music,
-  PawPrint, Plus, Search, Settings, Sparkles, Swords, Trophy, Tv, Utensils, X,
+  PawPrint, Pill, Plus, Search, Settings, Sparkles, Stethoscope, Swords, Trophy, Tv, Utensils, X,
 } from "lucide-react";
 import "./command-palette.css";
 import { FEATURE_DETAILS, FEATURE_LABELS } from "./feature-navigation.js";
@@ -15,10 +15,13 @@ const VIEW_ICONS = {
   art: Brush,
   together: Clapperboard,
   cast: Tv,
+  "music-studio": Music,
   music: Music,
   duel: Swords,
   nursery: Heart,
   memories: Brain,
+  medical: Stethoscope,
+  knowledge: Pill,
   treasure: Map,
   achievements: Trophy,
   discover: Compass,
@@ -90,8 +93,9 @@ export default function CommandPalette({
     result.push({ id: "open-settings", label: "打开设置", hint: "模型、外观、语音与数据", kind: "action", run: onOpenSettings, icon: <Settings aria-hidden="true" /> });
     if (onReturnActivity) result.push({ id: "return-activity", label: "回到本次活动", hint: "返回一起看或一起听", kind: "action", run: onReturnActivity, icon: <CornerDownLeft aria-hidden="true" /> });
     if (onSetBackground) {
+      result.push({ id: "background:lumen", label: "背景 · 流光天幕（视频同款无闪屏）", hint: "60fps 纯净昼夜光晕与星斑，拖动时间零闪屏", kind: "action", run: () => onSetBackground("lumen"), icon: <Sparkles aria-hidden="true" /> });
+      result.push({ id: "background:auto", label: "背景 · 实时天空", hint: "恢复天气与海岸实时变化的动态天空", kind: "action", run: () => onSetBackground("auto"), icon: <Sparkles aria-hidden="true" /> });
       result.push({ id: "background:legacy", label: "背景 · 旧版海岸", hint: "切回你喜欢的经典海岸背景", kind: "action", run: () => onSetBackground("legacy"), icon: <Brush aria-hidden="true" /> });
-      result.push({ id: "background:auto", label: "背景 · 实时天空", hint: "恢复天气与时间变化的动态天空", kind: "action", run: () => onSetBackground("auto"), icon: <Sparkles aria-hidden="true" /> });
     }
     return result;
   }, [onCreateSession, onOpenSettings, onReturnActivity, onSetBackground]);

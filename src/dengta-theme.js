@@ -83,7 +83,7 @@ export function defaultThemePreferences(environment = globalThis) {
 
 const HEX_COLOR = /^#[0-9a-f]{6}$/i;
 const APPEARANCE_MODES = new Set(["auto", "day", "night"]);
-const BACKGROUND_MODES = new Set(["auto", "legacy", "legacy-day", "legacy-dusk", "legacy-night"]);
+const BACKGROUND_MODES = new Set(["auto", "lumen", "legacy", "legacy-day", "legacy-dusk", "legacy-night"]);
 const FONT_MODES = new Set(["standard", "system"]);
 
 function safeColor(value, fallback) {
@@ -204,9 +204,21 @@ function mixRgbChannels(parts) {
     .join(" ");
 }
 
-function chinaTimeParts(date) {
+function resolveThemeTimeZone(timeZone = "Asia/Shanghai") {
+  const candidate = String(timeZone || "").trim();
+  if (!candidate) return "Asia/Shanghai";
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: candidate }).format(new Date(0));
+    return candidate;
+  } catch {
+    return "Asia/Shanghai";
+  }
+}
+
+function zonedTimeParts(date, timeZone = "Asia/Shanghai") {
+  const zone = resolveThemeTimeZone(timeZone);
   const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Shanghai",
+    timeZone: zone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -221,6 +233,10 @@ function chinaTimeParts(date) {
   );
 }
 
+function chinaTimeParts(date) {
+  return zonedTimeParts(date, "Asia/Shanghai");
+}
+
 function dateAtChinaMinute(date, minute) {
   const parts = chinaTimeParts(date);
   const normalizedMinute = Math.max(0, Math.min(1439, Math.round(minute)));
@@ -229,6 +245,36 @@ function dateAtChinaMinute(date, minute) {
   return new Date(
     `${parts.year}-${parts.month}-${parts.day}T${hour}:${minutePart}:00+08:00`,
   );
+}
+
+function dateAtZoneMinute(date, minute, timeZone = "Asia/Shanghai") {
+  const zone = resolveThemeTimeZone(timeZone);
+  if (zone === "Asia/Shanghai") return dateAtChinaMinute(date, minute);
+  const parts = zonedTimeParts(date, zone);
+  const normalizedMinute = Math.max(0, Math.min(1439, Math.round(minute)));
+  const hour = Math.floor(normalizedMinute / 60);
+  const minutePart = normalizedMinute % 60;
+  const guess = new Date(
+    Date.UTC(
+      Number(parts.year),
+      Number(parts.month) - 1,
+      Number(parts.day),
+      hour,
+      minutePart,
+      0,
+    ),
+  );
+  const observed = zonedTimeParts(guess, zone);
+  const observedUtc = Date.UTC(
+    Number(observed.year),
+    Number(observed.month) - 1,
+    Number(observed.day),
+    Number(observed.hour),
+    Number(observed.minute),
+    0,
+  );
+  const offsetMs = observedUtc - guess.getTime();
+  return new Date(guess.getTime() - offsetMs);
 }
 
 function stablePatternIndex(value, count) {
@@ -244,12 +290,14 @@ export function getCelestialSnapshot(
   date = new Date(),
   appearance = "auto",
   coordinates,
+  timeZone = coordinates?.timeZone || "Asia/Shanghai",
 ) {
-  const parts = chinaTimeParts(date);
+  const resolvedTimeZone = resolveThemeTimeZone(timeZone);
+  const parts = zonedTimeParts(date, resolvedTimeZone);
   const hour = Number(parts.hour) + Number(parts.minute) / 60;
-  const schedule = getSolarSchedule(date, coordinates);
-  const previousSchedule = getSolarSchedule(date, coordinates, -1);
-  const nextSchedule = getSolarSchedule(date, coordinates, 1);
+  const schedule = getSolarSchedule(date, coordinates, 0, resolvedTimeZone);
+  const previousSchedule = getSolarSchedule(date, coordinates, -1, resolvedTimeZone);
+  const nextSchedule = getSolarSchedule(date, coordinates, 1, resolvedTimeZone);
   const dawnEnd = new Date(
     schedule.sunrise.valueOf() +
       Math.max(
@@ -314,6 +362,9 @@ export function getCelestialSnapshot(
 
   return {
     dateKey,
+    timeZone: resolvedTimeZone,
+    utcOffsetMinutes: schedule.utcOffsetMinutes,
+    timeLabel: `${parts.hour}:${parts.minute}`,
     hour,
     minute: Number(parts.hour) * 60 + Number(parts.minute),
     phase,
@@ -329,8 +380,8 @@ export function getCelestialSnapshot(
     lightSource: schedule.source,
     sunrise: schedule.sunrise.toISOString(),
     sunset: schedule.sunset.toISOString(),
-    sunriseLabel: formatSolarTime(schedule.sunrise),
-    sunsetLabel: formatSolarTime(schedule.sunset),
+    sunriseLabel: formatSolarTime(schedule.sunrise, resolvedTimeZone),
+    sunsetLabel: formatSolarTime(schedule.sunset, resolvedTimeZone),
     moonPeak: phase === "night" && (hour >= 22 || hour < 2),
     sunriseAura,
     sunsetAura,
@@ -530,18 +581,34 @@ export function applyThemePreferences(preferences, snapshot, root) {
   );
 }
 
-export function useDengTaTheme(coordinates = null, accountScope = "") {
+export function useDengTaTheme(
+  coordinates = null,
+  accountScope = "",
+  timeZone = "",
+) {
   const [preferences, setPreferences] = useState(() =>
     readThemePreferences(globalThis.localStorage, accountScope),
   );
   const [clock, setClock] = useState(() => new Date());
   const [previewMinute, setPreviewMinute] = useState(null);
+  const activeTimeZone = useMemo(() => {
+    const candidate = timeZone || coordinates?.timeZone;
+    if (candidate) return resolveThemeTimeZone(candidate);
+    try {
+      const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      return resolveThemeTimeZone(browserTz);
+    } catch {
+      return "Asia/Shanghai";
+    }
+  }, [coordinates?.timeZone, timeZone]);
   const displayedClock = useMemo(
     () =>
       Number.isFinite(previewMinute)
-        ? dateAtChinaMinute(clock, previewMinute)
+        ? activeTimeZone === "Asia/Shanghai"
+          ? dateAtChinaMinute(clock, previewMinute)
+          : dateAtZoneMinute(clock, previewMinute, activeTimeZone)
         : clock,
-    [clock, previewMinute],
+    [activeTimeZone, clock, previewMinute],
   );
   const snapshot = useMemo(
     () =>
@@ -549,8 +616,10 @@ export function useDengTaTheme(coordinates = null, accountScope = "") {
         displayedClock,
         preferences.appearance,
         coordinates,
+        activeTimeZone,
       ),
     [
+      activeTimeZone,
       displayedClock,
       coordinates,
       preferences.appearance,
@@ -558,18 +627,22 @@ export function useDengTaTheme(coordinates = null, accountScope = "") {
   );
 
   useEffect(() => {
-    const interval = window.setInterval(() => setClock(new Date()), 60_000);
+    const interval = window.setInterval(() => setClock(new Date()), 30_000);
     return () => window.clearInterval(interval);
   }, []);
 
   useEffect(() => {
-    const normalized = writeThemePreferences(
+    writeThemePreferences(
       preferences,
       globalThis.localStorage,
       accountScope,
     );
+  }, [accountScope, preferences]);
+
+  useEffect(() => {
+    const normalized = normalizeThemePreferences(preferences);
     applyThemePreferences(normalized, snapshot, document.documentElement);
-  }, [accountScope, preferences, snapshot]);
+  }, [preferences, snapshot]);
 
   function updateTheme(patch) {
     setPreferences((current) =>

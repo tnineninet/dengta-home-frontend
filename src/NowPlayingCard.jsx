@@ -27,6 +27,7 @@ export default function NowPlayingCard({ song, busy, expanded, onToggle, onPlayP
       aria-label={`当前歌曲：${song.title}`}
       aria-busy={busy}
       data-now-playing
+      data-dynamic-island="playing"
       onClick={openStatusFromCapsule}
     >
       <span className="sun-glass-now-playing">
@@ -34,13 +35,30 @@ export default function NowPlayingCard({ song, busy, expanded, onToggle, onPlayP
           <span className="sun-glass-now-playing-disc" /><span className="sun-glass-now-playing-hole" />
         </span>
         <span className="sun-glass-now-playing-meta">
-          <button className="sun-glass-now-playing-title" type="button" aria-label={expanded ? "收起动态状态" : "展开动态状态"} aria-expanded={expanded} onClick={onToggle}><strong>{song.title}</strong></button>
-          <small id={hintId}>{busy ? "正在发送指令…" : hint || (song.playbackStateKnown === false ? "播放状态待确认" : song.artist || "系统播放器")}</small>
+          <span className="sun-glass-now-playing-title-row">
+            <button
+              className="sun-glass-now-playing-title"
+              type="button"
+              aria-label={expanded ? "收起动态状态" : "展开动态状态"}
+              aria-expanded={expanded}
+              data-dt-tip="点击展开灵动岛中控与伴侣动态状态"
+              onClick={onToggle}
+            >
+              <strong>{song.title}</strong>
+            </button>
+            <span
+              className={`di-audio-spectrum${song.isPlaying ? " is-playing" : ""}`}
+              aria-hidden="true"
+            >
+              <i /><i /><i /><i /><i />
+            </span>
+          </span>
+          <small id={hintId}>{busy ? "正在发送指令…" : hint || (song.playbackStateKnown === false ? "播放状态待确认" : song.artist || "网易云 / 系统播放器")}</small>
           <span className="sun-glass-now-playing-controls">
             {!readOnly && <>
-              <button type="button" disabled={busy || !playback.available} title={playback.reason || undefined} aria-describedby={playback.reason ? hintId : undefined} aria-label={song.isPlaying ? "暂停" : "播放"} onClick={onPlayPause}>{song.isPlaying ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}</button>
-              <button type="button" disabled={busy || !next.available} title={next.reason || undefined} aria-describedby={next.reason ? hintId : undefined} aria-label="下一首" onClick={onNext}><SkipForward aria-hidden="true" /></button>
-              <button type="button" aria-label="收起歌曲胶囊" onClick={onDismiss}><X aria-hidden="true" /></button>
+              <button type="button" disabled={busy || !playback.available} title={playback.reason || undefined} data-dt-tip={song.isPlaying ? "暂停播放" : "继续播放"} aria-describedby={playback.reason ? hintId : undefined} aria-label={song.isPlaying ? "暂停" : "播放"} onClick={onPlayPause}>{song.isPlaying ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}</button>
+              <button type="button" disabled={busy || !next.available} title={next.reason || undefined} data-dt-tip="切换到下一首歌曲" aria-describedby={next.reason ? hintId : undefined} aria-label="下一首" onClick={onNext}><SkipForward aria-hidden="true" /></button>
+              <button type="button" data-dt-tip="收起当前播放胶囊" aria-label="收起歌曲胶囊" onClick={onDismiss}><X aria-hidden="true" /></button>
             </>}
           </span>
         </span>

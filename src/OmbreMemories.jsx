@@ -35,9 +35,17 @@ function typeLabel(type) {
   return labels[String(type || "").toLowerCase()] || type || "记忆";
 }
 
-export default function OmbreMemories({ onManageConnections }) {
+export default function OmbreMemories({ onManageConnections, visualPreview = false }) {
   const snapshot = useSyncExternalStore(authSession.subscribe, authSession.getSnapshot, authSession.getSnapshot);
   const scopeKey = settingsSaveScope(snapshot);
+  if (visualPreview) {
+    return (
+      <section className="memory-gateway-status" aria-label="外部记忆档案">
+        <div><strong>外部记忆档案（Ombre / Supabase 专用表）</strong></div>
+        <p>当前为本地无登录预览模式。前往主入口登录后，可管理只读外部记忆连接并按分类检索。</p>
+      </section>
+    );
+  }
   return <ScopedOmbreMemories key={scopeKey} scopeKey={scopeKey} onManageConnections={onManageConnections} />;
 }
 

@@ -3,15 +3,17 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 310,
-    "version": "2.13.52",
-    "apk_url": "https://nyyqizwrlmejpfdhgrnd.supabase.co/storage/v1/object/public/dengta-updates/apk/DengTa-2.13.52.apk",
-    "sha256": "638322cc874fe797b48e96d7ae050154a40e8b5bacd775ceaa139c592e150efa",
-    "size_bytes": 36466847,
-    "published_at": "2026-11-06T02:20:57.858Z",
+    "version_code": 311,
+    "version": "2.13.53",
+    "apk_url": "https://www.dengtahome.com/downloads/DengTa-2.13.53.apk",
+    "sha256": "bfd962664b3dc7a4d1200942163000b25a4d1aaf9a71ce9edbbab92b5ee02172",
+    "size_bytes": 38841073,
+    "published_at": "2026-11-25T12:00:00.000Z",
     "notes": [
-      "自动构建 2.13.52（310） · 939988238eb7",
-      "包含最新的聊天、界面和 Android 修复。"
+      "全新 agents.md 提示词注入与 KV 缓存链路、AI 聊天首字提速与流式帧率优化",
+      "设置中心动效/SVG 图标精修、AI 模型预设中心与管线体检面板上线",
+      "新增博美犬小棉花 3D 桌宠、adudir-open 本机剪映 AI 工作台与灯塔邮局定位探索",
+      "集成 dbskill 主动选题诊断、Kiwi 长期记忆架构修复、情绪词与成就墙全面升级"
     ]
   }
 }

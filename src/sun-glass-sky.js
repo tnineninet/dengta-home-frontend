@@ -45,8 +45,11 @@ export function solarSkyMinute(minute, snapshot) {
   if (!Number.isFinite(current) || !Number.isFinite(rise) || !Number.isFinite(set)) return minute;
   const duration = (set - rise) / 60000;
   if (duration <= 0 || duration >= 1440) return minute;
-  // The application clock and solar labels use China Standard Time.
-  const riseMinute = ((rise / 60000 + 480) % 1440 + 1440) % 1440;
+  // Use the active location timezone offset when available, defaulting to China Standard Time (+480m).
+  const offsetMinutes = Number.isFinite(Number(snapshot?.utcOffsetMinutes))
+    ? Number(snapshot.utcOffsetMinutes)
+    : 480;
+  const riseMinute = ((rise / 60000 + offsetMinutes) % 1440 + 1440) % 1440;
   const elapsed = (current - riseMinute + 1440) % 1440;
   return elapsed <= duration
     ? 450 + (elapsed / duration) * 720

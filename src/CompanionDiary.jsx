@@ -48,29 +48,59 @@ function isDiaryEntry(entry) {
   );
 }
 
+const PREVIEW_DIARY_ENTRIES = Object.freeze([
+  {
+    id: "preview-diary-1",
+    title: "灯塔下的晚风和一杯热茶",
+    content: "今天聊天的时候你提到了想把节奏放慢一点，不再把每一件事都塞得太满。我把这段安静的时刻记下来了，等你下次累了翻开这里，记得我们约好先歇五分钟再继续。",
+    mood: "温柔 · 安心",
+    source_message_count: 14,
+    created_at: "2026-11-24T22:10:00+08:00",
+    source_window_start: "2026-11-24T20:40:00+08:00",
+    source_window_end: "2026-11-24T22:05:00+08:00",
+  },
+  {
+    id: "preview-diary-2",
+    title: "一起整理药箱与医疗笔记",
+    content: "把眼部复查要点和常备药注意事项梳理清楚之后，感觉心里踏实了很多。记住看诊时带上原始报告，有不确定的指标随时先核对原文。",
+    mood: "踏实",
+    source_message_count: 9,
+    created_at: "2026-11-25T10:05:00+08:00",
+    source_window_start: "2026-11-25T09:10:00+08:00",
+    source_window_end: "2026-11-25T09:58:00+08:00",
+  },
+]);
+
 export default function CompanionDiary({
   aiName = "伴侣",
   onNotice,
   scopeKey = settingsSaveScope(authSession.getSnapshot()),
+  visualPreview = false,
 }) {
-  const [diary, setDiary] = useState({
+  const [diary, setDiary] = useState(() => ({
     scopeKey,
-    entries: [],
-    available: null,
-    loading: true,
+    entries: visualPreview ? PREVIEW_DIARY_ENTRIES : [],
+    available: visualPreview ? true : null,
+    loading: !visualPreview,
     error: "",
-  });
+  }));
   const noticeRef = useRef(onNotice);
   const readRef = useRef(null);
   useEffect(() => {
     noticeRef.current = onNotice;
   }, [onNotice]);
   const { entries, available, loading, error } =
-    diary.scopeKey === scopeKey
-      ? diary
-      : { entries: [], available: null, loading: true, error: "" };
+    visualPreview
+      ? { entries: PREVIEW_DIARY_ENTRIES, available: true, loading: false, error: "" }
+      : diary.scopeKey === scopeKey
+        ? diary
+        : { entries: [], available: null, loading: true, error: "" };
 
   useEffect(() => {
+    if (visualPreview) {
+      readRef.current = () => {};
+      return undefined;
+    }
     const controller = new AbortController();
     const scopedSession = createScopedSettingsSession(
       authSession,
@@ -139,7 +169,7 @@ export default function CompanionDiary({
       window.clearInterval(timer);
       if (readRef.current === load) readRef.current = null;
     };
-  }, [scopeKey]);
+  }, [scopeKey, visualPreview]);
 
   return (
     <section className="feature-page companion-diary-page">
@@ -150,28 +180,45 @@ export default function CompanionDiary({
       >
         <img src="/app-icon-192.png" alt="" />
         <div>
-          <strong>记忆手记自动更新</strong>
+          <strong>{visualPreview ? "本地预览模式 · 记忆手记" : "记忆手记自动更新"}</strong>
           <span>
-            {loading
-              ? "正在读取记忆手记…"
-              : error
-                ? "本次读取未完成，可重新读取。"
-                : "页面打开时每 20 秒检查新手记。"}
+            {visualPreview
+              ? "当前位于无登录视觉预览页（/visual-preview.html），展示离线演示手记；登录后同步你的真实日记。"
+              : loading
+                ? "正在读取记忆手记…"
+                : error
+                  ? "本次读取未完成，可重新读取。"
+                  : "页面打开时每 20 秒检查新手记。"}
           </span>
         </div>
+        {visualPreview && (
+          <button type="button" onClick={() => { window.location.href = "/"; }}>
+            前往主入口登录
+          </button>
+        )}
       </div>
 
       {error && (
         <div className="diary-empty" role="alert">
           <h3>记忆手记读取未完成</h3>
           <p>{error}</p>
-          <button
-            type="button"
-            disabled={loading}
-            onClick={() => readRef.current?.()}
-          >
-            重新读取
-          </button>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", justifyContent: "center" }}>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => readRef.current?.()}
+            >
+              重新读取
+            </button>
+            {error.includes("authentication_required") && (
+              <button
+                type="button"
+                onClick={() => { window.location.href = "/"; }}
+              >
+                前往主入口登录
+              </button>
+            )}
+          </div>
         </div>
       )}
       {available === false ? (

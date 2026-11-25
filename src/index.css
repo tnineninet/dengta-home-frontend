@@ -11234,6 +11234,93 @@ body,
   line-height: 1.5;
 }
 
+.ai-provider-center .provider-preset-bar {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--provider-line);
+  border-radius: 12px;
+  background: var(--provider-surface-3);
+}
+
+.ai-provider-center .provider-preset-heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--provider-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ai-provider-center .provider-preset-heading svg {
+  flex: 0 0 auto;
+  color: var(--provider-accent-text);
+}
+
+.ai-provider-center .provider-preset-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.ai-provider-center .provider-preset-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 6px 11px;
+  border: 1px solid var(--provider-line);
+  border-radius: 10px;
+  color: var(--provider-ink);
+  background: var(--provider-surface);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ai-provider-center .provider-preset-chip svg {
+  flex: 0 0 auto;
+  color: var(--provider-accent-text);
+}
+
+.ai-provider-center .provider-preset-chip em {
+  padding: 2px 6px;
+  border-radius: 6px;
+  color: var(--provider-muted);
+  background: var(--provider-surface-2);
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.ai-provider-center .provider-preset-chip.is-active {
+  border-color: var(--provider-accent);
+  color: var(--provider-accent-ink);
+  background: var(--provider-accent);
+}
+
+.ai-provider-center .provider-preset-chip.is-active svg {
+  color: var(--provider-accent-ink);
+}
+
+.ai-provider-center .provider-preset-chip.is-active em {
+  color: var(--provider-accent-ink);
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.ai-provider-center .provider-refresh-button,
+.ai-provider-center .provider-save-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.ai-provider-center .provider-refresh-button svg,
+.ai-provider-center .provider-save-button svg {
+  flex: 0 0 auto;
+}
+
 /* 表单：默认只显示 5 个必要字段。 */
 .ai-provider-center .provider-form-grid {
   display: grid;

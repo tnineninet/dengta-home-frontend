@@ -125,9 +125,52 @@ function StateMeter({ label, value, inverse = false }) {
   );
 }
 
-export default function Nursery({ aiName = "伴侣", onNotice }) {
-  const [snapshot, setSnapshot] = useState(null);
-  const [loading, setLoading] = useState(true);
+function createPreviewNurserySnapshot(aiName = "伴侣") {
+  return {
+    available: true,
+    child: {
+      id: "preview-child-1",
+      name: "小灯芽",
+      display_name: "小灯芽（本地预览）",
+      stage: { label: "咿呀学语期", age_days: 12.5 },
+    },
+    state: {
+      mood: 86,
+      health: 94,
+      nutrition: 82,
+      fatigue: 22,
+      intimacy: 78,
+      digest_load: 18,
+    },
+    bonds: [
+      { caregiver_kind: "user", attachment: 78, trust: 84 },
+      { caregiver_kind: "companion", attachment: 82, trust: 88 },
+    ],
+    actions: [],
+    utterances: [
+      { id: "preview-u-1", text: `灯灯暖暖的，想和你们一起听歌呀～` },
+    ],
+    milestones: [
+      {
+        id: "preview-m-1",
+        title: "第一次对名字露出了笑脸",
+        note: `听到你和${aiName}叫“小灯芽”时挥了挥小手。`,
+        created_at: "2026-11-24T19:20:00+08:00",
+      },
+      {
+        id: "preview-m-2",
+        title: "学会了说“亮亮”",
+        note: "指着窗外晚霞和灯塔小夜灯重复了两遍。",
+        created_at: "2026-11-25T08:45:00+08:00",
+      },
+    ],
+    events: [],
+  };
+}
+
+export default function Nursery({ aiName = "伴侣", onNotice, visualPreview = false }) {
+  const [snapshot, setSnapshot] = useState(() => (visualPreview ? createPreviewNurserySnapshot(aiName) : null));
+  const [loading, setLoading] = useState(!visualPreview);
   const [reading, setReading] = useState(false);
   const [readError, setReadError] = useState("");
   const [actionError, setActionError] = useState("");
@@ -159,6 +202,11 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
 
   const load = useCallback(
     async ({ silent = false } = {}) => {
+      if (visualPreview) {
+        setLoading(false);
+        setReading(false);
+        return;
+      }
       const lifecycle = lifecycleRef.current;
       if (!isCurrent(lifecycle) || busyRef.current) return;
       const version = ++readVersionRef.current;
@@ -192,6 +240,7 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
   );
 
   useEffect(() => {
+    if (visualPreview) return undefined;
     const controller = new AbortController();
     const lifecycle = {
       controller,
@@ -213,7 +262,7 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
       window.clearTimeout(initialTimer);
       window.clearInterval(timer);
     };
-  }, [load, scope]);
+  }, [load, scope, visualPreview]);
 
   const child = snapshot?.child || null;
   const latestUtterance = snapshot?.utterances?.[0] || null;
@@ -285,6 +334,15 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
     const submitted = speechText;
     const text = speechText.trim();
     if (!child || !text) return;
+    if (visualPreview) {
+      setSnapshot((current) => current ? {
+        ...current,
+        state: { ...current.state, mood: Math.min(100, (current.state?.mood || 80) + 3), intimacy: Math.min(100, (current.state?.intimacy || 75) + 2) },
+        utterances: [{ id: `preview-u-${Date.now()}`, text: `记住了：“${text.slice(0, 24)}”！` }, ...(current.utterances || [])],
+      } : current);
+      setSpeechText("");
+      return;
+    }
     const result = await perform("speech", (options) =>
       apiRequest(`/api/v2/nursery/children/${child.id}/actions`, {
         ...options,
@@ -302,6 +360,19 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
 
   async function care(action) {
     if (!child) return;
+    if (visualPreview) {
+      const replyMap = { soothe: "抱抱最安心啦～", diaper: "清爽舒服多啦！", burp: "嗝～舒服！", play: "嘻嘻，还要再玩一次！" };
+      setSnapshot((current) => current ? {
+        ...current,
+        state: {
+          ...current.state,
+          mood: Math.min(100, (current.state?.mood || 80) + 4),
+          fatigue: Math.max(0, (current.state?.fatigue || 20) + (action === "play" ? 4 : -4)),
+        },
+        utterances: [{ id: `preview-u-${Date.now()}`, text: replyMap[action] || "开心～" }, ...(current.utterances || [])],
+      } : current);
+      return;
+    }
     await perform(action, (options) =>
       apiRequest(`/api/v2/nursery/children/${child.id}/actions`, {
         ...options,
@@ -316,6 +387,14 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
 
   async function letCompanionCare() {
     if (!child) return;
+    if (visualPreview) {
+      setSnapshot((current) => current ? {
+        ...current,
+        state: { ...current.state, mood: Math.min(100, (current.state?.mood || 80) + 5) },
+        utterances: [{ id: `preview-u-${Date.now()}`, text: `${aiName}讲的小故事真好听呀～` }, ...(current.utterances || [])],
+      } : current);
+      return;
+    }
     await perform("companion", (options) =>
       apiRequest(
         `/api/v2/nursery/children/${child.id}/companion-actions`,
@@ -355,6 +434,11 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
   }
 
   async function togglePortrait() {
+    if (visualPreview) {
+      setPortraitOpen((open) => !open);
+      setPortrait((current) => current || { language: { learned_characters: 42, unique_characters: 26, utterances: 9 }, milestones: 2 });
+      return;
+    }
     if (busyRef.current || !isCurrent(lifecycleRef.current)) return;
     const nextOpen = !portraitOpen;
     setPortraitOpen(nextOpen);
@@ -368,13 +452,27 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
     return <section className="feature-page nursery-page is-loading">正在回家…</section>;
   }
 
+  const previewBanner = visualPreview && (
+    <div className="nursery-empty-state" role="note" style={{ marginBottom: "14px" }}>
+      <span>当前位于无登录视觉预览页（/visual-preview.html），下方为离线演示家庭状态，互动仅在本地画面生效。</span>
+      <button type="button" onClick={() => { window.location.href = "/"; }}>前往主入口登录</button>
+    </div>
+  );
+
   const feedback = (readError || actionError) && (
     <div className="nursery-empty-state" role="alert">
       {actionError && <span>{actionError}</span>}
       {readError && <span>{readError}</span>}
-      <button type="button" disabled={reading || Boolean(busy)} onClick={() => void load()}>
-        {reading ? "正在读取…" : "重新读取家庭状态"}
-      </button>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", justifyContent: "center" }}>
+        <button type="button" disabled={reading || Boolean(busy)} onClick={() => void load()}>
+          {reading ? "正在读取…" : "重新读取家庭状态"}
+        </button>
+        {(readError.includes("authentication_required") || actionError.includes("authentication_required")) && (
+          <button type="button" onClick={() => { window.location.href = "/"; }}>
+            前往主入口登录
+          </button>
+        )}
+      </div>
     </div>
   );
 
@@ -411,6 +509,7 @@ export default function Nursery({ aiName = "伴侣", onNotice }) {
 
   return (
     <section className="feature-page nursery-page">
+      {previewBanner}
       {feedback}
       <header className="nursery-hero">
         <div className="nursery-child-orbit" aria-hidden="true">

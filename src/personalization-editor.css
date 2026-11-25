@@ -16,9 +16,26 @@
   justify-content: space-between;
 }
 
+.personalization-editor-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .personalization-editor-count {
   color: var(--muted);
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.personalization-editor-tokens {
+  padding: 2px 7px;
+  border-radius: 999px;
+  color: rgb(var(--theme-accent-rgb));
+  background: rgb(var(--theme-accent-rgb) / .1);
+  font-size: 11px;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
 
@@ -28,18 +45,26 @@
   justify-content: center;
   gap: 6px;
   min-height: 38px;
-  padding: 8px 11px;
+  padding: 8px 12px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 11px;
   color: var(--ink);
   background: var(--paper);
   font-size: 12px;
+  font-weight: 600;
   line-height: 1.3;
   cursor: pointer;
+  transition: transform 150ms cubic-bezier(.22, 1, .36, 1), border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
 }
 
 .personalization-editor button:hover:not(:disabled) {
   border-color: var(--rose);
+  box-shadow: 0 4px 12px rgb(var(--theme-accent-rgb) / .12);
+  transform: translateY(-1px);
+}
+
+.personalization-editor button:active:not(:disabled) {
+  transform: translateY(0) scale(.98);
 }
 
 .personalization-editor button:focus-visible {

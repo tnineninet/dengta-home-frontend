@@ -12,8 +12,15 @@ const BACKGROUND_OPTIONS = [
   {
     id: "auto",
     label: "实时天空",
-    hint: "新版天气、云层与光线实时变化",
+    hint: "新版天气、云层与海岸视频实时变化（零闪屏优化）",
     preview: "linear-gradient(155deg, #8ec8e2 0%, #b7dde1 42%, #f8d99c 100%)",
+    appearance: "auto",
+  },
+  {
+    id: "lumen",
+    label: "流光天幕 · 视频同款",
+    hint: "60fps 纯净昼夜渐变光晕与柔和星斑，快速拖时间零闪屏零卡顿",
+    preview: "radial-gradient(circle at 50% 62%, #fae4af 0%, #b3d4df 38%, #6fa8d6 74%, #182542 100%)",
     appearance: "auto",
   },
   {

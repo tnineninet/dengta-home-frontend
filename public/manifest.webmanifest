@@ -22,5 +22,30 @@
       "type": "image/png",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "shortcuts": [
+    {
+      "name": "AI 工作台 · 剪映",
+      "short_name": "AI剪映",
+      "description": "一键操控剪映/阿杜导演、读音视频资源包与本地知识库",
+      "url": "/?view=agent-studio",
+      "icons": [{ "src": "/app-icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "语义知识库",
+      "short_name": "知识库",
+      "description": "搜索与管理个人知识库与世界书",
+      "url": "/?view=knowledge",
+      "icons": [{ "src": "/app-icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "share_target": {
+    "action": "/?view=agent-studio&shared=1",
+    "method": "GET",
+    "params": {
+      "title": "shared_title",
+      "text": "shared_text",
+      "url": "shared_url"
+    }
+  }
 }

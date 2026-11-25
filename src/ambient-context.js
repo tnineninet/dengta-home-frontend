@@ -1,4 +1,71 @@
 export const SHANGHAI_TIME_ZONE = "Asia/Shanghai";
+
+export function isValidTimeZone(value) {
+  const text = String(value || "").trim();
+  if (!text || text.length > 64) return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: text }).format(new Date(0));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function detectBrowserTimeZone() {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return isValidTimeZone(tz) ? tz : SHANGHAI_TIME_ZONE;
+  } catch {
+    return SHANGHAI_TIME_ZONE;
+  }
+}
+
+export function resolveActiveTimeZone(preferredTimeZone = "") {
+  if (isValidTimeZone(preferredTimeZone)) return String(preferredTimeZone).trim();
+  return detectBrowserTimeZone();
+}
+
+export function sanitizeLocationLabel(value) {
+  return String(value || "")
+    .replace(/[<>{}`\r\n]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 32);
+}
+
+export function getTimeZoneOffsetMinutes(date = new Date(), timeZone = SHANGHAI_TIME_ZONE) {
+  const safeDate = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(safeDate.getTime())) return 480;
+  const zone = isValidTimeZone(timeZone) ? timeZone : SHANGHAI_TIME_ZONE;
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: zone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(safeDate);
+  const pick = (type) => Number(parts.find((item) => item.type === type)?.value || 0);
+  const asUtc = Date.UTC(
+    pick("year"),
+    pick("month") - 1,
+    pick("day"),
+    pick("hour"),
+    pick("minute"),
+    pick("second"),
+  );
+  return Math.round((asUtc - safeDate.getTime()) / 60_000);
+}
+
+function formatOffsetSuffix(offsetMinutes) {
+  const sign = offsetMinutes >= 0 ? "+" : "-";
+  const abs = Math.abs(Math.round(offsetMinutes));
+  const hours = String(Math.floor(abs / 60)).padStart(2, "0");
+  const minutes = String(abs % 60).padStart(2, "0");
+  return `${sign}${hours}:${minutes}`;
+}
 export const AMBIENT_LOCATION_CACHE_KEY =
   "dengta_home_ambient_location_v1";
 export const AMBIENT_LOCATION_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
@@ -180,6 +247,10 @@ export function normalizeCoordinates(value) {
   if (latitude === null || longitude === null) return null;
 
   const accuracy = Number(value?.accuracy);
+  const label = sanitizeLocationLabel(value?.label ?? value?.city ?? value?.locationLabel);
+  const timeZone = isValidTimeZone(value?.timeZone ?? value?.timezone)
+    ? String(value?.timeZone ?? value?.timezone).trim()
+    : "";
   return {
     // Roughly kilometre-level coordinates are enough for weather and keep the
     // device's precise position out of storage and network requests.
@@ -188,6 +259,8 @@ export function normalizeCoordinates(value) {
     ...(Number.isFinite(accuracy) && accuracy >= 0
       ? { accuracy: Math.round(accuracy) }
       : {}),
+    ...(label ? { label } : {}),
+    ...(timeZone ? { timeZone } : {}),
   };
 }
 
@@ -344,26 +417,33 @@ export function readEnabledAmbientCache(storage, accountScope = "") {
   };
 }
 
-export function formatShanghaiClock(value = new Date()) {
+export function formatLocalClock(value = new Date(), timeZone = SHANGHAI_TIME_ZONE) {
   const date = value instanceof Date ? value : new Date(value);
+  const resolvedZone = isValidTimeZone(timeZone) ? String(timeZone).trim() : SHANGHAI_TIME_ZONE;
   if (Number.isNaN(date.getTime())) {
-    return { time: "--:--", date: "时间暂不可用", dateTime: "" };
+    return {
+      time: "--:--",
+      date: "时间暂不可用",
+      dateTime: "",
+      timeZone: resolvedZone,
+      utcOffsetMinutes: 480,
+    };
   }
 
   const time = new Intl.DateTimeFormat("zh-CN", {
-    timeZone: SHANGHAI_TIME_ZONE,
+    timeZone: resolvedZone,
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
   }).format(date);
   const dateLabel = new Intl.DateTimeFormat("zh-CN", {
-    timeZone: SHANGHAI_TIME_ZONE,
+    timeZone: resolvedZone,
     month: "long",
     day: "numeric",
     weekday: "short",
   }).format(date);
   const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: SHANGHAI_TIME_ZONE,
+    timeZone: resolvedZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -372,13 +452,25 @@ export function formatShanghaiClock(value = new Date()) {
     hourCycle: "h23",
   }).formatToParts(date);
   const part = (type) => parts.find((item) => item.type === type)?.value || "";
+  const utcOffsetMinutes = getTimeZoneOffsetMinutes(date, resolvedZone);
 
   return {
     time,
     date: dateLabel,
     dateTime: `${part("year")}-${part("month")}-${part("day")}T${part(
       "hour",
-    )}:${part("minute")}:00+08:00`,
+    )}:${part("minute")}:00${formatOffsetSuffix(utcOffsetMinutes)}`,
+    timeZone: resolvedZone,
+    utcOffsetMinutes,
+  };
+}
+
+export function formatShanghaiClock(value = new Date()) {
+  const formatted = formatLocalClock(value, SHANGHAI_TIME_ZONE);
+  return {
+    time: formatted.time,
+    date: formatted.date,
+    dateTime: formatted.dateTime,
   };
 }
 
@@ -387,8 +479,13 @@ export function describeWeatherCode(value) {
   return WEATHER_CODE_LABELS[code] || "天气变化中";
 }
 
+function firstDailyItem(value) {
+  return Array.isArray(value) ? value[0] : undefined;
+}
+
 export function normalizeWeather(value) {
   const current = value?.current || value?.current_weather || {};
+  const daily = value?.daily && typeof value.daily === "object" ? value.daily : {};
   const temperature = Number(
     value?.temperatureC ??
       value?.temperature_c ??
@@ -411,6 +508,35 @@ export function normalizeWeather(value) {
       current?.wind_speed_10m ??
       current?.windspeed,
   );
+  const apparentTemp = Number(
+    value?.apparentTemperatureC ??
+      value?.apparent_temperature_c ??
+      current?.apparent_temperature,
+  );
+  const humidity = Number(
+    value?.humidityPercent ??
+      value?.humidity_percent ??
+      current?.relative_humidity_2m,
+  );
+  const dailyLow = Number(
+    value?.dailyLowC ??
+      value?.daily_low_c ??
+      firstDailyItem(daily.temperature_2m_min),
+  );
+  const dailyHigh = Number(
+    value?.dailyHighC ??
+      value?.daily_high_c ??
+      firstDailyItem(daily.temperature_2m_max),
+  );
+  const timeZone = isValidTimeZone(value?.timeZone ?? value?.timezone)
+    ? String(value?.timeZone ?? value?.timezone).trim()
+    : "";
+  const utcOffsetSeconds = Number(
+    value?.utcOffsetSeconds ?? value?.utc_offset_seconds,
+  );
+  const locationLabel = sanitizeLocationLabel(
+    value?.locationLabel ?? value?.location_label ?? value?.city,
+  );
 
   return Object.freeze({
     temperatureC: Math.round(temperature * 10) / 10,
@@ -427,6 +553,23 @@ export function normalizeWeather(value) {
     ...(Number.isFinite(windSpeed)
       ? { windSpeedKmh: Math.round(windSpeed * 10) / 10 }
       : {}),
+    ...(Number.isFinite(apparentTemp)
+      ? { apparentTemperatureC: Math.round(apparentTemp * 10) / 10 }
+      : {}),
+    ...(Number.isFinite(humidity)
+      ? { humidityPercent: Math.round(humidity) }
+      : {}),
+    ...(Number.isFinite(dailyLow)
+      ? { dailyLowC: Math.round(dailyLow * 10) / 10 }
+      : {}),
+    ...(Number.isFinite(dailyHigh)
+      ? { dailyHighC: Math.round(dailyHigh * 10) / 10 }
+      : {}),
+    ...(timeZone ? { timeZone } : {}),
+    ...(Number.isFinite(utcOffsetSeconds)
+      ? { utcOffsetSeconds: Math.round(utcOffsetSeconds) }
+      : {}),
+    ...(locationLabel ? { locationLabel } : {}),
     updatedAt: String(
       value?.updatedAt ||
         value?.updated_at ||
@@ -456,12 +599,29 @@ export function describeGeolocationError(error) {
   };
 }
 
-export function buildAmbientContext({ clock, weather, locationEnabled }) {
+export function buildAmbientContext({
+  clock,
+  weather,
+  locationEnabled,
+  timeZone,
+  locationLabel,
+}) {
+  const resolvedZone = isValidTimeZone(
+    timeZone || weather?.timeZone || clock?.timeZone,
+  )
+    ? String(timeZone || weather?.timeZone || clock?.timeZone).trim()
+    : SHANGHAI_TIME_ZONE;
+  const safeLocationLabel = sanitizeLocationLabel(
+    locationLabel || weather?.locationLabel,
+  );
   return Object.freeze({
-    timeZone: SHANGHAI_TIME_ZONE,
+    timeZone: resolvedZone,
     localTime: clock.time,
     localDate: clock.date,
     locationEnabled: Boolean(locationEnabled),
+    ...(locationEnabled && safeLocationLabel
+      ? { locationLabel: safeLocationLabel }
+      : {}),
     weather: locationEnabled && weather
       ? Object.freeze({
           temperatureC: weather.temperatureC,
@@ -471,6 +631,18 @@ export function buildAmbientContext({ clock, weather, locationEnabled }) {
             : {}),
           ...(Number.isFinite(weather.windSpeedKmh)
             ? { windSpeedKmh: weather.windSpeedKmh }
+            : {}),
+          ...(Number.isFinite(weather.apparentTemperatureC)
+            ? { apparentTemperatureC: weather.apparentTemperatureC }
+            : {}),
+          ...(Number.isFinite(weather.humidityPercent)
+            ? { humidityPercent: weather.humidityPercent }
+            : {}),
+          ...(Number.isFinite(weather.dailyLowC)
+            ? { dailyLowC: weather.dailyLowC }
+            : {}),
+          ...(Number.isFinite(weather.dailyHighC)
+            ? { dailyHighC: weather.dailyHighC }
             : {}),
           ...(weather.updatedAt ? { updatedAt: weather.updatedAt } : {}),
         })

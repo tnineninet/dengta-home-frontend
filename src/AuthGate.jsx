@@ -5,6 +5,8 @@ import { startBackgroundNotificationIdentitySync } from "./background-notificati
 import { resolveEmailRedirectUrl } from "./auth-redirect.js";
 import WebInstallButton from "./WebInstallButton.jsx";
 import { flushSettingsBeforeAccountExit, releaseSettingsAccountExit, settingsSaveScope } from "./settings-save-scope.js";
+import { buildSanitizedAuthReceipt, classifyAuthFailureHint } from "./auth-diagnostics.js";
+import { copyDiagnosticText } from "./client-diagnostics.js";
 
 function browserEmailRedirectUrl() {
   return resolveEmailRedirectUrl({
@@ -106,10 +108,17 @@ export function AuthScreen({
   const [lastErrorCode, setLastErrorCode] = useState("");
   const [existingAccount, setExistingAccount] = useState(false);
   const [authCheck, setAuthCheck] = useState({ status: "idle", message: "" });
+  const [receiptCopyMessage, setReceiptCopyMessage] = useState("");
   const submittingRef = useRef(false);
   const emailInputRef = useRef(null);
   const passwordInputRef = useRef(null);
   const coolingDown = resendCooldown > 0;
+  const authHint = classifyAuthFailureHint({
+    errorCode: lastErrorCode,
+    email,
+    authCheck,
+    isOnline: !deviceHasNoNetwork(),
+  });
 
   useEffect(() => {
     if (!coolingDown) return undefined;
@@ -272,6 +281,26 @@ export function AuthScreen({
     } catch {
       setAuthCheck({ status: "error", message: "检测失败，请稍后重试。" });
     }
+  }
+
+  async function copyLoginDiagnosticReceipt() {
+    const receipt = buildSanitizedAuthReceipt({
+      mode,
+      email,
+      errorCode: lastErrorCode,
+      feedback,
+      authCheck,
+      isOnline: !deviceHasNoNetwork(),
+      origin: globalThis.location?.origin || "",
+      nativePlatform: Capacitor.isNativePlatform(),
+    });
+    const ok = await copyDiagnosticText(receipt);
+    setReceiptCopyMessage(
+      ok
+        ? "已复制脱敏登录诊断回执（不含密码与密钥），可直接发给排查助手。"
+        : "当前环境暂不支持自动复制，请截图上方红字错误码。",
+    );
+    globalThis.setTimeout?.(() => setReceiptCopyMessage(""), 3200);
   }
 
   async function verifyLink(event) {
@@ -496,6 +525,13 @@ export function AuthScreen({
               </p>
             )}
 
+            {authHint && (
+              <div className={`auth-diag-hint is-${authHint.tone}`} role="note">
+                <strong>{authHint.title}</strong>
+                <span>{authHint.detail}</span>
+              </div>
+            )}
+
             {mode === "login" &&
               (existingAccount || EMAIL_VERIFICATION_CODES.has(lastErrorCode)) && (
                 <button
@@ -573,20 +609,34 @@ export function AuthScreen({
             <li>注册后收不到验证邮件：先查收件箱和垃圾邮件并等几分钟；不要连续点重发，服务商每小时只允许少量邮件。</li>
             <li>密码正确却提示邮箱未验证：点“没收到邮箱验证邮件”重发，或用最新验证邮件里的链接完成验证。</li>
           </ol>
-          <button
-            type="button"
-            className="auth-inline-action"
-            disabled={authCheck.status === "checking"}
-            onClick={checkAuthService}
-          >
-            {authCheck.status === "checking" ? "正在检测登录服务…" : "检测登录服务是否可达"}
-          </button>
+          <div className="auth-diag-actions">
+            <button
+              type="button"
+              className="auth-inline-action"
+              disabled={authCheck.status === "checking"}
+              onClick={checkAuthService}
+            >
+              {authCheck.status === "checking" ? "正在检测登录服务…" : "检测登录服务是否可达"}
+            </button>
+            <button
+              type="button"
+              className="auth-inline-action"
+              onClick={() => void copyLoginDiagnosticReceipt()}
+            >
+              复制脱敏登录诊断回执
+            </button>
+          </div>
           {authCheck.status !== "idle" && authCheck.status !== "checking" && (
             <p
               className={`auth-check-result auth-check-${authCheck.status}`}
               role="status"
             >
               {authCheck.message}
+            </p>
+          )}
+          {receiptCopyMessage && (
+            <p className="auth-check-result auth-check-ok" role="status">
+              {receiptCopyMessage}
             </p>
           )}
         </details>
