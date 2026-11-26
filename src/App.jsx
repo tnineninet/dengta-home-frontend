@@ -152,11 +152,17 @@ import {
   triggerChronosHeartbeat,
 } from "./chronos-client.js";
 import {
+  areRawMessageListsEquivalent,
+  clearInstantChatSnapshot,
+  mergeIncrementalMessages,
   peekCachedHistory,
+  peekCachedHistoryEntry,
   readCachedHistory,
+  readInstantChatSnapshot,
   seedInitialHistory,
   setChatHistoryCacheScope,
   writeCachedHistory,
+  writeInstantChatSnapshot,
 } from "./chat-history-cache.js";
 import { appendActivityDraft } from "./chat-activities.js";
 import { useChatDraft } from "./use-chat-draft.js";
@@ -1218,14 +1224,34 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const companionScope = String(arguments[0]?.companionScope || "").trim();
   const accountStorageScope = String(accountScope || "").trim();
   const privateMediaScope = JSON.stringify([accountStorageScope, companionScope]);
-  const [sessions, setSessions] = useState([]);
-  const [activeSessionId, setActiveSessionId] = useState(null);
+  const [initialInstantSnapshot] = useState(() =>
+    !visualPreview && accountStorageScope && companionScope
+      ? readInstantChatSnapshot(privateMediaScope)
+      : null,
+  );
+  const [sessions, setSessions] = useState(
+    () => initialInstantSnapshot?.sessions || [],
+  );
+  const [activeSessionId, setActiveSessionId] = useState(
+    () => initialInstantSnapshot?.activeSessionId || null,
+  );
   const [earlyMusicCard, setEarlyMusicCard] = useState(() => {
     const saved = readMusicDockQueue(privateMediaScope);
     return saved.queue[saved.index] || null;
   });
   const earlyMusicRestoredRef = useRef(Boolean(earlyMusicCard));
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState(() =>
+    initialInstantSnapshot?.activeSessionId &&
+    Array.isArray(initialInstantSnapshot.messages) &&
+    initialInstantSnapshot.messages.length > 0
+      ? hydrateSessionChatHistory(
+          initialInstantSnapshot.messages,
+          initialInstantSnapshot.activeSessionId,
+          { persist: false },
+        )
+      : [],
+  );
+  const sessionPrefetchInFlightRef = useRef(new Set());
   const recentChatMusic = useMemo(() => {
     const seen = new Set();
     const list = [];
@@ -1391,7 +1417,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [momentDraft, setMomentDraft] = useState("");
   const [momentImages, setMomentImages] = useState([]);
   const [commentDrafts, setCommentDrafts] = useState({});
-  const [isLoading, setIsLoading] = useState(!visualPreview);
+  const [isLoading, setIsLoading] = useState(
+    () => !visualPreview && !initialInstantSnapshot,
+  );
   const [isSending, setIsSending] = useState(false);
   const [sendPreparationStage, setSendPreparationStage] = useState("");
   const [isCompanionResponding, setIsCompanionResponding] = useState(false);
@@ -1404,6 +1432,25 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     catalog: privateMediaCatalog, loading: privateMediaLoading, error: privateMediaError,
     refresh: refreshPrivateMediaCatalog, updateCatalog: setPrivateMediaCatalog,
   } = usePrivateMediaCatalog(privateMediaScope, visualPreview);
+  useEffect(() => {
+    if (!initialInstantSnapshot?.activeSessionId || !initialInstantSnapshot.messages?.length) return;
+    setChatHistoryCacheScope(privateMediaScope);
+    seedInitialHistory(initialInstantSnapshot.activeSessionId, initialInstantSnapshot.messages);
+  }, [initialInstantSnapshot, privateMediaScope]);
+
+  useEffect(() => {
+    if (visualPreview || !hasLoadedSettings || isSending) return;
+    if (!sessions.length && !messages.length) {
+      clearInstantChatSnapshot(privateMediaScope);
+      return;
+    }
+    writeInstantChatSnapshot(privateMediaScope, {
+      sessions,
+      activeSessionId,
+      messages,
+    });
+  }, [visualPreview, hasLoadedSettings, isSending, privateMediaScope, sessions, activeSessionId, messages]);
+
   const [lastPromptReceipt, setLastPromptReceipt] = useState(() =>
     readPromptReceipt(accountStorageScope),
   );
@@ -3946,7 +3993,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
       // 1) 秒开：同一次运行内的内存缓存同步命中，直接渲染上次的历史。
       const memoryCached = peekCachedHistory(activeSessionId);
+      const cachedEntry = peekCachedHistoryEntry(activeSessionId);
       let painted = Boolean(memoryCached);
+      let paintedRaw = memoryCached || null;
       let fullLoaded = false;
       if (memoryCached) {
         setMessages(hydrateSessionChatHistory(memoryCached, activeSessionId, { persist: false }));
@@ -3958,6 +4007,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         void readCachedHistory(activeSessionId).then((cached) => {
           if (!cached || painted || fullLoaded || !isCurrent()) return;
           painted = true;
+          paintedRaw = cached;
           setMessages(hydrateSessionChatHistory(cached, activeSessionId, { persist: false }));
           setHistoryLoadState(null);
         });
@@ -3967,27 +4017,54 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         ).then((page) => {
           if (!Array.isArray(page?.messages) || painted || fullLoaded || !isCurrent()) return;
           painted = true;
+          paintedRaw = page.messages;
           setMessages(hydrateSessionChatHistory(page.messages, activeSessionId, { persist: false }));
           setHistoryLoadState(null);
         }).catch(() => {});
       }
 
       try {
-        // 4) 后台完整校准（最多 500 条），结果写回缓存。
-        const data = await requestSessionHistory(
-          `/api/v2/sessions/${activeSessionId}/messages`,
-        );
-        if (!Array.isArray(data?.messages)) {
-          throw Object.assign(new Error("聊天历史回执不完整"), { code: "session_receipt_invalid" });
-        }
-        fullLoaded = true;
-        if (!painted ? isCurrent() : safeToReplace()) {
-          setMessages(
-            hydrateSessionChatHistory(data.messages, activeSessionId),
+        // 4) 已拥有完整校准缓存时优先走 ?after= 零冗余增量拉取；无完整缓存时再做全量校准。
+        const lastCachedIso =
+          cachedEntry?.full === true && cachedEntry.messages.length > 0
+            ? cachedEntry.messages[cachedEntry.messages.length - 1]?.created_at
+            : null;
+        if (lastCachedIso && Number.isFinite(Date.parse(lastCachedIso))) {
+          const delta = await requestSessionHistory(
+            `/api/v2/sessions/${activeSessionId}/messages?after=${encodeURIComponent(lastCachedIso)}`,
           );
-          setHistoryLoadState(null);
+          if (!Array.isArray(delta?.messages)) {
+            throw Object.assign(new Error("聊天历史回执不完整"), { code: "session_receipt_invalid" });
+          }
+          fullLoaded = true;
+          if (delta.messages.length > 0) {
+            const merged = mergeIncrementalMessages(cachedEntry.messages, delta.messages);
+            if (safeToReplace()) {
+              setMessages(hydrateSessionChatHistory(merged, activeSessionId));
+              setHistoryLoadState(null);
+            } else {
+              writeCachedHistory(activeSessionId, merged);
+            }
+          }
         } else {
-          writeCachedHistory(activeSessionId, data.messages);
+          const data = await requestSessionHistory(
+            `/api/v2/sessions/${activeSessionId}/messages`,
+          );
+          if (!Array.isArray(data?.messages)) {
+            throw Object.assign(new Error("聊天历史回执不完整"), { code: "session_receipt_invalid" });
+          }
+          fullLoaded = true;
+          const unchanged = paintedRaw && areRawMessageListsEquivalent(paintedRaw, data.messages);
+          if (unchanged) {
+            writeCachedHistory(activeSessionId, data.messages);
+          } else if (!painted ? isCurrent() : safeToReplace()) {
+            setMessages(
+              hydrateSessionChatHistory(data.messages, activeSessionId),
+            );
+            setHistoryLoadState(null);
+          } else {
+            writeCachedHistory(activeSessionId, data.messages);
+          }
         }
       } catch (error) {
         if (isCurrent() && !painted) {
@@ -5080,6 +5157,43 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         historyLoadState?.status !== "error" || historyLoadState.sessionId !== activeSessionIdRef.current) return;
     historyLoadPendingRef.current = true;
     setHistoryRetryRevision(current => current + 1);
+  }
+
+  function prefetchSessionHistory(sessionId) {
+    if (
+      visualPreview ||
+      !sessionId ||
+      sessionId === activeSessionIdRef.current ||
+      peekCachedHistory(sessionId) ||
+      sessionPrefetchInFlightRef.current.has(sessionId)
+    ) {
+      return;
+    }
+    sessionPrefetchInFlightRef.current.add(sessionId);
+    const scopeAtStart = privateMediaScope;
+    void readCachedHistory(sessionId)
+      .then((cached) => {
+        if (cached || settingsSaveScope(authSession.getSnapshot()) !== scopeAtStart) return;
+        return apiRequest(
+          `/api/v2/sessions/${sessionId}/messages?limit=${HISTORY_FIRST_PAGE_SIZE}`,
+          {
+            cache: "no-store",
+            retry: false,
+            authSession: createScopedSettingsSession(authSession, scopeAtStart),
+          },
+        ).then((page) => {
+          if (
+            Array.isArray(page?.messages) &&
+            settingsSaveScope(authSession.getSnapshot()) === scopeAtStart
+          ) {
+            seedInitialHistory(sessionId, page.messages);
+          }
+        });
+      })
+      .catch(() => {})
+      .finally(() => {
+        sessionPrefetchInFlightRef.current.delete(sessionId);
+      });
   }
 
   function chooseSession(sessionId) {
@@ -8467,6 +8581,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             </div>
           ) : (
               <ChatTranscript
+                key={activeSessionId || "none"}
                 hideProcess={chatSkinPreferences.hideGenerationProcess !== false}
                 showErrorDetails={chatSkinPreferences.showErrorDetails === true}
                 textImpactScope={privateMediaScope}
@@ -11595,6 +11710,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               >
                 <button
                   className="session-select"
+                  onPointerEnter={() => prefetchSessionHistory(session.id)}
+                  onPointerDown={() => prefetchSessionHistory(session.id)}
+                  onFocus={() => prefetchSessionHistory(session.id)}
                   onClick={() => chooseSession(session.id)}
                   title={session.title}
                 >
