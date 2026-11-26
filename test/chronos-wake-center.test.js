@@ -41,4 +41,12 @@ assert.match(appSource, /timezone:\s*settings\.timezone \|\| detectBrowserTimeZo
 assert.match(workerJava, /\/api\/v2\/chronos\/heartbeat/);
 assert.match(workerJava, /private static JSONObject postJson/);
 
+// 5. Precision exact-second heartbeat delay, snooze UX, custom IANA timezone & instant refresh
+assert.match(clientSource, /export function computeNextChronosHeartbeatDelayMs/);
+assert.match(appSource, /computeNextChronosHeartbeatDelayMs/);
+assert.match(appSource, /dengta:chronos-refresh/);
+assert.match(componentSource, /handleSnoozeSchedule/);
+assert.match(componentSource, /离线补发宽限/);
+assert.match(componentSource, /当前本机时区/);
+
 console.log("frontend Chronos wake center & Android bridge verification passed");

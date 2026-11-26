@@ -86,6 +86,11 @@
   ],
   "redirects": [
     {
+      "source": "/downloads/DengTa-2.13.60.apk",
+      "destination": "https://github.com/tnineninet/dengta-home-frontend/releases/download/v2.13.60/DengTa-2.13.60.apk",
+      "permanent": false
+    },
+    {
       "source": "/downloads/DengTa-2.13.59.apk",
       "destination": "https://github.com/tnineninet/dengta-home-frontend/releases/download/v2.13.59/DengTa-2.13.59.apk",
       "permanent": false
@@ -107,7 +112,7 @@
     },
     {
       "source": "/downloads/DengTa-latest.apk",
-      "destination": "https://github.com/tnineninet/dengta-home-frontend/releases/download/v2.13.59/DengTa-2.13.59.apk",
+      "destination": "https://github.com/tnineninet/dengta-home-frontend/releases/download/v2.13.60/DengTa-2.13.60.apk",
       "permanent": false
     }
   ],

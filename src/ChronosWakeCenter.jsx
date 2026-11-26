@@ -59,7 +59,7 @@ export default function ChronosWakeCenter({
   const [newBypassQuiet, setNewBypassQuiet] = useState(true);
 
   const applyServerState = useCallback(
-    (next) => {
+    (next, { notifyHeartbeat = false } = {}) => {
       if (!next) return;
       setState(next);
       if (next.policy) setPolicyDraft(next.policy);
@@ -70,8 +70,11 @@ export default function ChronosWakeCenter({
       if (Array.isArray(next.schedules)) {
         void syncNativeLocalWakeNotifications(next.schedules, { aiName });
       }
+      if (notifyHeartbeat && !visualPreview) {
+        window.dispatchEvent(new Event("dengta:chronos-refresh"));
+      }
     },
-    [aiName],
+    [aiName, visualPreview],
   );
 
   const refreshState = useCallback(async () => {
@@ -154,7 +157,7 @@ export default function ChronosWakeCenter({
         return;
       }
       const next = await updateChronosPolicy({ ...payload, sync_push_enabled: false });
-      applyServerState(next);
+      applyServerState(next, { notifyHeartbeat: true });
       if (payload.timezone && typeof onTimezoneSynced === "function") {
         onTimezoneSynced(payload.timezone);
       }
@@ -193,7 +196,7 @@ export default function ChronosWakeCenter({
         return;
       }
       const res = await createChronosSchedule(preset);
-      if (res?.state) applyServerState(res.state);
+      if (res?.state) applyServerState(res.state, { notifyHeartbeat: true });
       setFeedback({
         type: "ok",
         text: `已设定「${res.schedule?.title || preset.title}」→ ${res.next_fire_local || "准点触发"}。`,
@@ -239,9 +242,39 @@ export default function ChronosWakeCenter({
         return;
       }
       const res = await updateChronosSchedule(item.id, { enabled: !item.enabled });
-      if (res?.state) applyServerState(res.state);
+      if (res?.state) applyServerState(res.state, { notifyHeartbeat: true });
     } catch (error) {
       setFeedback({ type: "error", text: error?.message || "切换开关失败。" });
+    } finally {
+      setBusyAction("");
+    }
+  }
+
+  async function handleSnoozeSchedule(item, snoozeMinutes = 10) {
+    setBusyAction(`snooze:${item.id}`);
+    setFeedback(null);
+    try {
+      if (visualPreview) {
+        const parsedNext = Date.parse(item.next_fire_at || "");
+        const baseMs = Math.max(
+          authoritativeNowMs,
+          Number.isFinite(parsedNext) ? parsedNext : authoritativeNowMs,
+        );
+        const nextIso = new Date(baseMs + snoozeMinutes * 60_000).toISOString();
+        setState((prev) => ({
+          ...prev,
+          schedules: (prev?.schedules || []).map((s) =>
+            s.id === item.id ? { ...s, enabled: true, next_fire_at: nextIso } : s,
+          ),
+        }));
+        setFeedback({ type: "ok", text: `已将「${item.title}」顺延 ${snoozeMinutes} 分钟。` });
+        return;
+      }
+      const res = await updateChronosSchedule(item.id, { snooze_minutes: snoozeMinutes });
+      if (res?.state) applyServerState(res.state, { notifyHeartbeat: true });
+      setFeedback({ type: "ok", text: `已将「${item.title}」顺延 ${snoozeMinutes} 分钟。` });
+    } catch (error) {
+      setFeedback({ type: "error", text: error?.message || "推迟唤醒失败。" });
     } finally {
       setBusyAction("");
     }
@@ -258,7 +291,7 @@ export default function ChronosWakeCenter({
         return;
       }
       const res = await deleteChronosSchedule(item.id);
-      if (res?.state) applyServerState(res.state);
+      if (res?.state) applyServerState(res.state, { notifyHeartbeat: true });
       setFeedback({ type: "ok", text: `已删除定时唤醒「${item.title}」。` });
     } catch (error) {
       setFeedback({ type: "error", text: error?.message || "删除唤醒失败。" });
@@ -561,6 +594,17 @@ export default function ChronosWakeCenter({
                     </div>
                   </div>
                   <div className="ch-schedule-actions">
+                    {item.enabled && (
+                      <button
+                        type="button"
+                        className="ch-icon-btn"
+                        onClick={() => handleSnoozeSchedule(item, 10)}
+                        disabled={busyAction === `snooze:${item.id}`}
+                        title="顺延 10 分钟"
+                      >
+                        +10分
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="ch-icon-btn"
@@ -605,13 +649,15 @@ export default function ChronosWakeCenter({
           <label className="ch-field">
             权威时区（IANA）
             <select
-              value={
-                COMMON_TIMEZONES.some((tz) => tz.value === policyDraft.timezone)
-                  ? policyDraft.timezone
-                  : "Asia/Shanghai"
-              }
+              value={policyDraft.timezone || "Asia/Shanghai"}
               onChange={(e) => setPolicyDraft((p) => ({ ...p, timezone: e.target.value }))}
             >
+              {policyDraft.timezone &&
+                !COMMON_TIMEZONES.some((tz) => tz.value === policyDraft.timezone) && (
+                  <option value={policyDraft.timezone}>
+                    当前本机时区 ({policyDraft.timezone})
+                  </option>
+                )}
               {COMMON_TIMEZONES.map((tz) => (
                 <option key={tz.value} value={tz.value}>
                   {tz.label}
@@ -685,6 +731,16 @@ export default function ChronosWakeCenter({
               type="time"
               value={policyDraft.evening_ritual_time}
               onChange={(e) => setPolicyDraft((p) => ({ ...p, evening_ritual_time: e.target.value }))}
+            />
+          </label>
+          <label className="ch-field">
+            离线补发宽限（分钟）
+            <input
+              type="number"
+              min="5"
+              max="240"
+              value={policyDraft.missed_grace_minutes ?? 45}
+              onChange={(e) => setPolicyDraft((p) => ({ ...p, missed_grace_minutes: Number(e.target.value) || 45 }))}
             />
           </label>
         </div>

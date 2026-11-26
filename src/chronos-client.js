@@ -291,6 +291,31 @@ export function triggerChronosHeartbeat(options = {}) {
 }
 
 /**
+ * Compute exact delay until the next Chronos foreground heartbeat tick.
+ * When an upcoming alarm is within `defaultIntervalMs`, aligns wake-up to
+ * ~800ms after `next_schedule.next_fire_at` so alarms fire on the exact second
+ * instead of waiting for a coarse 45-second polling boundary.
+ */
+export function computeNextChronosHeartbeatDelayMs(
+  heartbeatResponse = null,
+  { defaultIntervalMs = 45_000, minDelayMs = 1_500, settleBufferMs = 800 } = {},
+) {
+  const nextFireIso = heartbeatResponse?.summary?.next_schedule?.next_fire_at;
+  if (!nextFireIso) return defaultIntervalMs;
+  const fireMs = Date.parse(nextFireIso);
+  if (!Number.isFinite(fireMs)) return defaultIntervalMs;
+  const serverNowMs = Number.isFinite(Date.parse(heartbeatResponse?.server_now || ""))
+    ? Date.parse(heartbeatResponse.server_now)
+    : Date.now();
+  const remainingMs = fireMs - serverNowMs;
+  if (remainingMs <= 0) return minDelayMs;
+  if (remainingMs < defaultIntervalMs) {
+    return Math.max(minDelayMs, Math.min(defaultIntervalMs, Math.round(remainingMs + settleBufferMs)));
+  }
+  return defaultIntervalMs;
+}
+
+/**
  * Arm OS-level local notifications on Capacitor (Android/iOS) for exact upcoming
  * Chronos wake alarms within 48 hours, guaranteeing wake delivery even if the
  * WebView is suspended by Android Doze.

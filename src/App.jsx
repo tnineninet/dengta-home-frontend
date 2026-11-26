@@ -146,6 +146,7 @@ import {
   mergeLivePerceptionContext,
 } from "./live-perception.js";
 import {
+  computeNextChronosHeartbeatDelayMs,
   detectBrowserTimeZone,
   syncNativeLocalWakeNotifications,
   triggerChronosHeartbeat,
@@ -3826,12 +3827,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     const CHRONOS_HEARTBEAT_INTERVAL_MS = 45_000;
 
     async function runChronosHeartbeatTick() {
-      if (cancelled || heartbeatInFlight || !navigator.onLine) return;
-      if (document.visibilityState === "hidden") return;
+      if (cancelled || heartbeatInFlight || !navigator.onLine) return null;
+      if (document.visibilityState === "hidden") return null;
       heartbeatInFlight = true;
       try {
         const res = await triggerChronosHeartbeat();
-        if (cancelled || !res) return;
+        if (cancelled || !res) return null;
         if (Array.isArray(res.summary?.upcoming_schedules)) {
           void syncNativeLocalWakeNotifications(res.summary.upcoming_schedules, {
             aiName: settings.ai_name || "小小灯",
@@ -3853,34 +3854,48 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             }
           }
         }
+        return res;
       } catch {
         // Chronos heartbeat is best-effort and must never interrupt chat UX.
+        return null;
       } finally {
         heartbeatInFlight = false;
       }
     }
 
     async function loop() {
-      await runChronosHeartbeatTick();
+      const res = await runChronosHeartbeatTick();
       if (!cancelled) {
-        timerId = window.setTimeout(loop, CHRONOS_HEARTBEAT_INTERVAL_MS);
+        const delayMs = computeNextChronosHeartbeatDelayMs(res, {
+          defaultIntervalMs: CHRONOS_HEARTBEAT_INTERVAL_MS,
+        });
+        window.clearTimeout(timerId);
+        timerId = window.setTimeout(loop, delayMs);
       }
     }
 
     function onResume() {
       if (document.visibilityState === "visible") {
-        void runChronosHeartbeatTick();
+        window.clearTimeout(timerId);
+        void loop();
       }
+    }
+
+    function onChronosRefresh() {
+      window.clearTimeout(timerId);
+      void loop();
     }
 
     void loop();
     document.addEventListener("visibilitychange", onResume);
     window.addEventListener("online", onResume);
+    window.addEventListener("dengta:chronos-refresh", onChronosRefresh);
     return () => {
       cancelled = true;
       window.clearTimeout(timerId);
       document.removeEventListener("visibilitychange", onResume);
       window.removeEventListener("online", onResume);
+      window.removeEventListener("dengta:chronos-refresh", onChronosRefresh);
     };
   }, [accountStorageScope, hasLoadedSettings, settings.ai_name, visualPreview]);
 
@@ -6676,6 +6691,10 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             );
             const activity = normalizeCompanionActivities(event.assistant_message?.tool_calls?.activity_actions).find(action => action.kind !== "bilibili");
             if (activity) openCompanionActivity(activity);
+            const replyTextForChronos = String(event.assistant_message?.content || "");
+            if (/(闹钟|定时唤醒|准点|提醒你|叫醒|免打扰|推迟)/.test(replyTextForChronos)) {
+              window.dispatchEvent(new Event("dengta:chronos-refresh"));
+            }
             if (event.companion_status_updated !== true) {
               void refreshCompanionStatusAfterReply(sessionId);
             }
