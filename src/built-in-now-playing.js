@@ -16,6 +16,14 @@ export function compactPlaybackFeedback(backendMessage, fallback) {
   return text && text.length <= 80 ? text : String(fallback || "");
 }
 
+function upgradeNeteaseCdnHttps(value) {
+  const raw = String(value || "").trim();
+  if (/^http:\/\/[^/]*\.(?:music\.126\.net|music\.163\.com)\//i.test(raw)) {
+    return raw.replace(/^http:\/\//i, "https://");
+  }
+  return raw;
+}
+
 export function createBuiltInNowPlaying({ scope, request, createAudio = url => new Audio(url), onSong, onBusy, onFeedback, onStartupFeedback }) {
   let alive = true, current = null, candidate = null, sequence = 0, localPlayback = null;
   const closedOwners = new WeakSet();
@@ -38,7 +46,7 @@ export function createBuiltInNowPlaying({ scope, request, createAudio = url => n
     }
   };
   const makeEntry = (song, owner) => {
-    const url = validateDirectMediaUrl(song?.url);
+    const url = validateDirectMediaUrl(upgradeNeteaseCdnHttps(song?.url));
     if (!url.ok || !song?.title) throw new Error("music_random_unavailable");
     const entry = { audio: createAudio(url.url), owner, listeners: [], wantsPlayback: false, song: {
       title: song.title, artist: song.artist || "", cover: song.cover || song.cover_url || "", source: "dengta",
@@ -94,7 +102,7 @@ export function createBuiltInNowPlaying({ scope, request, createAudio = url => n
       Number(match[1]), Number(match[2]) - 1, Number(match[3]),
       Number(match[4]), Number(match[5]), Number(match[6]),
     );
-    return Number.isFinite(issued) && Date.now() - issued < 12 * 60 * 60 * 1000;
+    return Number.isFinite(issued) && Date.now() - issued < 15 * 60 * 1000;
   }
   async function select(token) {
     const data = await request("/api/v2/music/providers/netease/random-playable", { ...token.options, timeoutMs: 15000 }).catch(() => null);

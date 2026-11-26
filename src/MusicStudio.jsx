@@ -24,9 +24,32 @@ import {
   listNeteaseQrPlaylists,
 } from "./netease-qr-login.js";
 import {
+  cookieGetMyPlaylists,
   readNeteaseCookieSession,
   saveNeteaseCookieSession,
 } from "./music-listening.js";
+
+function upgradeNeteaseAudioHttps(url) {
+  const raw = String(url || "").trim();
+  if (!raw) return "";
+  return /^http:\/\/[^/]*\.(?:music\.126\.net|music\.163\.com)\//i.test(raw)
+    ? raw.replace(/^http:\/\//i, "https://")
+    : raw;
+}
+
+function normalizeCookiePlaylists(data) {
+  const owned = Array.isArray(data?.owned) ? data.owned : [];
+  const subscribed = Array.isArray(data?.subscribed) ? data.subscribed : [];
+  return [...owned, ...subscribed]
+    .map((row) => ({
+      provider_playlist_id: String(row?.provider_playlist_id || row?.playlist_id || row?.id || ""),
+      name: String(row?.name || "未命名歌单"),
+      item_count: Number(row?.item_count) || 0,
+      creator_nickname: String(row?.creator_nickname || ""),
+      subscribed: row?.subscribed === true,
+    }))
+    .filter((row) => row.provider_playlist_id);
+}
 import {
   neteaseCookiePluginAvailable,
   openNeteaseCookieLogin,
@@ -156,11 +179,32 @@ export default function MusicStudio({ onOpenSync, visualPreview = false }) {
     return () => { cancelled = true; };
   }, [reloadKey, visualPreview]);
 
+  const fetchPlaylistsUnified = useCallback(async (source = "") => {
+    if (source === "cookie_session") {
+      try {
+        const cookieData = await cookieGetMyPlaylists();
+        const normalized = normalizeCookiePlaylists(cookieData);
+        if (normalized.length > 0) return normalized;
+      } catch {
+        // Fall back to QR playlists endpoint
+      }
+      return listNeteaseQrPlaylists();
+    }
+    try {
+      const qrList = await listNeteaseQrPlaylists();
+      if (qrList.length > 0) return qrList;
+    } catch {
+      // Fall back to cookie playlists endpoint
+    }
+    const cookieData = await cookieGetMyPlaylists();
+    return normalizeCookiePlaylists(cookieData);
+  }, []);
+
   const loadPlaylists = useCallback(async () => {
     setDataBusy(true);
     setStudioError("");
     try {
-      const list = await listNeteaseQrPlaylists();
+      const list = await fetchPlaylistsUnified(connection?.source || "");
       setPlaylists(list);
       if (!list.length) setStudioMessage("已连接网易云，暂未读取到公开歌单，可去「搜歌」或「日推」听歌。");
     } catch (error) {
@@ -168,7 +212,7 @@ export default function MusicStudio({ onOpenSync, visualPreview = false }) {
     } finally {
       setDataBusy(false);
     }
-  }, []);
+  }, [connection, fetchPlaylistsUnified]);
 
   const loadDaily = useCallback(async () => {
     setDataBusy(true);
@@ -192,7 +236,7 @@ export default function MusicStudio({ onOpenSync, visualPreview = false }) {
     if (!connection?.connected || mode !== "direct" || visualPreview) return undefined;
     let cancelled = false;
     if (directTab === "playlists" && playlists.length === 0) {
-      listNeteaseQrPlaylists()
+      fetchPlaylistsUnified(connection?.source || "")
         .then((list) => {
           if (cancelled) return;
           setPlaylists(list);
@@ -218,7 +262,7 @@ export default function MusicStudio({ onOpenSync, visualPreview = false }) {
         });
     }
     return () => { cancelled = true; };
-  }, [connection, dailySongs.length, directTab, mode, playlists.length, visualPreview]);
+  }, [connection, dailySongs.length, directTab, fetchPlaylistsUnified, mode, playlists.length, visualPreview]);
 
   useEffect(() => {
     if (mode !== "external" || !embedState.url || frameReady) return undefined;
@@ -236,7 +280,11 @@ export default function MusicStudio({ onOpenSync, visualPreview = false }) {
       const data = await apiRequest(
         `/api/v2/music/providers/netease/cookie/search?q=${encodeURIComponent(q)}&limit=20`,
       );
-      const list = Array.isArray(data?.songs) ? data.songs : [];
+      const list = Array.isArray(data?.items)
+        ? data.items
+        : Array.isArray(data?.songs)
+          ? data.songs
+          : [];
       setSearchSongs(list);
       if (!list.length) setStudioMessage(`没有搜到「${q}」相关曲目。`);
     } catch (error) {
@@ -285,8 +333,18 @@ export default function MusicStudio({ onOpenSync, visualPreview = false }) {
     setStudioError("");
     setStudioMessage(`正在获取《${track.title || track.name}》播放直链…`);
     try {
-      const pb = await getNeteaseQrSongUrl(trackId);
+      let pb = null;
+      if (connection?.source === "cookie_session") {
+        const cookiePb = await apiRequest(
+          `/api/v2/music/providers/netease/cookie/song-url?id=${encodeURIComponent(trackId)}`,
+        ).catch(() => null);
+        pb = cookiePb?.playback || null;
+      }
       if (!pb?.url) {
+        pb = await getNeteaseQrSongUrl(trackId);
+      }
+      const playableUrl = upgradeNeteaseAudioHttps(pb?.url);
+      if (!playableUrl) {
         setStudioError("该曲目暂时无法获取播放直链（可能需要网易云会员或版权受限）。");
         setStudioMessage("");
         return;
@@ -296,7 +354,7 @@ export default function MusicStudio({ onOpenSync, visualPreview = false }) {
         title: track.title || track.name || "未知曲目",
         artist: track.artist || "",
         cover: track.cover_url || "",
-        url: pb.url,
+        url: playableUrl,
       });
       setStudioMessage("");
     } catch (error) {
@@ -311,6 +369,10 @@ export default function MusicStudio({ onOpenSync, visualPreview = false }) {
     setStudioMessage("");
     try {
       const saved = await openNeteaseCookieLogin({ desktop });
+      if (!saved?.ok || !saved?.cookie) {
+        setStudioError(saved?.error || "网页登录已取消或未拿到登录态，请重试。");
+        return;
+      }
       await saveNeteaseCookieSession(saved.cookie);
       setStudioMessage("已自动抓取网易云登录态并同步回灯塔！");
       await refreshConnection();
@@ -451,6 +513,8 @@ export default function MusicStudio({ onOpenSync, visualPreview = false }) {
                   inline
                   autoStart
                   hidePlaylists
+                  onNativeCookieLogin={neteaseCookiePluginAvailable() ? handleNativeCookieLogin : null}
+                  nativeCookieBusy={cookieBusy}
                   onConnected={(conn) => {
                     if (conn?.connected) {
                       setConnection(conn);
@@ -458,23 +522,18 @@ export default function MusicStudio({ onOpenSync, visualPreview = false }) {
                     }
                   }}
                 />
+                {studioError && <div className="ms-banner is-error" role="alert">{studioError}</div>}
+                {studioMessage && <div className="ms-banner" role="status">{studioMessage}</div>}
                 {neteaseCookiePluginAvailable() && (
                   <div className="ms-native-fallback">
-                    <span>也可以用手机 App 内置登录（扫码/验证码登录成功后自动抓取并同步回灯塔）：</span>
+                    <span>若手机版登录页按钮不便点按，可切换桌面版网页扫码（同样走手机本机网络、免服务器风控）：</span>
                     <div className="ms-native-fallback-btns">
-                      <button
-                        type="button"
-                        disabled={cookieBusy}
-                        onClick={() => void handleNativeCookieLogin(false)}
-                      >
-                        {cookieBusy ? "正在同步…" : "App 内网页登录（自动抓登录态）"}
-                      </button>
                       <button
                         type="button"
                         disabled={cookieBusy}
                         onClick={() => void handleNativeCookieLogin(true)}
                       >
-                        桌面版网页扫码登录
+                        {cookieBusy ? "正在同步…" : "桌面版网页扫码登录"}
                       </button>
                     </div>
                   </div>

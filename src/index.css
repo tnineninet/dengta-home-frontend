@@ -254,10 +254,10 @@ button:disabled {
 .session-list {
   display: flex;
   min-height: 0;
-  max-height: 124px;
+  max-height: 88px;
   flex: 0 1 auto;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -329,8 +329,17 @@ button:disabled {
   flex: 0 0 auto;
   align-items: center;
   gap: 6px;
-  padding-top: 8px;
+  padding-top: 6px;
   border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+}
+
+.sidebar-dock-footer .account-menu-trigger {
+  min-height: 40px;
+  padding: 4px 8px;
+}
+
+.sidebar-dock-footer .account-menu-trigger-copy small {
+  display: none;
 }
 
 .sidebar-dock-actions {
@@ -342,7 +351,7 @@ button:disabled {
 
 .sidebar-dock-action {
   display: inline-flex;
-  min-height: 38px;
+  min-height: 40px;
   align-items: center;
   justify-content: center;
   gap: 5px;
@@ -10294,7 +10303,7 @@ body,
 
 /* 移动端触控目标 ≥ 44px（WCAG 2.1 标准） */
 @media (max-width: 820px) {
-  .session-heading button,
+  .session-heading > button:last-child,
   .session-actions button,
   .composer-message-reference > button,
   .selected-attachment > button {
@@ -12636,12 +12645,16 @@ html[data-dengta-scrolling="1"] *::after {
 /* Coarse-pointer touch targets: keep every real control at least 44px.
    File inputs stay visually hidden by design and are excluded. */
 @media (max-width: 768px), (pointer: coarse) {
-  button:not(.visually-hidden-file-input),
+  button:not(.visually-hidden-file-input):not(.feature-navigation-group-toggle):not(.session-heading-toggle),
   [role="button"],
   select {
     min-height: 44px !important;
   }
-  button:not(.visually-hidden-file-input) {
+  button:not(.visually-hidden-file-input):not(.feature-navigation-group-toggle):not(.session-heading-toggle) {
     min-width: 44px !important;
+  }
+  .feature-navigation-group-toggle,
+  .session-heading-toggle {
+    min-height: 32px !important;
   }
 }

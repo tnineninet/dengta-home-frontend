@@ -114,10 +114,10 @@ export default function FeatureNavigation({ items = [], activeView, onNavigate, 
 
   return <div className="feature-navigation">
     <div className="feature-navigation-search">
-      <label htmlFor={searchId}>找个玩法</label>
+      <label htmlFor={searchId} className="sr-only">找个玩法</label>
       <div className="feature-navigation-search-field">
         <Search aria-hidden="true" />
-        <input id={searchId} ref={searchRef} type="search" value={search} onChange={handleSearchChange} onCompositionEnd={event => searchHistory.rememberSoon(event.currentTarget.value)} onKeyDown={handleSearchKeyDown} placeholder="聊天、听歌、小棉花…" maxLength={60} autoComplete="off" aria-describedby={isSearching ? `${searchId}-results` : undefined} />
+        <input id={searchId} ref={searchRef} type="search" value={search} onChange={handleSearchChange} onCompositionEnd={event => searchHistory.rememberSoon(event.currentTarget.value)} onKeyDown={handleSearchKeyDown} placeholder="找个玩法：聊天、听歌、小棉花…" maxLength={60} autoComplete="off" aria-describedby={isSearching ? `${searchId}-results` : undefined} />
         {search ? <button type="button" aria-label="清空玩法搜索" onClick={clearSearch}><X aria-hidden="true" /></button> : null}
       </div>
       <SearchHistoryChips
@@ -138,7 +138,7 @@ export default function FeatureNavigation({ items = [], activeView, onNavigate, 
           const itemsId = `${searchId}-group-items-${index}`;
           return <section className={`feature-navigation-group${isCollapsed ? " is-collapsed" : ""}${activeGroup?.label === group.label ? " is-current-group" : ""}`} key={group.label} role="group" aria-labelledby={toggleId}>
             <button type="button" id={toggleId} className="feature-navigation-group-toggle" aria-expanded={!isCollapsed} aria-controls={itemsId} onClick={() => toggleGroup(group.label)}>
-              <span>{group.label}</span>
+              <span className="feature-navigation-group-label">{group.label}<em className="feature-navigation-group-count">{group.entries.length}</em></span>
               <ChevronDown aria-hidden="true" className={isCollapsed ? "is-collapsed" : ""} />
             </button>
             <div id={itemsId} className="feature-navigation-group-items" inert={isCollapsed ? true : undefined}>

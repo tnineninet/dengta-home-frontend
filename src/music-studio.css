@@ -275,6 +275,11 @@
   border-color: transparent;
 }
 
+.netease-qr-card.is-inline .netease-qr-actions button.is-full {
+  flex: 1 1 100%;
+  width: 100%;
+}
+
 .netease-qr-card.is-inline .netease-qr-actions button:disabled {
   opacity: 0.5;
   cursor: default;
@@ -658,21 +663,33 @@
 
 @media (max-width: 700px) {
   .music-studio-page {
-    height: calc(100dvh - 70px);
-    min-height: 520px;
-    gap: 8px;
-    padding-bottom: 58px;
+    height: calc(100dvh - 64px);
+    min-height: 480px;
+    gap: 7px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
   }
 
-  .music-studio-header { align-items: flex-start; gap: 8px; }
-  .music-studio-icon { width: 34px; height: 34px; flex-basis: 34px; border-radius: 11px; }
-  .music-studio-heading h2 { font-size: 17px; }
+  .music-studio-header { align-items: flex-start; gap: 6px; }
+  .music-studio-icon { width: 32px; height: 32px; flex-basis: 32px; border-radius: 10px; }
+  .music-studio-heading h2 { font-size: 16px; }
   .music-studio-heading p { display: none; }
   .music-studio-kicker { font-size: 8px; }
 
-  .music-studio-actions { width: 100%; gap: 6px; }
-  .music-studio-actions button { min-height: 38px; padding: 0 10px; font-size: 11.5px; }
+  .music-studio-actions { width: 100%; gap: 5px; }
+  .music-studio-actions button { min-height: 36px; padding: 0 9px; font-size: 11px; }
   .music-studio-frame-shell { border-radius: 18px; min-height: 0; }
-  .ms-direct-shell { padding: 12px; }
-  .music-studio-note { padding-bottom: env(safe-area-inset-bottom); }
+  .ms-direct-shell { padding: 10px 10px 88px; -webkit-overflow-scrolling: touch; }
+  .ms-login-stage { padding: 0 0 12px; gap: 10px; }
+  .netease-qr-card.is-inline { padding: 12px 12px; gap: 7px; border-radius: 16px; }
+  .netease-qr-card.is-inline strong { font-size: 14.5px; }
+  .netease-qr-canvas-frame { min-width: 192px; min-height: 192px; padding: 6px; border-radius: 12px; }
+  .netease-qr-canvas-frame canvas { width: 180px; height: 180px; }
+  .netease-qr-placeholder { width: 180px; height: 180px; font-size: 12px; }
+  .netease-qr-status-text { font-size: 12px; line-height: 1.4; }
+  .netease-qr-diag { font-size: 11px; line-height: 1.35; }
+  .netease-qr-card.is-inline .netease-qr-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .netease-qr-card.is-inline .netease-qr-actions button { width: 100%; padding: 6px 8px; font-size: 11.5px; }
+  .netease-qr-card.is-inline .netease-qr-actions button.is-full { grid-column: 1 / -1; }
+  .netease-qr-hint { font-size: 11px; line-height: 1.45; }
+  .music-studio-note { display: none; }
 }

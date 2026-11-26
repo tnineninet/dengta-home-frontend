@@ -99,8 +99,11 @@ test("SPEC-SIDEBAR-LAYOUT: sidebar uses compact single-row dock footer, hides do
   assert.match(appSource, /!Capacitor\.isNativePlatform\(\)[\s\S]{0,220}sidebar-dock-download/, "Native Android app must hide redundant Android APK download button in sidebar");
   assert.match(appSource, /session-heading-toggle/, "Recent conversations section must be collapsible to maximize feature list height");
   assert.match(navCss, /\.feature-navigation\s*\{[^}]*flex:\s*1 1 auto;[^}]*max-height:\s*none;/, "FeatureNavigation must grow freely instead of capping at 52vh");
+  assert.match(navCss, /\.feature-navigation\s+\.primary-nav\s+\.feature-navigation-group-toggle/, "Feature group headers must override .primary-nav button so section headings stay compact");
   assert.match(navCss, /\.feature-navigation-search\s*\{[^}]*z-index:\s*12;[^}]*background:\s*rgb\(var\(--theme-card-rgb/, "Sticky feature search bar must have opaque solid backdrop without overlapping cards");
   assert.match(indexCss, /\.sidebar-dock-footer\s*\{/, "index.css must define .sidebar-dock-footer layout");
+  assert.match(indexCss, /\.sidebar-dock-footer\s+\.account-menu-trigger-copy\s+small\s*\{\s*display:\s*none;/, "Compact dock footer must hide redundant second-line account subtitle for single-row alignment");
+  assert.match(indexCss, /\.session-heading\s*>\s*button:last-child/, "Mobile 44px square rule must target only the + button and never squish .session-heading-toggle");
 });
 
 test("SPEC-MULTIMODAL-PERCEPTION: Android manifest declares CAMERA permission and ScreenGlancePlugin exposes captureSnapshotNow", () => {

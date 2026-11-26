@@ -217,7 +217,7 @@ html.dengta-flat-paint .status-flow-field {
    smaller. The music switch keeps its native 51x31 visual; its label is the
    hit target. */
 @media (max-width: 820px), (pointer: coarse) {
-  .session-heading button {
+  .session-heading > button:last-child {
     min-width: 44px;
     min-height: 44px;
   }

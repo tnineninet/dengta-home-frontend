@@ -30,18 +30,27 @@ const cottonPet = fs.readFileSync(path.join(root, "src", "CottonPet.jsx"), "utf8
 const cottonCss = fs.readFileSync(path.join(root, "src", "cotton-pet.css"), "utf8");
 const petRuntime = fs.readFileSync(path.join(root, "src", "cotton", "pet-runtime.js"), "utf8");
 
-// 1. Music Studio defaults to direct QR mode (zero white-screen iframe)
+// 1. Music Studio defaults to direct QR mode, handles cookie_session playlists/search/audio, and guards native login
+const musicStudioCss = fs.readFileSync(path.join(root, "src", "music-studio.css"), "utf8");
+const builtInNowPlaying = fs.readFileSync(path.join(root, "src", "built-in-now-playing.js"), "utf8");
 assert.match(musicStudio, /useState\("direct"\)/);
-assert.match(musicStudio, /<NeteaseQrLogin[\s\S]*inline[\s\S]*autoStart/);
+assert.match(musicStudio, /<NeteaseQrLogin[\s\S]*inline[\s\S]*autoStart[\s\S]*onNativeCookieLogin/);
 assert.match(musicStudio, /openNeteaseCookieLogin/);
+assert.match(musicStudio, /if \(!saved\?\.ok \|\| !saved\?\.cookie\)/);
+assert.match(musicStudio, /cookieGetMyPlaylists/);
+assert.match(musicStudio, /Array\.isArray\(data\?\.items\)/);
+assert.match(musicStudioCss, /width:\s*180px;\s*height:\s*180px;/, "Mobile QR canvas fits inside one viewport without top clipping");
+assert.match(builtInNowPlaying, /upgradeNeteaseCdnHttps/, "Built-in player upgrades NetEase http CDN URLs safely to https");
 
-// 2. NeteaseQrLogin captures foreground return & does NOT silently auto-rotate QR at 120s
+// 2. NeteaseQrLogin captures foreground return, intercepts -462 risk block, and does NOT silently auto-rotate QR at 120s
 assert.match(neteaseQr, /visibilitychange/);
 assert.match(neteaseQr, /pageshow/);
 assert.match(neteaseQr, /appStateChange/);
 assert.match(neteaseQr, /saveImageToGallery/);
 assert.match(neteaseQr, /openNeteaseApp/);
 assert.match(neteaseQr, /我已扫码，立即检测/);
+assert.match(neteaseQr, /-462/);
+assert.match(neteaseQr, /App 内一键登录/);
 assert.doesNotMatch(neteaseQr, /120_000/);
 
 // 3. Android WebView third-party cookie + Gallery save + NetEase launcher
@@ -100,10 +109,10 @@ assert.equal(merged.length, 2, "mergeIncrementalMessages must deduplicate overla
 assert.equal(areRawMessageListsEquivalent(merged, [...merged]), true);
 assert.equal(areRawMessageListsEquivalent(merged, [merged[0]]), false);
 
-// 5. CottonPet white-on-light visibility fixes
+// 5. CottonPet white-on-light visibility fixes (v2.13.62 sculpted AO + high-contrast studio)
 assert.match(cottonPet, /outline:\s*true/);
-assert.match(cottonCss, /#bccbc8/);
+assert.match(cottonCss, /#68857d/);
 assert.match(petRuntime, /createContactShadow/);
-assert.match(petRuntime, /toneMappingExposure\s*=\s*0\.9/);
+assert.match(petRuntime, /toneMappingExposure\s*=\s*0\.86/);
 
 console.log("SDD verification passed: Music Studio QR, Chat History Speed, and CottonPet visibility");

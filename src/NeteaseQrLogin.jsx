@@ -16,6 +16,14 @@ import { readNeteaseCookieSession } from "./music-listening.js";
 const POLL_INTERVAL_MS = 3_000;
 const QR_STORAGE_KEY = "dengta:netease:pending_qr:v1";
 const QR_MAX_AGE_MS = 4.5 * 60 * 1000;
+const QR_RISK_BLOCK_CODES = new Set([-462, -460, 8820, 8821]);
+
+function isQrRiskBlocked(result) {
+  if (!result) return false;
+  if (result.status === "risk_blocked") return true;
+  if (result.raw_code !== undefined && QR_RISK_BLOCK_CODES.has(Number(result.raw_code))) return true;
+  return /验证|风控/.test(String(result.message || ""));
+}
 
 function pickError(caught) {
   return caught?.message || "网易云扫码登录暂时失败。";
@@ -74,6 +82,8 @@ async function fetchUnifiedConnection() {
 export default function NeteaseQrLogin({
   onImported = () => {},
   onConnected,
+  onNativeCookieLogin = null,
+  nativeCookieBusy = false,
   inline = false,
   autoStart = false,
   hidePlaylists = false,
@@ -81,6 +91,7 @@ export default function NeteaseQrLogin({
   const canvasRef = useRef(null);
   const pollTimerRef = useRef(null);
   const pollInFlightRef = useRef(false);
+  const lastResumeAtRef = useRef(0);
   const activeKeyRef = useRef("");
   const startedAtRef = useRef(0);
   const loginAttemptRef = useRef(0);
@@ -139,30 +150,32 @@ export default function NeteaseQrLogin({
     try {
       const result = await checkNeteaseQrLogin(targetKey);
       if (attempt !== undefined && attempt !== loginAttemptRef.current) return;
+      const riskBlocked = isQrRiskBlocked(result);
+      const effectiveStatus = riskBlocked ? "risk_blocked" : result?.status;
       const statusNames = {
         waiting: "等待扫码",
         scanned: "已扫码，请在网易云点确认",
         confirmed: "登录成功",
         expired: "二维码已过期",
-        risk_blocked: "被风控拦截",
+        risk_blocked: "云端 IP 被网易云风控拦截",
       };
       setLastPollLine(
-        `状态：${statusNames[result?.status] || result?.status || "检测中"}` +
+        `状态：${statusNames[effectiveStatus] || effectiveStatus || "检测中"}` +
           (result?.raw_code !== undefined ? ` (code ${result.raw_code})` : "") +
           (result?.message ? ` · ${result.message}` : ""),
       );
 
-      if (result?.status === "confirmed") {
+      if (effectiveStatus === "confirmed") {
         const next = result.connection || (await fetchUnifiedConnection());
         applyConfirmedConnection(next?.connected ? next : { connected: true, nickname: "", uid: "" });
         return;
       }
-      if (result?.status === "scanned") {
+      if (effectiveStatus === "scanned") {
         setQrStatus("scanned");
         setFeedback("已检测到扫码！请在网易云 App 点击「确认登录」，切回灯塔会自动完成同步。");
         return;
       }
-      if (result?.status === "expired") {
+      if (effectiveStatus === "expired") {
         // 800 可能是上一轮已经确认成功导致 key 消费完毕，先核对真实登录态再判定过期！
         const liveStatus = await fetchUnifiedConnection();
         if (liveStatus.connected) {
@@ -176,15 +189,22 @@ export default function NeteaseQrLogin({
         setFeedback("二维码已过期，请点击「换一张」重新生成。");
         return;
       }
-      if (result?.status === "risk_blocked") {
+      if (effectiveStatus === "risk_blocked") {
+        const liveStatus = await fetchUnifiedConnection();
+        if (liveStatus.connected) {
+          applyConfirmedConnection(liveStatus);
+          return;
+        }
         stopPolling();
         loginAttemptRef.current += 1;
         activeKeyRef.current = "";
         writePendingQr(null);
         setQrStatus("risk_blocked");
         setFeedback(
-          (result.message || "登录被网易云风控拦截。") +
-            " 建议使用下方「App 内登录」或稍等 2 分钟后重试。",
+          onNativeCookieLogin
+            ? `网易云风控拦截了云端服务器扫码（code ${result?.raw_code ?? -462}）。请直接点上方「App 内一键登录（免风控）」用手机本机网络登录，100% 自动同步！`
+            : (result?.message || "云端扫码被网易云风控拦截（code -462）。") +
+                " 请改用手机 App 内置浏览器一键登录或稍后重试。",
         );
         return;
       }
@@ -324,8 +344,16 @@ export default function NeteaseQrLogin({
   useEffect(() => {
     const onForegroundResume = () => {
       if (document.visibilityState === "hidden") return;
+      const now = Date.now();
+      if (now - lastResumeAtRef.current < 900) return;
+      lastResumeAtRef.current = now;
       const key = activeKeyRef.current || readPendingQr()?.key || "";
-      if (!key) return;
+      if (!key) {
+        void fetchUnifiedConnection().then((live) => {
+          if (live?.connected) applyConfirmedConnection(live);
+        }).catch(() => {});
+        return;
+      }
       setLastPollLine("欢迎回来！正在同步网易云登录态…");
       void pollOnce({ key, manual: true });
       window.setTimeout(() => {
@@ -354,7 +382,7 @@ export default function NeteaseQrLogin({
       window.removeEventListener("focus", onForegroundResume);
       capHandle?.remove?.();
     };
-  }, [pollOnce]);
+  }, [applyConfirmedConnection, pollOnce]);
 
   useEffect(() => () => {
     loginAttemptRef.current += 1;
@@ -512,7 +540,23 @@ export default function NeteaseQrLogin({
       {deviceLine && <p className="netease-qr-diag">{deviceLine}</p>}
 
       <div className="netease-qr-actions">
-        <button type="button" className="netease-qr-primary" disabled={!qrContent} onClick={() => void saveQrImage()}>
+        {onNativeCookieLogin && (
+          <button
+            type="button"
+            className="netease-qr-primary is-full"
+            disabled={nativeCookieBusy}
+            onClick={() => void onNativeCookieLogin(false)}
+          >
+            <Smartphone aria-hidden="true" size={15} />
+            {nativeCookieBusy ? "正在同步登录态…" : "App 内一键登录（免风控 · 推荐）"}
+          </button>
+        )}
+        <button
+          type="button"
+          className={onNativeCookieLogin ? "" : "netease-qr-primary"}
+          disabled={!qrContent}
+          onClick={() => void saveQrImage()}
+        >
           <Download aria-hidden="true" size={15} />
           保存二维码到相册
         </button>
@@ -522,8 +566,20 @@ export default function NeteaseQrLogin({
         </button>
         <button
           type="button"
-          disabled={!qrContent || checkingNow}
-          onClick={() => void pollOnce({ manual: true })}
+          disabled={(!qrContent && qrStatus !== "risk_blocked") || checkingNow}
+          onClick={() => {
+            if (activeKeyRef.current) {
+              void pollOnce({ manual: true });
+            } else {
+              setCheckingNow(true);
+              void fetchUnifiedConnection()
+                .then((live) => {
+                  if (live?.connected) applyConfirmedConnection(live);
+                  else setFeedback("暂未检测到已登录会话，请点「App 内一键登录」或重新生成二维码。");
+                })
+                .finally(() => setCheckingNow(false));
+            }
+          }}
         >
           <CheckCircle2 aria-hidden="true" size={15} />
           {checkingNow ? "检测中…" : "我已扫码，立即检测"}
@@ -538,7 +594,9 @@ export default function NeteaseQrLogin({
       </div>
 
       <small className="netease-qr-hint">
-        单机扫码教程：① 点「保存二维码到相册」→ ② 点「打开网易云 App」扫一扫相册 → ③ 点确认登录后切回灯塔，系统会自动捕获登录态（不再误换码）。
+        {onNativeCookieLogin
+          ? "提示：云端扫码若遇网易云风控（code -462），请直接点「App 内一键登录」用手机本机登录，成功后自动抓回登录态。"
+          : "单机扫码教程：① 保存二维码到相册 → ② 网易云扫一扫相册并确认 → ③ 切回灯塔自动捕获登录态。"}
       </small>
     </div>
   );
