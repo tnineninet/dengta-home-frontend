@@ -4,11 +4,57 @@ import { authSession } from "./auth-session.js";
 import { AuthenticatedImage } from "./PrivateMedia";
 
 const IMAGE_PROVIDER_PRESETS = [
-  { id: "openai", name: "OpenAI Images", base_url: "https://api.openai.com/v1", model: "gpt-image-1" },
-  { id: "openrouter", name: "OpenRouter Images", base_url: "https://openrouter.ai/api/v1", model: "openai/gpt-image-1" },
-  { id: "siliconflow", name: "硅基流动 SiliconFlow", base_url: "https://api.siliconflow.cn/v1", model: "Kwai-Kolors/Kolors" },
+  { id: "openai", name: "OpenAI gpt-image-1（推荐）", base_url: "https://api.openai.com/v1", model: "gpt-image-1" },
+  { id: "dalle3", name: "OpenAI DALL-E 3", base_url: "https://api.openai.com/v1", model: "dall-e-3" },
+  { id: "openrouter", name: "OpenRouter gpt-image-1", base_url: "https://openrouter.ai/api/v1", model: "openai/gpt-image-1" },
+  { id: "siliconflow_flux", name: "硅基流动 FLUX.1-dev", base_url: "https://api.siliconflow.cn/v1", model: "black-forest-labs/FLUX.1-dev" },
+  { id: "siliconflow_qwen", name: "硅基流动 Qwen-Image（中文佳）", base_url: "https://api.siliconflow.cn/v1", model: "Qwen/Qwen-Image" },
+  { id: "siliconflow", name: "硅基流动 Kolors", base_url: "https://api.siliconflow.cn/v1", model: "Kwai-Kolors/Kolors" },
+  { id: "zhipu", name: "智谱 CogView-4", base_url: "https://open.bigmodel.cn/api/paas/v4", model: "cogview-4-250304" },
   { id: "custom", name: "自定义 OpenAI Images 接口", base_url: "", model: "" },
 ];
+
+const CREATIVE_STYLE_OPTIONS = [
+  { id: "auto", label: "智能匹配氛围" },
+  { id: "watercolor_journal", label: "水彩手账涂鸦" },
+  { id: "cinematic_film", label: "电影胶片纪实" },
+  { id: "anime_luminous", label: "日系通透插画" },
+  { id: "impasto_oil", label: "暖调厚涂油画" },
+  { id: "colored_pencil_sketch", label: "彩铅淡彩速写" },
+  { id: "editorial_portrait", label: "极简杂志人像" },
+  { id: "storybook_gouache", label: "梦幻光影绘本" },
+];
+
+const CREATIVE_RATIO_OPTIONS = [
+  { id: "", label: "按类型推荐" },
+  { id: "1:1", label: "1:1 方画" },
+  { id: "3:4", label: "3:4 竖版" },
+  { id: "4:3", label: "4:3 横版" },
+  { id: "9:16", label: "9:16 壁纸" },
+  { id: "16:9", label: "16:9 宽屏" },
+];
+
+const CREATIVE_QUALITY_OPTIONS = [
+  { id: "standard", label: "标准画质" },
+  { id: "hd", label: "高清精绘" },
+];
+
+const PROVIDER_FAMILY_LABELS = Object.freeze({
+  "gpt-image": "OpenAI gpt-image 原生适配",
+  "dall-e-3": "DALL-E 3 原生适配",
+  siliconflow: "SiliconFlow image_size + 避坑词适配",
+  zhipu: "智谱 CogView 适配",
+  "gemini-image": "Gemini Image 适配",
+  "openai-compatible": "OpenAI Images 渐进兼容适配",
+});
+
+function stylePresetLabel(id) {
+  return CREATIVE_STYLE_OPTIONS.find((item) => item.id === id)?.label || "智能匹配氛围";
+}
+
+function ratioLabel(id) {
+  return CREATIVE_RATIO_OPTIONS.find((item) => item.id === id)?.label || id || "1:1 方画";
+}
 
 const EMPTY_STATUS = {
   settings: {
@@ -307,6 +353,15 @@ export function CompanionArtworkLibrary({
     useState(false);
   const [artworkMetadataUnavailable, setArtworkMetadataUnavailable] =
     useState(false);
+  const [userBrief, setUserBrief] = useState("");
+  const [stylePreset, setStylePreset] = useState("auto");
+  const [aspectRatio, setAspectRatio] = useState("");
+  const [quality, setQuality] = useState("standard");
+  const [negativePrompt, setNegativePrompt] = useState("");
+  const [showAdvancedBrief, setShowAdvancedBrief] = useState(false);
+  const [expandedPromptId, setExpandedPromptId] = useState("");
+  const [promptDrafts, setPromptDrafts] = useState({});
+  const [refineInstruction, setRefineInstruction] = useState({});
 
   const applyLoadResults = useCallback((results) => {
     const [statusResult, artworkResult] = results;
@@ -369,20 +424,39 @@ export function CompanionArtworkLibrary({
     };
   }, [applyLoadResults, scope]);
 
-  async function requestIdea(kind) {
+  async function requestIdea(kind, { direct = false } = {}) {
     const operation = scope.begin();
     if (!operation) return;
-    setBusy(`idea:${kind}`);
+    setBusy(direct ? `direct:${kind}` : `idea:${kind}`);
     setFeedback("");
     try {
+      const trimmedBrief = userBrief.trim();
+      if (direct && !trimmedBrief) {
+        setFeedback("先在上方写一句画面想法，才能直接建稿。");
+        return;
+      }
       const data = await scope.request("/ideas", {
         method: "POST",
-        body: JSON.stringify({ kind, acknowledge_cost: false }),
+        body: JSON.stringify({
+          kind,
+          acknowledge_cost: false,
+          ...(trimmedBrief ? { brief: trimmedBrief } : {}),
+          ...(direct ? { direct_prompt: trimmedBrief } : {}),
+          style_preset: stylePreset,
+          ...(aspectRatio ? { aspect_ratio: aspectRatio } : {}),
+          quality,
+          ...(negativePrompt.trim() ? { negative_prompt: negativePrompt.trim() } : {}),
+        }),
       });
       await refresh();
       if (!scope.current(operation)) return;
+      if (data.created && data.artwork?.id) {
+        setExpandedPromptId(data.artwork.id);
+      }
       const message = data.created
-        ? `${aiName}已经留下构思，图片还没有生成。`
+        ? direct
+          ? "已按专业视觉规范编译建稿，可在下方检视或润色提示词后再确认生成。"
+          : `${aiName}已经完成专业画面构思，图片还没有生成；可点开提示词检视或微调。`
         : data.reason || `${aiName}这次没有勉强自己画。`;
       setFeedback(message);
       onNotice?.(message);
@@ -392,6 +466,129 @@ export function CompanionArtworkLibrary({
     } finally {
       scope.finish(operation);
       if (scope.current(operation)) setBusy("");
+    }
+  }
+
+  function openPromptEditor(artwork) {
+    if (expandedPromptId === artwork.id) {
+      setExpandedPromptId("");
+      return;
+    }
+    setExpandedPromptId(artwork.id);
+    setPromptDrafts((prev) => ({
+      ...prev,
+      [artwork.id]: {
+        prompt: artwork.prompt_preview || "",
+        negative_prompt: artwork.negative_prompt || "",
+        aspect_ratio: artwork.aspect_ratio || "1:1",
+        style_preset: artwork.style_preset || "auto",
+        quality: artwork.quality || "standard",
+      },
+    }));
+  }
+
+  function updatePromptDraft(artworkId, field, value) {
+    setPromptDrafts((prev) => ({
+      ...prev,
+      [artworkId]: {
+        ...(prev[artworkId] || {}),
+        [field]: value,
+      },
+    }));
+  }
+
+  async function savePromptDraft(artwork) {
+    const draft = promptDrafts[artwork.id];
+    if (!draft || !String(draft.prompt || "").trim()) {
+      setFeedback("提示词不能为空，请至少保留主体与画面描述。");
+      return;
+    }
+    const operation = scope.begin();
+    if (!operation) return;
+    setBusy(`save-prompt:${artwork.id}`);
+    setFeedback("");
+    try {
+      const data = await scope.request(`/artworks/${artwork.id}/prompt`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          prompt: draft.prompt,
+          negative_prompt: draft.negative_prompt,
+          aspect_ratio: draft.aspect_ratio,
+          style_preset: draft.style_preset,
+          quality: draft.quality,
+        }),
+      });
+      await refresh();
+      if (!scope.current(operation)) return;
+      if (data?.artwork) {
+        setPromptDrafts((prev) => ({
+          ...prev,
+          [artwork.id]: {
+            prompt: data.artwork.prompt_preview || "",
+            negative_prompt: data.artwork.negative_prompt || "",
+            aspect_ratio: data.artwork.aspect_ratio || "1:1",
+            style_preset: data.artwork.style_preset || "auto",
+            quality: data.artwork.quality || "standard",
+          },
+        }));
+      }
+      setFeedback("专业生图提示词与画幅参数已保存（不消耗图片额度）。");
+    } catch (error) {
+      if (!scope.current(operation)) return;
+      setFeedback(creativeErrorFeedback(error));
+    } finally {
+      scope.finish(operation);
+      if (scope.current(operation)) setBusy("");
+    }
+  }
+
+  async function refinePromptWithAi(artwork) {
+    const operation = scope.begin();
+    if (!operation) return;
+    const draft = promptDrafts[artwork.id] || {};
+    setBusy(`refine:${artwork.id}`);
+    setFeedback("");
+    try {
+      const data = await scope.request(`/artworks/${artwork.id}/refine-prompt`, {
+        method: "POST",
+        body: JSON.stringify({
+          instruction: String(refineInstruction[artwork.id] || "").trim(),
+          style_preset: draft.style_preset || artwork.style_preset || "auto",
+          aspect_ratio: draft.aspect_ratio || artwork.aspect_ratio || "1:1",
+          quality: draft.quality || artwork.quality || "standard",
+        }),
+      });
+      await refresh();
+      if (!scope.current(operation)) return;
+      if (data?.artwork) {
+        setPromptDrafts((prev) => ({
+          ...prev,
+          [artwork.id]: {
+            prompt: data.artwork.prompt_preview || "",
+            negative_prompt: data.artwork.negative_prompt || "",
+            aspect_ratio: data.artwork.aspect_ratio || "1:1",
+            style_preset: data.artwork.style_preset || "auto",
+            quality: data.artwork.quality || "standard",
+          },
+        }));
+        setRefineInstruction((prev) => ({ ...prev, [artwork.id]: "" }));
+      }
+      setFeedback("已用文字模型按 7 层美术指导结构完成专业润色（未消耗图片接口额度）。");
+    } catch (error) {
+      if (!scope.current(operation)) return;
+      setFeedback(creativeErrorFeedback(error));
+    } finally {
+      scope.finish(operation);
+      if (scope.current(operation)) setBusy("");
+    }
+  }
+
+  async function copyPromptText(text) {
+    try {
+      await navigator.clipboard.writeText(String(text || ""));
+      setFeedback("生图提示词已复制到剪贴板。");
+    } catch {
+      setFeedback("当前环境无法直接写入剪贴板，请手动选中复制。");
     }
   }
 
@@ -426,9 +623,12 @@ export function CompanionArtworkLibrary({
       );
       return;
     }
+    const draft = promptDrafts[artwork.id];
+    const effectiveRatio = draft?.aspect_ratio || artwork.aspect_ratio || "1:1";
+    const effectiveQuality = draft?.quality || artwork.quality || "standard";
     if (
       !window.confirm(
-        `现在会真实调用“${status.provider.name || "图片接口"}”生成《${
+        `现在会真实调用“${status.provider.name || "图片接口"}”（${status.provider.model || "默认模型"} · ${effectiveRatio} · ${effectiveQuality === "hd" ? "高清精绘" : "标准画质"}）生成《${
           artwork.title
         }》，可能产生供应商费用。继续吗？`,
       )
@@ -442,7 +642,11 @@ export function CompanionArtworkLibrary({
     try {
       await scope.request(`/artworks/${artwork.id}/generate`, {
         method: "POST",
-        body: JSON.stringify({ acknowledge_cost: true }),
+        body: JSON.stringify({
+          acknowledge_cost: true,
+          aspect_ratio: effectiveRatio,
+          quality: effectiveQuality,
+        }),
       });
       await refresh();
       if (!scope.current(operation)) return;
@@ -591,13 +795,96 @@ export function CompanionArtworkLibrary({
         </div>
       )}
 
-      <div className="creative-invitation-card">
-        <div>
-          <strong>{aiName}可以先想，再决定画不画</strong>
-          <p>
-            构思会参考真实聊天和角色档案；先构思只会使用当前文字模型，不会调用图片接口。
-          </p>
+      <div className="creative-invitation-card creative-director-workbench">
+        <div className="creative-director-header">
+          <div>
+            <strong>{aiName}可以先做视觉分镜，再决定画不画</strong>
+            <p>
+              构思会参考真实聊天、角色档案与专业 7 层美术指导规范；先构思只会使用当前文字模型，不会调用图片接口。
+            </p>
+          </div>
+          <button
+            type="button"
+            className="creative-subtle-toggle"
+            onClick={() => setShowAdvancedBrief((open) => !open)}
+          >
+            {showAdvancedBrief ? "收起避坑词" : "高级避坑词"}
+          </button>
         </div>
+
+        <div className="creative-director-controls">
+          <label className="creative-brief-field">
+            <span>画面主题 / 灵感方向（可选）</span>
+            <input
+              type="text"
+              value={userBrief}
+              maxLength={400}
+              disabled={Boolean(busy)}
+              placeholder="留空=由伴侣结合最近聊天自由构思；也可写想法，如：雨夜落地窗边暖黄台灯与热可可"
+              onChange={(event) => setUserBrief(event.target.value)}
+            />
+          </label>
+          <div className="creative-director-row">
+            <label>
+              <span>画风预设</span>
+              <select
+                value={stylePreset}
+                disabled={Boolean(busy)}
+                onChange={(event) => setStylePreset(event.target.value)}
+              >
+                {CREATIVE_STYLE_OPTIONS.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>成片画质</span>
+              <select
+                value={quality}
+                disabled={Boolean(busy)}
+                onChange={(event) => setQuality(event.target.value)}
+              >
+                {CREATIVE_QUALITY_OPTIONS.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="creative-ratio-group" role="group" aria-label="画幅比例">
+            <span className="creative-ratio-label">画幅比例</span>
+            <div className="creative-ratio-pills">
+              {CREATIVE_RATIO_OPTIONS.map((item) => (
+                <button
+                  key={item.id || "default"}
+                  type="button"
+                  className={aspectRatio === item.id ? "is-active" : ""}
+                  disabled={Boolean(busy)}
+                  onClick={() => setAspectRatio(item.id)}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {showAdvancedBrief && (
+            <label className="creative-brief-field">
+              <span>额外避坑词（Negative Prompt，可选）</span>
+              <input
+                type="text"
+                value={negativePrompt}
+                maxLength={400}
+                disabled={Boolean(busy)}
+                placeholder="例如：多余路人、杂乱背景文字（系统已默认防畸形手指、水印和乱码）"
+                onChange={(event) => setNegativePrompt(event.target.value)}
+              />
+            </label>
+          )}
+        </div>
+
         <div className="creative-invitation-actions">
           {[
             ["doodle", "想一张涂鸦"],
@@ -613,9 +900,21 @@ export function CompanionArtworkLibrary({
               }
               onClick={() => requestIdea(kind)}
             >
-              {busy === `idea:${kind}` ? "正在想…" : label}
+              {busy === `idea:${kind}` ? "正在构思…" : label}
             </button>
           ))}
+          {userBrief.trim() && (
+            <button
+              type="button"
+              disabled={
+                Boolean(busy) ||
+                status.settings.generation_mode === "off"
+              }
+              onClick={() => requestIdea("doodle", { direct: true })}
+            >
+              {busy === "direct:doodle" ? "编译中…" : "按此直接建稿"}
+            </button>
+          )}
           <label className="creative-upload-button">
             <input
               type="file"
@@ -680,6 +979,16 @@ export function CompanionArtworkLibrary({
                       : "")}
                 </p>
                 {artwork.reason && <small>为什么想画：{artwork.reason}</small>}
+                {(artwork.aspect_ratio || artwork.style_preset || artwork.quality === "hd") && (
+                  <div className="artwork-meta-tags">
+                    <span>{kindLabel(artwork.kind)}</span>
+                    {artwork.aspect_ratio && <span>{ratioLabel(artwork.aspect_ratio)}</span>}
+                    {artwork.style_preset && artwork.style_preset !== "auto" && (
+                      <span>{stylePresetLabel(artwork.style_preset)}</span>
+                    )}
+                    {artwork.quality === "hd" && <span>高清精绘</span>}
+                  </div>
+                )}
                 {artwork.model && (
                   <small>
                     {artwork.model} · 实际调用 {artwork.actual_call_count} 次
@@ -698,8 +1007,162 @@ export function CompanionArtworkLibrary({
                     删除不会撤回已提交的接口调用；重新生成可能产生新的接口费用。
                   </small>
                 )}
+                {expandedPromptId === artwork.id && (
+                  <div className="artwork-prompt-drawer">
+                    {["idea", "awaiting_confirmation", "failed"].includes(artwork.state) &&
+                    !artworkNeedsMetadataRecovery(artwork) ? (
+                      <>
+                        <label>
+                          <span>正向视觉提示词（实际发送给图片模型）</span>
+                          <textarea
+                            rows={4}
+                            value={promptDrafts[artwork.id]?.prompt ?? artwork.prompt_preview ?? ""}
+                            disabled={Boolean(busy)}
+                            onChange={(event) =>
+                              updatePromptDraft(artwork.id, "prompt", event.target.value)
+                            }
+                          />
+                        </label>
+                        <label>
+                          <span>负向避坑词（Negative Prompt）</span>
+                          <input
+                            type="text"
+                            value={
+                              promptDrafts[artwork.id]?.negative_prompt ??
+                              artwork.negative_prompt ??
+                              ""
+                            }
+                            disabled={Boolean(busy)}
+                            onChange={(event) =>
+                              updatePromptDraft(artwork.id, "negative_prompt", event.target.value)
+                            }
+                          />
+                        </label>
+                        <div className="artwork-prompt-inline-selects">
+                          <label>
+                            <span>画幅</span>
+                            <select
+                              value={promptDrafts[artwork.id]?.aspect_ratio || artwork.aspect_ratio || "1:1"}
+                              disabled={Boolean(busy)}
+                              onChange={(event) =>
+                                updatePromptDraft(artwork.id, "aspect_ratio", event.target.value)
+                              }
+                            >
+                              {CREATIVE_RATIO_OPTIONS.filter((item) => item.id).map((item) => (
+                                <option key={item.id} value={item.id}>
+                                  {item.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            <span>画风</span>
+                            <select
+                              value={promptDrafts[artwork.id]?.style_preset || artwork.style_preset || "auto"}
+                              disabled={Boolean(busy)}
+                              onChange={(event) =>
+                                updatePromptDraft(artwork.id, "style_preset", event.target.value)
+                              }
+                            >
+                              {CREATIVE_STYLE_OPTIONS.map((item) => (
+                                <option key={item.id} value={item.id}>
+                                  {item.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label>
+                            <span>画质</span>
+                            <select
+                              value={promptDrafts[artwork.id]?.quality || artwork.quality || "standard"}
+                              disabled={Boolean(busy)}
+                              onChange={(event) =>
+                                updatePromptDraft(artwork.id, "quality", event.target.value)
+                              }
+                            >
+                              {CREATIVE_QUALITY_OPTIONS.map((item) => (
+                                <option key={item.id} value={item.id}>
+                                  {item.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </div>
+                        <label>
+                          <span>AI 润色补充意见（可选）</span>
+                          <input
+                            type="text"
+                            value={refineInstruction[artwork.id] || ""}
+                            disabled={Boolean(busy)}
+                            placeholder="如：改成逆光黄昏、拉近半身景别、增加手绘水彩纸纹"
+                            onChange={(event) =>
+                              setRefineInstruction((prev) => ({
+                                ...prev,
+                                [artwork.id]: event.target.value,
+                              }))
+                            }
+                          />
+                        </label>
+                        <div className="artwork-prompt-drawer-actions">
+                          <button
+                            type="button"
+                            disabled={Boolean(busy)}
+                            onClick={() => void refinePromptWithAi(artwork)}
+                          >
+                            {busy === `refine:${artwork.id}` ? "润色中…" : "AI 专业润色"}
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            disabled={Boolean(busy)}
+                            onClick={() => void savePromptDraft(artwork)}
+                          >
+                            {busy === `save-prompt:${artwork.id}` ? "保存中…" : "保存提示词"}
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <small className="artwork-prompt-readonly-label">正向视觉提示词</small>
+                        <p className="artwork-prompt-readonly-text">
+                          {artwork.prompt_preview || "（手动上传图片或旧版作品无提示词记录）"}
+                        </p>
+                        {artwork.negative_prompt && (
+                          <small className="artwork-prompt-readonly-neg">
+                            避坑约束：{artwork.negative_prompt}
+                          </small>
+                        )}
+                        {artwork.prompt_preview && (
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => void copyPromptText(artwork.prompt_preview)}
+                          >
+                            复制提示词
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="artwork-card-actions">
+                {(artwork.prompt_preview ||
+                  ["idea", "awaiting_confirmation", "failed"].includes(artwork.state)) &&
+                  !artworkNeedsMetadataRecovery(artwork) && (
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      disabled={Boolean(busy)}
+                      onClick={() => openPromptEditor(artwork)}
+                    >
+                      {expandedPromptId === artwork.id
+                        ? "收起提示词"
+                        : ["idea", "awaiting_confirmation", "failed"].includes(artwork.state)
+                          ? "精修提示词"
+                          : "查看提示词"}
+                    </button>
+                  )}
                 {artwork.state === "generating" && (
                   <button
                     type="button"
@@ -868,7 +1331,9 @@ export default function CompanionCreativeSettings() {
   }
 
   function applyProviderPreset(id) {
-    const preset = IMAGE_PROVIDER_PRESETS.find((item) => item.id === id) || IMAGE_PROVIDER_PRESETS[3];
+    const preset =
+      IMAGE_PROVIDER_PRESETS.find((item) => item.id === id) ||
+      IMAGE_PROVIDER_PRESETS[IMAGE_PROVIDER_PRESETS.length - 1];
     setProviderPreset(preset.id);
     setProviderDraft((current) => ({
       ...current,
@@ -1158,6 +1623,15 @@ export default function CompanionCreativeSettings() {
           <span>
             状态 <strong>{status.provider.last_status}</strong>
           </span>
+          {status.provider.provider_family && (
+            <span>
+              协议适配{" "}
+              <strong>
+                {PROVIDER_FAMILY_LABELS[status.provider.provider_family] ||
+                  status.provider.provider_family}
+              </strong>
+            </span>
+          )}
           {status.provider.last_error_code && (
             <span className="artwork-error">
               最近失败：

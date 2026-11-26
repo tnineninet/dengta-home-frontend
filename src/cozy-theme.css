@@ -712,10 +712,182 @@ body {
 
 .creative-invitation-card {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
   padding: 18px;
+}
+
+.creative-director-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.creative-subtle-toggle {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 11px;
+  border: 1px solid rgb(var(--theme-accent-rgb) / 0.24);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--theme-accent);
+  background: rgb(var(--theme-accent-rgb) / 0.08);
+  cursor: pointer;
+}
+
+.creative-director-controls {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgb(255 255 255 / 0.45);
+  border-radius: 16px;
+  background: rgb(var(--theme-card-rgb) / 0.45);
+}
+
+.creative-brief-field,
+.creative-director-row label {
+  display: grid;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--theme-muted);
+}
+
+.creative-brief-field input,
+.creative-director-row select,
+.artwork-prompt-drawer textarea,
+.artwork-prompt-drawer input,
+.artwork-prompt-drawer select {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 11px;
+  border: 1px solid rgb(var(--theme-accent-rgb) / 0.22);
+  border-radius: 12px;
+  font-size: 13px;
+  color: var(--theme-ink);
+  background: rgb(var(--theme-card-rgb) / 0.82);
+}
+
+.creative-director-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.creative-ratio-group {
+  display: grid;
+  gap: 6px;
+}
+
+.creative-ratio-label {
+  font-size: 12px;
+  color: var(--theme-muted);
+}
+
+.creative-ratio-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.creative-ratio-pills button {
+  min-height: 32px;
+  padding: 0 11px;
+  border: 1px solid rgb(var(--theme-accent-rgb) / 0.22);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--theme-ink);
+  background: rgb(var(--theme-card-rgb) / 0.65);
+  cursor: pointer;
+}
+
+.creative-ratio-pills button.is-active {
+  border-color: var(--theme-accent);
+  color: #fff;
+  background: var(--theme-accent);
+}
+
+.artwork-meta-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.artwork-meta-tags span {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--theme-accent);
+  background: rgb(var(--theme-accent-rgb) / 0.12);
+}
+
+.artwork-prompt-drawer {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid rgb(var(--theme-accent-rgb) / 0.2);
+  border-radius: 14px;
+  background: rgb(var(--theme-card-rgb) / 0.55);
+}
+
+.artwork-prompt-drawer label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--theme-muted);
+}
+
+.artwork-prompt-drawer textarea {
+  resize: vertical;
+  min-height: 78px;
+  line-height: 1.5;
+  font-family: inherit;
+}
+
+.artwork-prompt-inline-selects {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.artwork-prompt-drawer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.artwork-prompt-drawer-actions button {
+  min-height: 36px;
+  padding: 0 13px;
+  border: 1px solid rgb(var(--theme-accent-rgb) / 0.28);
+  border-radius: 999px;
+  font-size: 12px;
+  color: var(--theme-ink);
+  background: rgb(var(--theme-card-rgb) / 0.82);
+  cursor: pointer;
+}
+
+.artwork-prompt-readonly-label {
+  font-weight: 600;
+  color: var(--theme-accent);
+}
+
+.artwork-prompt-readonly-text {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.artwork-prompt-readonly-neg {
+  font-size: 11.5px;
+  opacity: 0.85;
 }
 
 .creative-invitation-card p,

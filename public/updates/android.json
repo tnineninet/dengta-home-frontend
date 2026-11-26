@@ -3,17 +3,17 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 324,
-    "version": "2.13.66",
-    "apk_url": "https://www.dengtahome.com/downloads/DengTa-2.13.66.apk",
-    "sha256": "23e0e112b0d0fed9fd607dcf91511214b0386ceebfab353819511b97a163ec5b",
-    "size_bytes": 38920842,
-    "published_at": "2026-11-26T23:10:00.000Z",
+    "version_code": 325,
+    "version": "2.13.67",
+    "apk_url": "https://www.dengtahome.com/downloads/DengTa-2.13.67.apk",
+    "sha256": "e83482cabd1831a98c4ddf89cc64201a57c893d4619391a19ad24ab2ae985e29",
+    "size_bytes": 38924206,
+    "published_at": "2026-11-26T23:33:00.000Z",
     "notes": [
-      "根治 X / Twitter 页「未连接却显示已连接、所有功能全不可用」：移除硬编码「MCP 网关在线」与误匹配，改为真实四态（● 已连接·可用 / ◌ 已保存·未启用 / ✕ 连接离线 / ○ 未连接）",
-      "新增 X 网关诊断卡（精确展示隧道地址、上次实测时间与报错）、【一键启用并实测连通】与【实测连通性】按钮；仅当网关实测在线且检测到对应工具才开放推文搜索/发帖/查用户",
-      "新增按用户名查看 X 主页与近期推文能力（自动检测 get_user_info / get_user_tweets）；执行失败遇到 409/502/504 时自动把假在线翻转为真实离线",
-      "完整包含 v2.13.65 QQ 机器人高对比在线大横幅与人设记忆同步铁证、AI 工作台上下滑动修复，以及 v2.13.64 AI 视界多平台接入向导"
+      "涂鸦画室调用链路与提示词书写逻辑全面专业化：内置 8 套美术指导画风预设、5 种画幅比例、7 层视觉分镜编译引擎，自动清洗对话废话与陈旧堆词并补全避坑约束",
+      "多生图模型家族原生适配与渐进降级调用：自动识别 OpenAI gpt-image / DALL-E 3 / SiliconFlow（FLUX/Qwen-Image/Kolors）/ 智谱 CogView / OpenAI 兼容接口，遇 400/422 逐级兼容重试大幅提高出图成功率",
+      "涂鸦画室全新创作导演台：支持自定画面主题、选画风/画幅/画质/避坑词、按此直接建稿，每张构思卡片支持「精修提示词」与免费文字模型「AI 专业润色」",
+      "聊天工具 create_artwork 扩展专业视觉槽位并过滤「别画/不要画」否定误触发；完整包含 v2.13.66 X/Twitter 真实四态检测与 v2.13.65 QQ 机器人/AI 工作台修复"
     ]
   }
 }

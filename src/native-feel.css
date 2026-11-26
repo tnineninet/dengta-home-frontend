@@ -3512,10 +3512,21 @@ body,
 :root[data-dengta-appearance="night"] .creative-permission-form select,
 :root[data-dengta-appearance="night"] .creative-provider-grid input,
 :root[data-dengta-appearance="night"] .creative-provider-grid select,
+:root[data-dengta-appearance="night"] .creative-director-controls input,
+:root[data-dengta-appearance="night"] .creative-director-controls select,
+:root[data-dengta-appearance="night"] .artwork-prompt-drawer textarea,
+:root[data-dengta-appearance="night"] .artwork-prompt-drawer input,
+:root[data-dengta-appearance="night"] .artwork-prompt-drawer select,
 :root[data-dengta-appearance="night"] .settings-sheet-header button {
   border-color: var(--theme-control-border);
   color: var(--theme-ink);
   background: var(--theme-control-background);
+}
+
+:root[data-dengta-appearance="night"] .creative-director-controls,
+:root[data-dengta-appearance="night"] .artwork-prompt-drawer {
+  border-color: var(--theme-control-border);
+  background: rgb(var(--theme-card-rgb) / 0.36);
 }
 
 :root[data-dengta-appearance="night"] .artwork-card-copy .artwork-error,
