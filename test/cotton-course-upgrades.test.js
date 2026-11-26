@@ -7,7 +7,7 @@ import { B1857Character } from '../src/cotton/upstream/b1857-character.js';
 import { InteractionController, ACTIONS } from '../src/cotton/upstream/interaction-controller.js';
 import { SpringBoneSystem } from '../src/cotton/spring-bone-physics.js';
 import { EXPRESSION_NAMES, buildCottonMorphTargets, computeExpressionWeights } from '../src/cotton/expressions.js';
-import { createMToonGradientTexture, createMToonMaterials, createOutlineMesh, DanceSparkles } from '../src/cotton/mtoon-style.js';
+import { createMToonGradientTexture, createMToonMaterials, createOutlineMesh, DanceSparkles, updateOutlineAppearance } from '../src/cotton/mtoon-style.js';
 
 const rawAsset = JSON.parse(readFileSync(new URL('../public/cotton/b1857.json', import.meta.url)));
 
@@ -73,6 +73,36 @@ test('Lessons 3 & 8: MToon gradient texture, toon materials, outline SkinnedMesh
   assert.equal(outline.isSkinnedMesh, true);
   assert.equal(outline.geometry, pet.mesh.geometry);
   assert.equal(outline.visible, false);
+  assert.equal(outline.scale.x, 1, 'outline must extrude along normals instead of distorting via origin scale');
+  const mockShader = { vertexShader: '#include <begin_vertex>\n#include <skinning_vertex>\n#include <project_vertex>' };
+  outline.material.onBeforeCompile(mockShader);
+  assert.ok(mockShader.vertexShader.includes('normalize( objectNormal )'), 'outline shader extrudes along post-skinning objectNormal');
+  updateOutlineAppearance(outline, { night: true, toon: false });
+  assert.equal(outline.material.color.getHex(), 0x241e3c);
+  updateOutlineAppearance(outline, { night: false, toon: true });
+  assert.equal(outline.material.color.getHex(), 0x442f2c);
+
+  // Verify sculpted fur vertex colors include natural AO depth instead of flat white
+  const colorAttr = pet.mesh.geometry.attributes.color;
+  let minLum = 1;
+  let maxLum = 0;
+  for (let i = 0; i < colorAttr.count; i++) {
+    const r = colorAttr.getX(i);
+    const g = colorAttr.getY(i);
+    const b = colorAttr.getZ(i);
+    const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    if (lum > 0.35) {
+      if (lum < minLum) minLum = lum;
+      if (lum > maxLum) maxLum = lum;
+    }
+  }
+  assert.ok(maxLum - minLum > 0.14, `fur vertex shading should provide sculptural AO depth (spread=${(maxLum - minLum).toFixed(3)})`);
+
+  // Verify studio backdrop CSS avoids pale white/peach washout behind the white Pomeranian
+  const cottonCss = readFileSync(new URL('../src/cotton-pet.css', import.meta.url), 'utf8');
+  assert.ok(!cottonCss.includes('#f3dccb'), 'MToon stage must not use pale peach washout');
+  assert.ok(cottonCss.includes('#68857d') && cottonCss.includes('#76648b') && cottonCss.includes('#866858'));
+  assert.ok(cottonCss.includes('--theme-card-rgb'), 'controls panel uses theme-aware frosted glass over custom wallpapers');
 
   const scene = new THREE.Scene();
   const sparkles = new DanceSparkles(scene, 18);

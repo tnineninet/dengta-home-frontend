@@ -4,13 +4,13 @@
 import * as THREE from 'three';
 
 export function createMToonGradientTexture() {
-  // 4-step warm cel-shading ramp. Shadow steps are deliberately deep so that the
-  // near-white Pomeranian fur keeps readable volume on bright stages.
+  // 4-step anime cel-shading ramp calibrated for snow-white Pomeranian fur.
+  // Deep plum-taupe shadows ensure unmistakable form separation in MToon mode.
   const data = new Uint8Array([
-    142, 120, 116, 255,
-    196, 174, 164, 255,
-    238, 226, 214, 255,
-    255, 249, 240, 255,
+    118, 102, 118, 255,
+    176, 158, 162, 255,
+    232, 220, 210, 255,
+    255, 249, 242, 255,
   ]);
   const texture = new THREE.DataTexture(data, 4, 1, THREE.RGBAFormat);
   texture.minFilter = THREE.NearestFilter;
@@ -22,14 +22,15 @@ export function createMToonGradientTexture() {
 
 export function createMToonMaterials(gradientMap) {
   const fur = new THREE.MeshToonMaterial({
+    color: 0xfbf7f2,
     vertexColors: true,
     gradientMap,
   });
   const eye = new THREE.MeshPhysicalMaterial({
     vertexColors: true,
-    roughness: 0.12,
+    roughness: 0.1,
     clearcoat: 1,
-    clearcoatRoughness: 0.08,
+    clearcoatRoughness: 0.06,
   });
   const nose = new THREE.MeshToonMaterial({
     vertexColors: true,
@@ -38,18 +39,20 @@ export function createMToonMaterials(gradientMap) {
   return [fur, eye, nose];
 }
 
-// Soft elliptical contact shadow that grounds the white pet on any stage colour.
-export function createContactShadow(radius = 0.2) {
-  const size = 64;
+// Soft grounded contact shadow + subtle cozy floor cushion ring beneath the paws.
+export function createContactShadow(radius = 0.22) {
+  const size = 96;
   const data = new Uint8Array(size * size * 4);
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
       const dx = (x + 0.5) / size * 2 - 1;
       const dy = (y + 0.5) / size * 2 - 1;
       const d = Math.min(1, Math.sqrt(dx * dx + dy * dy));
-      const alpha = Math.pow(1 - d, 1.8);
+      const core = Math.pow(Math.max(0, 1 - d / 0.72), 1.9) * 0.82;
+      const rim = Math.pow(Math.max(0, 1 - d), 1.6) * 0.35;
+      const alpha = Math.min(1, core + rim);
       const i = (y * size + x) * 4;
-      data[i] = 52; data[i + 1] = 38; data[i + 2] = 34;
+      data[i] = 28; data[i + 1] = 22; data[i + 2] = 24;
       data[i + 3] = Math.round(alpha * 255);
     }
   }
@@ -58,12 +61,12 @@ export function createContactShadow(radius = 0.2) {
   const material = new THREE.MeshBasicMaterial({
     map: texture,
     transparent: true,
-    opacity: 0.42,
+    opacity: 0.58,
     depthWrite: false,
   });
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(radius * 2.3, radius * 1.6), material);
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(radius * 2.45, radius * 1.75), material);
   mesh.rotation.x = -Math.PI / 2;
-  mesh.position.set(0, 0.002, 0.01);
+  mesh.position.set(0, 0.002, 0.015);
   mesh.renderOrder = -1;
   mesh.name = 'Cotton_Contact_Shadow';
   return mesh;
@@ -71,18 +74,40 @@ export function createContactShadow(radius = 0.2) {
 
 export function createOutlineMesh(pet) {
   const outlineMat = new THREE.MeshBasicMaterial({
-    color: 0x5a4238,
+    color: 0x4c3730,
     side: THREE.BackSide,
     transparent: true,
     opacity: 0.82,
+    depthWrite: false,
   });
+  // Extrude strictly along skinned vertex normals AFTER #include <skinning_vertex>
+  // (where both transformed and objectNormal share skinned object space), so ears,
+  // cheeks, paws, morph targets, and bigHead stay evenly inked with zero vertical drift.
+  outlineMat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <skinning_vertex>',
+      `#include <skinning_vertex>
+      #if defined( USE_SKINNING ) || defined( USE_ENVMAP )
+      transformed += normalize( objectNormal ) * 0.0042;
+      #else
+      transformed += normalize( normal ) * 0.0042;
+      #endif`,
+    );
+  };
+  outlineMat.customProgramCacheKey = () => 'cotton-normal-outline-v2';
   const outline = new THREE.SkinnedMesh(pet.mesh.geometry, outlineMat);
   outline.name = 'Cotton_MToon_Outline';
   outline.bind(pet.skeleton);
-  outline.scale.setScalar(1.016);
+  outline.scale.setScalar(1);
   outline.visible = false;
   outline.frustumCulled = false;
   return outline;
+}
+
+export function updateOutlineAppearance(outline, { night = false, toon = false } = {}) {
+  if (!outline?.material) return;
+  outline.material.color.setHex(night ? 0x241e3c : toon ? 0x442f2c : 0x4c3730);
+  outline.material.opacity = night ? 0.72 : toon ? 0.88 : 0.78;
 }
 
 export class DanceSparkles {

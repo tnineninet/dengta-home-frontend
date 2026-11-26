@@ -9,17 +9,28 @@ export class B1857Character{
   this.group.updateMatrixWorld(true);this.skeleton=new THREE.Skeleton(this.bones);
   const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.Float32BufferAttribute(data.positions,3));g.setAttribute('normal',new THREE.Float32BufferAttribute(data.normals,3));g.setAttribute('skinIndex',new THREE.Uint16BufferAttribute(data.skinIndices,4));g.setAttribute('skinWeight',new THREE.Float32BufferAttribute(data.skinWeights,4));g.setIndex(data.indices);
   const colors=[],zones=[];
-  for(let i=0;i<data.positions.length;i+=3){const [x,y,z]=data.positions.slice(i,i+3);let c=new THREE.Color(0xf5eee1),zone=0;
-   const eye=((Math.abs(x)-.039)/.0108)**2+((y-.383)/.011)**2;
-   if(z>.195&&eye<1){c.setHex(eye<.25?0x110e0b:eye<.80?0x382719:0x262018);zone=1;}
-   const nose=(x/.013)**2+((y-.3605)/.0068)**2;if(z>.252&&nose<1.1){c.setHex(0x795750);zone=2;}
-   const ear=((Math.abs(x)-.083)/.017)**2+((y-.466)/.02)**2;if(z>.11&&ear<.7){c.lerp(new THREE.Color(0xd4b7a6),(1-ear)*.36);}
+  const shadeColor=new THREE.Color(0xd5c2ae),earTipColor=new THREE.Color(0xe5cfb9),innerEarColor=new THREE.Color(0xdba492),cheekColor=new THREE.Color(0xf0b8ac),mouthColor=new THREE.Color(0x9a7870);
+  for(let i=0;i<data.positions.length;i+=3){const x=data.positions[i],y=data.positions[i+1],z=data.positions[i+2];const ny=data.normals[i+1]||0,nz=data.normals[i+2]||0;let c=new THREE.Color(0xfaf4ea),zone=0;
+   const under=Math.max(0,Math.min(1,-ny*.52+Math.max(0,.22-y)*1.25));
+   const neckCrease=y>.20&&y<.33&&z>.06?Math.max(0,Math.min(1,(.25-ny)*.55)):0;
+   const pawBase=y<.095?Math.max(0,Math.min(1,(.095-y)/.095))*.28:0;
+   const furShade=Math.min(.42,under*.26+neckCrease*.22+pawBase+(nz<-.25?(-nz-.25)*.14:0));
+   if(furShade>.01)c.lerp(shadeColor,furShade);
+   if(Math.abs(x)>.055&&y>.41){c.lerp(earTipColor,Math.min(.28,(y-.41)*2.4));}
+   const cheek=((Math.abs(x)-.062)/.028)**2+((y-.354)/.019)**2;
+   if(z>.175&&cheek<1){c.lerp(cheekColor,(1-cheek)*.24);}
+   const mouth=(x/.019)**2+((y-.343)/.0065)**2;
+   if(z>.232&&mouth<1){c.lerp(mouthColor,(1-mouth)*.42);}
+   const eye=((Math.abs(x)-.039)/.0112)**2+((y-.383)/.0112)**2;
+   if(z>.195&&eye<1){c.setHex(eye<.25?0x0c0907:eye<.78?0x332014:0x211813);zone=1;}
+   const nose=(x/.0132)**2+((y-.3605)/.007)**2;if(z>.252&&nose<1.1){c.setHex(0x66443d);zone=2;}
+   const ear=((Math.abs(x)-.083)/.017)**2+((y-.466)/.02)**2;if(z>.11&&ear<.72){c.lerp(innerEarColor,(1-ear/.72)*.52);}
    colors.push(c.r,c.g,c.b);zones.push(zone);
   }
   g.setAttribute('color',new THREE.Float32BufferAttribute(colors,3));g.clearGroups();const buckets=[[],[],[]];
   for(let i=0;i<data.indices.length;i+=3){const z=zones[data.indices[i]]===zones[data.indices[i+1]]&&zones[data.indices[i]]===zones[data.indices[i+2]]?zones[data.indices[i]]:0;buckets[z].push(data.indices[i],data.indices[i+1],data.indices[i+2]);}
   let start=0;for(let i=0;i<3;i++){g.addGroup(start,buckets[i].length,i);start+=buckets[i].length;}g.setIndex(buckets.flat());
-  this.material=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.8});this.materials=[this.material,new THREE.MeshPhysicalMaterial({vertexColors:true,roughness:.15,clearcoat:1,clearcoatRoughness:.1}),new THREE.MeshStandardMaterial({vertexColors:true,roughness:.47})];
+  this.material=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.88,metalness:0});this.materials=[this.material,new THREE.MeshPhysicalMaterial({vertexColors:true,roughness:.12,clearcoat:1,clearcoatRoughness:.08}),new THREE.MeshStandardMaterial({vertexColors:true,roughness:.34})];
   this.mesh=new THREE.SkinnedMesh(g,this.materials);this.mesh.name='Purchased_Pomeranian_Sculpt';this.mesh.castShadow=true;this.mesh.receiveShadow=true;this.group.add(this.mesh);this.mesh.bind(this.skeleton);this.mesh.normalizeSkinWeights();
   g.morphAttributes.position=buildCottonMorphTargets(data.positions);this.mesh.updateMorphTargets();
   this.tongue=new THREE.Mesh(new THREE.SphereGeometry(1,16,10),new THREE.MeshStandardMaterial({color:0xcc7e85,roughness:.65}));this.tongue.name='Pet_tongue';this.named.head.add(this.tongue);this.tongue.visible=false;

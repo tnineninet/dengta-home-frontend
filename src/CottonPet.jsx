@@ -17,6 +17,11 @@ const actions = [
 ];
 const labels = Object.fromEntries([...actions, ['idle', '安静陪伴'], ['rest', '坐着打盹'], ['wake', '醒来看看']]);
 const expressionButtons = ['auto', 'Happy', 'Surprised', 'Sleepy', 'Excited', 'Blink'];
+const BACKDROP_PRESETS = [
+  ['sage', '雾松绿'],
+  ['cocoa', '暖咖绒'],
+  ['twilight', '暮色蓝'],
+];
 const DESKTOP_PET_CMD = 'D:\\GZdeepseek\\dengta-cotton-desktop\\启动小棉花桌宠.bat';
 
 function PetVisit({ storageKey, onShare, compact, desktopPetEnabled = false, onToggleDesktopPet = null }) {
@@ -29,6 +34,7 @@ function PetVisit({ storageKey, onShare, compact, desktopPetEnabled = false, onT
   const [paused, setPaused] = useState(false);
   const [notice, setNotice] = useState('');
   const [style, setStyle] = useState({ toon: false, outline: true, night: false, bigHead: false, skeleton: false });
+  const [backdrop, setBackdrop] = useState('sage');
   const styleRef = useRef(style);
   useEffect(() => {
     styleRef.current = style;
@@ -94,6 +100,13 @@ function PetVisit({ storageKey, onShare, compact, desktopPetEnabled = false, onT
     });
     setPieMenu(null);
   }
+  function cycleBackdrop() {
+    const idx = BACKDROP_PRESETS.findIndex(([id]) => id === backdrop);
+    const [nextId, nextLabel] = BACKDROP_PRESETS[(idx + 1) % BACKDROP_PRESETS.length];
+    setBackdrop(nextId);
+    setNotice(`舞台底色已切换为「${nextLabel}」，雪白毛绒轮廓更清晰。`);
+    setPieMenu(null);
+  }
   function chooseExpression(name) {
     setExpression(name);
     runtime.current?.setExpression?.(name);
@@ -156,6 +169,7 @@ function PetVisit({ storageKey, onShare, compact, desktopPetEnabled = false, onT
       <div
         ref={stageRef}
         className={`cotton-stage${style.night ? ' is-night' : ''}${style.toon ? ' is-toon' : ''}`}
+        data-backdrop={backdrop}
         onPointerMove={handleStagePointerMove}
         onPointerDown={handleStagePointerDown}
         onPointerUp={handleStagePointerUp}
@@ -195,6 +209,7 @@ function PetVisit({ storageKey, onShare, compact, desktopPetEnabled = false, onT
                 <button type="button" data-active={style.night ? 'true' : 'false'} disabled={status !== 'ready'} onClick={() => toggleStyle('night', '夜间氛围光')}>{style.night ? '✓ 夜间氛围' : '夜间氛围'}</button>
                 <button type="button" data-active={style.bigHead ? 'true' : 'false'} disabled={status !== 'ready'} onClick={() => toggleStyle('bigHead', '大头萌态')}>{style.bigHead ? '✓ 大头模式' : '大头模式'}</button>
                 <button type="button" data-active={style.skeleton ? 'true' : 'false'} disabled={status !== 'ready'} onClick={() => toggleStyle('skeleton', '骨骼视图')}>{style.skeleton ? '✓ 骨骼线' : '骨骼线'}</button>
+                <button type="button" className="cotton-backdrop-btn" disabled={status !== 'ready'} onClick={cycleBackdrop}>底色：{BACKDROP_PRESETS.find(([id]) => id === backdrop)?.[1] || '雾松绿'}</button>
               </div>
             </div>
             <div className="cotton-subsection">
