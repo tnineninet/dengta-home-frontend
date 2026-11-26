@@ -17,7 +17,7 @@ export const FEATURE_DETAILS = {
   cast: { hint: "投屏到这里，和别人一起看", keywords: "放映厅 投屏 DLNA 一起看 房间 邀请码 电视" },
   "music-studio": { hint: "完整网易云歌单、每日推荐、搜索与播放", keywords: "音乐 工作室 歌单 网易云 搜索 播放器" }, music: { hint: "DengTa 一起听同步播放", keywords: "音乐 歌单 一起听 同步 播放 听歌" },
   x: { hint: "X / Twitter 发帖、搜索与私信", keywords: "X Twitter 推特 发帖 推文 搜索 私信" },
-  "creator-world": { hint: "B站/抖音看世界、自我唤醒、做视频、数据复盘与安全审批", keywords: "B站 哔哩哔哩 抖音 创作者 AI博主 做视频 分镜 脚本 评论 唤醒 MCP MoneyPrinterTurbo biliup" },
+  "creator-world": { hint: "B站/抖音/小红书接入向导、看世界、做视频、自我唤醒与审批", keywords: "B站 哔哩哔哩 抖音 小红书 创作者 AI博主 AI视界 接口 接入 做视频 分镜 脚本 评论 唤醒 MCP MoneyPrinterTurbo biliup" },
   "agent-studio": { hint: "一键授权本机剪映/阿杜导演、读音视频文档资源包、本机AI工作区、知识库与手机安装", keywords: "剪映 阿杜导演 adudir motion 剪辑 本机工作区 知识库 资源包 ZIP PDF 手机安装 APK PWA Antigravity" },
   wechat: { hint: "微信绑定与人设/记忆同步", keywords: "微信 wechat 绑定 通道 同步 人设 记忆" },
   qq: { hint: "QQ 绑定与人设/记忆同步", keywords: "QQ 绑定 通道 同步 人设 记忆 SnowLuma" },

@@ -530,7 +530,7 @@ const SETTINGS_CATEGORIES = [
   {
     id: "devices",
     label: "设备与共看",
-    description: "通知、活动感知、屏幕共看与设备",
+    description: "MCP 插件中心（B站/抖音/X/网易云）、通知与屏幕共看",
     Icon: MonitorSmartphone,
   },
   {
@@ -8472,6 +8472,26 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     setIsSettingsOpen(true);
   }
 
+  function openMcpDeviceCenter() {
+    closeComposerMenu();
+    requestStatusPanelClose();
+    setIsSidebarOpen(false);
+    setIsMobileNavOpen(false);
+    setSettingsCategory("devices");
+    setSettingsFocusTarget("mcp-device-center");
+    setIsSettingsOpen(true);
+  }
+
+  function openXhsSettings() {
+    closeComposerMenu();
+    requestStatusPanelClose();
+    setIsSidebarOpen(false);
+    setIsMobileNavOpen(false);
+    setSettingsCategory("fun");
+    setSettingsFocusTarget("xhs-login-section");
+    setIsSettingsOpen(true);
+  }
+
   function closeSettingsPanel() {
     if (hasLoadedSettingsRef.current) {
       scheduleSettingsAutosave(draftSettingsRef.current, {
@@ -9997,7 +10017,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           accountScope={accountStorageScope}
           companionScope={companionScope}
           watchRequest={activityRequestInScope(watchActivityRequest, accountStorageScope, companionScope)}
-          onOpenMcpDeviceCenter={() => { openProviderRecovery(); setSettingsFocusTarget("mcp-device-center"); }}
+          onOpenMcpDeviceCenter={openMcpDeviceCenter}
           session={coWatchSession}
           receipt={coWatchReceipt}
           screenState={screenGlanceState}
@@ -11355,7 +11375,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               </div>
               <p>点左侧的「🛵 外卖」和「🏆 成就」即可使用；这里保留小红书登录。</p>
             </div>
-            <XhsLoginPanel scope={diagnosticScopeKey(accountStorageScope, companionScope)} />
+            <div id="xhs-login-section">
+              <XhsLoginPanel scope={diagnosticScopeKey(accountStorageScope, companionScope)} />
+            </div>
             <XhsWritePanel scope={diagnosticScopeKey(accountStorageScope, companionScope)} />
             <XhsPublishPanel />
             <XhsNotificationsPanel />
@@ -12213,10 +12235,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             <Suspense fallback={<DeferredFeature label="正在连接 X…" />}>
               <XHub
                 visualPreview={visualPreview}
-                onOpenDeviceCenter={() => {
-                  openProviderRecovery();
-                  setSettingsFocusTarget("mcp-device-center");
-                }}
+                onOpenDeviceCenter={openMcpDeviceCenter}
               />
             </Suspense>
           )}
@@ -12231,10 +12250,14 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   setMessage((current) => (current ? `${current}\n${text}` : text));
                   changeView("chat");
                 }}
-                onOpenDeviceCenter={() => {
-                  openProviderRecovery();
-                  setSettingsFocusTarget("mcp-device-center");
+                onOpenDeviceCenter={openMcpDeviceCenter}
+                onOpenXhsSettings={openXhsSettings}
+                onOpenBilibiliLogin={() => {
+                  setBilibiliLoginRequest((value) => value + 1);
+                  changeView("together");
                 }}
+                onOpenAgentStudio={() => changeView("agent-studio")}
+                onOpenDiscover={() => changeView("discover")}
               />
             </Suspense>
           )}
@@ -12246,10 +12269,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   setMessage((current) => (current ? `${current}\n${text}` : text));
                   changeView("chat");
                 }}
-                onOpenDeviceCenter={() => {
-                  openProviderRecovery();
-                  setSettingsFocusTarget("mcp-device-center");
-                }}
+                onOpenDeviceCenter={openMcpDeviceCenter}
               />
             </Suspense>
           )}

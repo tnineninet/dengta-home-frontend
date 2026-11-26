@@ -13,6 +13,7 @@ import {
   Film,
   Flame,
   Globe2,
+  Link2,
   Loader2,
   MessageSquarePlus,
   Play,
@@ -29,10 +30,14 @@ import {
 import { apiRequest } from "./api";
 import DbskillChatCard from "./DbskillChatCard.jsx";
 import { buildLocalDbskillCard, requestDbskillAnalysis } from "./dbskill-intent.js";
+import { getSavedBridgeBaseUrl, setSavedBridgeBaseUrl } from "./local-agent-client.js";
 import "./creator-world-studio.css";
 
 const API_BASE_URL = (import.meta.env?.VITE_API_URL || "http://localhost:3000").replace(/\/$/, "");
-const LOCAL_MCP_ENDPOINT = "http://127.0.0.1:18088/mcp";
+const LOCAL_GATEWAY_ORIGIN = "http://127.0.0.1:18088";
+const LOCAL_MCP_ENDPOINT = `${LOCAL_GATEWAY_ORIGIN}/mcp`;
+const PC_GATEWAY_BAT_PATH = "D:\\GZdeepseek\\dengta-creator-bridge-mcp\\一键启动DengTa本机AI助手.bat";
+const CLOUDFLARED_TUNNEL_CMD = "cloudflared tunnel --url http://127.0.0.1:18088";
 
 const FALLBACK_CONNECTORS = [
   {
@@ -69,6 +74,24 @@ const FALLBACK_CONNECTORS = [
       { name: "harry0703/MoneyPrinterTurbo", url: "https://github.com/harry0703/MoneyPrinterTurbo", license: "MIT", role: "一键脚本→素材→TTS配音→字幕合成 9:16/16:9 成片" },
       { name: "Ikaros-521/AI-Vtuber", url: "https://github.com/Ikaros-521/AI-Vtuber", license: "MIT", role: "B站/抖音 AI 虚拟主播弹幕互动参考" },
       { name: "dreammis/social-auto-upload", url: "https://github.com/dreammis/social-auto-upload", license: "MIT", role: "多平台草稿/定时分发参考" },
+    ],
+  },
+  {
+    id: "xiaohongshu",
+    name: "小红书 (已内置独立会话通道)",
+    mode: "内置独立登录 + 写操作二次确认",
+    authModel: "在「设置 → 成就与新玩法」扫码或 Android 内置浏览器登录；搜索/扫码需后端配置独立 xhs-profile-worker（XHS_SERVICE_URL）",
+    capabilities: { browseWorld: true, readComments: true, readAnalytics: false, draftComment: true, publishVideoDraft: true },
+    upstreamRefs: [],
+  },
+  {
+    id: "x-twitter",
+    name: "X / Twitter (已内置通道)",
+    mode: "XHub + x-twikit-mcp",
+    authModel: "在侧边栏「X / Twitter」或「MCP 插件中心」填入自托管 HTTPS MCP 地址",
+    capabilities: { browseWorld: true, readComments: true, readAnalytics: false, draftComment: true, publishVideoDraft: false },
+    upstreamRefs: [
+      { name: "yxiy171866-boop/x-twikit-mcp", url: "https://github.com/yxiy171866-boop/x-twikit-mcp", license: "MIT", role: "X 时间线搜索、查看与发帖" },
     ],
   },
 ];
@@ -152,8 +175,16 @@ function isLoopbackHost() {
   return window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost";
 }
 
+function normalizeGatewayBaseUrl(rawUrl) {
+  const clean = String(rawUrl || "").trim().replace(/\/+$/, "");
+  if (!clean) return "";
+  return clean.replace(/\/mcp$/i, "");
+}
+
 async function fetchLocalGatewayJson(path, options = {}) {
-  const response = await fetch(path, {
+  const baseUrl = normalizeGatewayBaseUrl(options.baseUrl);
+  const targetUrl = baseUrl ? `${baseUrl}${path}` : path;
+  const response = await fetch(targetUrl, {
     ...options,
     headers: {
       ...(options.body ? { "Content-Type": "application/json" } : {}),
@@ -255,6 +286,7 @@ function formatActionStatus(status) {
 
 const TABS = [
   { id: "world", label: "看世界 · 热点", Icon: Compass },
+  { id: "connect", label: "接入向导 · 平台入口", Icon: Link2 },
   { id: "dbskill", label: "dbskill 选题诊断", Icon: Zap },
   { id: "wake", label: "自我唤醒日程", Icon: BellRing },
   { id: "video", label: "AI 视频工坊", Icon: Clapperboard },
@@ -268,6 +300,10 @@ export default function CreatorWorldStudio({
   initialTopic = null,
   onSendToChat,
   onOpenDeviceCenter,
+  onOpenXhsSettings,
+  onOpenBilibiliLogin,
+  onOpenAgentStudio,
+  onOpenDiscover,
 }) {
   const initialTopicText = String(initialTopic?.topic || "").trim();
   const initialPlatformValue =
@@ -275,7 +311,10 @@ export default function CreatorWorldStudio({
       ? initialTopic.platform
       : "both";
   const [activeTab, setActiveTab] = useState(initialTopicText ? "video" : "world");
-  const [bridgeMode, setBridgeMode] = useState(visualPreview ? "preview_offline" : "backend");
+  const [bridgeMode, setBridgeMode] = useState("checking");
+  const [gatewayBaseUrl, setGatewayBaseUrl] = useState(() => normalizeGatewayBaseUrl(getSavedBridgeBaseUrl()));
+  const [gatewayUrlDraft, setGatewayUrlDraft] = useState(() => normalizeGatewayBaseUrl(getSavedBridgeBaseUrl()) || LOCAL_GATEWAY_ORIGIN);
+  const [gatewayTesting, setGatewayTesting] = useState(false);
   const [feedCategory, setFeedCategory] = useState("popular");
   const [feedQuery, setFeedQuery] = useState("");
   const [feedLoading, setFeedLoading] = useState(false);
@@ -344,29 +383,71 @@ export default function CreatorWorldStudio({
   const callBridge = useCallback(
     async (path, options = {}) => {
       if (bridgeMode === "local_gateway") {
-        return fetchLocalGatewayJson(path, options);
+        return fetchLocalGatewayJson(path, { ...options, baseUrl: gatewayBaseUrl });
       }
       if (bridgeMode === "backend") {
         return apiRequest(path, options);
       }
       throw new Error("creator_bridge_offline");
     },
-    [bridgeMode],
+    [bridgeMode, gatewayBaseUrl],
   );
 
   const resolveMediaUrl = useCallback(
     (previewUrl) => {
       if (!previewUrl) return "";
       if (/^https?:\/\//i.test(previewUrl)) return previewUrl;
-      if (bridgeMode === "local_gateway") return previewUrl;
+      if (bridgeMode === "local_gateway") {
+        return gatewayBaseUrl ? `${gatewayBaseUrl}${previewUrl}` : previewUrl;
+      }
       return `${API_BASE_URL}${previewUrl}`;
     },
-    [bridgeMode],
+    [bridgeMode, gatewayBaseUrl],
+  );
+
+  const hydrateFromTransport = useCallback(
+    async (transport, resolvedMode, activeBaseUrl, initialOverview = null) => {
+      const [ov, q, an, feed, vids] = await Promise.all([
+        initialOverview ? Promise.resolve(initialOverview) : transport("/api/v2/creator-bridge/overview"),
+        transport("/api/v2/creator-bridge/actions/queue").catch(() => null),
+        transport("/api/v2/creator-bridge/analytics/summary").catch(() => null),
+        transport("/api/v2/creator-bridge/world/feed?category=popular&limit=10").catch(() => null),
+        transport("/api/v2/creator-bridge/video-studio/videos").catch(() => null),
+      ]);
+      if (ov) {
+        if (Array.isArray(ov.connectors)) setConnectors(ov.connectors);
+        if (Array.isArray(ov.contract?.endpoints)) setEndpoints(ov.contract.endpoints);
+        if (ov.routine) setRoutine(ov.routine);
+        if (Array.isArray(ov.recentWakeHistory)) setWakeHistory(ov.recentWakeHistory);
+        if (Array.isArray(ov.renderedVideos) && ov.renderedVideos.length) {
+          setRenderedHistory(ov.renderedVideos);
+          setRenderedVideo((prev) => prev || ov.renderedVideos[0]);
+        }
+      }
+      if (Array.isArray(q?.queue)) setQueue(q.queue);
+      if (an?.analytics) setAnalytics(an.analytics);
+      if (Array.isArray(vids?.videos) && vids.videos.length) {
+        setRenderedHistory(vids.videos);
+        setRenderedVideo((prev) => prev || vids.videos[0]);
+      }
+      if (Array.isArray(feed?.items) && feed.items.length) {
+        setFeedItems(feed.items);
+        setFeedNotice(
+          feed?.notice ||
+            (feed?.source === "live"
+              ? resolvedMode === "local_gateway"
+                ? `已连接本机创作者网关（${activeBaseUrl || LOCAL_GATEWAY_ORIGIN}）：B 站实时热点、持久化队列与 FFmpeg 成片渲染均已就绪。`
+                : "已通过 DengTa 云端后端实时拉取 B 站公开热门内容（只读接口）。"
+              : ""),
+        );
+      }
+    },
+    [],
   );
 
   const loadFeed = useCallback(
     async (category = feedCategory, query = feedQuery) => {
-      if (bridgeMode === "preview_offline") {
+      if (bridgeMode === "preview_offline" || bridgeMode === "checking") {
         setFeedItems(
           query.trim()
             ? PREVIEW_WORLD_FEED.filter((item) =>
@@ -374,7 +455,11 @@ export default function CreatorWorldStudio({
               )
             : PREVIEW_WORLD_FEED,
         );
-        setFeedback(query.trim() ? `预览检索完成：关键词「${query.trim()}」` : "已刷新外网热点观察列表（预览模式）");
+        setFeedback(
+          query.trim()
+            ? `当前为离线策划模式，已在示例热点中检索「${query.trim()}」；点上方「接入向导」连接本机网关即可实时抓 B 站。`
+            : "当前为离线策划模式；点上方「接入向导」连接本机网关即可实时拉取 B 站热点。",
+        );
         return;
       }
       setFeedLoading(true);
@@ -388,11 +473,11 @@ export default function CreatorWorldStudio({
         setFeedNotice(
           data?.notice ||
             (data?.source === "live"
-              ? "已通过本地创作者网关实时拉取 B 站公开热门内容（只读接口）"
+              ? "已实时拉取 B 站公开热门内容（只读接口）"
               : ""),
         );
       } catch {
-        setFeedNotice("后端创作者接口暂未连接，已保留本地示例热点供预览体验。");
+        setFeedNotice("创作者热点接口暂不可达，已保留示例热点；可在「接入向导」检查本机网关或云端连接。");
       } finally {
         setFeedLoading(false);
       }
@@ -400,85 +485,140 @@ export default function CreatorWorldStudio({
     [bridgeMode, callBridge, feedCategory, feedQuery],
   );
 
+  const connectLocalGateway = useCallback(
+    async (rawUrl) => {
+      const normalized = normalizeGatewayBaseUrl(rawUrl);
+      setGatewayTesting(true);
+      setFeedback("");
+      try {
+        if (!normalized) {
+          setSavedBridgeBaseUrl("");
+          setGatewayBaseUrl("");
+          if (!visualPreview) {
+            const ov = await apiRequest("/api/v2/creator-bridge/overview", { timeoutMs: 8000 });
+            if (ov?.ok) {
+              setBridgeMode("backend");
+              await hydrateFromTransport(apiRequest, "backend", "", ov);
+              setFeedback("已清空本机地址并恢复连接 DengTa 云端创作者接口。");
+              return;
+            }
+          }
+          setBridgeMode("preview_offline");
+          setFeedback("已清空本机网关地址；当前云端创作者接口尚未上线，已切回离线策划模式。");
+          return;
+        }
+        let parsed;
+        try {
+          parsed = new URL(normalized);
+        } catch {
+          throw new Error("请输入完整的网关地址，例如 http://127.0.0.1:18088 或 http://192.168.1.10:18088");
+        }
+        if (!["http:", "https:"].includes(parsed.protocol)) {
+          throw new Error("网关地址必须以 http:// 或 https:// 开头。");
+        }
+        const probe = await fetchLocalGatewayJson("/api/v2/creator-bridge/overview", {
+          baseUrl: normalized,
+          timeoutMs: 4500,
+        });
+        if (!probe?.ok) {
+          throw new Error("网关返回格式无效，请确认启动的是「一键启动DengTa本机AI助手.bat」。");
+        }
+        setSavedBridgeBaseUrl(normalized);
+        setGatewayBaseUrl(normalized);
+        setGatewayUrlDraft(normalized);
+        setBridgeMode("local_gateway");
+        const localTransport = (path, opts) => fetchLocalGatewayJson(path, { ...opts, baseUrl: normalized });
+        await hydrateFromTransport(localTransport, "local_gateway", normalized, probe);
+        setFeedback(`已成功连接本机创作者网关（${normalized}），实时 B 站看世界与本地 FFmpeg 成片已解锁！`);
+      } catch (error) {
+        setFeedback(
+          `未能连接到 ${normalized || "云端"}：${error?.message || "连接超时"}。请先在电脑双击运行「一键启动DengTa本机AI助手.bat」（手机需与电脑连同一 Wi-Fi 并填写电脑局域网 IP）。`,
+        );
+      } finally {
+        setGatewayTesting(false);
+      }
+    },
+    [hydrateFromTransport, visualPreview],
+  );
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      let transport = null;
-      let resolvedMode = visualPreview ? "preview_offline" : "backend";
+      const savedBase = normalizeGatewayBaseUrl(getSavedBridgeBaseUrl());
 
-      if (visualPreview) {
-        if (isLoopbackHost()) {
-          try {
-            const probe = await fetchLocalGatewayJson("/api/v2/creator-bridge/overview", { timeoutMs: 2500 });
-            if (cancelled) return;
-            if (probe?.ok && probe.bridgeMode === "local_creator_gateway") {
-              resolvedMode = "local_gateway";
-              transport = fetchLocalGatewayJson;
-              setBridgeMode("local_gateway");
-              if (Array.isArray(probe.connectors)) setConnectors(probe.connectors);
-              if (Array.isArray(probe.contract?.endpoints)) setEndpoints(probe.contract.endpoints);
-              if (probe.routine) setRoutine(probe.routine);
-              if (Array.isArray(probe.recentWakeHistory)) setWakeHistory(probe.recentWakeHistory);
-              if (Array.isArray(probe.renderedVideos) && probe.renderedVideos.length) {
-                setRenderedHistory(probe.renderedVideos);
-                setRenderedVideo(probe.renderedVideos[0]);
-              }
-            }
-          } catch {
-            if (!cancelled) {
-              setFeedNotice("当前为本地离线预览模式；启动本地创作者网关（127.0.0.1:18088）后即可启用实时 B 站看世界与 FFmpeg MP4 合成。");
-            }
-            return;
-          }
-        } else {
-          setFeedNotice("当前为只读预览模式，已载入示例热点与开放接口契约。");
+      const tryLocal = async (candidateBase) => {
+        try {
+          const probe = await fetchLocalGatewayJson("/api/v2/creator-bridge/overview", {
+            baseUrl: candidateBase,
+            timeoutMs: 2500,
+          });
+          if (probe?.ok) return { probe, base: candidateBase };
+        } catch {
+          // probe miss
+        }
+        return null;
+      };
+
+      // 1. If user explicitly saved a PC/LAN gateway URL, try it first
+      if (savedBase) {
+        const hit = await tryLocal(savedBase);
+        if (cancelled) return;
+        if (hit) {
+          setGatewayBaseUrl(hit.base);
+          setBridgeMode("local_gateway");
+          const localTransport = (path, opts) => fetchLocalGatewayJson(path, { ...opts, baseUrl: hit.base });
+          await hydrateFromTransport(localTransport, "local_gateway", hit.base, hit.probe);
           return;
         }
-      } else {
-        transport = apiRequest;
       }
 
-      if (!transport || cancelled) return;
-      try {
-        const [ov, q, an, feed, vids] = await Promise.all([
-          resolvedMode === "local_gateway" ? Promise.resolve(null) : transport("/api/v2/creator-bridge/overview"),
-          transport("/api/v2/creator-bridge/actions/queue"),
-          transport("/api/v2/creator-bridge/analytics/summary"),
-          transport("/api/v2/creator-bridge/world/feed?category=popular&limit=10").catch(() => null),
-          transport("/api/v2/creator-bridge/video-studio/videos").catch(() => null),
-        ]);
+      // 2. Normal logged-in mode: try DengTa cloud backend /api/v2/creator-bridge/overview
+      if (!visualPreview) {
+        try {
+          const ov = await apiRequest("/api/v2/creator-bridge/overview", { timeoutMs: 8000 });
+          if (cancelled) return;
+          if (ov?.ok) {
+            setBridgeMode("backend");
+            await hydrateFromTransport(apiRequest, "backend", "", ov);
+            return;
+          }
+        } catch {
+          // Cloud backend may still be on an older revision before /api/v2/creator-bridge deploy; try loopback fallback next
+        }
+      }
+
+      // 3. Loopback auto-discovery (same-origin Vite proxy or PC 127.0.0.1:18088)
+      if (isLoopbackHost()) {
+        const sameOriginHit = await tryLocal("");
         if (cancelled) return;
-        if (ov) {
-          if (Array.isArray(ov.connectors)) setConnectors(ov.connectors);
-          if (Array.isArray(ov.contract?.endpoints)) setEndpoints(ov.contract.endpoints);
-          if (ov.routine) setRoutine(ov.routine);
-          if (Array.isArray(ov.recentWakeHistory)) setWakeHistory(ov.recentWakeHistory);
+        if (sameOriginHit && sameOriginHit.probe.bridgeMode === "local_creator_gateway") {
+          setGatewayBaseUrl("");
+          setBridgeMode("local_gateway");
+          await hydrateFromTransport(fetchLocalGatewayJson, "local_gateway", "", sameOriginHit.probe);
+          return;
         }
-        if (Array.isArray(q?.queue)) setQueue(q.queue);
-        if (an?.analytics) setAnalytics(an.analytics);
-        if (Array.isArray(vids?.videos) && vids.videos.length) {
-          setRenderedHistory(vids.videos);
-          setRenderedVideo((prev) => prev || vids.videos[0]);
+        const local18088Hit = await tryLocal(LOCAL_GATEWAY_ORIGIN);
+        if (cancelled) return;
+        if (local18088Hit) {
+          setGatewayBaseUrl(LOCAL_GATEWAY_ORIGIN);
+          setBridgeMode("local_gateway");
+          const localTransport = (path, opts) => fetchLocalGatewayJson(path, { ...opts, baseUrl: LOCAL_GATEWAY_ORIGIN });
+          await hydrateFromTransport(localTransport, "local_gateway", LOCAL_GATEWAY_ORIGIN, local18088Hit.probe);
+          return;
         }
-        if (Array.isArray(feed?.items) && feed.items.length) {
-          setFeedItems(feed.items);
-          setFeedNotice(
-            feed?.notice ||
-              (feed?.source === "live"
-                ? resolvedMode === "local_gateway"
-                  ? "已连接本地创作者 MCP 网关（127.0.0.1:18088）：B 站实时热点、持久化队列与 FFmpeg 成片渲染均已就绪。"
-                  : "已实时拉取 B 站公开热门内容（只读接口）"
-                : ""),
-          );
-        }
-      } catch {
-        // Keep seamless fallback
+      }
+
+      if (!cancelled) {
+        setBridgeMode("preview_offline");
+        setFeedNotice(
+          "当前为离线策划模式（云端创作者接口待更新且未连本机网关）：dbskill 选题诊断与分镜脚本仍可直接用；点「接入向导 · 平台入口」可一键连接本机网关或打开 B站/小红书/抖音入口。",
+        );
       }
     })();
     return () => {
       cancelled = true;
     };
-  }, [visualPreview]);
+  }, [hydrateFromTransport, visualPreview]);
 
   async function saveRoutine(nextRoutine) {
     setRoutine(nextRoutine);
@@ -628,8 +768,8 @@ export default function CreatorWorldStudio({
   }
 
   async function renderVideoNow() {
-    if (bridgeMode === "preview_offline") {
-      setFeedback("请先运行「启动创作者MCP网关.bat」（127.0.0.1:18088）以启用本地 FFmpeg 实景 MP4 合成。");
+    if (bridgeMode === "preview_offline" || bridgeMode === "checking") {
+      setFeedback("本地 FFmpeg 成片需要先连接电脑 18088 网关：请点上方「接入向导 · 平台入口」运行「一键启动DengTa本机AI助手.bat」并点击「测试并连接本机网关」。");
       return;
     }
     setRendering(true);
@@ -745,11 +885,11 @@ export default function CreatorWorldStudio({
     setFeedback(decision === "approve" ? "已人工确认放行，等待已绑定的 MCP/开放平台执行派发。" : "已驳回该草稿。");
   }
 
-  function copyJson(id, obj) {
+  function copyJson(id, obj, customNotice = "") {
     const text = typeof obj === "string" ? obj : JSON.stringify(obj, null, 2);
     navigator.clipboard?.writeText?.(text).catch(() => {});
     setCopiedId(id);
-    setFeedback("已复制到剪贴板，可直接粘贴到 MoneyPrinterTurbo 或 DengTa MCP 设备中心。");
+    setFeedback(customNotice || "已复制到剪贴板。");
     window.setTimeout(() => setCopiedId(""), 2200);
   }
 
@@ -763,15 +903,17 @@ export default function CreatorWorldStudio({
             <span className="eyebrow">WORLD & CREATOR BRIDGE · 开放接口</span>
             <span className={`cws-mode-pill is-${bridgeMode}`}>
               {bridgeMode === "local_gateway"
-                ? "● 本地创作者网关在线（FFmpeg + 实时B站）"
+                ? `● 本机创作者网关在线（${gatewayBaseUrl || "127.0.0.1:18088"}）`
                 : bridgeMode === "backend"
-                  ? "● DengTa 后端已连接"
-                  : "○ 离线预览模式"}
+                  ? "● DengTa 云端创作者接口在线"
+                  : bridgeMode === "checking"
+                    ? "◌ 正在检测创作者接口…"
+                    : "○ 离线策划模式（可连本机网关解锁全功能）"}
             </span>
           </div>
           <h2>AI 视界 · 创作者中控</h2>
           <p>
-            让 {aiName} 看见外面的世界：浏览 B 站/抖音热点、定时自我唤醒巡检、自动写分镜并一键本地 FFmpeg 合成 MP4 成片、查看作品数据；所有外部发评与投稿均受「本人单账号 + AI 声明 + 人工审批闸门」保护。
+            让 {aiName} 看见外面的世界：浏览 B 站/抖音/小红书选题灵感、定时自我唤醒巡检、自动写分镜并一键本地 FFmpeg 合成 MP4 成片；不确定接口怎么接、去哪里绑账号，点右侧「接入向导」即可一步步直达。
           </p>
         </div>
         <div className="cws-hero-actions">
@@ -783,6 +925,14 @@ export default function CreatorWorldStudio({
           >
             {waking ? <Loader2 size={15} className="spin" aria-hidden="true" /> : <Sparkles size={15} aria-hidden="true" />}
             <span>{waking ? "唤醒巡检中…" : "立即唤醒巡检一次"}</span>
+          </button>
+          <button
+            type="button"
+            className={`cws-secondary-btn${activeTab === "connect" ? " is-highlighted" : ""}`}
+            onClick={() => setActiveTab("connect")}
+          >
+            <Link2 size={15} aria-hidden="true" />
+            <span>怎么接入？</span>
           </button>
           {onOpenDeviceCenter ? (
             <button type="button" className="cws-secondary-btn" onClick={onOpenDeviceCenter}>
@@ -935,6 +1085,212 @@ export default function CreatorWorldStudio({
                 </div>
               </article>
             ))}
+          </div>
+        </div>
+      ) : null}
+
+      {activeTab === "connect" ? (
+        <div className="cws-panel">
+          <div className="cws-box cws-gateway-card">
+            <div className="cws-box-head">
+              <div>
+                <h3>① 本机 / 局域网创作者网关（AI 视界核心引擎）</h3>
+                <p className="cws-note">
+                  连接电脑上的 <code>18088</code> 网关后，即可直接抓 B 站实时热门/搜索、跑本地 FFmpeg 合成 MP4，并与「AI 工作台·剪映」共用同一地址（手机和电脑连同一 Wi-Fi 也能直连，无需公网 HTTPS）。
+                </p>
+              </div>
+              <span className={`cws-tag${bridgeMode === "local_gateway" || bridgeMode === "backend" ? " is-safe" : ""}`}>
+                {bridgeMode === "local_gateway"
+                  ? "已连本机网关"
+                  : bridgeMode === "backend"
+                    ? "已连云端接口"
+                    : "待连接本机网关"}
+              </span>
+            </div>
+            <div className="cws-gateway-form">
+              <label className="cws-field">
+                本机或局域网网关地址（填在这里，不要把 127.0.0.1 填进云端 MCP 中心）
+                <input
+                  value={gatewayUrlDraft}
+                  onChange={(e) => setGatewayUrlDraft(e.target.value)}
+                  placeholder="电脑本机填 http://127.0.0.1:18088 · 手机同 Wi-Fi 填 http://电脑IP:18088"
+                />
+              </label>
+              <div className="cws-card-actions">
+                <button
+                  type="button"
+                  className="cws-primary-btn"
+                  disabled={gatewayTesting}
+                  onClick={() => void connectLocalGateway(gatewayUrlDraft)}
+                >
+                  {gatewayTesting ? <Loader2 size={14} className="spin" aria-hidden="true" /> : <PlugZap size={14} aria-hidden="true" />}
+                  <span>{gatewayTesting ? "检测连接中…" : "测试并连接本机网关"}</span>
+                </button>
+                <button
+                  type="button"
+                  className="cws-secondary-btn"
+                  onClick={() => setGatewayUrlDraft(LOCAL_GATEWAY_ORIGIN)}
+                >
+                  填入 127.0.0.1:18088
+                </button>
+                <button
+                  type="button"
+                  className="cws-secondary-btn"
+                  disabled={gatewayTesting}
+                  onClick={() => {
+                    setGatewayUrlDraft("");
+                    void connectLocalGateway("");
+                  }}
+                >
+                  清空并改用云端
+                </button>
+              </div>
+            </div>
+            <div className="cws-cmd-strip">
+              <div>
+                <strong>电脑一键启动脚本（支持手机同 Wi-Fi 配对）：</strong>
+                <code>{PC_GATEWAY_BAT_PATH}</code>
+              </div>
+              <button
+                type="button"
+                className="cws-secondary-btn"
+                onClick={() => copyJson("bat-path", PC_GATEWAY_BAT_PATH, "已复制一键启动脚本路径，可在电脑资源管理器直接打开运行。")}
+              >
+                <Copy size={12} aria-hidden="true" />
+                <span>{copiedId === "bat-path" ? "已复制路径" : "复制脚本路径"}</span>
+              </button>
+            </div>
+            <div className="cws-cmd-strip">
+              <div>
+                <strong>想把本机网关挂进云端「MCP 插件中心」让对话 AI 调用？先转公网 HTTPS：</strong>
+                <code>{CLOUDFLARED_TUNNEL_CMD}</code>
+              </div>
+              <button
+                type="button"
+                className="cws-secondary-btn"
+                onClick={() => copyJson("cf-cmd", CLOUDFLARED_TUNNEL_CMD, "已复制隧道命令；运行后把输出的 https://xxx.trycloudflare.com/mcp 填进「设置 → 设备与共看 → 自定义 MCP 连接」。")}
+              >
+                <Copy size={12} aria-hidden="true" />
+                <span>{copiedId === "cf-cmd" ? "已复制命令" : "复制隧道命令"}</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="cws-guide-grid">
+            <article className="cws-box cws-guide-card">
+              <div className="cws-box-head">
+                <h3>② B 站 (Bilibili)</h3>
+                <span className="cws-tag is-safe">热门与选题免配置可用</span>
+              </div>
+              <ul className="cws-guide-list">
+                <li><strong>开箱即用：</strong>点「看世界·热点」「dbskill 选题诊断」「AI 视频工坊 (16:9)」无需填任何密钥。</li>
+                <li><strong>扫码 / 内置浏览器登录读收藏夹：</strong>在「一起看」页完成哔哩哔哩登录，密码不经过 DengTa。</li>
+                <li><strong>个人稿件数据 / 发评 / 投稿草稿（进阶）：</strong>去「设置 → 设备与共看 → MCP 插件中心」点 <code>B 站视界与创作者 MCP</code> 模板，填入你自托管的公网 <code>https://.../mcp</code>。</li>
+              </ul>
+              <div className="cws-card-actions">
+                <button type="button" className="cws-secondary-btn" onClick={() => setActiveTab("world")}>
+                  <Compass size={13} aria-hidden="true" /> 立即刷 B 站热点
+                </button>
+                {onOpenBilibiliLogin ? (
+                  <button type="button" className="cws-primary-btn" onClick={onOpenBilibiliLogin}>
+                    <Play size={13} aria-hidden="true" /> 去「一起看」登录 B 站
+                  </button>
+                ) : null}
+                {onOpenDeviceCenter ? (
+                  <button type="button" className="cws-secondary-btn" onClick={onOpenDeviceCenter}>
+                    <PlugZap size={13} aria-hidden="true" /> 去 MCP 中心绑 B 站
+                  </button>
+                ) : null}
+              </div>
+            </article>
+
+            <article className="cws-box cws-guide-card">
+              <div className="cws-box-head">
+                <h3>③ 小红书 (Xiaohongshu)</h3>
+                <span className="cws-tag">独立账号面板在设置里</span>
+              </div>
+              <ul className="cws-guide-list">
+                <li><strong>选题与爆款标题免配置可用：</strong>在「dbskill 选题诊断」选择 <code>小红书（轻痛点清单）</code> 立即生成三端标题与痛点钩子。</li>
+                <li><strong>账号登录、点赞、评论与图文发布：</strong>入口位于 <code>设置 → 成就与新玩法 → 小红书</code>（按当前账号+伴侣独立隔离，写操作需二次确认）。</li>
+                <li><strong>服务端提示：</strong>扫码登录与笔记搜索需要后端部署独立 <code>scripts/xhs-profile-worker.js</code>（配置 <code>XHS_SERVICE_URL</code>）；未部署时 Android App 仍可先用「内置浏览器登录」加密保存登录态。</li>
+              </ul>
+              <div className="cws-card-actions">
+                <button
+                  type="button"
+                  className="cws-secondary-btn"
+                  onClick={() => {
+                    setDbskillPlatform("xiaohongshu");
+                    setActiveTab("dbskill");
+                  }}
+                >
+                  <Zap size={13} aria-hidden="true" /> 小红书选题诊断
+                </button>
+                {onOpenXhsSettings ? (
+                  <button type="button" className="cws-primary-btn" onClick={onOpenXhsSettings}>
+                    <Link2 size={13} aria-hidden="true" /> 打开小红书登录与发布
+                  </button>
+                ) : null}
+                {onOpenDiscover ? (
+                  <button type="button" className="cws-secondary-btn" onClick={onOpenDiscover}>
+                    <Compass size={13} aria-hidden="true" /> 打开「发现」页
+                  </button>
+                ) : null}
+              </div>
+            </article>
+
+            <article className="cws-box cws-guide-card">
+              <div className="cws-box-head">
+                <h3>④ 抖音 (Douyin)</h3>
+                <span className="cws-tag is-safe">9:16 分镜与成片免配置</span>
+              </div>
+              <ul className="cws-guide-list">
+                <li><strong>开箱即用：</strong>在「dbskill 选题诊断」选 <code>抖音短视频（9:16 强钩子）</code>，再点「AI 视频工坊」自动出 9:16 竖屏分镜、标题与 FFmpeg 成片。</li>
+                <li><strong>本人作品数据 &amp; 上传草稿箱（进阶）：</strong>优先在抖音开放平台申请 OAuth2，或本地运行 <code>douyin-mcp-server</code> / <code>521w/douyin-mcp</code> 并通过 HTTPS 反代接入。</li>
+                <li><strong>填在哪里：</strong>点下方按钮直达「设置 → 设备与共看 → MCP 插件中心」，选择 <code>抖音创作者开放接口 &amp; MCP</code> 模板填入公网 <code>https://.../mcp</code> 与 Bearer Token。</li>
+              </ul>
+              <div className="cws-card-actions">
+                <button
+                  type="button"
+                  className="cws-secondary-btn"
+                  onClick={() => {
+                    setTargetPlatform("douyin");
+                    setActiveTab("video");
+                  }}
+                >
+                  <Clapperboard size={13} aria-hidden="true" /> 去写抖音 9:16 视频
+                </button>
+                {onOpenDeviceCenter ? (
+                  <button type="button" className="cws-primary-btn" onClick={onOpenDeviceCenter}>
+                    <PlugZap size={13} aria-hidden="true" /> 去 MCP 中心绑抖音
+                  </button>
+                ) : null}
+                <a href="https://developer.open-douyin.com/" target="_blank" rel="noreferrer" className="cws-ext-link">
+                  抖音开放平台 <ExternalLink size={12} aria-hidden="true" />
+                </a>
+              </div>
+            </article>
+
+            <article className="cws-box cws-guide-card">
+              <div className="cws-box-head">
+                <h3>⑤ AI 视频成片 &amp; 本机剪映联动</h3>
+                <span className="cws-tag is-safe">支持本机一键剪辑</span>
+              </div>
+              <ul className="cws-guide-list">
+                <li><strong>轻量快剪：</strong>在本页「AI 视频工坊」直接调用本机 <code>18088</code> 网关的 FFmpeg 合成可下载 MP4，或复制 JSON 给 <code>MoneyPrinterTurbo</code>。</li>
+                <li><strong>专业精剪（剪映 / 阿杜导演）：</strong>前往「AI 工作台·剪映」，一键授权后可读写本机素材包、做画质响度体检，并同步生成剪映多轨草稿与 FCPXML。</li>
+                <li><strong>合规提醒：</strong>所有外部评论/投稿统一先进入「评论与发布审批」队列，只有你手动点「确认放行」后才会派发到已绑定的 MCP。</li>
+              </ul>
+              <div className="cws-card-actions">
+                <button type="button" className="cws-secondary-btn" onClick={() => setActiveTab("video")}>
+                  <Video size={13} aria-hidden="true" /> 打开 AI 视频工坊
+                </button>
+                {onOpenAgentStudio ? (
+                  <button type="button" className="cws-primary-btn" onClick={onOpenAgentStudio}>
+                    <Film size={13} aria-hidden="true" /> 打开「AI 工作台·剪映」
+                  </button>
+                ) : null}
+              </div>
+            </article>
           </div>
         </div>
       ) : null}
@@ -1390,14 +1746,24 @@ export default function CreatorWorldStudio({
                 <article className="cws-connector-card">
                   <div className="cws-box-head">
                     <strong>DengTa 本地 Creator MCP 网关（已内置）</strong>
-                    <button type="button" className="cws-secondary-btn" onClick={() => copyJson("mcp-url", LOCAL_MCP_ENDPOINT)}>
+                    <button
+                      type="button"
+                      className="cws-secondary-btn"
+                      onClick={() =>
+                        copyJson(
+                          "mcp-url",
+                          LOCAL_MCP_ENDPOINT,
+                          "已复制本机 MCP 地址（127.0.0.1:18088/mcp）。注意：本机直连请填在「接入向导」；若填进云端「MCP 插件中心」，需先用 Cloudflare Tunnel 转为 https:// 域名。",
+                        )
+                      }
+                    >
                       <Copy size={12} aria-hidden="true" />
-                      <span>{copiedId === "mcp-url" ? "已复制地址" : "复制 MCP 地址"}</span>
+                      <span>{copiedId === "mcp-url" ? "已复制地址" : "复制本机 MCP 地址"}</span>
                     </button>
                   </div>
                   <p>
-                    Streamable HTTP 端点：<code>{LOCAL_MCP_ENDPOINT}</code>（7 个标准工具：<code>dbskill_analyze_topic</code> 选题诊断、B站热门/检索/详情、分镜生成、本地 FFmpeg 合成 MP4、合规自检；可通过{" "}
-                    <code>启动创作者MCP网关.bat</code> 一键拉起）。
+                    本机 Streamable HTTP 端点：<code>{LOCAL_MCP_ENDPOINT}</code>（含 7 个创作者工具 + 剪映/知识库工具；双击{" "}
+                    <code>一键启动DengTa本机AI助手.bat</code> 即可拉起。本机/同 Wi-Fi 直连请在上方「接入向导」填入；云端 MCP 插件中心则需先反代为公网 <code>https://.../mcp</code>）。
                   </p>
                 </article>
                 {connectors.map((c) => (

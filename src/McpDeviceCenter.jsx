@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "./api";
 import { settingsServiceErrorMessage } from "./settings-service-errors";
 
@@ -178,6 +178,7 @@ const CAPABILITY_LABELS = Object.freeze({
 });
 
 export default function McpDeviceCenter() {
+  const formRef = useRef(null);
   const [status, setStatus] = useState({ checking: true });
   const [connections, setConnections] = useState([]);
   const [loaded, setLoaded] = useState(false);
@@ -222,15 +223,21 @@ export default function McpDeviceCenter() {
   }
 
   function applyMcpApp(app) {
+    const prefersBearer = ["x-twitter", "bilibili-creator-mcp", "douyin-creator-mcp", "ai-video-factory", "social-auto-upload"].includes(app.id);
     setDraft({
       ...EMPTY_DRAFT,
       name: app.name || "",
       endpoint: "",
-      auth_type: app.id === "x-twitter" ? "bearer" : "none",
+      auth_type: prefersBearer ? "bearer" : "none",
       provider_profile: "auto",
     });
     setDiscovery(null);
-    setFeedback(`已载入「${app.name}」模板。请按下方教程部署，然后把公网 HTTPS 地址填进“完整 MCP 地址”。`);
+    setFeedback(
+      app.id === "adudir-jianying-studio"
+        ? `已载入「${app.name}」模板。若只是电脑或同 Wi-Fi 手机直连，请直接去「AI 视界·创作者 → 接入向导」或「AI 工作台·剪映」填 http://127.0.0.1:18088；若要给云端对话调用，请先用 Cloudflare Tunnel 转为 https://.../mcp 再填到下方。`
+        : `已载入「${app.name}」模板，请把自托管的公网 HTTPS 地址（如 ${app.endpoint_hint || "https://你的域名/mcp"}）填进下方“完整 MCP 地址”后点「测试并读取工具」。`,
+    );
+    formRef.current?.scrollIntoView?.({ behavior: "smooth", block: "nearest" });
   }
 
   async function discover() {
@@ -432,7 +439,7 @@ export default function McpDeviceCenter() {
         <div className="mcp-empty">正在读取 MCP 连接…</div>
       ) : (
         <>
-          <form className="mcp-connection-form" onSubmit={createConnection}>
+          <form ref={formRef} className="mcp-connection-form" onSubmit={createConnection}>
             <h4>添加一个 MCP 连接</h4>
             <div className="mcp-form-grid">
               <label>
