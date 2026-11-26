@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
-import { AtSign, CheckCircle2, ExternalLink, Loader2, MessageCircle, RefreshCw, Search, Send, TriangleAlert } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AtSign, CheckCircle2, ExternalLink, Loader2, MessageCircle, PlugZap, RefreshCw, Search, Send, TriangleAlert, User } from "lucide-react";
 import { apiRequest } from "./api";
 import { settingsServiceErrorMessage } from "./settings-service-errors";
-import { extractTweetId, formatXResultTimestamps } from "./x-hub-utils.js";
+import { extractTweetId, formatXResultTimestamps, resolveXConnectionState } from "./x-hub-utils.js";
 import "./x-hub.css";
 
 const X_TOOL_LABELS = {
@@ -20,33 +20,36 @@ const X_TOOL_LABELS = {
   delete_tweet: "删帖",
 };
 
-function normalizeXConnection(connection) {
-  const tools = Array.isArray(connection?.tools)
-    ? connection.tools
-    : Array.isArray(connection?.discovered_tools)
-      ? connection.discovered_tools
-      : [];
-  return {
-    ...connection,
-    tools,
-    names: tools.map((tool) => tool.name).filter(Boolean),
-  };
+function formatTestedAt(iso) {
+  if (!iso) return "尚未实测";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "尚未实测";
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
 }
 
 export default function XHub({ onOpenDeviceCenter, visualPreview = false }) {
   const [loading, setLoading] = useState(!visualPreview);
   const [error, setError] = useState("");
-  const [status, setStatus] = useState(null);
-  const [connection, setConnection] = useState(null);
+  const [resolved, setResolved] = useState({ state: "none", connection: null, reason: "" });
+  const [liveCheckBusy, setLiveCheckBusy] = useState(false);
+  const [liveCheckNotice, setLiveCheckNotice] = useState("");
   const [query, setQuery] = useState("");
   const [tweetLookup, setTweetLookup] = useState("");
+  const [usernameLookup, setUsernameLookup] = useState("");
   const [postText, setPostText] = useState("");
   const [confirmPost, setConfirmPost] = useState(false);
   const [action, setAction] = useState("");
   const [result, setResult] = useState(null);
   const [actionError, setActionError] = useState("");
 
-  const load = async () => {
+  const load = useCallback(async () => {
     if (visualPreview) {
       setLoading(false);
       return;
@@ -54,22 +57,15 @@ export default function XHub({ onOpenDeviceCenter, visualPreview = false }) {
     setLoading(true);
     setError("");
     try {
-      const [statusData, manageData] = await Promise.all([
-        apiRequest("/api/mcp/connections/status"),
-        apiRequest("/api/mcp/connections/manage"),
-      ]);
-      setStatus(statusData || null);
-      const connections = (manageData?.connections || []).map(normalizeXConnection);
-      const x = connections.find((item) => item.names.includes("post_tweet") || item.names.includes("search_tweets"))
-        || connections.find((item) => /x\s*\/?\s*twitter|twitter|\bx\b/i.test(String(item.name || "")))
-        || null;
-      setConnection(x);
+      const manageData = await apiRequest("/api/mcp/connections/manage");
+      setResolved(resolveXConnectionState(manageData?.connections || []));
     } catch (caught) {
+      setResolved({ state: "none", connection: null, reason: "" });
       setError(settingsServiceErrorMessage(caught, "X 连接暂时读不到。"));
     } finally {
       setLoading(false);
     }
-  };
+  }, [visualPreview]);
 
   useEffect(() => {
     if (visualPreview) return undefined;
@@ -77,13 +73,87 @@ export default function XHub({ onOpenDeviceCenter, visualPreview = false }) {
       void load();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [visualPreview]);
+  }, [load, visualPreview]);
 
-  const availableTools = useMemo(() => connection?.names || [], [connection]);
+  const connection = resolved.connection;
+  const connState = resolved.state; // "none" | "disabled" | "disconnected" | "connected"
+  const isConnected = connState === "connected";
+  const availableTools = useMemo(() => connection?.xTools || [], [connection]);
   const parsedTweetId = useMemo(() => extractTweetId(tweetLookup), [tweetLookup]);
 
+  async function testConnectionLive() {
+    if (!connection?.id || liveCheckBusy) return;
+    setLiveCheckBusy(true);
+    setLiveCheckNotice("");
+    setActionError("");
+    try {
+      const data = await apiRequest(`/api/mcp/connections/manage/${connection.id}/test`, {
+        method: "POST",
+        timeoutMs: 30000,
+      });
+      const next = resolveXConnectionState(data?.connection ? [data.connection] : []);
+      setResolved(next);
+      setLiveCheckNotice(
+        next.state === "connected"
+          ? `实测连通成功：已从网关读取到 ${next.connection.xTools.length} 个可用 X 工具。`
+          : `实测未就绪：${next.reason}`,
+      );
+    } catch (caught) {
+      const msg = settingsServiceErrorMessage(caught, "无法连通 X MCP 网关，请检查你自托管的公网 HTTPS 服务是否正在运行。");
+      setResolved((prev) => (prev.connection ? {
+        state: "disconnected",
+        connection: { ...prev.connection, last_status: "error", last_error: msg },
+        reason: msg,
+      } : prev));
+      setLiveCheckNotice(`实测连接失败：${msg}`);
+    } finally {
+      setLiveCheckBusy(false);
+    }
+  }
+
+  async function enableAndTestConnection() {
+    if (!connection?.id || liveCheckBusy) return;
+    setLiveCheckBusy(true);
+    setLiveCheckNotice("");
+    setActionError("");
+    try {
+      await apiRequest(`/api/mcp/connections/manage/${connection.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: connection.name,
+          enabled: true,
+          auth_type: connection.auth_type,
+          auth_header: connection.auth_header,
+          protocol_version: connection.protocol_version,
+          provider_profile: connection.provider_profile || "",
+          tool_policies: connection.tool_policies || {},
+        }),
+      });
+      const tested = await apiRequest(`/api/mcp/connections/manage/${connection.id}/test`, {
+        method: "POST",
+        timeoutMs: 30000,
+      });
+      const next = resolveXConnectionState(tested?.connection ? [tested.connection] : []);
+      setResolved(next);
+      setLiveCheckNotice(
+        next.state === "connected"
+          ? `已启用并实测连通！可用 X 工具：${next.connection.xTools.length} 个。`
+          : `已启用连接，但连通测试未通过：${next.reason}`,
+      );
+    } catch (caught) {
+      const msg = settingsServiceErrorMessage(caught, "启用或测试 X 连接失败，请前往 MCP 插件中心检查。");
+      setLiveCheckNotice(msg);
+      await load();
+    } finally {
+      setLiveCheckBusy(false);
+    }
+  }
+
   async function callXTool(toolName, args) {
-    if (!connection?.id) throw new Error("还没有连接 X / Twitter。");
+    if (!connection?.id || !isConnected) {
+      setActionError("X MCP 网关尚未处于「已连接且启用」状态，请先点击「实测连通性」或前往 MCP 插件中心配置。");
+      return;
+    }
     setAction(toolName);
     setActionError("");
     setResult(null);
@@ -99,13 +169,37 @@ export default function XHub({ onOpenDeviceCenter, visualPreview = false }) {
         text: formatXResultTimestamps(String(data?.text || "").slice(0, 6000)) || "工具已执行，但没有返回文本结果。",
       });
     } catch (caught) {
-      setActionError(settingsServiceErrorMessage(caught, "X 工具暂时没有响应。"));
+      const msg = settingsServiceErrorMessage(caught, "X 工具暂时没有响应。");
+      setActionError(msg);
+      if (caught?.status === 409 || caught?.status === 502 || caught?.status === 504) {
+        setResolved((prev) => (prev.connection ? {
+          state: caught?.status === 409 ? "disabled" : "disconnected",
+          connection: { ...prev.connection, last_status: "error", last_error: msg },
+          reason: msg,
+        } : prev));
+      }
     } finally {
       setAction("");
     }
   }
 
-  const postDisabled = !postText.trim() || !confirmPost || action === "post_tweet";
+  const postDisabled = !isConnected || !availableTools.includes("post_tweet") || !postText.trim() || !confirmPost || action === "post_tweet";
+  const statusBadgeClass = loading
+    ? "is-warn"
+    : isConnected
+      ? "is-ready"
+      : connState === "disabled"
+        ? "is-warn"
+        : "is-offline";
+  const statusBadgeText = loading
+    ? "检测中…"
+    : isConnected
+      ? "● 已连接 · 可用"
+      : connState === "disabled"
+        ? "◌ 已保存 · 未启用"
+        : connState === "disconnected"
+          ? "✕ 连接离线 / 不可用"
+          : "○ 未连接";
 
   return (
     <section className="feature-page x-hub" aria-label="X / Twitter">
@@ -114,10 +208,10 @@ export default function XHub({ onOpenDeviceCenter, visualPreview = false }) {
         <div>
           <span className="eyebrow">EXTERNAL TIMELINE</span>
           <h2>X / Twitter</h2>
-          <p>在 DengTa 里直接发帖、搜索和查看 X；连接仍由你的 MCP 网关保管。</p>
+          <p>在 DengTa 里直接搜索、查推文与发帖；需先接入你自托管的公网 HTTPS <code>x-twikit-mcp</code> 网关。</p>
         </div>
-        <span className={`x-hub-status ${connection ? "is-ready" : "is-offline"}`}>
-          {loading ? "读取中" : connection ? "已连接" : "未连接"}
+        <span className={`x-hub-status ${statusBadgeClass}`}>
+          {statusBadgeText}
         </span>
       </header>
 
@@ -131,7 +225,7 @@ export default function XHub({ onOpenDeviceCenter, visualPreview = false }) {
           </div>
         </div>
       ) : loading ? (
-        <div className="x-hub-loading" role="status"><Loader2 className="spin" aria-hidden="true" />正在读取 X 连接…</div>
+        <div className="x-hub-loading" role="status"><Loader2 className="spin" aria-hidden="true" />正在读取 X 连接状态…</div>
       ) : error ? (
         <div className="x-hub-error" role="alert">
           <TriangleAlert aria-hidden="true" />
@@ -141,51 +235,99 @@ export default function XHub({ onOpenDeviceCenter, visualPreview = false }) {
             <button type="button" onClick={() => void load()}>重新读取</button>
           </div>
         </div>
-      ) : !connection ? (
+      ) : connState === "none" ? (
         <div className="x-hub-empty">
           <MessageCircle aria-hidden="true" />
-          <h3>还没有接上 X</h3>
-          <p>先在 MCP 设备中心连接 twikit/X MCP 网关，再回来使用发帖和搜索。</p>
+          <h3>当前未连接 X / Twitter</h3>
+          <p>DengTa 不会在云端保存你的 X 账号密码或 Cookie；需要先在自己电脑/服务器部署开源 <code>yxiy171866-boop/x-twikit-mcp</code> 并通过 HTTPS 暴露，再到 MCP 插件中心添加并启用。</p>
+          <ol className="x-hub-guide-steps">
+            <li>在你自己的机器部署 <code>x-twikit-mcp</code>（填入自己的 <code>auth_token</code> 与 <code>ct0</code>），用 <code>supergateway</code> / <code>mcp-proxy</code> + Cloudflare Tunnel 暴露为公网 <code>https://.../mcp</code>。</li>
+            <li>点下方「去 MCP 插件中心」→ 在「MCP 应用目录」选 <strong>X / Twitter · twikit MCP</strong> → 填入公网 HTTPS 地址与 Bearer 令牌并保存。</li>
+            <li>点「测试并读取工具」确认读出 <code>search_tweets</code> / <code>post_tweet</code> 等工具，勾选「启用此连接」后回到本页即可使用。</li>
+          </ol>
           <div>
-            <button type="button" onClick={() => void load()}><RefreshCw aria-hidden="true" />重新读取</button>
-            {onOpenDeviceCenter ? <button type="button" onClick={onOpenDeviceCenter}>去 MCP 设备中心 <ExternalLink aria-hidden="true" /></button> : null}
+            <button type="button" onClick={() => void load()}><RefreshCw aria-hidden="true" />重新检测</button>
+            {onOpenDeviceCenter ? <button type="button" className="x-hub-primary" onClick={onOpenDeviceCenter}><PlugZap aria-hidden="true" />去 MCP 插件中心连接 <ExternalLink aria-hidden="true" /></button> : null}
+          </div>
+        </div>
+      ) : !isConnected ? (
+        <div className={`x-hub-diag-card ${connState === "disabled" ? "is-warn" : "is-offline"}`} role="status">
+          <div className="x-hub-card-heading">
+            <div>
+              <span className="eyebrow">{connState === "disabled" ? "CONNECTION DISABLED" : "GATEWAY OFFLINE"}</span>
+              <h3>{connState === "disabled" ? `连接「${connection.name}」尚未启用` : `连接「${connection.name}」当前不可用`}</h3>
+            </div>
+            <TriangleAlert aria-hidden="true" />
+          </div>
+          <p className="x-hub-diag-reason">{resolved.reason}</p>
+          <div className="x-hub-diag-meta">
+            <span>地址：<code>{connection.endpoint || "未填写"}</code></span>
+            <span>上次测试：{formatTestedAt(connection.last_tested_at)}</span>
+            <span>识别到 X 工具：{availableTools.length} 个</span>
+          </div>
+          {liveCheckNotice ? <p className="x-hub-diag-notice">{liveCheckNotice}</p> : null}
+          <div className="x-hub-diag-actions">
+            {connState === "disabled" ? (
+              <button type="button" className="x-hub-primary" disabled={liveCheckBusy} onClick={() => void enableAndTestConnection()}>
+                {liveCheckBusy ? <Loader2 className="spin" aria-hidden="true" /> : <PlugZap aria-hidden="true" />}
+                {liveCheckBusy ? "启用并实测中…" : "一键启用并实测连通"}
+              </button>
+            ) : (
+              <button type="button" className="x-hub-primary" disabled={liveCheckBusy} onClick={() => void testConnectionLive()}>
+                {liveCheckBusy ? <Loader2 className="spin" aria-hidden="true" /> : <RefreshCw aria-hidden="true" />}
+                {liveCheckBusy ? "实测连通中…" : "立即实测连通性"}
+              </button>
+            )}
+            {onOpenDeviceCenter ? (
+              <button type="button" className="x-hub-secondary-btn" onClick={onOpenDeviceCenter}>
+                去 MCP 插件中心修改 <ExternalLink aria-hidden="true" />
+              </button>
+            ) : null}
           </div>
         </div>
       ) : (
         <>
-          <div className="x-hub-connection-card">
+          <div className="x-hub-connection-card is-verified">
             <div>
-              <span className="x-hub-card-kicker">CONNECTION</span>
+              <span className="x-hub-card-kicker">VERIFIED MCP GATEWAY · 已启用且连通</span>
               <strong>{connection.name || "X / Twitter"}</strong>
-              <small>{status?.message || "MCP 网关在线"}</small>
+              <small>{connection.endpoint} · 最近实测：{formatTestedAt(connection.last_tested_at)}</small>
             </div>
-            <button type="button" onClick={() => void load()} disabled={loading}><RefreshCw aria-hidden="true" />刷新</button>
-          </div>
-
-          <section className="x-hub-card" aria-labelledby="x-search-title">
-            <div className="x-hub-card-heading">
-              <div><span className="eyebrow">READ</span><h3 id="x-search-title">搜索 X</h3></div>
-              <Search aria-hidden="true" />
-            </div>
-            <div className="x-hub-inline-form">
-              <input
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="搜索关键词或话题"
-                aria-label="搜索 X"
-                maxLength={120}
-              />
-              <button
-                type="button"
-                className="x-hub-primary"
-                disabled={!query.trim() || action === "search_tweets"}
-                onClick={() => void callXTool("search_tweets", { query: query.trim() })}
-              >
-                {action === "search_tweets" ? <Loader2 className="spin" aria-hidden="true" /> : <Search aria-hidden="true" />}
-                搜索
+            <div className="x-hub-conn-actions">
+              <button type="button" onClick={() => void testConnectionLive()} disabled={liveCheckBusy || loading}>
+                {liveCheckBusy ? <Loader2 className="spin" aria-hidden="true" /> : <RefreshCw aria-hidden="true" />}
+                {liveCheckBusy ? "实测中…" : "实测连通性"}
               </button>
             </div>
-          </section>
+          </div>
+          {liveCheckNotice ? <div className="x-hub-diag-notice" role="status">{liveCheckNotice}</div> : null}
+
+          {availableTools.includes("search_tweets") && (
+            <section className="x-hub-card" aria-labelledby="x-search-title">
+              <div className="x-hub-card-heading">
+                <div><span className="eyebrow">READ</span><h3 id="x-search-title">搜索 X</h3></div>
+                <Search aria-hidden="true" />
+              </div>
+              <div className="x-hub-inline-form">
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="搜索关键词或话题"
+                  aria-label="搜索 X"
+                  maxLength={120}
+                />
+                <button
+                  type="button"
+                  className="x-hub-primary"
+                  disabled={!query.trim() || action === "search_tweets"}
+                  onClick={() => void callXTool("search_tweets", { query: query.trim() })}
+                >
+                  {action === "search_tweets" ? <Loader2 className="spin" aria-hidden="true" /> : <Search aria-hidden="true" />}
+                  搜索
+                </button>
+              </div>
+            </section>
+          )}
 
           {availableTools.includes("get_tweet_by_id") && (
             <section className="x-hub-card" aria-labelledby="x-lookup-title">
@@ -214,45 +356,85 @@ export default function XHub({ onOpenDeviceCenter, visualPreview = false }) {
             </section>
           )}
 
-          <section className="x-hub-card" aria-labelledby="x-post-title">
-            <div className="x-hub-card-heading">
-              <div><span className="eyebrow">WRITE</span><h3 id="x-post-title">发一条帖</h3></div>
-              <ButtonGlyph />
-            </div>
-            <textarea
-              value={postText}
-              onChange={(event) => setPostText(event.target.value.slice(0, 280))}
-              placeholder="写点什么…"
-              aria-label="X 发帖内容"
-              rows={4}
-            />
-            <div className="x-hub-post-meta">
-              <span>{postText.length}/280</span>
-              <label>
-                <input type="checkbox" checked={confirmPost} onChange={(event) => setConfirmPost(event.target.checked)} />
-                我确认要发布到 X
-              </label>
-            </div>
-            <button
-              type="button"
-              className="x-hub-primary x-hub-post"
-              disabled={postDisabled}
-              onClick={() => void callXTool("post_tweet", { text: postText.trim() })}
-            >
-              {action === "post_tweet" ? <Loader2 className="spin" aria-hidden="true" /> : <Send aria-hidden="true" />}
-              发布
-            </button>
-          </section>
+          {(availableTools.includes("get_user_tweets") || availableTools.includes("get_user_info")) && (
+            <section className="x-hub-card" aria-labelledby="x-user-title">
+              <div className="x-hub-card-heading">
+                <div><span className="eyebrow">PROFILE</span><h3 id="x-user-title">查用户资料或时间线</h3></div>
+                <User aria-hidden="true" />
+              </div>
+              <div className="x-hub-inline-form">
+                <input
+                  value={usernameLookup}
+                  onChange={(event) => setUsernameLookup(event.target.value)}
+                  placeholder="输入 X 用户名（不含 @，如 openai）"
+                  aria-label="X 用户名"
+                  maxLength={60}
+                />
+                {availableTools.includes("get_user_info") && (
+                  <button
+                    type="button"
+                    className="x-hub-secondary-btn"
+                    disabled={!usernameLookup.trim() || action === "get_user_info"}
+                    onClick={() => void callXTool("get_user_info", { username: usernameLookup.trim().replace(/^@/, "") })}
+                  >
+                    资料
+                  </button>
+                )}
+                {availableTools.includes("get_user_tweets") && (
+                  <button
+                    type="button"
+                    className="x-hub-primary"
+                    disabled={!usernameLookup.trim() || action === "get_user_tweets"}
+                    onClick={() => void callXTool("get_user_tweets", { username: usernameLookup.trim().replace(/^@/, "") })}
+                  >
+                    看推文
+                  </button>
+                )}
+              </div>
+            </section>
+          )}
+
+          {availableTools.includes("post_tweet") && (
+            <section className="x-hub-card" aria-labelledby="x-post-title">
+              <div className="x-hub-card-heading">
+                <div><span className="eyebrow">WRITE</span><h3 id="x-post-title">发一条帖</h3></div>
+                <ButtonGlyph />
+              </div>
+              <textarea
+                value={postText}
+                onChange={(event) => setPostText(event.target.value.slice(0, 280))}
+                placeholder="写点什么…"
+                aria-label="X 发帖内容"
+                rows={4}
+              />
+              <div className="x-hub-post-meta">
+                <span>{postText.length}/280</span>
+                <label>
+                  <input type="checkbox" checked={confirmPost} onChange={(event) => setConfirmPost(event.target.checked)} />
+                  我确认要发布到 X
+                </label>
+              </div>
+              <button
+                type="button"
+                className="x-hub-primary x-hub-post"
+                disabled={postDisabled}
+                onClick={() => void callXTool("post_tweet", { text: postText.trim() })}
+              >
+                {action === "post_tweet" ? <Loader2 className="spin" aria-hidden="true" /> : <Send aria-hidden="true" />}
+                发布
+              </button>
+            </section>
+          )}
 
           <section className="x-hub-card" aria-labelledby="x-tools-title">
             <div className="x-hub-card-heading">
-              <div><span className="eyebrow">TOOLS</span><h3 id="x-tools-title">已授权工具</h3></div>
+              <div><span className="eyebrow">TOOLS</span><h3 id="x-tools-title">已发现的 X 工具</h3></div>
               <small>{availableTools.length} 个</small>
             </div>
             <div className="x-hub-tool-list">
               {availableTools.map((name) => <span key={name}>{X_TOOL_LABELS[name] || name}</span>)}
             </div>
-            {onOpenDeviceCenter ? <button type="button" className="x-hub-link" onClick={onOpenDeviceCenter}>在 MCP 设备中心管理连接 <ExternalLink aria-hidden="true" /></button> : null}
+            {onOpenDeviceCenter ? <button type="button" className="x-hub-link" onClick={onOpenDeviceCenter}>在 MCP 插件中心管理连接 <ExternalLink aria-hidden="true" /></button> : null}
           </section>
         </>
       )}

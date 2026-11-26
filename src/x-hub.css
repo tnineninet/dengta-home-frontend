@@ -52,8 +52,72 @@
   white-space: nowrap;
 }
 
-.x-hub-status.is-ready { color: #2f6f51; background: rgb(84 180 132 / 0.15); }
-.x-hub-status.is-offline { color: #9a5a2c; background: rgb(245 177 100 / 0.18); }
+.x-hub-status.is-ready { color: #0f6841; background: rgb(16 185 129 / 0.18); border: 1px solid rgb(16 185 129 / 0.42); }
+.x-hub-status.is-warn { color: #92540c; background: rgb(245 158 11 / 0.2); border: 1px solid rgb(245 158 11 / 0.42); }
+.x-hub-status.is-offline { color: #9a2f2f; background: rgb(239 68 68 / 0.16); border: 1px solid rgb(239 68 68 / 0.35); }
+
+.x-hub-guide-steps {
+  text-align: left;
+  max-width: 520px;
+  margin: 6px 0 4px;
+  padding-left: 20px;
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--x-ink);
+}
+.x-hub-guide-steps code,
+.x-hub-empty code,
+.x-hub-hero code,
+.x-hub-diag-meta code {
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: rgb(45 37 48 / 0.08);
+  font-size: 11px;
+}
+
+.x-hub-diag-card {
+  display: grid;
+  gap: 11px;
+  padding: 16px;
+  border-radius: 19px;
+  border: 1.5px solid rgb(239 68 68 / 0.38);
+  background: rgb(255 247 246 / 0.96);
+  color: var(--x-ink);
+  box-shadow: 0 10px 26px rgb(24 22 28 / 0.08);
+}
+.x-hub-diag-card.is-warn {
+  border-color: rgb(245 158 11 / 0.45);
+  background: rgb(255 251 238 / 0.96);
+}
+.x-hub-diag-reason { margin: 0; font-size: 13px; line-height: 1.6; color: #7f2d22; font-weight: 600; }
+.x-hub-diag-card.is-warn .x-hub-diag-reason { color: #7c450c; }
+.x-hub-diag-meta { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 11.5px; color: var(--x-muted); }
+.x-hub-diag-notice { margin: 0; padding: 10px 12px; border-radius: 12px; background: rgb(45 37 48 / 0.06); color: var(--x-ink); font-size: 12px; line-height: 1.5; }
+.x-hub-diag-actions,
+.x-hub-conn-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+
+.x-hub-secondary-btn {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 14px;
+  border: 1px solid rgb(var(--theme-ink-rgb, 45 37 48) / 0.16);
+  border-radius: 13px;
+  color: var(--x-ink);
+  background: rgb(255 255 255 / 0.85);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.x-hub-secondary-btn svg { width: 14px; height: 14px; }
+.x-hub-connection-card.is-verified { border-color: rgb(16 185 129 / 0.42); }
+.x-hub-conn-actions button { display: inline-flex; min-height: 42px; align-items: center; gap: 5px; padding: 0 12px; border: 0; border-radius: 12px; color: var(--x-ink); background: rgb(var(--theme-ink-rgb, 45 37 48) / 0.07); font: inherit; font-size: 11.5px; font-weight: 700; cursor: pointer; }
+.x-hub-conn-actions svg { width: 14px; height: 14px; }
 
 .x-hub-loading,
 .x-hub-empty,
