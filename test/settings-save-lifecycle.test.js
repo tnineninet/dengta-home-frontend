@@ -73,6 +73,8 @@ function harness({ ignoreModelAbort = false } = {}) {
     navigator: { onLine: true },
     localStorage: {},
     cancelled: false,
+    visualPreview: false,
+    seedInitialHistory: () => false,
     accountStorageScope: "account-a",
     companionScope: "companion-a",
     privateMediaScope: JSON.stringify(["account-a", "companion-a"]),

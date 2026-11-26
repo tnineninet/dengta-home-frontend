@@ -59,6 +59,21 @@ export function peekCachedHistory(sessionId) {
   return Array.isArray(entry?.messages) ? entry.messages : null;
 }
 
+/** 用 bootstrap 预取的首屏消息预热 L1 内存缓存（不覆盖已有更完整的本地缓存）。 */
+export function seedInitialHistory(sessionId, rawMessages) {
+  if (!sessionId || !Array.isArray(rawMessages) || rawMessages.length === 0) return false;
+  const key = cacheKey(sessionId);
+  const existing = memory.get(key);
+  if (Array.isArray(existing?.messages) && existing.messages.length >= rawMessages.length) {
+    return false;
+  }
+  remember(key, {
+    messages: rawMessages.slice(-MAX_CACHED_MESSAGES),
+    savedAt: Date.now(),
+  });
+  return true;
+}
+
 /** 读取内存或 IndexedDB 中的缓存（冷启动时使用）。 */
 export async function readCachedHistory(sessionId) {
   if (!sessionId) return null;

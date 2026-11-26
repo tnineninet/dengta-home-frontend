@@ -9004,8 +9004,10 @@ body,
 }
 
 .voice-provider-toggle input[type="checkbox"] {
-  width: 22px;
-  min-height: 22px;
+  width: 18px;
+  height: 18px;
+  min-height: 18px;
+  flex: 0 0 18px;
   accent-color: #956276;
 }
 

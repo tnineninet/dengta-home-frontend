@@ -220,6 +220,18 @@
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+.prompt-metric-cell.is-live-cache {
+  border-color: rgba(34, 197, 94, .34);
+  background: linear-gradient(145deg, rgba(34, 197, 94, .09), rgb(var(--theme-card-rgb) / .76));
+}
+
+.prompt-metric-sub {
+  color: rgb(var(--theme-ink-rgb) / .62);
+  font-size: 10.5px;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+
 .prompt-metric-tag {
   display: inline-flex;
   align-items: center;

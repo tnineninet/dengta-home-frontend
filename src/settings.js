@@ -208,6 +208,50 @@ function safeReceiptReasoningField(value) {
     : null;
 }
 
+function normalizeReceiptUpstreamUsage(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const inputTokens = firstCharacterCount(value, [
+    "input_tokens",
+    "inputTokens",
+  ]);
+  const outputTokens = firstCharacterCount(value, [
+    "output_tokens",
+    "outputTokens",
+  ]);
+  const cachedInputTokens = firstCharacterCount(value, [
+    "cached_input_tokens",
+    "cachedInputTokens",
+  ]);
+  const cacheCreationTokens = firstCharacterCount(value, [
+    "cache_creation_tokens",
+    "cacheCreationTokens",
+  ]);
+  if (
+    inputTokens === null &&
+    outputTokens === null &&
+    cachedInputTokens === null
+  ) {
+    return null;
+  }
+  const safeInput = inputTokens ?? 0;
+  const safeOutput = outputTokens ?? 0;
+  const safeCached = cachedInputTokens ?? 0;
+  const safeCreation = cacheCreationTokens ?? 0;
+  const rawRatio = Number(value.cache_hit_ratio ?? value.cacheHitRatio);
+  const cacheHitRatio = Number.isFinite(rawRatio) && rawRatio >= 0
+    ? Number(Math.min(1, rawRatio).toFixed(4))
+    : safeInput > 0
+      ? Number(Math.min(1, safeCached / safeInput).toFixed(4))
+      : 0;
+  return {
+    inputTokens: safeInput,
+    outputTokens: safeOutput,
+    cachedInputTokens: safeCached,
+    cacheCreationTokens: safeCreation,
+    cacheHitRatio,
+  };
+}
+
 export function formatPromptReceiptProvider(receipt = {}) {
   const profileName = safeReceiptMetadata(receipt.providerProfileName, 80);
   const profileId = safeReceiptMetadata(receipt.providerProfileId, 80);
@@ -309,6 +353,9 @@ export function normalizePromptReceipt(value, fallbackAppliedAt) {
   const reasoningEffortField = safeReceiptReasoningField(
     source.reasoning_effort_field,
   );
+  const upstreamUsage = normalizeReceiptUpstreamUsage(
+    source.upstream_usage || source.upstreamUsage,
+  );
 
   const common = {
     promptContractVersion,
@@ -322,6 +369,7 @@ export function normalizePromptReceipt(value, fallbackAppliedAt) {
     ...(reasoningEffortRequested ? { reasoningEffortRequested } : {}),
     ...(reasoningEffortApplied ? { reasoningEffortApplied } : {}),
     ...(reasoningEffortField ? { reasoningEffortField } : {}),
+    ...(upstreamUsage ? { upstreamUsage } : {}),
     systemInstructionBlocks: firstCharacterCount(source, [
       "system_instruction_blocks",
     ]),

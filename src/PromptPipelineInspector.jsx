@@ -101,6 +101,7 @@ export default function PromptPipelineInspector({
   memories = [],
   provider = "",
   model = "",
+  lastPromptReceipt = null,
   disabled = false,
   visualPreview = false,
   onAppendPrompt,
@@ -234,6 +235,28 @@ export default function PromptPipelineInspector({
       ? Math.round(serverStatus.cache_diagnostics.cache_stability_ratio * 100)
       : compiled.stabilityPct;
   const effectiveHash = serverStatus?.cache_diagnostics?.stable_prefix_hash || "";
+  const liveUsage = useMemo(() => {
+    const raw = lastPromptReceipt?.upstreamUsage || serverStatus?.upstream_usage || null;
+    if (!raw || typeof raw !== "object") return null;
+    const inputTokens = Number(raw.inputTokens ?? raw.input_tokens) || 0;
+    const outputTokens = Number(raw.outputTokens ?? raw.output_tokens) || 0;
+    const cachedInputTokens = Number(raw.cachedInputTokens ?? raw.cached_input_tokens) || 0;
+    const cacheCreationTokens = Number(raw.cacheCreationTokens ?? raw.cache_creation_tokens) || 0;
+    if (inputTokens <= 0 && outputTokens <= 0 && cachedInputTokens <= 0) return null;
+    const rawRatio = Number(raw.cacheHitRatio ?? raw.cache_hit_ratio);
+    const hitPct = Number.isFinite(rawRatio) && rawRatio >= 0
+      ? Math.round(Math.min(1, rawRatio) * 100)
+      : inputTokens > 0
+        ? Math.round(Math.min(1, cachedInputTokens / inputTokens) * 100)
+        : 0;
+    return {
+      inputTokens,
+      outputTokens,
+      cachedInputTokens,
+      cacheCreationTokens,
+      hitPct,
+    };
+  }, [lastPromptReceipt, serverStatus]);
 
   async function syncServerReceipt() {
     if (syncing) return;
@@ -373,6 +396,22 @@ export default function PromptPipelineInspector({
             {cacheSupportTag}
           </strong>
         </div>
+        {liveUsage ? (
+          <div className="prompt-metric-cell is-live-cache">
+            <span>最近一轮真实 KV 命中</span>
+            <strong>{liveUsage.hitPct}%</strong>
+            <div className="prompt-stability-bar" aria-hidden="true">
+              <span style={{ width: `${Math.max(6, Math.min(100, liveUsage.hitPct))}%` }} />
+            </div>
+            <small className="prompt-metric-sub">
+              命中 {liveUsage.cachedInputTokens.toLocaleString("zh-CN")} / 输入{" "}
+              {liveUsage.inputTokens.toLocaleString("zh-CN")} tok
+              {liveUsage.cacheCreationTokens > 0
+                ? ` · 写入 ${liveUsage.cacheCreationTokens.toLocaleString("zh-CN")}`
+                : ""}
+            </small>
+          </div>
+        ) : null}
         {effectiveHash ? (
           <div className="prompt-metric-cell">
             <span>前缀指纹</span>

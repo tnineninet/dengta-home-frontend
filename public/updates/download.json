@@ -1,17 +1,17 @@
 {
   "schema_version": 1,
   "latest": {
-    "version_code": 316,
-    "version": "2.13.58",
-    "apk_url": "https://www.dengtahome.com/downloads/DengTa-2.13.58.apk",
-    "sha256": "5811a514fa7dc033f6e75b0839fbd2f271a6ac7c6372a6e4e3519c8596ebfc3c",
-    "size_bytes": 38904024,
-    "published_at": "2026-11-26T18:42:00.000Z",
+    "version_code": 317,
+    "version": "2.13.59",
+    "apk_url": "https://www.dengtahome.com/downloads/DengTa-2.13.59.apk",
+    "sha256": "7a6cd84f1159a46f9443d48ea459276f568575b53bba09309a44010dd0c07702",
+    "size_bytes": 38904976,
+    "published_at": "2026-11-26T18:52:00.000Z",
     "notes": [
-      "agents.md 提示词注入与 KV 缓存链路升级：新增 DeepSeek / OpenAI / Anthropic / Gemini 四协议真实 KV-Cache 命中遥测，支持 5 维自动体检清单与「实时感知与严格时间」结构化模板",
-      "多供应商自定义 API 控制台增强：粘贴 Base URL 自动识别协议并支持一键切换，探测与测试接口实时显示延迟耗时（ms）与协议级 KV 缓存策略标签",
-      "设置面板动效、SVG 图标精度与深浅双主题精修：统一高精度矢量描边、丝滑抽屉与子页入场动效（兼容减弱动态效果）、Night Glass 高对比卡片与 18px 复选框对齐",
-      "包含 v2.13.57 全部升级：全程实时多模态感知、侧边栏全景重构、音乐工作室直连二维码与极速聊天历史缓存"
+      "真实 KV-Cache 命中率全链路可视化闭环：支持 DeepSeek / OpenAI / Anthropic / Gemini 四协议流式与非流式真实缓存命中统计，持久化并在提示词工作台与回执实时展示命中率与写入量",
+      "聊天冷启动首屏再提速：/api/v2/bootstrap 单次往返预取最近会话 40 条消息 + 前端无损 L1 预热，新装机与清缓存首次进入 0ms 出首屏",
+      "自定义 API 控制台增强：粘贴 Base URL 自动识别协议并支持一键切换，实时展示探测延迟（ms）与协议级 KV 缓存策略徽章",
+      "设置面板动效、高精度 SVG 图标、夜间高对比卡片与全量 18px 复选框精修，并完整包含全程实时多模态感知、侧边栏重构与音乐工作室直连二维码"
     ]
   }
 }

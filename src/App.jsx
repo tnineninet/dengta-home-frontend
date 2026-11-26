@@ -153,6 +153,7 @@ import {
 import {
   peekCachedHistory,
   readCachedHistory,
+  seedInitialHistory,
   setChatHistoryCacheScope,
   writeCachedHistory,
 } from "./chat-history-cache.js";
@@ -3125,6 +3126,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           recovered.activeSessionId,
           globalThis.localStorage,
           accountStorageScope,
+        );
+      }
+      if (
+        !localPersonaResetApplied &&
+        bootstrapData.latest_session_messages?.session_id === recovered.activeSessionId &&
+        Array.isArray(bootstrapData.latest_session_messages.messages) &&
+        bootstrapData.latest_session_messages.messages.length > 0
+      ) {
+        seedInitialHistory(
+          recovered.activeSessionId,
+          bootstrapData.latest_session_messages.messages,
         );
       }
       setActiveSessionId(recovered.activeSessionId);
@@ -10316,6 +10328,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 memories={memories}
                 provider={settings.provider || ""}
                 model={settings.model || ""}
+                lastPromptReceipt={lastPromptReceipt}
                 disabled={!hasLoadedSettings || settingsExitBusy}
                 visualPreview={visualPreview}
                 onAppendPrompt={updateUnifiedPrompt}
@@ -11289,6 +11302,21 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                         本轮推理强度请求：
                         {lastPromptReceipt.reasoningEffortApplied} ·{" "}
                         {lastPromptReceipt.reasoningEffortField || "未知字段"}
+                      </span>
+                    )}
+                    {lastPromptReceipt.upstreamUsage && (
+                      <span>
+                        真实 KV 缓存命中：
+                        {Math.round(
+                          (lastPromptReceipt.upstreamUsage.cacheHitRatio || 0) * 100,
+                        )}
+                        %（命中{" "}
+                        {lastPromptReceipt.upstreamUsage.cachedInputTokens.toLocaleString("zh-CN")}{" "}
+                        / 输入{" "}
+                        {lastPromptReceipt.upstreamUsage.inputTokens.toLocaleString("zh-CN")}{" "}
+                        tok · 输出{" "}
+                        {lastPromptReceipt.upstreamUsage.outputTokens.toLocaleString("zh-CN")}{" "}
+                        tok）
                       </span>
                     )}
                   </>

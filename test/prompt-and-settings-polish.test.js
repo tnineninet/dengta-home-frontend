@@ -8,6 +8,12 @@ import {
   inferProtocolFromBaseUrl,
   protocolCacheHint,
 } from "../src/provider-form.js";
+import {
+  peekCachedHistory,
+  seedInitialHistory,
+  setChatHistoryCacheScope,
+  writeCachedHistory,
+} from "../src/chat-history-cache.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const srcDir = path.join(here, "..", "src");
@@ -72,4 +78,35 @@ test("Settings CSS maintains crisp SVG rendering, sheet motion, Night Glass cont
   assert.match(nightCss, /\.settings-home-group/);
 
   assert.match(indexCss, /\.provider-checkbox-row input\s*\{[^}]*width:\s*18px;[^}]*height:\s*18px;[^}]*flex:\s*0 0 18px;/s);
+  assert.match(indexCss, /\.voice-provider-toggle input\[type="checkbox"\]\s*\{[^}]*width:\s*18px;[^}]*height:\s*18px;[^}]*flex:\s*0 0 18px;/s);
+});
+
+test("PromptPipelineInspector displays live upstream KV-cache telemetry and seedInitialHistory accelerates cold start without clobbering fuller caches", () => {
+  const inspector = fs.readFileSync(path.join(srcDir, "PromptPipelineInspector.jsx"), "utf8");
+  const app = fs.readFileSync(path.join(srcDir, "App.jsx"), "utf8");
+  assert.match(inspector, /lastPromptReceipt/);
+  assert.match(inspector, /最近一轮真实 KV 命中/);
+  assert.match(app, /lastPromptReceipt=\{lastPromptReceipt\}/);
+  assert.match(app, /真实 KV 缓存命中/);
+
+  setChatHistoryCacheScope("acct-a::comp-1");
+  const seeded = seedInitialHistory("sess-cold", [
+    { id: "m1", role: "user", content: "早安" },
+    { id: "m2", role: "assistant", content: "早安呀" },
+  ]);
+  assert.equal(seeded, true);
+  assert.equal(peekCachedHistory("sess-cold")?.length, 2);
+
+  writeCachedHistory("sess-cold", [
+    { id: "m1", role: "user", content: "1" },
+    { id: "m2", role: "assistant", content: "2" },
+    { id: "m3", role: "user", content: "3" },
+    { id: "m4", role: "assistant", content: "4" },
+  ]);
+  const overwritten = seedInitialHistory("sess-cold", [
+    { id: "m3", role: "user", content: "3" },
+    { id: "m4", role: "assistant", content: "4" },
+  ]);
+  assert.equal(overwritten, false, "smaller bootstrap prefetch must never overwrite a fuller cached history");
+  assert.equal(peekCachedHistory("sess-cold")?.length, 4);
 });

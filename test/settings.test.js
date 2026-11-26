@@ -355,6 +355,30 @@ assert.equal(
   "openai-compatible · legacy-model",
 );
 
+const receiptWithUsage = normalizePromptReceipt({
+  prompt_architecture: "unified-v1",
+  prompt_mode: "unified",
+  unified_system_prompt_chars: 1200,
+  upstream_usage: {
+    input_tokens: 4000,
+    output_tokens: 320,
+    cached_input_tokens: 3280,
+    cache_creation_tokens: 200,
+    cache_hit_ratio: 0.82,
+  },
+});
+assert.deepEqual(receiptWithUsage.upstreamUsage, {
+  inputTokens: 4000,
+  outputTokens: 320,
+  cachedInputTokens: 3280,
+  cacheCreationTokens: 200,
+  cacheHitRatio: 0.82,
+});
+const reloadedReceipt = normalizePromptReceipt(
+  JSON.parse(JSON.stringify(receiptWithUsage)),
+);
+assert.deepEqual(reloadedReceipt.upstreamUsage, receiptWithUsage.upstreamUsage);
+
 const preservedConnection = createSettingsPayload({
   ...legacy,
   provider: "openai-compatible",

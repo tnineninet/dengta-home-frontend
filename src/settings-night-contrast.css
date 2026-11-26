@@ -287,3 +287,29 @@
   color: #ececf2;
   background: rgb(16 16 20 / 0.85);
 }
+
+:root[data-dengta-appearance="night"] .prompt-metric-cell.is-live-cache {
+  border-color: rgba(74, 222, 128, .35);
+  background: linear-gradient(145deg, rgba(22, 163, 74, .22), rgb(42 42 48 / .82));
+}
+
+:root[data-dengta-appearance="night"] .prompt-metric-sub {
+  color: #c2c2cc;
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .voice-provider-language-note {
+  border-color: rgba(248, 196, 113, .3);
+  color: #f3dbb2;
+  background: rgba(66, 51, 28, .66);
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .prompt-application-receipt {
+  border-color: rgb(255 255 255 / 0.14);
+  color: #f2f2f7;
+  background: rgb(42 42 48 / 0.72);
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .prompt-application-receipt small,
+:root[data-dengta-appearance="night"] .settings-sheet .prompt-receipt-times {
+  color: #c2c2cc;
+}
