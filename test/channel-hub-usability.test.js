@@ -24,3 +24,15 @@ test("channel binding explains the concrete steps for WeChat and QQ", () => {
     assert.match(css, /\.channel-hub-steps/);
     assert.match(css, /\.channel-hub-copy/);
 });
+
+test("channel hub shows unmistakable live status banner and verifiable sync proof card", () => {
+    assert.match(source, /\/api\/v2\/qq-cloud/);
+    assert.match(source, /\/api\/v2\/channel-sync\/preview/);
+    assert.match(source, /channel-hub-live-banner/);
+    assert.match(source, /channel-hub-proof-card/);
+    assert.match(source, /检测同步证据/);
+    assert.match(source, /一键开启完整人设 \+ 最近 15 条记忆并保存/);
+    assert.match(source, /\/同步状态/);
+    assert.match(css, /\.channel-hub-live-banner\.is-online/);
+    assert.match(css, /\.channel-hub-proof-card\.is-warn/);
+});

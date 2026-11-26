@@ -112,8 +112,15 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣", visu
   const [prefs, setPrefs] = useState(() => normalizePrefs(null, channel));
   const [memories, setMemories] = useState([]);
   const [bindings, setBindings] = useState([]);
-  const [qqCloudReady, setQQCloudReady] = useState(false);
-  const hasBinding = qqCloudReady || bindings.some((item) => item.status === "active");
+  const [qqCloudStatus, setQQCloudStatus] = useState(null);
+  const [syncProof, setSyncProof] = useState(null);
+  const [checkingSync, setCheckingSync] = useState(false);
+  const qqCloudReady = qqCloudStatus?.state === "active" && qqCloudStatus?.online === true;
+  const qqCloudPending = ["scanning", "saving", "awaiting_owner"].includes(qqCloudStatus?.state)
+    || (qqCloudStatus?.state === "active" && qqCloudStatus?.online !== true);
+  const hasBridgeBinding = bindings.some((item) => item.status === "active");
+  const hasBinding = qqCloudReady || hasBridgeBinding;
+  const connectionTone = hasBinding ? "is-online" : qqCloudPending ? "is-pending" : "is-offline";
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState("");
   const [bindingCode, setBindingCode] = useState(null);
@@ -136,6 +143,19 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣", visu
     return [...groups.entries()];
   }, [sections]);
 
+  const fetchSyncProof = useCallback(async () => {
+    if (visualPreview) return;
+    setCheckingSync(true);
+    try {
+      const data = await apiRequest(`/api/v2/channel-sync/preview?channel=${encodeURIComponent(channel)}`);
+      if (data?.preview) setSyncProof(data.preview);
+    } catch {
+      // Older backend revision before /preview endpoint; keep graceful fallback
+    } finally {
+      setCheckingSync(false);
+    }
+  }, [channel, visualPreview]);
+
   const load = useCallback(async () => {
     if (visualPreview) {
       setLoading(false);
@@ -144,16 +164,20 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣", visu
     setLoading(true);
     setError("");
     try {
-      const [sectionData, prefsData, memoryData, bindingData] = await Promise.all([
+      const [sectionData, prefsData, memoryData, bindingData, cloudData, previewData] = await Promise.all([
         apiRequest("/api/v2/channel-sync/persona-sections"),
         apiRequest(`/api/v2/channel-sync/preferences?channel=${encodeURIComponent(channel)}`),
         apiRequest(`/api/v2/channel-sync/memories?channel=${encodeURIComponent(channel)}&limit=80`),
         apiRequest(`/api/v2/channel-sync/bind/status?channel=${encodeURIComponent(channel)}`).catch(() => ({ bindings: [] })),
+        channel === "qq" ? apiRequest("/api/v2/qq-cloud").catch(() => null) : Promise.resolve(null),
+        apiRequest(`/api/v2/channel-sync/preview?channel=${encodeURIComponent(channel)}`).catch(() => null),
       ]);
       setSections(sectionData?.sections || []);
       setPrefs(normalizePrefs(prefsData?.preferences, channel));
       setMemories(memoryData?.memories || []);
       setBindings(bindingData?.bindings || []);
+      if (channel === "qq") setQQCloudStatus(cloudData);
+      if (previewData?.preview) setSyncProof(previewData.preview);
     } catch (caught) {
       setError(settingsServiceErrorMessage(caught, `${meta.label}通道暂时读不到。`));
     } finally {
@@ -233,7 +257,7 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣", visu
     updatePrefs({ persona_mode: mode, persona_section_ids: ids });
   }
 
-  async function savePreferences() {
+  async function savePreferences(overridePrefs = null) {
     if (visualPreview) {
       setSaved("当前为无登录本地预览模式，请前往主入口登录后保存真实通道同步设置。");
       return;
@@ -242,28 +266,55 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣", visu
     setSaving(true);
     setSaved("");
     setError("");
+    const activePrefs = overridePrefs || prefs;
+    const normalizedMemoryLimit = ["recent", "all"].includes(activePrefs.memory_mode) && !Number(activePrefs.memory_limit)
+      ? (activePrefs.memory_mode === "all" ? 30 : 15)
+      : Number(activePrefs.memory_limit) || 0;
     try {
-      const selected = new Set(prefs.persona_mode === "all"
+      const selected = new Set(activePrefs.persona_mode === "all"
         ? sections.map((section) => section.id)
-        : prefs.persona_mode === "normal_only"
+        : activePrefs.persona_mode === "normal_only"
           ? sections.filter((section) => (section.category || "normal") === "normal").map((section) => section.id)
-          : prefs.persona_section_ids);
+          : activePrefs.persona_section_ids);
       const data = await apiRequest("/api/v2/channel-sync/preferences", {
         method: "PUT",
         body: JSON.stringify({
-          ...prefs,
+          ...activePrefs,
+          memory_limit: normalizedMemoryLimit,
           channel,
           persona_section_ids: [...selected],
         }),
       });
       setPrefs(normalizePrefs(data?.preferences, channel));
-      
-      setSaved("已保存，桥接端下一轮会按新勾选组装人设与记忆。");
+      if (data?.sync_receipt) {
+        setSyncProof(data.sync_receipt);
+        setSaved(
+          data.sync_receipt.is_fallback_generic
+            ? "设置已保存，但检测到当前仍是「普通人机」默认模式（人设与记忆为空），请查看上方同步证据卡按提示勾选！"
+            : `同步已生效（指纹 #${data.sync_receipt.sync_fingerprint}）：已注入灯塔人设 ${data.sync_receipt.saved_persona_chars} 字、你的详情 ${data.sync_receipt.user_details_chars} 字、记忆 ${data.sync_receipt.memories_count} 条、最近对话 ${data.sync_receipt.recent_messages_count} 条。`,
+        );
+      } else {
+        setSaved("已保存，桥接端下一轮会按新勾选组装人设与记忆。");
+        void fetchSyncProof();
+      }
     } catch (caught) {
       setError(settingsServiceErrorMessage(caught, "通道同步设置没有保存成功。"));
     } finally {
       setSaving(false);
     }
+  }
+
+  function enableFullSyncAndSave() {
+    const next = {
+      ...prefs,
+      persona_mode: "all",
+      persona_section_ids: sections.map((section) => section.id),
+      ...(channel === "qq" ? { qq_include_persona_prompt: true, qq_receive_memory_candidates: true } : {}),
+      memory_mode: "recent",
+      memory_limit: prefs.memory_limit > 0 ? prefs.memory_limit : 15,
+    };
+    setPrefs(next);
+    void savePreferences(next);
   }
 
   async function startBinding() {
@@ -327,10 +378,42 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣", visu
           <h2>{meta.label}通道</h2>
           <p>{meta.hint} 当前伴侣：{aiName || "伴侣"}。</p>
         </div>
-        <span className={`channel-hub-status ${hasBinding ? "is-ready" : ""}`}>
-          {hasBinding ? "已绑定" : "待绑定"}
+        <span className={`channel-hub-status ${connectionTone}`}>
+          <i className="channel-hub-status-dot" aria-hidden="true" />
+          {hasBinding ? "已连接 · 在线" : qqCloudPending ? "连接/配对中" : "未连接"}
         </span>
       </header>
+
+      <div className={`channel-hub-live-banner ${connectionTone}`} role="status">
+        <span className="channel-hub-live-beacon" aria-hidden="true" />
+        <div className="channel-hub-live-copy">
+          <strong>
+            {qqCloudReady
+              ? `${meta.label} 官方云机器人已连接 · 在线运行中`
+              : hasBridgeBinding
+                ? `${meta.label} 桥接通道已绑定 · 可收发消息`
+                : qqCloudStatus?.state === "awaiting_owner"
+                  ? "QQ 扫码已完成，还差发送 12 位配对指令确认身份"
+                  : qqCloudStatus?.state === "active"
+                    ? "QQ 官方机器人已授权，正在重连网关…"
+                    : `${meta.label} 机器人当前未连接`}
+          </strong>
+          <small>
+            {qqCloudReady
+              ? `当前伴侣「${aiName || "伴侣"}」已接通官方 QQ 私聊，直接去手机 QQ「联系人 → 机器人」聊天，发送「/同步状态」即可即时核验人设指纹。`
+              : hasBridgeBinding
+                ? `已绑定外部通道账号，保存下方人设与记忆后下一轮对话生效。`
+                : qqCloudPending
+                  ? "请切到「绑定与状态」完成扫码或复制 12 位配对指令发给 QQ 机器人。"
+                  : `尚未检测到活跃的 ${meta.label} 连接；点右侧按钮前往扫码或绑定。`}
+          </small>
+        </div>
+        {tab !== "bind" ? (
+          <button type="button" className="channel-hub-secondary" onClick={() => setTab("bind")}>
+            {hasBinding ? "查看连接详情" : "立即去连接"}
+          </button>
+        ) : null}
+      </div>
 
       <div className="channel-hub-tabs" role="tablist" aria-label={`${meta.label}通道功能`}>
         <button type="button" role="tab" aria-selected={tab === "sync"} className={tab === "sync" ? "is-active" : ""} onClick={() => setTab("sync")}>人设与记忆</button>
@@ -347,6 +430,65 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣", visu
         </div>
       ) : tab === "sync" ? (
         <>
+          <section
+            className={`channel-hub-card channel-hub-proof-card ${syncProof?.is_fallback_generic ? "is-warn" : syncProof ? "is-verified" : ""}`}
+            aria-label="同步生效证据"
+          >
+            <div className="channel-hub-card-heading">
+              <div>
+                <span className="eyebrow">SYNC VERIFICATION · 同步生效证据</span>
+                <h3>
+                  {syncProof
+                    ? syncProof.is_fallback_generic
+                      ? "⚠️ 当前仍为「普通人机」默认模式"
+                      : `✅ 真实人设已同步（指纹 #${syncProof.sync_fingerprint}）`
+                    : "点击检测当前真实同步内容"}
+                </h3>
+              </div>
+              <button
+                type="button"
+                className="channel-hub-secondary"
+                disabled={checkingSync || visualPreview}
+                onClick={() => void fetchSyncProof()}
+              >
+                <RefreshCw className={checkingSync ? "spin" : ""} aria-hidden="true" />
+                {checkingSync ? "检测中…" : "检测同步证据"}
+              </button>
+            </div>
+            {syncProof ? (
+              <>
+                <div className="channel-hub-proof-metrics">
+                  <span>伴侣：<strong>{syncProof.companion_name || aiName}</strong></span>
+                  <span>灯塔人设：<strong>{syncProof.saved_persona_chars || 0} 字</strong></span>
+                  <span>你的详情：<strong>{syncProof.user_details_chars || 0} 字</strong></span>
+                  <span>人设小节：<strong>{syncProof.sections_count || 0} 节</strong></span>
+                  <span>长期记忆：<strong>{syncProof.memories_count || 0} 条</strong></span>
+                  <span>最近对话：<strong>{syncProof.recent_messages_count || 0} 条</strong></span>
+                </div>
+                {Array.isArray(syncProof.warnings) && syncProof.warnings.length > 0 ? (
+                  <ul className="channel-hub-proof-warnings">
+                    {syncProof.warnings.map((w, idx) => <li key={idx}>{w}</li>)}
+                  </ul>
+                ) : null}
+                {syncProof.is_fallback_generic ? (
+                  <button type="button" className="channel-hub-primary" disabled={saving} onClick={enableFullSyncAndSave}>
+                    一键开启完整人设 + 最近 15 条记忆并保存
+                  </button>
+                ) : (
+                  <details className="channel-hub-proof-excerpt">
+                    <summary>展开查看实际发给 {meta.label} 机器人的真实人设与记忆摘录（共 {syncProof.total_chars} 字）</summary>
+                    <pre>{syncProof.excerpt}</pre>
+                    <small>验证方法：在 QQ 私聊发送 <code>/同步状态</code>，核对返回的指纹是否为 <code>#{syncProof.sync_fingerprint}</code>。</small>
+                  </details>
+                )}
+              </>
+            ) : (
+              <p className="channel-hub-copy">
+                保存后点「检测同步证据」，可直接核验灯塔实际注入给 {meta.label} 机器人的人设字数、你的称呼详情、长期记忆条数与同步指纹，彻底告别盲猜。
+              </p>
+            )}
+          </section>
+
           <section className="channel-hub-card" aria-labelledby="channel-persona-title">
             <div className="channel-hub-card-heading">
               <div><span className="eyebrow">PERSONA</span><h3 id="channel-persona-title">同步哪些人设</h3></div>
@@ -363,7 +505,7 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣", visu
             {channel === "qq" && (
               <label className="channel-hub-switch">
                 <input type="checkbox" checked={prefs.qq_include_persona_prompt} onChange={(event) => updatePrefs({ qq_include_persona_prompt: event.target.checked })} />
-                <span><strong>同步灯塔里已保存的人设</strong><small>开启后，QQ 回复会使用当前伴侣的个性化指令。「你的详情」单独保留。</small></span>
+                <span><strong>同步灯塔里已保存的人设与称呼（推荐必开）</strong><small>开启后，QQ 私聊会完整带入当前伴侣的个性化指令、你的称呼背景及最近 10 轮灯塔对话延续，避免退化成普通人机。</small></span>
               </label>
             )}
             <div className="channel-hub-sections">
@@ -411,7 +553,19 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣", visu
             {channel === "qq" && <p>同步的是选中的长期记忆。网页聊天记录和知识库留在原渠道。保存后，QQ 的下一条回复会使用新设置。</p>}
             <div className="channel-hub-mode-row">
               {MEMORY_MODES.map(([value, label]) => (
-                <button type="button" key={value} className={prefs.memory_mode === value ? "is-selected" : ""} onClick={() => updatePrefs({ memory_mode: value })}>{label}</button>
+                <button
+                  type="button"
+                  key={value}
+                  className={prefs.memory_mode === value ? "is-selected" : ""}
+                  onClick={() => updatePrefs({
+                    memory_mode: value,
+                    ...(["recent", "all"].includes(value) && !prefs.memory_limit
+                      ? { memory_limit: value === "all" ? 30 : 15 }
+                      : {}),
+                  })}
+                >
+                  {label}
+                </button>
               ))}
             </div>
             {prefs.memory_mode === "selected" ? (
@@ -474,14 +628,27 @@ export default function ChannelHub({ channel = "wechat", aiName = "伴侣", visu
       ) : (
         <>
           <section className="channel-hub-card" aria-labelledby="channel-bind-title">
-            {channel === "qq" && !visualPreview && <QQCloudConnect onReady={setQQCloudReady} onConfigureSync={() => setTab("sync")} />}
+            {channel === "qq" && !visualPreview && (
+              <QQCloudConnect
+                onReady={(ready) => setQQCloudStatus((prev) => (prev ? { ...prev, online: ready } : prev))}
+                onStatusChange={setQQCloudStatus}
+                onConfigureSync={() => setTab("sync")}
+              />
+            )}
+            {channel === "qq" && qqCloudReady && (
+              <div className="channel-hub-saved" role="note">
+                <strong>💡 重要区分：你已连上上方「官方 QQ 云机器人」，不需要再生成或发送下方旧版 6 位数字绑定码！</strong>
+                <br />
+                旧版 6 位绑定码仅用于自托管 SnowLuma / OneBot 第三方桥接；直接去 QQ 机器人私聊发送 <code>/同步状态</code> 即可验证当前同步状态。
+              </div>
+            )}
             {channel === "qq" && (
               <p className="channel-hub-note" role="note">
-                上游维护提示：GitHub 仓库 Derpyu520/qq-bridge 已归档（v0.2.2-final），SnowLuma 公开上游仓库已不可访问（404）。建议优先使用灯塔云端通道或已核验的本机 SnowLuma 安装包，勿引入已归档桥接插件。
+                上游维护提示：GitHub 仓库 Derpyu520/qq-bridge 已归档（v0.2.2-final），SnowLuma 公开上游仓库已不可访问（404）。建议优先使用上方「官方 QQ 云机器人」扫码接入（无需小号、免挂机）。
               </p>
             )}
             <div className="channel-hub-card-heading">
-              <div><span className="eyebrow">BINDING</span><h3 id="channel-bind-title">绑定 {meta.label}</h3></div>
+              <div><span className="eyebrow">LEGACY BRIDGE BINDING</span><h3 id="channel-bind-title">{channel === "qq" ? "旧版第三方桥接绑定（仅自托管 SnowLuma / OneBot）" : `绑定 ${meta.label}`}</h3></div>
               <Link2 aria-hidden="true" />
             </div>
             <p className="channel-hub-copy">此区域用于已有桥接服务的用户。先生成一次性绑定码，再用已登录的 {meta.bridge} 给 DengTa 发送这串数字。绑定成功后，桥接端才会按当前账号和伴侣同步人设与记忆。</p>

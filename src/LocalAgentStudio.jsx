@@ -542,7 +542,7 @@ export default function LocalAgentStudio({
   }
 
   return (
-    <section className="local-agent-studio" aria-label="DengTa 本机 AI 工作台与剪映控制中心">
+    <section className="feature-page local-agent-studio" aria-label="DengTa 本机 AI 工作台与剪映控制中心">
       <header className="las-hero">
         <div className="las-hero-title">
           <div className="las-hero-badge" aria-hidden="true">

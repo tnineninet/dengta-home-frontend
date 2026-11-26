@@ -77,3 +77,13 @@ test("PWA manifest ships shortcuts and share_target while preserving standalone 
   assert.ok(Array.isArray(manifest.shortcuts) && manifest.shortcuts.length >= 2);
   assert.ok(manifest.share_target && manifest.share_target.action.includes("agent-studio"));
 });
+
+test("LocalAgentStudio mounts as a vertically scrollable feature-page inside overflow-hidden view-content", () => {
+  const jsx = fs.readFileSync(path.join(root, "src", "LocalAgentStudio.jsx"), "utf8");
+  const css = fs.readFileSync(path.join(root, "src", "local-agent-studio.css"), "utf8");
+  assert.match(jsx, /className="feature-page local-agent-studio"/);
+  assert.match(css, /\.local-agent-studio\s*\{[\s\S]*overflow-y:\s*auto;/);
+  assert.match(css, /\.local-agent-studio\s*\{[\s\S]*min-height:\s*0;/);
+  assert.match(css, /\.local-agent-studio\s*\{[\s\S]*touch-action:\s*pan-y;/);
+  assert.match(css, /\.local-agent-studio\s*>\s*\*\s*\{[\s\S]*flex-shrink:\s*0;/);
+});
