@@ -162,6 +162,60 @@ public final class ScreenGlancePlugin extends Plugin {
         call.resolve(state);
     }
 
+    /**
+     * Request a fresh screen frame from the already-authorized MediaProjection session
+     * and return it directly once ready (up to 1.8s) so live chat perception can attach
+     * an up-to-date ephemeral snapshot without blocking the main UI thread.
+     */
+    @PluginMethod
+    public void captureSnapshotNow(PluginCall call) {
+        JSObject state = ScreenGlanceService.buildState(getContext());
+        if (!state.optBoolean("active", false) || state.optBoolean("paused", false)) {
+            JSObject inactive = new JSObject();
+            inactive.put("available", false);
+            inactive.put("reason", "inactive");
+            call.resolve(inactive);
+            return;
+        }
+        final Context appContext = getContext().getApplicationContext();
+        new Thread(() -> {
+            try {
+                boolean requested = ScreenGlanceService.requestCapture(false);
+                if (!requested) {
+                    JSObject busy = new JSObject();
+                    busy.put("available", false);
+                    busy.put("reason", "busy");
+                    call.resolve(busy);
+                    return;
+                }
+                long deadline = System.currentTimeMillis() + 1800L;
+                while (System.currentTimeMillis() < deadline) {
+                    JSObject capture = ScreenGlanceService.consumeLatestCapture(appContext);
+                    if (capture != null) {
+                        capture.put("available", true);
+                        call.resolve(capture);
+                        return;
+                    }
+                    try {
+                        Thread.sleep(110L);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+                JSObject timeout = new JSObject();
+                timeout.put("available", false);
+                timeout.put("reason", "timeout");
+                call.resolve(timeout);
+            } catch (Exception error) {
+                JSObject failed = new JSObject();
+                failed.put("available", false);
+                failed.put("reason", "error");
+                call.resolve(failed);
+            }
+        }, "dengta-screen-snapshot").start();
+    }
+
     @PluginMethod
     public void consumeLatestCapture(PluginCall call) {
         try {

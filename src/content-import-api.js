@@ -4,6 +4,23 @@ import { readTextFileBatches } from "./large-text-file.js";
 export const CONTENT_IMPORT_MAX_BYTES = 100 * 1024 * 1024;
 export const CONTENT_IMPORT_PAGED_MAX_BYTES = 1024 ** 3;
 export const CONTENT_IMPORT_PAGED_EXTENSIONS = /\.(txt|text|md|markdown|log|csv|tsv|jsonl|ndjson)$/i;
+export const CONTENT_IMPORT_SUPPORTED_EXTENSIONS = /\.(json|json5|jsonc|txt|text|md|markdown|log|chat|csv|tsv|jsonl|ndjson|html|htm|mht|mhtml|srt|vtt|eml|mbox|pdf|docx|xlsx|rtf|epub|xml|opml|enex|yaml|yml|toml|ini|conf|org|rst|tex|sql|zst|zstd|png|charx|zip|lorebook|worldbook|stworld|card|persona)$/i;
+export const CONTENT_IMPORT_ACCEPT_STRING = [
+  ".json", ".json5", ".jsonc", ".jsonl", ".ndjson",
+  ".png", ".charx", ".zip", ".lorebook", ".worldbook", ".stworld", ".card", ".persona",
+  ".txt", ".text", ".md", ".markdown", ".log", ".chat",
+  ".csv", ".tsv", ".xlsx",
+  ".yaml", ".yml", ".toml", ".ini", ".conf",
+  ".html", ".htm", ".mht", ".mhtml", ".xml", ".opml", ".enex",
+  ".srt", ".vtt", ".eml", ".mbox", ".pdf", ".docx", ".rtf", ".epub",
+  ".org", ".rst", ".tex", ".sql", ".zst", ".zstd",
+].join(",");
+
+export const CONTENT_IMPORT_EXTENSION_GROUPS = Object.freeze([
+  { id: "cards", label: "角色卡 / 世界书", exts: [".png (V2/V3)", ".charx", ".json", ".json5", ".lorebook", ".worldbook", ".card", ".yaml", ".toml", ".csv"] },
+  { id: "chats", label: "聊天记录导出", exts: [".json (ChatGPT/Claude/ST)", ".jsonl", ".zstd", ".txt (微信/QQ)", ".mht/.mhtml", ".xlsx", ".html", ".eml/.mbox"] },
+  { id: "docs", label: "文档 / 笔记 / 归档", exts: [".md/.markdown", ".zip (Obsidian/合集)", ".pdf", ".docx", ".rtf", ".epub", ".opml", ".enex", ".srt/.vtt", ".org/.rst"] },
+]);
 
 const IMPORT_ERROR_MESSAGES = Object.freeze({
   payload_too_large: "导入文件超过 100MB，请拆分后重试。",
@@ -12,7 +29,9 @@ const IMPORT_ERROR_MESSAGES = Object.freeze({
   import_paged_preview_required: "此文件需要在数据导入面板分段预览，不能整份上传。",
   import_record_too_large: "单条聊天消息、CSV 或 JSONL 记录超过分段读取容量，请拆分该记录后重试；本段尚未上传或推进。",
   import_file_too_large: "导入文件超过 100MB，请拆分后重试。",
-  unsupported_file_type: "此入口不支持该格式，请选择 TXT、Markdown、JSON、CSV、TSV、JSONL、HTML、字幕、邮件、PDF 或 DOCX。",
+  unsupported_file_type: "此入口不支持该格式，请选择世界书/角色卡（PNG/CHARX/JSON/YAML/TOML）、聊天记录（JSON/JSONL/TXT/MHT/XLSX/HTML/ZSTD）或常见文档/ZIP 压缩包。",
+  import_png_no_character_card: "这张 PNG 图片不包含 SillyTavern / Chara Card（chara/ccv3）角色卡或世界书元数据。",
+  import_png_invalid: "PNG 角色卡文件结构损坏，请重新导出后重试。",
   import_file_type_unsupported: "此格式不能作为文本读取；旧 DOC 请另存为 DOCX，表格或压缩包请先导出文本。",
   import_media_type_unsupported: "仅支持 JSON、TXT 或 Markdown 文件。",
   import_media_type_mismatch: "文件扩展名与内容格式不匹配，请检查后重试。",
@@ -164,7 +183,7 @@ export function validateImportFile(file) {
   if (Number(file.size) > limit) {
     throw importError({ code: limit === CONTENT_IMPORT_PAGED_MAX_BYTES ? "import_paged_file_too_large" : "file_too_large" });
   }
-  if (!/\.(json|txt|text|md|markdown|log|csv|tsv|jsonl|ndjson|html|htm|srt|vtt|eml|pdf|docx|xml|yaml|yml|ini|conf)$/i.test(String(file.name || ""))) {
+  if (!CONTENT_IMPORT_SUPPORTED_EXTENSIONS.test(String(file.name || ""))) {
     throw importError({ code: "unsupported_file_type" });
   }
   return file;
@@ -302,4 +321,172 @@ export function commitContentImport(importId, decisions, client = defaultClient,
     { ...options, method: "POST", body: JSON.stringify({ decisions }) },
     client,
   );
+}
+
+// ---------------------------------------------------------------------------
+// Universal MCP Memory Importer & Persona Freedom Studio APIs
+// ---------------------------------------------------------------------------
+
+export function listMcpMemorySources(client = defaultClient) {
+  return jsonImportRequest("/api/external-memory/mcp-import/sources", undefined, client);
+}
+
+export function discoverMcpMemory(payload, client = defaultClient) {
+  return jsonImportRequest(
+    "/api/external-memory/mcp-import/discover",
+    { method: "POST", body: JSON.stringify(payload || {}) },
+    client,
+  );
+}
+
+export function previewMcpMemory(payload, client = defaultClient) {
+  return jsonImportRequest(
+    "/api/external-memory/mcp-import/preview",
+    { method: "POST", body: JSON.stringify(payload || {}) },
+    client,
+  );
+}
+
+export function commitMcpMemory(payload, client = defaultClient) {
+  return jsonImportRequest(
+    "/api/external-memory/mcp-import/commit",
+    { method: "POST", body: JSON.stringify(payload || {}) },
+    client,
+  );
+}
+
+export function curateLocalMemories(payload = {}, client = defaultClient) {
+  return jsonImportRequest(
+    "/api/v2/persona-freedom/curate-memories",
+    { method: "POST", body: JSON.stringify(payload) },
+    client,
+  );
+}
+
+export function applyLocalMemoryCuration(payload = {}, client = defaultClient) {
+  return jsonImportRequest(
+    "/api/v2/persona-freedom/apply-curation",
+    { method: "POST", body: JSON.stringify(payload) },
+    client,
+  );
+}
+
+export function distillLocalPersona(payload = {}, client = defaultClient) {
+  return jsonImportRequest(
+    "/api/v2/persona-freedom/distill",
+    { method: "POST", timeoutMs: 120000, body: JSON.stringify(payload) },
+    client,
+  );
+}
+
+export function exportPersonaFreedom(payload = {}, client = defaultClient) {
+  return jsonImportRequest(
+    "/api/v2/persona-freedom/export",
+    { method: "POST", timeoutMs: 120000, body: JSON.stringify(payload) },
+    client,
+  );
+}
+
+export function triggerFileDownload({ filename, content, mimeType = "text/plain;charset=utf-8", encoding = "utf8" }) {
+  if (typeof window !== "undefined" && typeof window.DengTaFileBridge?.saveExport === "function") {
+    let b64 = content;
+    if (encoding !== "base64") {
+      const bytes = new TextEncoder().encode(String(content ?? ""));
+      let binary = "";
+      for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i]);
+      b64 = btoa(binary);
+    }
+    const cleanMime = String(mimeType || "application/octet-stream").split(";")[0];
+    window.DengTaFileBridge.saveExport(`data:${cleanMime};base64,${b64}`, filename);
+    return { mode: "native" };
+  }
+  let blob;
+  if (encoding === "base64") {
+    const raw = atob(String(content || ""));
+    const arr = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i += 1) arr[i] = raw.charCodeAt(i);
+    blob = new Blob([arr], { type: mimeType });
+  } else {
+    blob = new Blob([String(content ?? "")], { type: mimeType });
+  }
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+  return { mode: "browser" };
+}
+
+export function formatWorldBookForExport(entries = [], format = "json") {
+  const list = Array.isArray(entries) ? entries : [];
+  const dateTag = new Date().toISOString().slice(0, 10);
+  if (format === "json") {
+    const payload = {
+      name: `DengTa World Book (${dateTag})`,
+      entries: Object.fromEntries(list.map((entry, idx) => [String(idx), {
+        uid: idx,
+        key: Array.isArray(entry.keywords) ? entry.keywords : [],
+        keysecondary: [],
+        comment: entry.title || `条目 ${idx + 1}`,
+        content: entry.content || "",
+        constant: entry.constant === true,
+        selective: entry.match_mode === "all",
+        order: Number(entry.priority ?? 100),
+        position: entry.position === "before_memory" ? 0 : 1,
+        disable: entry.enabled === false,
+        caseSensitive: entry.case_sensitive === true,
+        displayIndex: Number(entry.sort_order ?? idx),
+      }])),
+    };
+    return { filename: `DengTa-worldbook-${dateTag}.json`, mimeType: "application/json;charset=utf-8", content: JSON.stringify(payload, null, 2) };
+  }
+  if (format === "yaml") {
+    const esc = (v) => JSON.stringify(String(v ?? ""));
+    const lines = ["entries:"];
+    for (const entry of list) {
+      lines.push(`  - title: ${esc(entry.title || "未命名条目")}`);
+      lines.push(`    keywords: [${(entry.keywords || []).map(esc).join(", ")}]`);
+      lines.push(`    priority: ${Number(entry.priority ?? 100)}`);
+      lines.push(`    constant: ${entry.constant === true ? "true" : "false"}`);
+      lines.push(`    enabled: ${entry.enabled !== false ? "true" : "false"}`);
+      lines.push(`    content: ${esc(entry.content || "")}`);
+    }
+    return { filename: `DengTa-worldbook-${dateTag}.yaml`, mimeType: "text/yaml;charset=utf-8", content: lines.join("\n") + "\n" };
+  }
+  if (format === "csv") {
+    const cell = (v) => {
+      const s = String(v ?? "");
+      return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const rows = [["title", "keywords", "content", "priority", "constant", "enabled"]];
+    for (const entry of list) {
+      rows.push([
+        entry.title || "",
+        (entry.keywords || []).join("、"),
+        entry.content || "",
+        String(entry.priority ?? 100),
+        entry.constant ? "true" : "false",
+        entry.enabled !== false ? "true" : "false",
+      ]);
+    }
+    return { filename: `DengTa-worldbook-${dateTag}.csv`, mimeType: "text/csv;charset=utf-8", content: "\uFEFF" + rows.map((r) => r.map(cell).join(",")).join("\r\n") + "\r\n" };
+  }
+  if (format === "txt") {
+    const blocks = list.map((entry, idx) => [
+      `【${entry.title || `条目 ${idx + 1}`}】`,
+      entry.keywords?.length ? `关键词: ${entry.keywords.join(", ")}` : "",
+      entry.content || "",
+    ].filter(Boolean).join("\n"));
+    return { filename: `DengTa-worldbook-${dateTag}.txt`, mimeType: "text/plain;charset=utf-8", content: blocks.join("\n\n") + "\n" };
+  }
+  // default markdown
+  const blocks = list.map((entry, idx) => [
+    `# ${entry.title || `条目 ${idx + 1}`}`,
+    entry.keywords?.length ? `关键词: ${entry.keywords.join(", ")}` : "",
+    entry.content || "",
+  ].filter(Boolean).join("\n"));
+  return { filename: `DengTa-worldbook-${dateTag}.md`, mimeType: "text/markdown;charset=utf-8", content: blocks.join("\n\n") + "\n" };
 }

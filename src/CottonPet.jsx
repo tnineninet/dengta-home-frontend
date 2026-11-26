@@ -28,7 +28,11 @@ function PetVisit({ storageKey, onShare, compact, desktopPetEnabled = false, onT
   const [quiet, setQuiet] = useState(initial.quiet === true);
   const [paused, setPaused] = useState(false);
   const [notice, setNotice] = useState('');
-  const [style, setStyle] = useState({ toon: false, outline: false, night: false, bigHead: false, skeleton: false });
+  const [style, setStyle] = useState({ toon: false, outline: true, night: false, bigHead: false, skeleton: false });
+  const styleRef = useRef(style);
+  useEffect(() => {
+    styleRef.current = style;
+  }, [style]);
   const [expression, setExpression] = useState('auto');
   const [zoom, setZoom] = useState(1);
   const [pieMenu, setPieMenu] = useState(null);
@@ -58,6 +62,7 @@ function PetVisit({ storageKey, onShare, compact, desktopPetEnabled = false, onT
       instance = value;
       if (abort.signal.aborted) { instance.dispose(); return; }
       runtime.current = instance;
+      instance.setVisualStyle?.(styleRef.current);
       setStatus('ready');
     }).catch(() => { if (!abort.signal.aborted) setStatus('error'); });
     return () => {

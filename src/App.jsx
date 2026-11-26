@@ -134,6 +134,28 @@ import { freshAchievements, guideStorageKey } from "./achievement-guide.js";
 import { CUSTOM_ACHIEVEMENT_IDEAS, PREVIEW_ACHIEVEMENTS } from "./achievement-system.js";
 const AchievementShowcaseWall = lazy(() => import("./AchievementShowcaseWall.jsx"));
 const PromptPipelineInspector = lazy(() => import("./PromptPipelineInspector.jsx"));
+const ChronosWakeCenter = lazy(() => import("./ChronosWakeCenter.jsx"));
+const LivePerceptionBar = lazy(() => import("./LivePerceptionBar.jsx"));
+const LivePerceptionSettingsCard = lazy(() =>
+  import("./LivePerceptionBar.jsx").then((mod) => ({
+    default: mod.LivePerceptionSettingsCard,
+  })),
+);
+import {
+  formatLivePerceptionTurnHint,
+  mergeLivePerceptionContext,
+} from "./live-perception.js";
+import {
+  detectBrowserTimeZone,
+  syncNativeLocalWakeNotifications,
+  triggerChronosHeartbeat,
+} from "./chronos-client.js";
+import {
+  peekCachedHistory,
+  readCachedHistory,
+  setChatHistoryCacheScope,
+  writeCachedHistory,
+} from "./chat-history-cache.js";
 import { appendActivityDraft } from "./chat-activities.js";
 import { useChatDraft } from "./use-chat-draft.js";
 import ChatBackground from "./ChatBackground";
@@ -1179,9 +1201,14 @@ function abortChatRequest(requestRef, reason = "cancelled") {
   }
 }
 
-function hydrateSessionChatHistory(messages, sessionId) {
+function hydrateSessionChatHistory(messages, sessionId, { persist = true } = {}) {
+  if (persist && sessionId && Array.isArray(messages)) {
+    writeCachedHistory(sessionId, messages);
+  }
   return applyStoredMessageReferences(hydrateChatHistory(messages), sessionId);
 }
+
+const HISTORY_FIRST_PAGE_SIZE = 40;
 
 function App({ accountControl = null, accountScope = "", userName = "" }) {
   const VOICE_LONG_PRESS_MS = 300;
@@ -1482,6 +1509,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     message: "默认关闭。开启后只提供最近使用过的 App 名称和粗略时长。",
   });
   const [isDeviceActivityBusy, setIsDeviceActivityBusy] = useState(false);
+  const [currentAppName, setCurrentAppName] = useState("");
+  const [sidebarSessionsOpen, setSidebarSessionsOpen] = useState(true);
+  const [chatPerceptionSlot, setChatPerceptionSlot] = useState(null);
+  const livePerceptionControllerRef = useRef(null);
+  const livePerceptionSnapshotRef = useRef(null);
   const [screenGlanceState, setScreenGlanceState] = useState(() =>
     normalizeScreenGlanceState({}),
   );
@@ -1613,6 +1645,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [sessionDialogFeedback, setSessionDialogFeedback] = useState("");
   const sessionDialogRequest = useScopedUiRequest(privateMediaScope);
   const { request: requestSessionHistory, isCurrent: isHistoryScopeCurrent } = useScopedUiRequest(privateMediaScope);
+  useLayoutEffect(() => { setChatHistoryCacheScope(privateMediaScope); }, [privateMediaScope]);
   useLayoutEffect(() => { dialogRef.current = dialog; sessionsRef.current = sessions; }, [dialog, sessions]);
   useLayoutEffect(() => {
     sessionDialogPendingRef.current = null;
@@ -2221,6 +2254,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           setDeviceActivityState(state);
           if (!state.enabled || !state.permissionGranted) {
             deviceActivitySummaryRef.current = null;
+            setCurrentAppName("");
             environmentContextRef.current = mergeDeviceActivityContext(
               ambientContextRef.current,
               null,
@@ -2257,6 +2291,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             summary,
           );
           const currentApp = await readCurrentApp();
+          setCurrentAppName(currentApp?.name || "");
           environmentContextRef.current = mergeCurrentAppContext(
             environmentContextRef.current,
             currentApp,
@@ -3772,6 +3807,72 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   }, [accountStorageScope, settings.ai_name, settings.push_enabled]);
 
   useEffect(() => {
+    if (visualPreview || !hasLoadedSettings) return undefined;
+    let cancelled = false;
+    let heartbeatInFlight = false;
+    let timerId;
+    const CHRONOS_HEARTBEAT_INTERVAL_MS = 45_000;
+
+    async function runChronosHeartbeatTick() {
+      if (cancelled || heartbeatInFlight || !navigator.onLine) return;
+      if (document.visibilityState === "hidden") return;
+      heartbeatInFlight = true;
+      try {
+        const res = await triggerChronosHeartbeat();
+        if (cancelled || !res) return;
+        if (Array.isArray(res.summary?.upcoming_schedules)) {
+          void syncNativeLocalWakeNotifications(res.summary.upcoming_schedules, {
+            aiName: settings.ai_name || "小小灯",
+            channelId: LOCAL_NOTIFICATION_CHANNEL_ID,
+          });
+        }
+        if (res.fired_count > 0 && Array.isArray(res.fired_messages) && res.fired_messages.length > 0) {
+          const currentSessionId = activeSessionIdRef.current;
+          const sessionsData = await apiRequest("/api/v2/sessions").catch(() => null);
+          if (!cancelled && sessionsData?.sessions) setSessions(sessionsData.sessions);
+          if (
+            currentSessionId &&
+            !streamingSessionIdRef.current &&
+            res.fired_messages.some((item) => item.conversation_id === currentSessionId)
+          ) {
+            const history = await apiRequest(`/api/v2/sessions/${currentSessionId}/messages`).catch(() => null);
+            if (!cancelled && history?.messages && activeSessionIdRef.current === currentSessionId) {
+              setMessages(hydrateSessionChatHistory(history.messages, currentSessionId));
+            }
+          }
+        }
+      } catch {
+        // Chronos heartbeat is best-effort and must never interrupt chat UX.
+      } finally {
+        heartbeatInFlight = false;
+      }
+    }
+
+    async function loop() {
+      await runChronosHeartbeatTick();
+      if (!cancelled) {
+        timerId = window.setTimeout(loop, CHRONOS_HEARTBEAT_INTERVAL_MS);
+      }
+    }
+
+    function onResume() {
+      if (document.visibilityState === "visible") {
+        void runChronosHeartbeatTick();
+      }
+    }
+
+    void loop();
+    document.addEventListener("visibilitychange", onResume);
+    window.addEventListener("online", onResume);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timerId);
+      document.removeEventListener("visibilitychange", onResume);
+      window.removeEventListener("online", onResume);
+    };
+  }, [accountStorageScope, hasLoadedSettings, settings.ai_name, visualPreview]);
+
+  useEffect(() => {
     if (!hasLoadedSettings || settings.push_enabled !== true) return undefined;
     void maybeNotifyNewCompanionReplies(messages, {
       aiName: effectiveAiName,
@@ -3809,28 +3910,60 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       messageLoadTokenRef.current = loadToken;
       messagesSessionIdRef.current = activeSessionId;
       historyLoadPendingRef.current = true;
-      setHistoryLoadState({ sessionId: activeSessionId, status: "loading" });
-      setMessages([]);
 
       const isCurrent = () => !cancelled && isHistoryScopeCurrent() &&
         messageLoadTokenRef.current === loadToken &&
         activeSessionIdRef.current === activeSessionId;
+      const safeToReplace = () =>
+        isCurrent() && streamingSessionIdRef.current !== activeSessionId;
+
+      // 1) 秒开：同一次运行内的内存缓存同步命中，直接渲染上次的历史。
+      const memoryCached = peekCachedHistory(activeSessionId);
+      let painted = Boolean(memoryCached);
+      let fullLoaded = false;
+      if (memoryCached) {
+        setMessages(hydrateSessionChatHistory(memoryCached, activeSessionId, { persist: false }));
+        setHistoryLoadState(null);
+      } else {
+        setHistoryLoadState({ sessionId: activeSessionId, status: "loading" });
+        setMessages([]);
+        // 2) 冷启动：并行读取 IndexedDB 缓存，谁先到谁先渲染。
+        void readCachedHistory(activeSessionId).then((cached) => {
+          if (!cached || painted || fullLoaded || !isCurrent()) return;
+          painted = true;
+          setMessages(hydrateSessionChatHistory(cached, activeSessionId, { persist: false }));
+          setHistoryLoadState(null);
+        });
+        // 3) 没有任何缓存时同时请求「最近一屏」，比完整 500 条更快出现首屏。
+        void requestSessionHistory(
+          `/api/v2/sessions/${activeSessionId}/messages?limit=${HISTORY_FIRST_PAGE_SIZE}`,
+        ).then((page) => {
+          if (!Array.isArray(page?.messages) || painted || fullLoaded || !isCurrent()) return;
+          painted = true;
+          setMessages(hydrateSessionChatHistory(page.messages, activeSessionId, { persist: false }));
+          setHistoryLoadState(null);
+        }).catch(() => {});
+      }
 
       try {
+        // 4) 后台完整校准（最多 500 条），结果写回缓存。
         const data = await requestSessionHistory(
           `/api/v2/sessions/${activeSessionId}/messages`,
         );
         if (!Array.isArray(data?.messages)) {
           throw Object.assign(new Error("聊天历史回执不完整"), { code: "session_receipt_invalid" });
         }
-        if (isCurrent()) {
+        fullLoaded = true;
+        if (!painted ? isCurrent() : safeToReplace()) {
           setMessages(
             hydrateSessionChatHistory(data.messages, activeSessionId),
           );
           setHistoryLoadState(null);
+        } else {
+          writeCachedHistory(activeSessionId, data.messages);
         }
       } catch (error) {
-        if (isCurrent()) {
+        if (isCurrent() && !painted) {
           if (["session_receipt_invalid", "request_timeout"].includes(error?.code)) recordOperationFailure(privateMediaScope, "/api/v2/sessions", error);
           const status = Number(error?.status);
           setHistoryLoadState({ sessionId: activeSessionId, status: "error", error: {
@@ -4309,14 +4442,21 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         sessionId,
         clientMessageId,
         clientTime: shanghaiClientTime(),
-        timezone: SHANGHAI_TIME_ZONE,
+        timezone: settings.timezone || detectBrowserTimeZone() || SHANGHAI_TIME_ZONE,
         model: voiceModel,
         emotionUnderstandingEnabled,
         voiceAnalysisRetentionEnabled,
         companionStatus: companionStatusForRequest(
           companionStatusRef.current,
         ),
-        environmentContext: environmentContextRef.current,
+        environmentContext: mergeLivePerceptionContext(
+          {
+            ...(environmentContextRef.current || {}),
+            timeZone: settings.timezone || detectBrowserTimeZone() || SHANGHAI_TIME_ZONE,
+            client_time_iso: new Date().toISOString(),
+          },
+          livePerceptionSnapshotRef.current,
+        ),
         turnContext: turnContextSnapshot,
       });
 
@@ -5440,7 +5580,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           batch_counts: interaction.batchCounts,
           recent_sequence: interaction.recentSequence,
           client_time: shanghaiClientTime(),
-          timezone: SHANGHAI_TIME_ZONE,
+          timezone: settings.timezone || detectBrowserTimeZone() || SHANGHAI_TIME_ZONE,
           model:
             readStoredSessionChatModel(sessionId) ||
             (sessionId === activeSessionIdRef.current
@@ -5449,7 +5589,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             settings.model ||
             "",
           companion_status: requestCompanionStatus,
-          environment_context: environmentContextRef.current,
+          environment_context: {
+            ...(environmentContextRef.current || {}),
+            timeZone: settings.timezone || detectBrowserTimeZone() || SHANGHAI_TIME_ZONE,
+            client_time_iso: new Date().toISOString(),
+          },
         }),
         timeoutMs: 60 * 1000,
       }));
@@ -5951,6 +6095,35 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       return;
     }
     setSendPreparationStage("");
+    let livePerceptionCapturedSources = [];
+    let livePerceptionForTurn = livePerceptionSnapshotRef.current;
+    let effectiveAttachmentStorageMode = attachmentStorageMode;
+    if (!preserveComposer && livePerceptionControllerRef.current?.collectTurnVisuals) {
+      const remainingSlots = Math.max(0, 4 - attachmentsToSend.length);
+      try {
+        const liveVisuals = await Promise.race([
+          livePerceptionControllerRef.current.collectTurnVisuals({
+            maxExtra: Math.min(2, remainingSlots),
+          }),
+          new Promise((resolve) => window.setTimeout(() => resolve(null), 2200)),
+        ]);
+        if (liveVisuals?.livePerception) {
+          livePerceptionForTurn = liveVisuals.livePerception;
+        }
+        if (Array.isArray(liveVisuals?.files) && liveVisuals.files.length > 0) {
+          const hadManualFiles = attachmentsToSend.length > 0;
+          for (const file of liveVisuals.files) {
+            attachmentsToSend.push(createAttachmentDraft(file));
+          }
+          livePerceptionCapturedSources = liveVisuals.sources || [];
+          if (!hadManualFiles) {
+            effectiveAttachmentStorageMode = "ephemeral";
+          }
+        }
+      } catch {
+        // Live visual capture is optional and must never block normal chat send.
+      }
+    }
     request.attachments = attachmentsToSend;
     request.attachmentsReleased = false;
 
@@ -6021,7 +6194,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           messageReference: messageReferenceAtRequest,
           attachments: attachmentsToSend,
           attachmentInstructionMode,
-          attachmentStorageMode,
+          attachmentStorageMode: effectiveAttachmentStorageMode,
         },
       );
       userMessageCommitted = clientMessage.userMessageCommitted === true;
@@ -6093,12 +6266,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 attachments: draftsForLocalMessage(attachmentsToSend),
                 tool_calls:
                   attachmentInstructionMode === "system" ||
-                  attachmentStorageMode === "ephemeral"
+                  effectiveAttachmentStorageMode === "ephemeral"
                     ? {
                         ...(attachmentInstructionMode === "system"
                           ? { attachment_instruction_mode: "system" }
                           : {}),
-                        ...(attachmentStorageMode === "ephemeral"
+                        ...(effectiveAttachmentStorageMode === "ephemeral"
                           ? { ephemeral_visual: true }
                           : {}),
                       }
@@ -6196,6 +6369,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
 
       const effectiveTurnContext = [
         turnContextSnapshot,
+        formatLivePerceptionTurnHint(livePerceptionCapturedSources),
         dbskillIntent.matched
           ? `【内置 dbskill 选题插件主动触发提示】检测到用户正在聊短视频/中视频选题、包装或脚本（平台：${dbskillIntent.platform}，模式：${dbskillIntent.mode}），请主动自发调用 dbskill_analyze_topic 工具完成结构化诊断，再用自然贴心的口吻给出建议。`
           : "",
@@ -6252,13 +6426,20 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           session_id: sessionId,
           message: text,
           client_time: shanghaiClientTime(),
-          timezone: SHANGHAI_TIME_ZONE,
+          timezone: settings.timezone || detectBrowserTimeZone() || SHANGHAI_TIME_ZONE,
           emotion_understanding_enabled: emotionUnderstandingEnabled,
           voice_analysis_retention_enabled: voiceAnalysisRetentionEnabled,
           attachment_instruction_mode: attachmentInstructionMode,
-          attachment_storage_mode: attachmentStorageMode,
+          attachment_storage_mode: effectiveAttachmentStorageMode,
           companion_status: companionStatusForRequest(companionStatus),
-          environment_context: environmentContextRef.current,
+          environment_context: mergeLivePerceptionContext(
+            {
+              ...(environmentContextRef.current || {}),
+              timeZone: settings.timezone || detectBrowserTimeZone() || SHANGHAI_TIME_ZONE,
+              client_time_iso: new Date().toISOString(),
+            },
+            livePerceptionForTurn,
+          ),
           turn_context: effectiveTurnContext,
           message_reference: messageReferenceAtRequest,
           public_reasoning_summary: publicReasoningSummaryAtRequest,
@@ -8441,6 +8622,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               </span>
             </label>
           )}
+          <div ref={setChatPerceptionSlot} className="chat-live-perception-slot" />
           <div className="composer" data-text-impact-scope={privateMediaScope}>
             <ReplyOptionsSheet
               open={replyOptionsOpen}
@@ -9828,7 +10010,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             guidanceLabel="安装到手机/电脑"
             onFeedback={setNotice}
           />
-          <a className="install-button" href="/download" target="_blank" rel="noreferrer"><Download size={14} strokeWidth={1.9} aria-hidden="true" /><span>下载安卓安装包</span></a>
+          {!Capacitor.isNativePlatform() && (
+            <a className="install-button" href="/download" target="_blank" rel="noreferrer"><Download size={14} strokeWidth={1.9} aria-hidden="true" /><span>下载安卓安装包</span></a>
+          )}
           <button type="button" className="install-button" onClick={() => window.dispatchEvent(new Event("dengta:check-app-updates"))}><RefreshCw size={14} strokeWidth={1.9} aria-hidden="true" /><span>检查应用更新</span></button>
           <button type="button" className="install-button" onClick={() => window.dispatchEvent(new Event("dengta:app-update-preferences"))}><BellRing size={14} strokeWidth={1.9} aria-hidden="true" /><span>更新提醒设置</span></button>
           </div>
@@ -10234,12 +10418,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 <label className="style-distill-file-row">
                   <input
                     type="file"
-                    accept=".md,.markdown,.txt,.text,.json,.jsonl,.ndjson,.html,.htm,.csv,.tsv,.log,.srt,.vtt,.eml,.pdf,.docx,.xml,.yaml,.yml,.ini,.conf"
+                    accept=".md,.markdown,.txt,.text,.json,.json5,.jsonc,.jsonl,.ndjson,.html,.htm,.mht,.mhtml,.csv,.tsv,.xlsx,.log,.chat,.srt,.vtt,.eml,.mbox,.pdf,.docx,.rtf,.epub,.xml,.opml,.enex,.yaml,.yml,.toml,.ini,.conf,.org,.rst,.tex,.sql,.zst,.zstd,.png,.charx,.zip"
                     onChange={(event) => void parseDistillFile(event)}
                     disabled={distillState.busy}
                   />
-                  <span>导入聊天记录文件（自动识别 md / txt / json / html / csv / srt / eml / pdf / docx）</span>
-                  <small>纯文本最大 1GB，超过 20MB 分块扫描取样；文档直传最大 20MB。提纯一次分析最多 6 万字。</small>
+                  <span>导入聊天记录 / 角色卡文件（自动识别 45+ 后缀：json/jsonl/zstd/mht/xlsx/png/charx/zip/rtf/epub/pdf/docx 等）</span>
+                  <small>纯文本最大 1GB，超过 20MB 分块扫描取样；文档与归档直传最大 20MB。提纯一次分析最多 6 万字。</small>
                 </label>
                 {distillState.fileInfo ? (
                   <p className="style-distill-file-info" role="status">
@@ -10584,12 +10768,47 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 </small>
               )}
             </div>
+            <Suspense fallback={<DeferredFeature label="正在加载 Chronos 严格时间中心…" />}>
+              <ChronosWakeCenter
+                key={`chronos:${privateMediaScope}`}
+                aiName={draftSettings.ai_name || settings.ai_name || "小小灯"}
+                preferredTimezone={draftSettings.timezone || settings.timezone || "Asia/Shanghai"}
+                visualPreview={visualPreview}
+                onTimezoneSynced={(tz) => {
+                  updateDraft("timezone", tz);
+                  setSettings((prev) => ({ ...prev, timezone: tz }));
+                }}
+                onWakeMessagesFired={async (firedMessages) => {
+                  if (!Array.isArray(firedMessages) || !firedMessages.length) return;
+                  const currentSessionId = activeSessionIdRef.current;
+                  if (currentSessionId && !streamingSessionIdRef.current) {
+                    const history = await apiRequest(`/api/v2/sessions/${currentSessionId}/messages`).catch(() => null);
+                    if (history?.messages && activeSessionIdRef.current === currentSessionId) {
+                      setMessages(hydrateSessionChatHistory(history.messages, currentSessionId));
+                    }
+                  }
+                }}
+              />
+            </Suspense>
             <MemoryImportCard key={privateMediaScope} scopeKey={privateMediaScope} />
               </>
             )}
 
             {settingsCategory === "devices" && (
               <>
+            <Suspense fallback={null}>
+              <LivePerceptionSettingsCard
+                key={`live-perception-settings:${privateMediaScope}`}
+                scope={privateMediaScope}
+                screenGlanceState={screenGlanceState}
+                deviceActivityState={deviceActivityState}
+                onStartScreen={() => startScreenGlanceSession()}
+                onStopScreen={() => stopScreenGlanceSession()}
+                onToggleActivity={(next) => setDeviceActivityEnabled(next)}
+                onOpenActivityPermission={() => openDeviceActivityPermission()}
+                onRefreshActivity={(opts) => refreshDeviceActivityContext(opts)}
+              />
+            </Suspense>
             <Suspense fallback={<DeferredFeature label="正在读取行踪授权…" />}><WhereaboutsConsentSettings key={privateMediaScope} scopeKey={privateMediaScope} /></Suspense>
             <div className="notification-feature-panel device-activity-panel">
               <div className="device-activity-heading">
@@ -11296,8 +11515,18 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
         <FeatureNavigation items={navItems} activeView={activeView} onNavigate={changeView} historyScope={privateMediaScope} badges={navigationBadges} />
 
         <div className="session-heading">
-          <span>最近对话</span>
           <button
+            type="button"
+            className="session-heading-toggle"
+            aria-expanded={sidebarSessionsOpen}
+            onClick={() => setSidebarSessionsOpen((open) => !open)}
+          >
+            <span aria-hidden="true">{sidebarSessionsOpen ? "▾" : "▸"}</span>
+            <span>最近对话</span>
+            <span className="session-heading-count">{sessions.length}</span>
+          </button>
+          <button
+            type="button"
             onClick={createSession}
             title={isCreatingSession ? "正在创建新对话" : "新建对话"}
             aria-label={isCreatingSession ? "正在创建新对话" : "新建对话"}
@@ -11308,76 +11537,79 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           </button>
         </div>
 
-        <div className="session-list" aria-label="会话列表">
-          {sessions.map((session) => (
-            <div
-              className={`session-item ${
-                activeSessionId === session.id ? "active" : ""
-              }`}
-              key={session.id}
-            >
-              <button
-                className="session-select"
-                onClick={() => chooseSession(session.id)}
-                title={session.title}
+        {sidebarSessionsOpen && (
+          <div className="session-list" aria-label="会话列表">
+            {sessions.map((session) => (
+              <div
+                className={`session-item ${
+                  activeSessionId === session.id ? "active" : ""
+                }`}
+                key={session.id}
               >
-                <span>⌁</span>
-                <span>{session.title}</span>
-              </button>
-              <div className="session-actions">
                 <button
-                  onClick={() =>
-                    openSessionDialog({
-                      type: "rename",
-                      session,
-                      value: session.title,
-                    })
-                  }
-                  title="重命名"
+                  className="session-select"
+                  onClick={() => chooseSession(session.id)}
+                  title={session.title}
                 >
-                  ✎
+                  <span>⌁</span>
+                  <span>{session.title}</span>
                 </button>
-                <button
-                  onClick={() =>
-                    openSessionDialog({ type: "delete", session, value: "" })
-                  }
-                  title="删除"
-                >
-                  ×
-                </button>
+                <div className="session-actions">
+                  <button
+                    onClick={() =>
+                      openSessionDialog({
+                        type: "rename",
+                        session,
+                        value: session.title,
+                      })
+                    }
+                    title="重命名"
+                  >
+                    ✎
+                  </button>
+                  <button
+                    onClick={() =>
+                      openSessionDialog({ type: "delete", session, value: "" })
+                    }
+                    title="删除"
+                  >
+                    ×
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-
-        {accountControl && (
-          <div className="sidebar-account-slot">{accountControl}</div>
+            ))}
+          </div>
         )}
 
-        <a
-          className="sidebar-settings-button"
-          href="/download"
-          target="_blank"
-          rel="noreferrer"
-          style={{ textDecoration: "none" }}
-        >
-          <span aria-hidden="true">⤓</span>
-          下载 Android App
-        </a>
-
-        <button
-          type="button"
-          className="sidebar-settings-button"
-          aria-label="打开设置"
-          onClick={openSettingsPanel}
-        >
-          <span aria-hidden="true">⚙</span>
-          设置
-        </button>
-
-        <div className="sidebar-footer">
-          <span className={`connection-dot ${isOnline ? "online" : ""}`} />
-          {isOnline ? "灯塔已连上" : "网络已断开"}
+        <div className="sidebar-dock-footer">
+          {accountControl && (
+            <div className="sidebar-account-slot">{accountControl}</div>
+          )}
+          <div className="sidebar-dock-actions">
+            {!Capacitor.isNativePlatform() && (
+              <a
+                className="sidebar-dock-action sidebar-dock-download"
+                href="/download"
+                target="_blank"
+                rel="noreferrer"
+                title="下载 Android App"
+                aria-label="下载 Android App"
+              >
+                <span aria-hidden="true">⤓</span>
+              </a>
+            )}
+            <button
+              type="button"
+              className="sidebar-dock-action sidebar-dock-settings"
+              aria-label={isOnline ? "打开设置（灯塔已连上）" : "打开设置（网络已断开）"}
+              title={isOnline ? "设置 · 灯塔已连上" : "设置 · 网络已断开"}
+              onClick={openSettingsPanel}
+            >
+              <span className={`connection-dot ${isOnline ? "online" : ""}`} aria-hidden="true" />
+              <span aria-hidden="true">⚙</span>
+              <span>设置</span>
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -11736,6 +11968,57 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             </div>
           </div>
         )}
+
+        <Suspense fallback={null}>
+          <LivePerceptionBar
+            key={privateMediaScope}
+            scope={privateMediaScope}
+            accountScope={accountStorageScope}
+            companionScope={companionScope}
+            activeView={activeView}
+            chatPortalTarget={chatPerceptionSlot}
+            screenGlanceState={screenGlanceState}
+            deviceActivityState={deviceActivityState}
+            currentAppName={currentAppName}
+            isAiSpeaking={voiceState === VOICE_STATES.speaking}
+            isVoiceBusy={isVoiceInputBusy}
+            isSending={isSending}
+            onRegisterController={(ctrl) => {
+              livePerceptionControllerRef.current = ctrl;
+            }}
+            onBackToChat={() => changeView("chat")}
+            onStartNativeScreen={() => startScreenGlanceSession()}
+            onStopNativeScreen={() => stopScreenGlanceSession()}
+            onEnableNativeActivity={(next) => setDeviceActivityEnabled(next)}
+            onOpenActivityPermission={() => openDeviceActivityPermission()}
+            onRefreshActivity={(opts) => refreshDeviceActivityContext(opts)}
+            onSnapFile={async (file) => {
+              await addChatAttachmentFiles([file]);
+              setNotice("已抓拍此刻画面并加入附件，发消息即可让伴侣看到。");
+            }}
+            onTranscript={(spoken, { autoSend } = {}) => {
+              const chunk = String(spoken || "").trim();
+              if (!chunk) return;
+              if (autoSend) {
+                const combined = message ? `${message.trim()} ${chunk}` : chunk;
+                void sendMessage({ text: combined });
+              } else {
+                setMessage((prev) => (prev ? `${prev.trimEnd()} ${chunk}` : chunk));
+              }
+            }}
+            onVoiceTurnBlob={(blob, durationMs) => {
+              void submitVoiceBlob(blob, durationMs);
+            }}
+            onNotice={setNotice}
+            onSensorsChange={(snapshot) => {
+              livePerceptionSnapshotRef.current = snapshot;
+              environmentContextRef.current = mergeLivePerceptionContext(
+                environmentContextRef.current,
+                snapshot,
+              );
+            }}
+          />
+        </Suspense>
 
         <div className={`view-content${viewEntering ? " is-view-entering" : ""}`}>
           {activeView === "chat" && renderChat()}

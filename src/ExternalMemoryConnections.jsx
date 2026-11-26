@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { authSession } from "./auth-session.js";
 import { settingsSaveScope } from "./settings-save-scope.js";
 import { invalidMemoryReceipt, memoryCount, memoryUiFailure, useMemoryUiRequest } from "./memory-ui-feedback.js";
+import McpMemoryImporter from "./McpMemoryImporter.jsx";
+import "./content-import-freedom.css";
 
 const CONNECTION_TYPES = Object.freeze({
   supabase_memory: {
@@ -171,6 +173,7 @@ export default function ExternalMemoryConnections({ scopeKey = settingsSaveScope
   const [feedback, setFeedback] = useState({});
   const [supabasePreview, setSupabasePreview] = useState(null);
   const [expandedTypes, setExpandedTypes] = useState({});
+  const [showMcpImporter, setShowMcpImporter] = useState(false);
   const readRef = useRef(null);
   const actionRef = useRef(null);
   const readVersion = useRef(0);
@@ -739,6 +742,24 @@ export default function ExternalMemoryConnections({ scopeKey = settingsSaveScope
             );
           }
         )}
+      </div>
+
+      <div className="external-memory-card" style={{ marginTop: "14px" }}>
+        <div className="external-memory-card-heading">
+          <div>
+            <h4>通用外部记忆库 MCP 导入（Mem0 / Knowledge Graph / Zep / 自定义）</h4>
+            <p>支持直接连接任意只读记忆库 MCP，先拉取去重预览再批量导入到当前 DengTa 长期记忆。</p>
+          </div>
+          <button
+            type="button"
+            className="secondary-button"
+            aria-expanded={showMcpImporter}
+            onClick={() => setShowMcpImporter((cur) => !cur)}
+          >
+            {showMcpImporter ? "收起 MCP 记忆导入器" : "打开 MCP 记忆导入器"}
+          </button>
+        </div>
+        {showMcpImporter && <div style={{ marginTop: "12px" }}><McpMemoryImporter /></div>}
       </div>
     </section>
   );

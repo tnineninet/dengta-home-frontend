@@ -20,7 +20,7 @@
         },
         {
           "key": "Permissions-Policy",
-          "value": "camera=(self), microphone=(self), geolocation=(self)"
+          "value": "camera=(self), microphone=(self), display-capture=(self), geolocation=(self)"
         },
         {
           "key": "Strict-Transport-Security",
@@ -86,13 +86,18 @@
   ],
   "redirects": [
     {
+      "source": "/downloads/DengTa-2.13.57.apk",
+      "destination": "https://github.com/tnineninet/dengta-home-frontend/releases/download/v2.13.57/DengTa-2.13.57.apk",
+      "permanent": false
+    },
+    {
       "source": "/downloads/DengTa-2.13.53.apk",
       "destination": "https://github.com/tnineninet/dengta-home-frontend/releases/download/v2.13.53/DengTa-2.13.53.apk",
       "permanent": false
     },
     {
       "source": "/downloads/DengTa-latest.apk",
-      "destination": "https://github.com/tnineninet/dengta-home-frontend/releases/download/v2.13.53/DengTa-2.13.53.apk",
+      "destination": "https://github.com/tnineninet/dengta-home-frontend/releases/download/v2.13.57/DengTa-2.13.57.apk",
       "permanent": false
     }
   ],

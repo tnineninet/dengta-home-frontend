@@ -344,6 +344,26 @@ html.dengta-flat-paint .status-flow-field {
     border-color: color-mix(in srgb, var(--theme-ink) 14%, transparent);
   }
 
+  .sidebar .sidebar-dock-footer {
+    border-top-color: color-mix(in srgb, var(--theme-ink) 14%, transparent);
+  }
+
+  .sidebar .sidebar-dock-action {
+    color: var(--theme-ink) !important;
+    background: color-mix(in srgb, var(--theme-ink) 6%, transparent);
+    border-color: color-mix(in srgb, var(--theme-ink) 14%, transparent);
+  }
+
+  .sidebar .session-select {
+    color: var(--theme-ink) !important;
+  }
+
+  .sidebar .session-heading > button:last-child {
+    color: var(--theme-ink) !important;
+    background: color-mix(in srgb, var(--theme-ink) 8%, transparent);
+    border-color: color-mix(in srgb, var(--theme-ink) 14%, transparent);
+  }
+
   .sidebar .account-menu-trigger-copy small {
     color: color-mix(in srgb, var(--theme-ink) 62%, transparent) !important;
   }

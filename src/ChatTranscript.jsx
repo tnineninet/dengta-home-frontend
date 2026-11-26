@@ -48,8 +48,8 @@ export default function ChatTranscript({ messages, preferences, innerMonologues,
     ? (Array.isArray(messages) ? messages : []).filter(hasVisibleAssistantContent)
     : (Array.isArray(messages) ? messages : []);
   // Very long histories otherwise create thousands of composited rows at once.
-  // Streaming keeps the newest rows live; older rows load in chunks.
-  const [visibleLimit, setVisibleLimit] = useState(200);
+  // First paint renders only the newest 80 rows; older rows load in chunks.
+  const [visibleLimit, setVisibleLimit] = useState(80);
   const start = Math.max(0, visibleMessages.length - visibleLimit);
   const renderedMessages = start > 0 ? visibleMessages.slice(start) : visibleMessages;
   return (

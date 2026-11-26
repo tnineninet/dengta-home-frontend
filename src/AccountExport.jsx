@@ -1,12 +1,18 @@
 import { useCallback, useState } from "react";
-import { Download, FileCode, FileJson, FileText, FileType, ShieldCheck } from "lucide-react";
+import { Download, FileCode, FileJson, FileSpreadsheet, FileText, FileType, ShieldCheck } from "lucide-react";
 import { apiRequest } from "./api.js";
+import PersonaFreedomStudio from "./PersonaFreedomStudio.jsx";
+import "./content-import-freedom.css";
 
 const EXPORT_FORMATS = [
   { id: "md", label: "Markdown（.md）", hint: "人类可读的总聊天记录：按模块、按时间整理，可直接导入蒸馏", Icon: FileText },
   { id: "json", label: "JSON（.json）", hint: "结构化完整数据，适合程序读取与长期备份", Icon: FileJson },
+  { id: "jsonl", label: "JSONL 流式（.jsonl）", hint: "逐行 JSON 记录，适合大数据脚本与向量库灌入", Icon: FileJson },
+  { id: "yaml", label: "YAML（.yaml）", hint: "可读性好的结构化档案，含记忆与世界书列表", Icon: FileCode },
+  { id: "csv", label: "Excel 表格（.csv）", hint: "带 UTF-8 BOM，表格软件直接打开检索", Icon: FileSpreadsheet },
   { id: "txt", label: "纯文本（.txt）", hint: "去掉格式的纯文字版，兼容性最好", Icon: FileType },
   { id: "html", label: "网页（.html）", hint: "带样式的网页文档，浏览器直接打开", Icon: FileCode },
+  { id: "xml", label: "XML（.xml）", hint: "标准结构化标记文档，适合长期归档解析", Icon: FileCode },
 ];
 
 function base64FromUtf8(text) {
@@ -66,6 +72,7 @@ export default function AccountExport({ api = apiRequest } = {}) {
   }, [format, api]);
 
   return (
+    <div className="freedom-panel">
     <div className="settings-card account-export-card">
       <div className="prompt-settings-heading">
         <div>
@@ -109,6 +116,8 @@ export default function AccountExport({ api = apiRequest } = {}) {
 
       {feedback && <p className="music-provider-feedback" role="status">{feedback}</p>}
       {error && <p className="music-provider-feedback music-provider-error" role="alert">{error}</p>}
+    </div>
+    <PersonaFreedomStudio />
     </div>
   );
 }

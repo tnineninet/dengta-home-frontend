@@ -65,8 +65,8 @@
   pointer-events: auto;
   cursor: grab;
   border-radius: 50%;
-  background: radial-gradient(circle at 50% 62%, rgba(255, 248, 236, 0.26) 0%, rgba(255, 248, 236, 0.06) 58%, transparent 74%);
-  filter: drop-shadow(0 12px 22px rgba(42, 31, 22, 0.22));
+  background: radial-gradient(circle at 50% 62%, rgba(164, 178, 186, 0.34) 0%, rgba(124, 140, 152, 0.14) 56%, transparent 74%);
+  filter: drop-shadow(0 0 1.4px rgba(74, 56, 48, 0.6)) drop-shadow(0 12px 22px rgba(42, 31, 22, 0.28));
   transition: transform 0.18s ease, filter 0.18s ease;
 }
 

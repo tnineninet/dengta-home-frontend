@@ -136,8 +136,8 @@ select:focus-visible {
 
 /* Global navigation */
 .sidebar {
-  gap: 18px;
-  padding: max(18px, env(safe-area-inset-top)) 14px 14px;
+  gap: 8px;
+  padding: max(12px, env(safe-area-inset-top)) 12px max(10px, env(safe-area-inset-bottom));
   border: 0;
   border-right: 1px solid #262626;
   color: #ffffff;
@@ -146,15 +146,15 @@ select:focus-visible {
 }
 
 .brand {
-  gap: 12px;
-  padding: 2px 8px 14px;
+  gap: 10px;
+  padding: 2px 6px 8px;
   border-bottom: 1px solid #2c2c2e;
 }
 
 .brand-icon {
   position: relative;
-  width: 42px;
-  height: 42px;
+  width: 34px;
+  height: 34px;
   overflow: visible;
   border: 1px solid #ececf0;
   border-radius: 8px;
@@ -162,7 +162,7 @@ select:focus-visible {
   background: #ffffff;
   box-shadow: none;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 22px;
+  font-size: 17px;
   font-weight: 600;
 }
 
@@ -235,11 +235,22 @@ select:focus-visible {
   text-transform: uppercase;
 }
 
-.session-heading button {
+.session-heading > button:last-child {
   border: 0;
   border-radius: 50%;
   color: #ffffff;
   background: #2c2c2e;
+}
+
+.session-heading .session-heading-toggle {
+  width: auto !important;
+  height: auto !important;
+  min-width: 0;
+  min-height: 28px;
+  border: 0 !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  white-space: nowrap;
 }
 
 .session-list {
@@ -260,7 +271,11 @@ select:focus-visible {
 }
 
 .sidebar-account-slot {
-  border-top: 1px solid #2c2c2e;
+  border-top: 0;
+}
+
+.sidebar-dock-footer {
+  border-top-color: #2c2c2e;
 }
 
 .sidebar-footer {

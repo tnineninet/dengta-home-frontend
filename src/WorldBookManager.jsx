@@ -6,6 +6,7 @@ import {
   reorderWorldBookEntries,
   updateWorldBookEntry,
 } from "./world-book-api.js";
+import { formatWorldBookForExport, triggerFileDownload } from "./content-import-api.js";
 
 const PAGE_SIZE = 20;
 
@@ -219,6 +220,28 @@ export default function WorldBookManager({ api }) {
     }
   }
 
+  async function exportAllWorldBook(format) {
+    setBusy(`export-${format}`);
+    setError("");
+    setNotice("");
+    try {
+      const data = await listWorldBookEntries({ limit: 500, offset: 0 }, client);
+      const all = collectionOf(data);
+      const target = all.length ? all : entries;
+      if (!target.length) {
+        setNotice("当前还没有可导出的世界书条目。");
+        return;
+      }
+      const file = formatWorldBookForExport(target, format);
+      triggerFileDownload(file);
+      setNotice(`已导出 ${target.length} 条世界书为 ${file.filename}。`);
+    } catch (exportErr) {
+      setError(exportErr?.message || "导出世界书失败，请稍后重试。");
+    } finally {
+      setBusy("");
+    }
+  }
+
   if (editing) return <EntryEditor key={editing.id || "new"} entry={editing} busy={busy === "save"} onCancel={() => setEditing(null)} onSave={saveEntry} />;
 
   const pageStart = pagination.total === 0 ? 0 : pagination.offset + 1;
@@ -241,6 +264,14 @@ export default function WorldBookManager({ api }) {
           <button type="submit">搜索</button>
         </form>
         <div className="world-book-summary" aria-label="当前页世界书统计"><span><strong>{pagination.total}</strong> 条总计</span><span><strong>{pageStats.enabled}</strong> 条启用</span><span><strong>{pageStats.constant}</strong> 条常驻</span><span><strong>{pageStats.keywordDriven}</strong> 条关键词激活</span>{hasFilters && <button type="button" onClick={() => { setSearchInput(""); setSearch(""); setEnabled(""); setConstant(""); setPosition(""); }}>清除筛选</button>}</div>
+        <div className="world-book-export-bar" aria-label="导出世界书">
+          <span>自由导出世界书：</span>
+          <button type="button" disabled={Boolean(busy)} onClick={() => void exportAllWorldBook("json")}>SillyTavern .json</button>
+          <button type="button" disabled={Boolean(busy)} onClick={() => void exportAllWorldBook("md")}>Markdown .md</button>
+          <button type="button" disabled={Boolean(busy)} onClick={() => void exportAllWorldBook("yaml")}>YAML .yaml</button>
+          <button type="button" disabled={Boolean(busy)} onClick={() => void exportAllWorldBook("csv")}>表格 .csv</button>
+          <button type="button" disabled={Boolean(busy)} onClick={() => void exportAllWorldBook("txt")}>纯文本 .txt</button>
+        </div>
       </div>
       {error && <div className="content-import-error" role="alert">{error}</div>}
       {notice && <div className="content-import-success" role="status">{notice}</div>}

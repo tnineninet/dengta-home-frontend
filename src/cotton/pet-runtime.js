@@ -3,7 +3,7 @@ import { B1857Character } from './upstream/b1857-character.js';
 import { ACTIONS, InteractionController } from './upstream/interaction-controller.js';
 import { InteractionProps } from './upstream/interaction-props.js';
 import { SpringBoneSystem } from './spring-bone-physics.js';
-import { createMToonGradientTexture, createMToonMaterials, createOutlineMesh, DanceSparkles } from './mtoon-style.js';
+import { createContactShadow, createMToonGradientTexture, createMToonMaterials, createOutlineMesh, DanceSparkles } from './mtoon-style.js';
 
 function validateAsset(asset) {
   const fail = () => { throw new Error('pet_asset_invalid'); };
@@ -102,12 +102,13 @@ export async function createPetRuntime(canvas, { signal, initial, onChange, onEr
         dirLight.intensity = 1.85;
         rimLight.intensity = 2.4;
       } else {
-        hemiLight.color.setHex(0xfffaf1);
-        hemiLight.groundColor.setHex(0x7e8975);
-        hemiLight.intensity = 2.5;
-        dirLight.color.setHex(0xfff8ef);
-        dirLight.intensity = 3.0;
-        rimLight.intensity = 0.35;
+        // Day: softer fill + stronger cool rim so the white fur never melts into a bright stage.
+        hemiLight.color.setHex(0xfff6ea);
+        hemiLight.groundColor.setHex(0x5d6656);
+        hemiLight.intensity = 1.5;
+        dirLight.color.setHex(0xfff3e4);
+        dirLight.intensity = 2.35;
+        rimLight.intensity = 1.25;
       }
     }
   }
@@ -115,21 +116,23 @@ export async function createPetRuntime(canvas, { signal, initial, onChange, onEr
   renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'low-power' });
   renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio || 1, 1.5));
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 0.9;
   scene = new THREE.Scene();
   camera = new THREE.PerspectiveCamera(36, 1, .01, 20);
   applyCamera();
-  hemiLight = new THREE.HemisphereLight(0xfffaf1, 0x7e8975, 2.5);
+  hemiLight = new THREE.HemisphereLight(0xfff6ea, 0x5d6656, 1.5);
   scene.add(hemiLight);
-  dirLight = new THREE.DirectionalLight(0xfff8ef, 3);
+  dirLight = new THREE.DirectionalLight(0xfff3e4, 2.35);
   dirLight.position.set(-.9, 1.5, 1.3);
   scene.add(dirLight);
-  rimLight = new THREE.DirectionalLight(0xaec6ff, 0.35);
+  rimLight = new THREE.DirectionalLight(0x9fb8ff, 1.25);
   rimLight.position.set(1.2, 0.9, -1.4);
   scene.add(rimLight);
   pet = new B1857Character({ asset });
   standardMaterials = pet.materials;
   outlineMesh = createOutlineMesh(pet);
   pet.group.add(outlineMesh);
+  scene.add(createContactShadow());
   scene.add(pet.group, pet.helper);
   springs = new SpringBoneSystem(pet);
   sparkles = new DanceSparkles(scene);

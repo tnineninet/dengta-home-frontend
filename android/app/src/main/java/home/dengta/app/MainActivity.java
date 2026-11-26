@@ -4,6 +4,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
+import android.webkit.CookieManager;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebView;
 import android.window.OnBackInvokedDispatcher;
@@ -87,6 +88,14 @@ public class MainActivity extends BridgeActivity {
         // 再弹出旧密码快捷栏。App 内只有登录需要输密码，这里关闭 WebView 自动填充。
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             webView.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
+        }
+        // 允许音乐工作室等受信任内嵌播放器在 WebView iframe 中保存会话 Cookie，
+        // 避免 Android 15 默认禁用第三方 Cookie 导致内嵌页 401 白屏。
+        try {
+            CookieManager cookieManager = CookieManager.getInstance();
+            cookieManager.setAcceptCookie(true);
+            cookieManager.setAcceptThirdPartyCookies(webView, true);
+        } catch (Throwable ignored) {
         }
         // 启动随机播放等场景允许无手势自动播放（内置播放器/后台音乐）。
         webView.getSettings().setMediaPlaybackRequiresUserGesture(false);

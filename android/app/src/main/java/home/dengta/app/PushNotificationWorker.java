@@ -206,6 +206,17 @@ public final class PushNotificationWorker extends Worker {
             return Result.success();
         }
 
+        // 先触发一次 Chronos 严格时间自动唤醒心跳，确保到点的精确闹钟/早晚仪式
+        // 在本次拉取主动消息前立即落库（兼容旧版后端：出错不阻断后续拉取）。
+        try {
+            postJson(context, identity, "/api/v2/chronos/heartbeat", "{}");
+        } catch (Exception ignored) {
+            // Best-effort wake trigger; continue polling existing proactive messages.
+        }
+        if (!isDeliveryScopeCurrent(context, capturedScopeKey)) {
+            return Result.success();
+        }
+
         String encodedCursor = URLEncoder.encode(
             cursor,
             StandardCharsets.UTF_8.name()
@@ -482,6 +493,51 @@ public final class PushNotificationWorker extends Worker {
             throw new HttpStatusException(status);
         }
         return new JSONObject(body);
+    }
+
+    private static JSONObject postJson(
+        Context context,
+        BackgroundNotificationCredentials.Identity identity,
+        String path,
+        String jsonBody
+    ) throws Exception {
+        String baseUrl = context.getString(R.string.backend_api_url).replaceAll("/+$", "");
+        URI uri = URI.create(baseUrl + path);
+        if (!"https".equalsIgnoreCase(uri.getScheme())) {
+            throw new IllegalStateException("Background notification API must use HTTPS");
+        }
+
+        byte[] payload = (jsonBody == null ? "{}" : jsonBody).getBytes(StandardCharsets.UTF_8);
+        HttpURLConnection connection = (HttpURLConnection) uri.toURL().openConnection();
+        connection.setRequestMethod("POST");
+        connection.setDoOutput(true);
+        connection.setConnectTimeout(HTTP_TIMEOUT_MS);
+        connection.setReadTimeout(HTTP_TIMEOUT_MS);
+        connection.setRequestProperty("Accept", "application/json");
+        connection.setRequestProperty("Content-Type", "application/json; charset=UTF-8");
+        connection.setRequestProperty(
+            "X-DengTa-Installation-Token",
+            identity.installationToken
+        );
+        connection.setRequestProperty(
+            "X-DengTa-Companion-Id",
+            identity.companionId
+        );
+        try (java.io.OutputStream output = connection.getOutputStream()) {
+            output.write(payload);
+        }
+
+        int status = connection.getResponseCode();
+        InputStream stream = status >= 200 && status < 300
+            ? connection.getInputStream()
+            : connection.getErrorStream();
+        String body = readStream(stream);
+        connection.disconnect();
+
+        if (status < 200 || status >= 300) {
+            throw new HttpStatusException(status);
+        }
+        return new JSONObject(body == null || body.isEmpty() ? "{}" : body);
     }
 
     private static final class HttpStatusException extends Exception {

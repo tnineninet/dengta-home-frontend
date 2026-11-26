@@ -5,8 +5,8 @@
 .cotton-heading h2 { margin: 10px 0 6px; font-size: clamp(24px, 4vw, 34px); }
 .cotton-heading p, .cotton-controls p { font-size: 14px; line-height: 1.8; color: var(--theme-muted, #708074); }
 .cotton-layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(260px, 1fr); gap: 24px; }
-.cotton-stage { position: relative; min-width: 0; height: 480px; overflow: hidden; border-radius: 28px; background: radial-gradient(ellipse at 50% 67%, #dfdfc9 0, #eff0e4 35%, #f9f7ef 80%); border: 1px solid #dfe4d7; }
-.cotton-stage canvas { display: block; width: 100%; height: 100%; }
+.cotton-stage { position: relative; min-width: 0; height: 480px; overflow: hidden; border-radius: 28px; background: radial-gradient(ellipse at 50% 70%, #dfe6e1 0%, #bccbc8 42%, #93a9b1 100%); border: 1px solid #a9bab8; }
+.cotton-stage canvas { display: block; width: 100%; height: 100%; filter: drop-shadow(0 0 1.2px rgba(74, 56, 48, .55)) drop-shadow(0 10px 18px rgba(38, 30, 34, .22)); }
 .cotton-welcome, .cotton-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 12px; padding: 24px; color: #435647; }
 .cotton-welcome > span { font-size: 60px; color: #8c9e80; }
 .cotton-welcome h3, .cotton-welcome p { margin: 0; }
@@ -50,7 +50,7 @@
 }
 
 .cotton-stage.is-night { background: radial-gradient(ellipse at 50% 62%, #2e2948 0%, #1d1c33 52%, #111322 100%); border-color: #3d3961; }
-.cotton-stage.is-toon { background: radial-gradient(ellipse at 50% 64%, #fff2df 0%, #f9ead8 48%, #f3e4ef 100%); }
+.cotton-stage.is-toon { background: radial-gradient(ellipse at 50% 70%, #f3dccb 0%, #d9b3aa 46%, #a88ea6 100%); border-color: #c4a3a6; }
 .cotton-stage.is-night .cotton-state, .cotton-stage.is-night .cotton-silent, .cotton-stage.is-night .cotton-zoom-pill { background: rgba(24, 24, 42, .72); color: #e9e4ff; }
 .cotton-zoom-pill { position: absolute; top: 18px; right: 18px; font-size: 11px; color: #54664c; padding: 6px 10px; background: #ffffffc4; border-radius: 20px; pointer-events: none; }
 .cotton-subsection { margin-top: 14px; }

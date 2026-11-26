@@ -3,17 +3,17 @@
   "package_id": "home.dengta.app",
   "channel": "stable",
   "latest": {
-    "version_code": 311,
-    "version": "2.13.53",
-    "apk_url": "https://www.dengtahome.com/downloads/DengTa-2.13.53.apk",
-    "sha256": "bfd962664b3dc7a4d1200942163000b25a4d1aaf9a71ce9edbbab92b5ee02172",
-    "size_bytes": 38841073,
-    "published_at": "2026-11-25T12:00:00.000Z",
+    "version_code": 315,
+    "version": "2.13.57",
+    "apk_url": "https://www.dengtahome.com/downloads/DengTa-2.13.57.apk",
+    "sha256": "a000424951fd1169c8fbb359d86523798a7d987c9636058c4978bb63c6d2a030",
+    "size_bytes": 38900960,
+    "published_at": "2026-11-26T18:25:00.000Z",
     "notes": [
-      "全新 agents.md 提示词注入与 KV 缓存链路、AI 聊天首字提速与流式帧率优化",
-      "设置中心动效/SVG 图标精修、AI 模型预设中心与管线体检面板上线",
-      "新增博美犬小棉花 3D 桌宠、adudir-open 本机剪映 AI 工作台与灯塔邮局定位探索",
-      "集成 dbskill 主动选题诊断、Kiwi 长期记忆架构修复、情绪词与成就墙全面升级"
+      "全程实时多模态感知上线：屏幕捕获、应用活动感知、前后摄像头视觉与离线 VAD 免提声纹直听，跨页常驻且按权自动续连",
+      "侧边栏比例全景重构：底部单行紧凑 Dock + 隐藏安卓端冗余下载键 + 可折叠最近对话，玩法列表视野扩大 2.5 倍",
+      "音乐工作室默认直连高清白边二维码与歌单工作台，彻底根治手机白屏与扫码回跳不同步，支持一键保存相册",
+      "聊天历史加载极速优化（L1/L2 IndexedDB 缓存 + 首屏分页快拉）、Chronos 严格时间自动唤醒、博美犬小棉花高对比舞台升级"
     ]
   }
 }

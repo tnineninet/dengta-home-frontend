@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { commitContentImport, getContentImport, resolveContentImport, contentImportResolutionReceipt, listContentImports, previewContentImport, previewContentImportPage, CONTENT_IMPORT_PAGED_EXTENSIONS, CONTENT_IMPORT_ERROR_FEEDBACK, translatedImportError, importCommitRecovery } from "./content-import-api.js";
+import { commitContentImport, getContentImport, resolveContentImport, contentImportResolutionReceipt, listContentImports, previewContentImport, previewContentImportPage, CONTENT_IMPORT_PAGED_EXTENSIONS, CONTENT_IMPORT_ACCEPT_STRING, CONTENT_IMPORT_EXTENSION_GROUPS, CONTENT_IMPORT_ERROR_FEEDBACK, translatedImportError, importCommitRecovery } from "./content-import-api.js";
 import WorldBookManager from "./WorldBookManager.jsx";
+import McpMemoryImporter from "./McpMemoryImporter.jsx";
+import PersonaFreedomStudio from "./PersonaFreedomStudio.jsx";
 import ChatErrorLog from "./ChatErrorLog.jsx";
 import { funLabsDiagnostic } from "./fun-labs-refresh.js";
 import { createImportRequestClient } from "./import-request-scope.js";
 import { importCheckpointKey, readImportCheckpoint, saveImportCheckpoint, clearImportCheckpoint, importCommitReceipt } from "./import-checkpoint.js";
 import { readImportFingerprint } from "./import-fingerprint-reader.js";
 import { createImportAttempt, importAttemptPrefix, readImportAttempts, saveImportAttempt, clearImportAttempt } from "./import-attempt-receipt.js";
+import "./content-import-freedom.css";
 
 const TYPE_META = Object.freeze({
   memory: {
@@ -115,6 +118,8 @@ export default function ContentImport({ api, accountScope = "", companionScope =
   const [diagnostic, setDiagnostic] = useState(null);
   const [recoveryNote, setRecoveryNote] = useState("");
   const [uncertainImportId, setUncertainImportId] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [candidateSearch, setCandidateSearch] = useState("");
   const receiptPrefix = importAttemptPrefix(accountScope, companionScope);
   const [attempts, setAttempts] = useState(() => readImportAttempts(receiptPrefix));
   const scopeRef = useRef(receiptPrefix);
@@ -409,44 +414,84 @@ export default function ContentImport({ api, accountScope = "", companionScope =
 
   const decisionsLocked = Boolean(busy || commitBlocked);
 
-  const groupedCandidates = useMemo(() => Object.keys(TYPE_META).map((type) => ({
-    type,
-    items: (preview?.candidates || []).filter((item) => item.type === type),
-  })), [preview]);
+  const groupedCandidates = useMemo(() => {
+    const q = candidateSearch.trim().toLowerCase();
+    const list = (preview?.candidates || []).filter((item) => {
+      if (!q) return true;
+      return String(item.title || "").toLowerCase().includes(q)
+        || String(item.content || "").toLowerCase().includes(q)
+        || (item.keywords || []).some((k) => String(k).toLowerCase().includes(q));
+    });
+    return Object.keys(TYPE_META).map((type) => ({
+      type,
+      items: list.filter((item) => item.type === type),
+    }));
+  }, [preview, candidateSearch]);
 
   return (
     <section className="content-import" aria-labelledby="content-import-title">
       <header className="content-import-hero">
-        <span className="eyebrow">把旧故事带回灯塔</span>
-        <h3 id="content-import-title">世界书与聊天记录</h3>
-        <p>先生成预览，再逐项决定去留。未经你的明确确认，任何候选都不会写入。</p>
+        <span className="eyebrow">把旧故事带回灯塔 · 自由来去无锁定</span>
+        <h3 id="content-import-title">世界书、聊天记录与自由迁徙</h3>
+        <p>适配 45+ 常见文件后缀、外部记忆库 MCP 导入，以及本机记忆整理、人格蒸馏与多格式自由导出。未经你的明确确认，任何候选都不会写入。</p>
       </header>
 
       <div className="content-import-tabs" role="tablist" aria-label="世界书与导入功能">
         <button type="button" role="tab" aria-selected={activeTab === "import"} onClick={() => setActiveTab("import")}>导入新内容</button>
+        <button type="button" role="tab" aria-selected={activeTab === "mcp_memory"} onClick={() => setActiveTab("mcp_memory")}>MCP 记忆库导入</button>
         <button type="button" role="tab" aria-selected={activeTab === "manage"} onClick={() => setActiveTab("manage")}>世界书管理</button>
+        <button type="button" role="tab" aria-selected={activeTab === "freedom"} onClick={() => setActiveTab("freedom")}>记忆整理与人格导出</button>
       </div>
 
-      {activeTab === "manage" ? <WorldBookManager api={client} /> : <>
+      {activeTab === "manage" ? <WorldBookManager api={client} /> : activeTab === "mcp_memory" ? <McpMemoryImporter api={client} /> : activeTab === "freedom" ? <PersonaFreedomStudio api={client} /> : <>
         {attempts.length > 0 && <section className="content-import-receipt content-import-attempts" aria-label="待核对导入">
           <strong>有 {attempts.length} 次导入结果待核对</strong>
           <p>关闭面板后仍保留导入编号。先核对服务器结果，再继续导入，避免重复追加。</p>
-          <ul>{attempts.map(row=><li key={row.importId}><span>{row.kind==="world_book" ? "世界书" : "聊天记录"} · {new Date(row.startedAt).toLocaleString()}</span><code>{row.importId}</code><button className="content-import-secondary" type="button" disabled={Boolean(busy)} onClick={()=>void checkCommit(row.importId)}>核对这次导入</button></li>)}</ul>
+          <ul>{attempts.map(row=><li key={row.importId}><span>{row.kind==="world_book" ? "世界书" : row.kind==="memory_library" ? "外部记忆库" : "聊天记录"} · {new Date(row.startedAt).toLocaleString()}</span><code>{row.importId}</code><button className="content-import-secondary" type="button" disabled={Boolean(busy)} onClick={()=>void checkCommit(row.importId)}>核对这次导入</button></li>)}</ul>
         </section>}
         <div className="content-import-source settings-card">
         <fieldset className="content-import-segments">
           <legend>导入内容类型</legend>
-          <button type="button" disabled={Boolean(busy) || commitBlocked} aria-pressed={kind === "world_book"} onClick={() => {setKind("world_book");resetSource();}}>世界书</button>
+          <button type="button" disabled={Boolean(busy) || commitBlocked} aria-pressed={kind === "world_book"} onClick={() => {setKind("world_book");resetSource();}}>世界书 / 角色卡</button>
           <button type="button" disabled={Boolean(busy) || commitBlocked} aria-pressed={kind === "chat_history"} onClick={() => {setKind("chat_history");resetSource();}}>聊天记录</button>
+          <button type="button" disabled={Boolean(busy) || commitBlocked} aria-pressed={kind === "memory_library"} onClick={() => {setKind("memory_library");resetSource();}}>外部记忆库文件</button>
         </fieldset>
         <div className="content-import-fields">
-          <label><span>输入方式</span><select aria-label="输入方式" disabled={Boolean(busy) || commitBlocked} value={inputMode} onChange={(event) => {setInputMode(event.target.value);resetSource();}}><option value="file">上传文件</option><option value="paste">粘贴文本</option></select></label>
-          <label><span>内容格式</span><select aria-label="内容格式" disabled={Boolean(busy) || commitBlocked} value={format} onChange={(event) => {setFormat(event.target.value);resetSource();}}><option value="auto">自动识别</option><option value="sillytavern">SillyTavern</option><option value="generic_json">通用 JSON</option><option value="plain_text">纯文本</option></select></label>
+          <label><span>输入方式</span><select aria-label="输入方式" disabled={Boolean(busy) || commitBlocked} value={inputMode} onChange={(event) => {setInputMode(event.target.value);resetSource();}}><option value="file">上传 / 拖拽文件</option><option value="paste">粘贴文本</option></select></label>
+          <label><span>内容格式</span><select aria-label="内容格式" disabled={Boolean(busy) || commitBlocked} value={format} onChange={(event) => {setFormat(event.target.value);resetSource();}}><option value="auto">自动识别（推荐）</option><option value="sillytavern">SillyTavern / 角色卡 V2/V3</option><option value="generic_json">通用 JSON / JSON5 / JSONL</option><option value="plain_text">纯文本 / Markdown / YAML / CSV</option></select></label>
         </div>
         {inputMode === "file" ? (
-          <label className="content-import-dropzone"><span>{file ? file.name : "选择聊天记录、世界书或文档"}</span><small>TXT、Markdown、日志、CSV、TSV、JSONL 最大 1GB，分段预览并逐段确认；重新选择原文件可恢复进度。完整 JSON 最大 100MB（解析最多 100 万字），PDF、DOCX、邮件最大 20MB。模型上下文仍由所选接口决定。</small><input aria-label="选择导入文件" type="file" accept=".json,.txt,.text,.md,.markdown,.log,.csv,.tsv,.jsonl,.ndjson,.html,.htm,.srt,.vtt,.eml,.pdf,.docx,.xml,.yaml,.yml,.ini,.conf" disabled={Boolean(busy) || commitBlocked} onChange={(event) => {setFile(event.target.files?.[0] || null);event.target.value="";resetSource();}} /></label>
+          <>
+            <label
+              className={`content-import-dropzone${isDragging ? " is-dragging" : ""}`}
+              onDragOver={(event) => { event.preventDefault(); if (!busy && !commitBlocked) setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={(event) => {
+                event.preventDefault();
+                setIsDragging(false);
+                if (busy || commitBlocked) return;
+                const dropped = event.dataTransfer?.files?.[0] || null;
+                if (dropped) { setFile(dropped); resetSource(); }
+              }}
+            >
+              <span>{file ? `${file.name}（${file.size >= 1024 * 1024 ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : `${Math.max(1, Math.round(file.size / 1024))} KB`}）` : "点击选择或拖拽世界书、角色卡、聊天记录或记忆库文件"}</span>
+              <small>支持 45+ 后缀：PNG/CHARX 角色卡、JSON/JSON5/YAML/TOML/CSV/XLSX 世界书、ChatGPT/Claude/SillyTavern/微信/QQ/MHT/ZSTD 聊天记录、Knowledge Graph/Mem0 记忆库及 ZIP/EPUB/RTF/PDF/DOCX。大文本最大 1GB 分段预览。</small>
+              <input aria-label="选择导入文件" type="file" accept={CONTENT_IMPORT_ACCEPT_STRING} disabled={Boolean(busy) || commitBlocked} onChange={(event) => {setFile(event.target.files?.[0] || null);event.target.value="";resetSource();}} />
+            </label>
+            <details className="content-import-formats-box">
+              <summary>查看支持的 45+ 文件后缀与自动识别能力</summary>
+              <div className="content-import-format-groups">
+                {CONTENT_IMPORT_EXTENSION_GROUPS.map((group) => (
+                  <div className="content-import-format-group" key={group.id}>
+                    <strong>{group.label}</strong>
+                    {group.exts.map((ext) => <code key={ext}>{ext}</code>)}
+                  </div>
+                ))}
+              </div>
+            </details>
+          </>
         ) : (
-          <label className="content-import-paste"><span>粘贴原始内容</span><textarea aria-label="粘贴导入内容" disabled={Boolean(busy) || commitBlocked} value={content} onChange={(event) => setContent(event.target.value)} rows={8} placeholder="内容会按原文发送，不进行关键词过滤。" /></label>
+          <label className="content-import-paste"><span>粘贴原始内容</span><textarea aria-label="粘贴导入内容" disabled={Boolean(busy) || commitBlocked} value={content} onChange={(event) => setContent(event.target.value)} rows={8} placeholder="支持直接粘贴 JSON/JSON5、Knowledge Graph JSONL、YAML/TOML 世界书、Markdown 或任意聊天对话原文，不进行关键词过滤。" /></label>
         )}
         <button className="content-import-primary" type="button" disabled={Boolean(busy) || commitBlocked || (inputMode === "file" ? !file : !content)} onClick={() => void handlePreview()}>{busy === "preview" ? "正在读入故事…" : "生成导入预览"}</button>
         {busy==="preview" && <button className="content-import-secondary" type="button" onClick={stopReading}>停止读取</button>}
@@ -474,6 +519,16 @@ export default function ContentImport({ api, accountScope = "", companionScope =
         <section className="content-import-preview" aria-label="导入候选预览">
           <div className="content-import-receipt"><strong>预览回执</strong><span>{countText(preview.counts)}</span>{preview.digest && <p>{preview.digest}</p>}{preview.warnings.length > 0 && <ul aria-label="导入警告">{preview.warnings.map((warning, index) => <li key={`${String(warning)}-${index}`}>{String(warning?.message || warning)}</li>)}</ul>}</div>
           <div className="content-import-bulk" aria-label="批量决策"><button type="button" disabled={decisionsLocked} onClick={() => decideAll("accepted")}>全选接受</button><button type="button" disabled={decisionsLocked} onClick={() => decideAll("rejected")}>全选拒绝</button></div>
+          {preview.candidates.length > 4 && (
+            <div className="content-import-preview-filter">
+              <input
+                aria-label="筛选预览候选项"
+                value={candidateSearch}
+                onChange={(event) => setCandidateSearch(event.target.value)}
+                placeholder="按标题、正文或关键词快速筛选候选项…"
+              />
+            </div>
+          )}
           {preview.candidates.length === 0 ? <div className="content-import-empty">没有生成可导入的候选项，请尝试其他格式。</div> : groupedCandidates.map(({ type, items }) => items.length > 0 && (
             <section className="content-import-group" key={type} aria-labelledby={`import-group-${type}`}>
               <h4 id={`import-group-${type}`}>{TYPE_META[type].label}<span>{items.length}</span></h4>

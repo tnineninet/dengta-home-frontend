@@ -366,7 +366,9 @@
 .sidebar-account-slot {
   position: relative;
   z-index: 2;
-  padding: 0 2px;
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: 0;
 }
 
 .account-menu {
@@ -378,12 +380,13 @@
   display: grid;
   width: 100%;
   min-width: 0;
-  grid-template-columns: 34px minmax(0, 1fr);
+  min-height: 38px;
+  grid-template-columns: 26px minmax(0, 1fr);
   align-items: center;
-  gap: 9px;
-  padding: 7px;
+  gap: 7px;
+  padding: 4px 7px;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
+  border-radius: 9px;
   color: #f9eff2;
   background: rgba(255, 255, 255, 0.07);
   text-align: left;
@@ -391,19 +394,20 @@
 
 .account-menu-trigger > span:first-child {
   display: grid;
-  width: 34px;
-  height: 34px;
+  width: 26px;
+  height: 26px;
   place-items: center;
   border-radius: 7px;
   color: #5a3240;
   background: #f2cbd7;
+  font-size: 12px;
   font-weight: 900;
 }
 
 .account-menu-trigger-copy {
   display: grid;
   min-width: 0;
-  gap: 2px;
+  gap: 1px;
 }
 
 .account-menu-trigger-copy strong,
@@ -415,24 +419,28 @@
 
 .account-menu-trigger-copy strong {
   font-size: 11px;
+  line-height: 1.25;
 }
 
 .account-menu-trigger-copy small {
   color: #cbbac1;
   font-size: 9px;
+  line-height: 1.15;
 }
 
 .account-menu-popover {
   position: absolute;
   z-index: 100;
-  right: 0;
+  right: auto;
   bottom: calc(100% + 7px);
   left: 0;
+  min-width: 224px;
+  max-width: min(260px, 82vw);
   display: grid;
   gap: 7px;
   padding: 12px;
   border: 1px solid #d8c4c8;
-  border-radius: 8px;
+  border-radius: 10px;
   color: #543e46;
   background: #fffaf5;
   box-shadow: 0 16px 38px rgba(40, 25, 31, 0.26);

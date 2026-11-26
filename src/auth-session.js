@@ -252,20 +252,34 @@ export function createAuthSessionManager({
       const authClient = await ensureClient();
       publish({ status: AUTH_STATUS.loading, error: null });
 
+      async function runWithTransientRetry(task) {
+        try {
+          return await task();
+        } catch (firstError) {
+          if (firstError?.code !== "auth_timeout") throw firstError;
+          await new Promise((resolve) => globalThis.setTimeout(resolve, 600));
+          return task();
+        }
+      }
+
       // getSession() awaits SDK initialization but does not return its callback error.
       // Consume that result once so a failed email link cannot block password login.
       if (!callbackInitializationChecked && authClient.auth.initialize) {
         callbackInitializationChecked = true;
-        const { error } = await withAuthTimeout(
-          authClient.auth.initialize(),
-          20_000,
-          "登录服务响应超时，请检查网络后重试。",
-        );
-        if (error) {
-          const restored = await withAuthTimeout(
-            authClient.auth.getSession(),
+        const { error } = await runWithTransientRetry(() =>
+          withAuthTimeout(
+            authClient.auth.initialize(),
             20_000,
             "登录服务响应超时，请检查网络后重试。",
+          ),
+        );
+        if (error) {
+          const restored = await runWithTransientRetry(() =>
+            withAuthTimeout(
+              authClient.auth.getSession(),
+              20_000,
+              "登录服务响应超时，请检查网络后重试。",
+            ),
           );
           if (!restored.data?.session?.user?.id) {
             throw authFailure(error, "邮箱链接验证失败，请重新发送验证邮件，或使用已验证的邮箱和密码登录。");
@@ -290,10 +304,12 @@ export function createAuthSessionManager({
         authSubscription = result?.data?.subscription || null;
       }
 
-      const { data, error } = await withAuthTimeout(
-        authClient.auth.getSession(),
-        20_000,
-        "登录服务响应超时，请检查网络后重试。",
+      const { data, error } = await runWithTransientRetry(() =>
+        withAuthTimeout(
+          authClient.auth.getSession(),
+          20_000,
+          "登录服务响应超时，请检查网络后重试。",
+        ),
       );
       if (error) {
         throw authFailure(error, "无法恢复登录状态，请重新登录。");

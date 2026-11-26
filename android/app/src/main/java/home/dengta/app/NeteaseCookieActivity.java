@@ -6,6 +6,8 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
 import android.webkit.WebSettings;
@@ -18,6 +20,9 @@ import android.widget.Toast;
 
 public class NeteaseCookieActivity extends Activity {
     private WebView webView;
+    private final Handler cookieWatcher = new Handler(Looper.getMainLooper());
+    private Runnable cookiePollTask;
+    private boolean autoSaved = false;
     private static final String NETEASE_PACKAGE = "com.netease.cloudmusic";
     private static final String H5_HOME = "https://y.music.163.com/m/";
 
@@ -131,6 +136,44 @@ public class NeteaseCookieActivity extends Activity {
         setContentView(root);
         SafeWindow.apply(this, root);
         webView.loadUrl(desktopMode ? "https://music.163.com/" : H5_HOME);
+        // 定时检测是否已登录成功（获取到 MUSIC_U），检测到后自动完成保存并返回灯塔。
+        cookiePollTask = new Runnable() {
+            @Override
+            public void run() {
+                if (isFinishing() || isDestroyed() || autoSaved) return;
+                String cookie = "";
+                try {
+                    CookieManager.getInstance().flush();
+                    cookie = CookieManager.getInstance().getCookie("https://music.163.com");
+                } catch (Exception ignored) {
+                    cookie = "";
+                }
+                if (cookie != null && cookie.contains("MUSIC_U=")) {
+                    autoSaved = true;
+                    NeteaseCookiePlugin.prefs(NeteaseCookieActivity.this)
+                        .edit()
+                        .putString("cookie", cookie)
+                        .putString("state", "saved")
+                        .apply();
+                    Toast.makeText(NeteaseCookieActivity.this, "已抓取到网易云登录态，正在同步回灯塔…", Toast.LENGTH_SHORT).show();
+                    Intent data = new Intent();
+                    data.putExtra("cookie", cookie);
+                    setResult(Activity.RESULT_OK, data);
+                    finish();
+                    return;
+                }
+                cookieWatcher.postDelayed(this, 1500);
+            }
+        };
+        cookieWatcher.postDelayed(cookiePollTask, 2500);
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (cookiePollTask != null) {
+            cookieWatcher.removeCallbacks(cookiePollTask);
+        }
+        super.onDestroy();
     }
 
     private void markCancelled() {
