@@ -36,6 +36,51 @@
 .settings-sheet svg {
   flex-shrink: 0;
   shape-rendering: geometricPrecision;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+@keyframes settings-sheet-enter {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes settings-backdrop-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.settings-sheet-backdrop {
+  animation: settings-backdrop-fade 200ms ease-out both;
+}
+
+.settings-sheet {
+  animation: settings-sheet-enter 250ms cubic-bezier(.22, 1, .36, 1) both;
+}
+
+.settings-sheet-header button {
+  min-height: 36px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  transition: background-color 170ms ease, transform 160ms cubic-bezier(.22, 1, .36, 1);
+}
+
+.settings-sheet-header button:hover {
+  background: rgb(var(--theme-accent-rgb) / .12);
+}
+
+.settings-sheet-header button:active {
+  transform: scale(.96);
 }
 
 .app-shell .settings-home button:not(.settings-home-entry):not(.settings-home-guide-toggle) {
@@ -329,10 +374,20 @@
   padding: 16px;
   border: 1px solid rgb(var(--theme-ink-rgb) / .1);
   border-radius: 18px;
-  background: rgb(var(--theme-card-rgb) / .84);
-  box-shadow: inset 0 1px rgb(255 255 255 / .56), 0 10px 26px rgb(18 24 38 / .06);
+  background: rgb(var(--theme-card-rgb) / .86);
+  box-shadow:
+    inset 0 1px rgb(255 255 255 / .64),
+    0 10px 26px rgb(18 24 38 / .06);
+  transition: border-color 200ms ease, box-shadow 200ms ease;
   animation: settings-home-rise 260ms cubic-bezier(.22, 1, .36, 1) both;
   animation-delay: calc(var(--group-stagger, 0) * 35ms);
+}
+
+.settings-home-group:hover {
+  border-color: rgb(var(--theme-accent-rgb) / .22);
+  box-shadow:
+    inset 0 1px rgb(255 255 255 / .72),
+    0 14px 30px rgb(18 24 38 / .09);
 }
 
 .settings-home-group-heading {
@@ -513,10 +568,22 @@
 }
 
 .settings-sheet .settings-category-heading {
+  padding: 12px 14px;
+  border: 1px solid rgb(var(--theme-ink-rgb) / .09);
+  border-radius: 16px;
+  background: rgb(var(--theme-card-rgb) / .82);
+  box-shadow: inset 0 1px rgb(255 255 255 / .52), 0 6px 18px rgb(18 24 38 / .05);
   animation: settings-home-rise 220ms cubic-bezier(.22, 1, .36, 1) both;
 }
 
 .settings-sheet .settings-category-back {
+  display: inline-grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid rgb(var(--theme-ink-rgb) / .12);
+  border-radius: 12px;
+  background: rgb(var(--theme-card-rgb) / .76);
   transition: transform 170ms cubic-bezier(.22, 1, .36, 1), border-color 170ms ease, background-color 170ms ease, box-shadow 170ms ease;
 }
 
@@ -668,11 +735,14 @@
   }
 
   .settings-home-group,
+  .settings-sheet-backdrop,
+  .settings-sheet,
   .settings-sheet .settings-category-heading {
     animation: none;
   }
 
   .settings-home button:not(:disabled):active,
+  .settings-sheet-header button:active,
   .settings-home-entry:hover,
   .settings-home-entry:hover .settings-home-entry-icon,
   .settings-home-entry:hover .settings-home-entry-arrow,
@@ -684,6 +754,8 @@
 }
 
 :root[data-dengta-reduced-motion="true"] .settings-home button,
+:root[data-dengta-reduced-motion="true"] .settings-sheet-header button,
+:root[data-dengta-reduced-motion="true"] .settings-home-group,
 :root[data-dengta-reduced-motion="true"] .settings-home-search-field,
 :root[data-dengta-reduced-motion="true"] .settings-home-search-field > svg,
 :root[data-dengta-reduced-motion="true"] .settings-home-quick-links button svg,
@@ -698,11 +770,14 @@
 }
 
 :root[data-dengta-reduced-motion="true"] .settings-home-group,
+:root[data-dengta-reduced-motion="true"] .settings-sheet-backdrop,
+:root[data-dengta-reduced-motion="true"] .settings-sheet,
 :root[data-dengta-reduced-motion="true"] .settings-sheet .settings-category-heading {
   animation: none;
 }
 
 :root[data-dengta-reduced-motion="true"] .settings-home button:not(:disabled):active,
+:root[data-dengta-reduced-motion="true"] .settings-sheet-header button:active,
 :root[data-dengta-reduced-motion="true"] .settings-home-entry:hover,
 :root[data-dengta-reduced-motion="true"] .settings-home-entry:hover .settings-home-entry-icon,
 :root[data-dengta-reduced-motion="true"] .settings-home-entry:hover .settings-home-entry-arrow,

@@ -3768,7 +3768,9 @@ button:disabled {
 
 .provider-checkbox-row input {
   width: 18px;
+  height: 18px;
   min-height: 18px;
+  flex: 0 0 18px;
   margin-top: 2px;
 }
 
@@ -11222,6 +11224,9 @@ body,
 }
 
 .ai-provider-center .provider-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   flex: 0 0 auto;
   align-self: flex-start;
   min-height: 30px;
@@ -11406,6 +11411,103 @@ body,
 .ai-provider-center .provider-refresh-button svg,
 .ai-provider-center .provider-save-button svg {
   flex: 0 0 auto;
+}
+
+.ai-provider-center .provider-label-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.ai-provider-center .provider-cache-chip,
+.ai-provider-center .provider-latency-pill,
+.ai-provider-center .provider-badges .provider-badge-cache,
+.ai-provider-center .provider-badges .provider-badge-latency {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--provider-line);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.ai-provider-center .provider-cache-chip,
+.ai-provider-center .provider-badges .provider-badge-cache {
+  border-color: var(--provider-accent);
+  color: var(--provider-accent-text);
+  background: var(--provider-surface-3);
+}
+
+.ai-provider-center .provider-latency-pill,
+.ai-provider-center .provider-badges .provider-badge-latency {
+  border-color: var(--provider-ok-ink);
+  color: var(--provider-ok-ink);
+  background: var(--provider-ok-bg);
+  font-variant-numeric: tabular-nums;
+}
+
+.ai-provider-center .provider-badges .provider-badge-default {
+  border-color: var(--provider-accent);
+  color: var(--provider-accent-ink);
+  background: var(--provider-accent);
+  font-weight: 700;
+}
+
+.ai-provider-center .provider-protocol-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 10px;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--provider-accent);
+  border-radius: 10px;
+  color: var(--provider-ink);
+  background: var(--provider-surface-3);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.ai-provider-center .provider-protocol-hint > span {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.ai-provider-center .provider-protocol-hint svg {
+  flex: 0 0 auto;
+  color: var(--provider-accent-text);
+}
+
+.ai-provider-center .provider-protocol-switch-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 5px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.ai-provider-center .provider-catalog-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-provider-center .provider-catalog-row .provider-catalog-status {
+  flex: 1 1 220px;
 }
 
 /* 表单：默认只显示 5 个必要字段。 */
@@ -11726,7 +11828,9 @@ body,
 
 .ai-provider-center .provider-checkbox-row input {
   width: 18px;
+  height: 18px;
   min-height: 18px;
+  flex: 0 0 18px;
   margin-top: 2px;
 }
 

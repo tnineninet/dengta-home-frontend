@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import {
+  AlertCircle,
   Check,
+  CheckCircle2,
   ChevronDown,
   Copy,
   FileCode2,
@@ -64,6 +66,17 @@ const AGENTS_TEMPLATES = [
       "- 当聊到视频选题、脚本或封面时，主动调用选题诊断工具并结合上下文给建议。",
       "- 遇到明确要求「记住 / 别忘了」的事，自然回应并纳入长期记忆脉络。",
       "- 涉及工作区文件或本地剪辑任务时，直接调用对应工具查看与处理。",
+    ].join("\n"),
+  },
+  {
+    id: "perception",
+    label: "实时感知与严格时间",
+    target: "unified_system_prompt",
+    snippet: [
+      "# 实时感知与严格时间约束",
+      "- 时间事实：以系统注入的严格当前时间与距上次对话间隔为准，不凭空编造或猜测时间点。",
+      "- 实时感知：仅当用户开启屏幕/镜头/活动感知并传入现场上下文时，自然结合所见状态回应。",
+      "- 边界原则：未开启感知权限或无现场数据时，坦诚说明，不假装看到屏幕或听到环境声音。",
     ].join("\n"),
   },
   {
@@ -155,6 +168,49 @@ export default function PromptPipelineInspector({
       advice = "普通记忆占比偏高；把长期关键事实设为「锁定核心记忆」，跨轮前缀缓存命中率会更高。";
     }
 
+    const hasDuplicateBlankRuns = /\n{4,}/.test(safePersona);
+    const checklist = [
+      {
+        id: "envelope",
+        ok: bodyParts.length > 0,
+        label: bodyParts.length > 0
+          ? "agents.md 顶层封装（原文 1:1 透传）"
+          : "等待填写指令以启用 agents.md 封装",
+      },
+      {
+        id: "stability",
+        ok: totalTokens === 0 || stabilityRatio >= 0.75,
+        label: totalTokens === 0
+          ? "静态前缀占比待评估"
+          : stabilityRatio >= 0.75
+            ? `静态前缀占比 ${Math.round(stabilityRatio * 100)}%（跨轮稳态）`
+            : `静态前缀 ${Math.round(stabilityRatio * 100)}%（建议锁定核心记忆）`,
+      },
+      {
+        id: "budget",
+        ok: totalTokens <= 8000,
+        label: totalTokens <= 8000
+          ? `前缀体积 ${totalTokens.toLocaleString("zh-CN")} / 8,000 tok`
+          : `前缀超 8K tok（建议将长资料转入知识文件）`,
+      },
+      {
+        id: "structure",
+        ok: hasMarkdownStructure || safePersona.length <= 260,
+        label: hasMarkdownStructure
+          ? "Markdown 分节清晰（高指令遵循度）"
+          : safePersona.length <= 260
+            ? "精简指令结构良好"
+            : "长指令建议用 # 标题分段",
+      },
+      {
+        id: "hygiene",
+        ok: !hasDuplicateBlankRuns,
+        label: hasDuplicateBlankRuns
+          ? "存在连续多余空行，建议整理排版"
+          : "自动密钥脱敏保护已开启（不改原文）",
+      },
+    ];
+
     return {
       content,
       chars: content.length,
@@ -168,6 +224,7 @@ export default function PromptPipelineInspector({
       coreCount: lockedMemories.length,
       regularCount: regularMemories.length,
       advice,
+      checklist,
     };
   }, [userDetails, unifiedPrompt, legacyFields, promptMode, memories]);
 
@@ -232,11 +289,11 @@ export default function PromptPipelineInspector({
 
   const cacheSupportTag =
     provider === "anthropic"
-      ? "Anthropic Ephemeral Cache 已就绪"
+      ? "Anthropic 双断点 Ephemeral 缓存已就绪"
       : provider === "openai-responses"
         ? "OpenAI Prefix Cache Key 已就绪"
         : provider === "gemini"
-          ? "Gemini 长窗隐式前缀缓存"
+          ? "Gemini 1M+ 隐式前缀缓存"
           : "DeepSeek / OpenAI 兼容自动前缀缓存";
 
   return (
@@ -328,6 +385,19 @@ export default function PromptPipelineInspector({
         <ShieldCheck size={14} strokeWidth={1.9} aria-hidden="true" />
         <span>{serverStatus?.cache_diagnostics?.recommendation || compiled.advice}</span>
       </p>
+
+      <ul className="prompt-health-checklist" aria-label="提示词链路体检清单">
+        {compiled.checklist.map((item) => (
+          <li key={item.id} className={item.ok ? "is-ok" : "is-warn"}>
+            {item.ok ? (
+              <CheckCircle2 size={13} strokeWidth={2} aria-hidden="true" />
+            ) : (
+              <AlertCircle size={13} strokeWidth={2} aria-hidden="true" />
+            )}
+            <span>{item.label}</span>
+          </li>
+        ))}
+      </ul>
 
       {syncError ? (
         <p className="prompt-pipeline-error" role="alert">

@@ -263,6 +263,50 @@
   color: rgb(var(--theme-accent-rgb));
 }
 
+.prompt-health-checklist {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 6px 10px;
+  margin: 0;
+  padding: 9px 11px;
+  list-style: none;
+  border: 1px solid rgb(var(--theme-ink-rgb) / .09);
+  border-radius: 11px;
+  background: rgb(var(--theme-card-rgb) / .6);
+}
+
+.prompt-health-checklist li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: rgb(var(--theme-ink-rgb) / .82);
+}
+
+.prompt-health-checklist li svg {
+  flex: 0 0 auto;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.prompt-health-checklist li.is-ok svg {
+  color: #16a34a;
+}
+
+.prompt-health-checklist li.is-warn svg {
+  color: #d97706;
+}
+
+:root[data-dengta-appearance="night"] .prompt-health-checklist li.is-ok svg {
+  color: #4ade80;
+}
+
+:root[data-dengta-appearance="night"] .prompt-health-checklist li.is-warn svg {
+  color: #fbbf24;
+}
+
 .prompt-pipeline-error {
   margin: 0;
   padding: 8px 11px;
@@ -361,6 +405,18 @@
   display: grid;
   gap: 8px;
   padding: 0 12px 12px;
+  animation: prompt-panel-reveal 200ms cubic-bezier(.22, 1, .36, 1) both;
+}
+
+@keyframes prompt-panel-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .prompt-compiled-bar {
@@ -426,7 +482,8 @@
   .prompt-compiled-toggle > svg {
     transition: none;
   }
-  .prompt-pipeline-sync-btn .is-spinning {
+  .prompt-pipeline-sync-btn .is-spinning,
+  .prompt-compiled-body {
     animation: none;
   }
 }
@@ -438,6 +495,7 @@
   transition: none;
 }
 
-:root[data-dengta-reduced-motion="true"] .prompt-pipeline-sync-btn .is-spinning {
+:root[data-dengta-reduced-motion="true"] .prompt-pipeline-sync-btn .is-spinning,
+:root[data-dengta-reduced-motion="true"] .prompt-compiled-body {
   animation: none;
 }

@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Cpu, RefreshCw, Sparkles, Zap } from "lucide-react";
+import {
+  Activity,
+  ArrowRightLeft,
+  Cpu,
+  Layers,
+  RefreshCw,
+  ShieldCheck,
+  Sparkles,
+  Zap,
+} from "lucide-react";
 import { apiFetch } from "./api";
 import { authSession } from "./auth-session";
 import { createScopedSettingsSession, settingsSaveScope } from "./settings-save-scope";
@@ -31,8 +40,11 @@ import {
   AUTO_CATALOG_DEBOUNCE_MS,
   INITIAL_CATALOG_HINT,
   buildProviderCreateIntent,
+  formatProviderLatency,
+  inferProtocolFromBaseUrl,
   isProviderAutoCatalogReady,
   mergeCatalogSelection,
+  protocolCacheHint,
   providerActivationView,
   providerDraftSignature,
   suggestProviderName,
@@ -290,6 +302,10 @@ function ProviderPrimaryFields({
   statusId = undefined,
 }) {
   const protocol = PROTOCOL_OPTIONS.find((item) => item.value === value.protocol);
+  const cacheHint = protocolCacheHint(value.protocol);
+  const inferredProtocol = inferProtocolFromBaseUrl(value.base_url);
+  const showProtocolSuggestion =
+    inferredProtocol && inferredProtocol.protocol !== (value.protocol || "openai-chat");
   const suggestedName = suggestProviderName(value);
   return (
     <div className="provider-form-grid provider-form-grid-primary">
@@ -306,7 +322,13 @@ function ProviderPrimaryFields({
           : `留空时保存为「${suggestedName}」，只用于你自己识别。`}</small>
       </label>
       <label>
-        接口协议
+        <span className="provider-label-row">
+          <span>接口协议</span>
+          <span className="provider-cache-chip">
+            <Layers size={11} strokeWidth={2} aria-hidden="true" />
+            {cacheHint.badge}
+          </span>
+        </span>
         <select
           value={value.protocol || "openai-chat"}
           onChange={(event) => onChange("protocol", event.target.value)}
@@ -328,6 +350,24 @@ function ProviderPrimaryFields({
           spellCheck="false"
         />
         <small>填服务商给你的 API 根地址（https）；不要填控制台网页地址、付款页或带账号密码的链接。</small>
+        {showProtocolSuggestion && (
+          <div className="provider-protocol-hint" role="status">
+            <span>
+              <Sparkles size={13} strokeWidth={2} aria-hidden="true" />
+              识别到 <strong>{inferredProtocol.providerLabel}</strong> 地址，建议使用{" "}
+              <strong>{protocolLabel(inferredProtocol.protocol)}</strong>（{inferredProtocol.badge}）
+            </span>
+            <button
+              type="button"
+              className="secondary-button provider-protocol-switch-btn"
+              disabled={busy}
+              onClick={() => onChange("protocol", inferredProtocol.protocol)}
+            >
+              <ArrowRightLeft size={12} strokeWidth={2} aria-hidden="true" />
+              一键切换协议
+            </button>
+          </div>
+        )}
       </label>
       {value.auth_type !== "none" && (
         <label>
@@ -482,7 +522,9 @@ export default function AiProviderCenter({
   const [catalogInfo, setCatalogInfo] = useState({
     status: "idle",
     message: INITIAL_CATALOG_HINT,
+    latencyMs: null,
   });
+  const [profileLatencies, setProfileLatencies] = useState({});
   const [catalogAttempt, setCatalogAttempt] = useState(0);
   const [busy, setBusy] = useState("");
   const [feedback, setFeedback] = useState("");
@@ -699,16 +741,22 @@ export default function AiProviderCenter({
         if (models.length) {
           setDraft(current => ({ ...current, ...mergeCatalogSelection(current, models) }));
         }
+        const latencyMs = Number(data?.latency_ms) || null;
+        const latencySuffix = formatProviderLatency(latencyMs)
+          ? `（延迟 ${formatProviderLatency(latencyMs)}）`
+          : "";
         setCatalogInfo(models.length
           ? {
             status: "ready",
-            message: `已自动读取 ${models.length} 个模型${selection.auto_selected_model
+            latencyMs,
+            message: `已自动读取 ${models.length} 个模型${latencySuffix}${selection.auto_selected_model
               ? `，已选择 ${selection.auto_selected_model}`
               : "，保留你填写的模型"}；点「保存并启用」即可开始聊天。`,
           }
           : {
             status: "empty",
-            message: "接口可以连接，但服务商没有返回模型列表；请在「默认模型」里手动填写模型名，或点「重试读取」。",
+            latencyMs,
+            message: `接口可以连接${latencySuffix}，但服务商没有返回模型列表；请在「默认模型」里手动填写模型名，或点「重试读取」。`,
           });
       } catch (error) {
         if (cancelled || autoCatalogRef.current?.signature !== signature) return;
@@ -1001,7 +1049,14 @@ export default function AiProviderCenter({
       if (!operationCurrent(operation)) return;
       await refreshProfiles();
       if (!operationCurrent(operation)) return;
-      setFeedback("模型目录可读取，发现 " + (data.models?.length || 0) + " 个模型。");
+      const measuredLatency = Number(data?.latency_ms) || null;
+      if (measuredLatency) {
+        setProfileLatencies((current) => ({ ...current, [profile.id]: measuredLatency }));
+      }
+      const latencyText = formatProviderLatency(measuredLatency)
+        ? `（延迟 ${formatProviderLatency(measuredLatency)}）`
+        : "";
+      setFeedback("模型目录可读取，发现 " + (data.models?.length || 0) + " 个模型" + latencyText + "。");
       await refreshStatus();
     } catch (error) {
       if (!operationCurrent(operation)) return;
@@ -1090,6 +1145,7 @@ export default function AiProviderCenter({
           <p className="provider-key-note">API Key 只发送到后端加密保存，页面不会回显已保存的密钥。</p>
         </div>
         <span className={status.available ? "provider-state ready" : "provider-state pending"}>
+          <ShieldCheck size={13} strokeWidth={2} aria-hidden="true" />
           {status.checking ? "检查中" : status.available === true ? "数据库已就绪" : status.available === false ? "等待数据库迁移" : "状态未确认"}
         </span>
       </div>
@@ -1186,6 +1242,12 @@ export default function AiProviderCenter({
           >
             {catalogInfo.message}
           </p>
+          {formatProviderLatency(catalogInfo.latencyMs) && (
+            <span className="provider-latency-pill" aria-label={`接口探测延迟 ${formatProviderLatency(catalogInfo.latencyMs)}`}>
+              <Activity size={12} strokeWidth={2} aria-hidden="true" />
+              {formatProviderLatency(catalogInfo.latencyMs)}
+            </span>
+          )}
           {catalogInfo.status === "error" && (
             <button
               type="button"
@@ -1220,13 +1282,23 @@ export default function AiProviderCenter({
               </div>
               <div className="provider-badges">
                 {profile.is_default && (
-                  <span>{providerIsExpired(profile) ? "原首选已到期" : "下次聊天首选"}</span>
+                  <span className="provider-badge-default">{providerIsExpired(profile) ? "原首选已到期" : "下次聊天首选"}</span>
                 )}
                 <span>{profile.enabled
                   ? providerIsExpired(profile)
                     ? "已启用 · 已到期不参与路由"
                     : "可参与路由"
                   : "已停用"}</span>
+                <span className="provider-badge-cache">
+                  <Layers size={11} strokeWidth={2} aria-hidden="true" />
+                  {protocolCacheHint(profile.protocol).badge}
+                </span>
+                {formatProviderLatency(profileLatencies[profile.id]) && (
+                  <span className="provider-badge-latency">
+                    <Activity size={11} strokeWidth={2} aria-hidden="true" />
+                    {formatProviderLatency(profileLatencies[profile.id])}
+                  </span>
+                )}
                 <ProviderExpiryBadge value={profile.expires_at} />
               </div>
             </div>

@@ -231,3 +231,59 @@
 :root[data-dengta-appearance="night"] .together-page .together-cadence {
   color: #a1a1a6;
 }
+
+/* 夜间设置首页、子页标题栏与 agents.md 提示词工作台：玻璃层次与高对比文字。 */
+:root[data-dengta-appearance="night"] .settings-home-group,
+:root[data-dengta-appearance="night"] .settings-home-search-field,
+:root[data-dengta-appearance="night"] .settings-home-quick-editor,
+:root[data-dengta-appearance="night"] .settings-home-guide,
+:root[data-dengta-appearance="night"] .settings-sheet .settings-category-heading {
+  border-color: rgb(255 255 255 / 0.13);
+  color: #f5f5f7;
+  background: rgb(32 32 36 / 0.82);
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.08), 0 10px 26px rgb(0 0 0 / 0.32);
+}
+
+:root[data-dengta-appearance="night"] .settings-home-group-heading p,
+:root[data-dengta-appearance="night"] .settings-home-entry-text small,
+:root[data-dengta-appearance="night"] .settings-home-guide-toggle small,
+:root[data-dengta-appearance="night"] .settings-home-quick-editor > p {
+  color: #b8b8c2;
+}
+
+:root[data-dengta-appearance="night"] .settings-sheet .settings-category-back {
+  border-color: rgb(255 255 255 / 0.15);
+  color: #f5f5f7;
+  background: rgb(255 255 255 / 0.08);
+}
+
+:root[data-dengta-appearance="night"] .prompt-pipeline-studio {
+  border-color: rgb(255 255 255 / 0.16);
+  background:
+    linear-gradient(145deg, rgb(var(--theme-accent-rgb) / .16), rgb(28 28 32 / .94) 55%),
+    rgb(26 26 30 / .94);
+  box-shadow: inset 0 1px rgb(255 255 255 / 0.09), 0 12px 28px rgb(0 0 0 / 0.36);
+}
+
+:root[data-dengta-appearance="night"] .prompt-pipeline-layer,
+:root[data-dengta-appearance="night"] .prompt-metric-cell,
+:root[data-dengta-appearance="night"] .prompt-pipeline-advice,
+:root[data-dengta-appearance="night"] .prompt-health-checklist,
+:root[data-dengta-appearance="night"] .prompt-compiled-preview {
+  border-color: rgb(255 255 255 / 0.12);
+  background: rgb(42 42 48 / 0.74);
+  color: #f2f2f7;
+}
+
+:root[data-dengta-appearance="night"] .prompt-pipeline-title small,
+:root[data-dengta-appearance="night"] .prompt-pipeline-layer small,
+:root[data-dengta-appearance="night"] .prompt-metric-cell > span,
+:root[data-dengta-appearance="night"] .prompt-compiled-bar small {
+  color: #c2c2cc;
+}
+
+:root[data-dengta-appearance="night"] .prompt-compiled-code {
+  border-color: rgb(255 255 255 / 0.12);
+  color: #ececf2;
+  background: rgb(16 16 20 / 0.85);
+}

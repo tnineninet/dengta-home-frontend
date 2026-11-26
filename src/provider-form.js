@@ -7,6 +7,112 @@ export const AUTO_CATALOG_MIN_KEY_LENGTH = 8;
 export const INITIAL_CATALOG_HINT =
   "填好 Base URL 和 API Key 后，会自动读取模型目录、选好模型并准备启用；最后只需点一次「保存并启用」。";
 
+export const PROTOCOL_CACHE_HINTS = {
+  "openai-chat": {
+    badge: "自动前缀 KV 缓存",
+    detail: "DeepSeek / OpenAI 兼容端点自动复用 system[0] 静态前缀缓存。",
+  },
+  "openai-responses": {
+    badge: "Prefix Cache Key",
+    detail: "官方地址自动附带哈希前缀键 prompt_cache_key，跨轮命中静态人设。",
+  },
+  anthropic: {
+    badge: "双断点 Ephemeral",
+    detail: "官方地址自动在 agents.md 静态前缀与尾部系统块挂载双缓存断点。",
+  },
+  gemini: {
+    badge: "1M+ 隐式长窗缓存",
+    detail: "原生 systemInstruction 通道直接适配百万级上下文与长对话缓存。",
+  },
+};
+
+export function protocolCacheHint(protocol) {
+  return (
+    PROTOCOL_CACHE_HINTS[String(protocol || "").trim().toLowerCase()] ||
+    PROTOCOL_CACHE_HINTS["openai-chat"]
+  );
+}
+
+export function inferProtocolFromBaseUrl(value) {
+  const raw = trimmed(value);
+  if (!/^https:\/\/[^\s/]+/i.test(raw)) return null;
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    return null;
+  }
+  const host = parsed.hostname.toLowerCase();
+  const pathname = parsed.pathname.toLowerCase();
+
+  if (
+    host === "api.anthropic.com" ||
+    host.endsWith(".anthropic.com") ||
+    /\/messages\/?$/.test(pathname)
+  ) {
+    return {
+      protocol: "anthropic",
+      providerLabel: "Anthropic Claude",
+      ...PROTOCOL_CACHE_HINTS.anthropic,
+    };
+  }
+  if (
+    host === "generativelanguage.googleapis.com" ||
+    host.endsWith(".googleapis.com") && pathname.includes("generatecontent")
+  ) {
+    return {
+      protocol: "gemini",
+      providerLabel: "Google Gemini",
+      ...PROTOCOL_CACHE_HINTS.gemini,
+    };
+  }
+  if (host === "api.openai.com" || /\/responses\/?$/.test(pathname)) {
+    return {
+      protocol: "openai-responses",
+      providerLabel: "OpenAI Responses",
+      ...PROTOCOL_CACHE_HINTS["openai-responses"],
+    };
+  }
+  if (host === "api.deepseek.com") {
+    return {
+      protocol: "openai-chat",
+      providerLabel: "DeepSeek 官方",
+      ...PROTOCOL_CACHE_HINTS["openai-chat"],
+    };
+  }
+  if (host === "openrouter.ai" || host.endsWith(".openrouter.ai")) {
+    return {
+      protocol: "openai-chat",
+      providerLabel: "OpenRouter",
+      badge: "多模型前缀缓存",
+      detail: "OpenRouter 聚合网关走 OpenAI Chat 兼容协议，自动透传稳定前缀。",
+    };
+  }
+  if (host === "api.siliconflow.cn") {
+    return {
+      protocol: "openai-chat",
+      providerLabel: "硅基流动",
+      ...PROTOCOL_CACHE_HINTS["openai-chat"],
+    };
+  }
+  if (host === "api.moonshot.cn") {
+    return {
+      protocol: "openai-chat",
+      providerLabel: "Moonshot Kimi",
+      badge: "长窗前缀缓存",
+      detail: "Moonshot Kimi 走 OpenAI Chat 兼容协议，支持长上下文自动缓存。",
+    };
+  }
+  return null;
+}
+
+export function formatProviderLatency(latencyMs) {
+  const value = Number(latencyMs);
+  if (!Number.isFinite(value) || value <= 0) return "";
+  if (value >= 1000) return `${(value / 1000).toFixed(2)} s`;
+  return `${Math.round(value)} ms`;
+}
+
 function trimmed(value) {
   return String(value ?? "").trim();
 }
