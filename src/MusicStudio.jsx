@@ -11,6 +11,8 @@ import {
   QrCode,
   RefreshCw,
   Search,
+  SkipBack,
+  SkipForward,
   Sparkles,
   TriangleAlert,
 } from "lucide-react";
@@ -80,6 +82,24 @@ export default function MusicStudio({ onOpenSync, visualPreview = false }) {
   const [studioMessage, setStudioMessage] = useState("");
   const [studioError, setStudioError] = useState("");
   const [nowPlaying, setNowPlaying] = useState(null); // { id, title, artist, cover, url }
+  const [playQueue, setPlayQueue] = useState({ tracks: [], index: -1 });
+  const playQueueRef = useRef({ tracks: [], index: -1 });
+  const playSeqRef = useRef(0);
+  const studioAudioRef = useRef(null);
+  const consecutiveErrorRef = useRef(0);
+
+  useEffect(() => {
+    playQueueRef.current = playQueue;
+  }, [playQueue]);
+
+  useEffect(() => {
+    if (!nowPlaying?.url || !studioAudioRef.current) return;
+    const audio = studioAudioRef.current;
+    const playPromise = audio.play?.();
+    if (playPromise && typeof playPromise.catch === "function") {
+      playPromise.catch(() => {});
+    }
+  }, [nowPlaying?.id, nowPlaying?.url]);
 
   const refreshConnection = useCallback(async () => {
     if (visualPreview) {
@@ -327,23 +347,38 @@ export default function MusicStudio({ onOpenSync, visualPreview = false }) {
     }
   };
 
-  const handlePlayTrack = async (track) => {
+  const resolveTrackPlayableUrl = useCallback(async (trackId) => {
+    let pb = null;
+    if (connection?.source === "cookie_session") {
+      const cookiePb = await apiRequest(
+        `/api/v2/music/providers/netease/cookie/song-url?id=${encodeURIComponent(trackId)}`,
+      ).catch(() => null);
+      pb = cookiePb?.playback || null;
+    }
+    if (!pb?.url) {
+      pb = await getNeteaseQrSongUrl(trackId).catch(() => null);
+    }
+    return upgradeNeteaseAudioHttps(pb?.url);
+  }, [connection?.source]);
+
+  const handlePlayTrack = useCallback(async (track, trackList = null, trackIndex = -1) => {
     const trackId = String(track?.provider_track_id || track?.id || "").trim();
     if (!trackId) return;
+    const seq = ++playSeqRef.current;
+    consecutiveErrorRef.current = 0;
+    if (Array.isArray(trackList) && trackList.length > 0) {
+      const resolvedIndex = trackIndex >= 0
+        ? trackIndex
+        : trackList.findIndex((item) => String(item?.provider_track_id || item?.id || "").trim() === trackId);
+      const nextQueue = { tracks: trackList, index: resolvedIndex >= 0 ? resolvedIndex : 0 };
+      playQueueRef.current = nextQueue;
+      setPlayQueue(nextQueue);
+    }
     setStudioError("");
     setStudioMessage(`正在获取《${track.title || track.name}》播放直链…`);
     try {
-      let pb = null;
-      if (connection?.source === "cookie_session") {
-        const cookiePb = await apiRequest(
-          `/api/v2/music/providers/netease/cookie/song-url?id=${encodeURIComponent(trackId)}`,
-        ).catch(() => null);
-        pb = cookiePb?.playback || null;
-      }
-      if (!pb?.url) {
-        pb = await getNeteaseQrSongUrl(trackId);
-      }
-      const playableUrl = upgradeNeteaseAudioHttps(pb?.url);
+      const playableUrl = await resolveTrackPlayableUrl(trackId);
+      if (seq !== playSeqRef.current) return;
       if (!playableUrl) {
         setStudioError("该曲目暂时无法获取播放直链（可能需要网易云会员或版权受限）。");
         setStudioMessage("");
@@ -358,10 +393,56 @@ export default function MusicStudio({ onOpenSync, visualPreview = false }) {
       });
       setStudioMessage("");
     } catch (error) {
+      if (seq !== playSeqRef.current) return;
       setStudioError(error?.message || "播放地址解析失败。");
       setStudioMessage("");
     }
-  };
+  }, [resolveTrackPlayableUrl]);
+
+  const handlePlayAdjacent = useCallback(async (delta = 1, { auto = false } = {}) => {
+    const { tracks, index } = playQueueRef.current;
+    if (!Array.isArray(tracks) || tracks.length === 0) {
+      if (auto) setStudioMessage("当前曲目已播完。");
+      return;
+    }
+    if (tracks.length === 1) {
+      if (auto) {
+        setStudioMessage("列表中仅此一首，已播完。");
+        return;
+      }
+    }
+    const seq = ++playSeqRef.current;
+    const stepDir = delta >= 0 ? 1 : -1;
+    const maxAttempts = Math.min(tracks.length, 6);
+    setStudioError("");
+    setStudioMessage(auto ? "当前歌曲已播完，正在自动切下一首…" : (stepDir > 0 ? "正在切到下一首…" : "正在切到上一首…"));
+    for (let step = 1; step <= maxAttempts; step += 1) {
+      const nextIdx = ((index >= 0 ? index : 0) + stepDir * step + tracks.length * maxAttempts) % tracks.length;
+      const candidate = tracks[nextIdx];
+      const trackId = String(candidate?.provider_track_id || candidate?.id || "").trim();
+      if (!trackId) continue;
+      const playableUrl = await resolveTrackPlayableUrl(trackId).catch(() => "");
+      if (seq !== playSeqRef.current) return;
+      if (playableUrl) {
+        const nextQueue = { tracks, index: nextIdx };
+        playQueueRef.current = nextQueue;
+        setPlayQueue(nextQueue);
+        const title = candidate.title || candidate.name || "未知曲目";
+        setNowPlaying({
+          id: trackId,
+          title,
+          artist: candidate.artist || "",
+          cover: candidate.cover_url || "",
+          url: playableUrl,
+        });
+        setStudioMessage(auto ? `已自动播放下一首：《${title}》` : "");
+        return;
+      }
+    }
+    if (seq !== playSeqRef.current) return;
+    setStudioMessage("");
+    setStudioError("接下来的曲目暂时无法播放（可能需要网易云会员或版权受限）。");
+  }, [resolveTrackPlayableUrl]);
 
   const handleNativeCookieLogin = async (desktop = false) => {
     setCookieBusy(true);
@@ -420,7 +501,7 @@ export default function MusicStudio({ onOpenSync, visualPreview = false }) {
             type="button"
             key={`${id}-${idx}`}
             className={`ms-track-row${active ? " is-active" : ""}`}
-            onClick={() => void handlePlayTrack(track)}
+            onClick={() => void handlePlayTrack(track, tracks, idx)}
           >
             <span className="ms-track-idx">{active ? <Play size={13} /> : idx + 1}</span>
             <span className="ms-track-meta">
@@ -640,11 +721,51 @@ export default function MusicStudio({ onOpenSync, visualPreview = false }) {
 
                 {nowPlaying && (
                   <div className="ms-mini-player">
-                    <div className="ms-mini-meta">
-                      <strong>{nowPlaying.title}</strong>
-                      <small>{nowPlaying.artist || "网易云音乐"}</small>
+                    <div className="ms-mini-head">
+                      <div className="ms-mini-meta">
+                        <strong>{nowPlaying.title}</strong>
+                        <small>{nowPlaying.artist || "网易云音乐"}</small>
+                      </div>
+                      {playQueue.tracks.length > 1 && (
+                        <div className="ms-mini-controls">
+                          <span className="ms-mini-badge" aria-live="polite">
+                            自动连播 · {Math.max(1, playQueue.index + 1)}/{playQueue.tracks.length}
+                          </span>
+                          <button
+                            type="button"
+                            aria-label="上一首"
+                            onClick={() => void handlePlayAdjacent(-1)}
+                          >
+                            <SkipBack size={14} aria-hidden="true" />
+                          </button>
+                          <button
+                            type="button"
+                            aria-label="下一首"
+                            onClick={() => void handlePlayAdjacent(1)}
+                          >
+                            <SkipForward size={14} aria-hidden="true" />
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <audio src={nowPlaying.url} controls autoPlay playsInline />
+                    <audio
+                      ref={studioAudioRef}
+                      key={`${nowPlaying.id}-${nowPlaying.url}`}
+                      src={nowPlaying.url}
+                      controls
+                      autoPlay
+                      playsInline
+                      onPlaying={() => { consecutiveErrorRef.current = 0; }}
+                      onEnded={() => void handlePlayAdjacent(1, { auto: true })}
+                      onError={() => {
+                        if (playQueueRef.current.tracks.length > 1 && consecutiveErrorRef.current < 3) {
+                          consecutiveErrorRef.current += 1;
+                          void handlePlayAdjacent(1, { auto: true });
+                        } else {
+                          setStudioError("当前音频加载中断，请点击下一首或稍后重试。");
+                        }
+                      }}
+                    />
                   </div>
                 )}
               </div>

@@ -5,6 +5,7 @@ import { activeLyricIndex, parseLrc } from "./music-lyrics.js";
 import { useSettingsSheetNavigation } from "./useSettingsSheetNavigation.js";
 
 const PLAY_EVENT = "dengta:chat-music-play";
+const ENDED_EVENT = "dengta:chat-music-ended";
 const eventBus = globalThis.window || new EventTarget();
 
 function formatTime(value) {
@@ -139,6 +140,9 @@ export default function MusicChatCard({ music, onPlaybackChange, onAudioRefresh 
         try { globalThis.localStorage?.removeItem(positionKey); } catch { /* 忽略 */ }
       }
       playbackChangeRef.current?.(false);
+      eventBus.dispatchEvent?.(new CustomEvent(ENDED_EVENT, {
+        detail: { id: music?.id || "", title: music?.title || "" },
+      }));
     };
     const onError = () => {
       setPlaying(false);
@@ -164,7 +168,7 @@ export default function MusicChatCard({ music, onPlaybackChange, onAudioRefresh 
       audio.removeEventListener("error", onError);
       audio.pause();
     };
-  }, [music?.id, music?.duration_seconds, audioUrl, positionKey]);
+  }, [music?.id, music?.title, music?.duration_seconds, audioUrl, positionKey]);
 
   useEffect(() => {
     const onOtherPlay = (event) => {

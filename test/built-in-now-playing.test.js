@@ -133,7 +133,89 @@ test("a stale local playbackId cannot pause or replace the displayed song", asyn
     await player.start(); const first = f.output.at(-1); await player.control("next", first); const calls = f.calls.length;
     await player.control("pause", first); await player.control("next", first);
     assert.equal(f.calls.length, calls); assert.equal(f.audios[1].paused, false);
-    f.audios[1].ended = true; f.audios[1].emit("ended"); assert.equal(f.output.at(-1), null);
+    f.audios[1].ended = true; f.audios[1].emit("ended");
+    await settle();
+    assert.equal(f.audios[1].released, true, "finished song is released after auto-advancing");
+    assert.equal(f.audios.length, 3, "ended triggers automatic next track");
+    assert.equal(f.audios[2].paused, false);
+    assert.equal(f.output.at(-1).title, "虚构歌曲3");
+    assert.equal(f.output.at(-1).isPlaying, true);
+  } finally { player.dispose(); }
+});
+
+test("ended automatically advances to the next track with exclude, dedupes repeat ended, and clears cleanly on failure", async () => {
+  const f = fixture();
+  let failNext = false;
+  const origRequest = f.options.request;
+  f.options.request = (...args) => failNext ? Promise.resolve({ playable: false, ok: false }) : origRequest(...args);
+  const player = createBuiltInNowPlaying(f.options);
+  try {
+    await player.start();
+    const first = f.output.at(-1);
+    assert.equal(first.title, "虚构歌曲1");
+    f.audios[0].ended = true;
+    // Duplicate ended events must only trigger one next fetch
+    f.audios[0].emit("ended");
+    f.audios[0].emit("ended");
+    await settle();
+    assert.equal(f.calls.length, 2);
+    assert.match(f.calls[1].path, /exclude=/, "auto-next passes exclude query to avoid immediate repeat");
+    assert.equal(f.audios[0].released, true);
+    assert.equal(f.audios[1].paused, false);
+    assert.equal(f.output.at(-1).title, "虚构歌曲2");
+    assert.equal(f.feedback.at(-1), "已自动播放下一首：《虚构歌曲2》");
+
+    // When auto-next fails after the track ends, clear the finished track instead of keeping a dead card
+    failNext = true;
+    f.audios[1].ended = true;
+    f.audios[1].emit("ended");
+    await settle();
+    assert.equal(f.audios[1].released, true);
+    assert.equal(f.output.at(-1), null);
+    assert.equal(f.feedback.at(-1), "这首歌播完啦，下一首暂时无法加载，点随心听可重试。");
+  } finally { player.dispose(); }
+});
+
+test("auto-next reuses the already-unlocked audio element if a fresh Audio hits NotAllowedError", async () => {
+  const f = fixture();
+  let createCount = 0;
+  f.options.createAudio = url => {
+    const audio = new FakeAudio(url);
+    createCount++;
+    if (createCount === 2) {
+      audio.playResult = Promise.reject(Object.assign(new Error("autoplay blocked"), { name: "NotAllowedError" }));
+    }
+    f.audios.push(audio);
+    return audio;
+  };
+  const player = createBuiltInNowPlaying(f.options);
+  try {
+    await player.start();
+    const firstAudio = f.audios[0];
+    firstAudio.ended = true;
+    firstAudio.emit("ended");
+    await settle();
+    assert.equal(f.audios[1].released, true, "blocked fresh candidate audio is released");
+    assert.equal(firstAudio.src, "https://media.example.test/2.mp3", "reuses unlocked audio element with next URL");
+    assert.equal(firstAudio.paused, false);
+    assert.equal(f.output.at(-1).title, "虚构歌曲2");
+    assert.equal(f.output.at(-1).isPlaying, true);
+  } finally { player.dispose(); }
+});
+
+test("ended during active local playback handoff releases cleanly without stealing audio", async () => {
+  const f = fixture(), player = createBuiltInNowPlaying(f.options);
+  try {
+    await player.start();
+    const callsBefore = f.calls.length;
+    const owner = {};
+    player.localPlaybackChanged({ accountScope: "fictional-account-a", companionScope: "fictional-companion-a", owner, phase: "pending" });
+    f.audios[0].ended = true;
+    f.audios[0].emit("ended");
+    await settle();
+    assert.equal(f.calls.length, callsBefore, "must not fetch next track while local Together playback is pending");
+    assert.equal(f.audios[0].released, true);
+    assert.equal(f.output.at(-1), null);
   } finally { player.dispose(); }
 });
 

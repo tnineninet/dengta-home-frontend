@@ -1556,6 +1556,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     nowPlayingDismissedRef.current = true;
     setNowPlaying(null);
   }, [controlBuiltInNowPlaying, nowPlaying]);
+
+  useEffect(() => {
+    const onChatMusicEnded = (event) => {
+      if (activeView !== "chat" || visualPreview) return;
+      const finishedKey = String(event?.detail?.id || event?.detail?.title || "").trim();
+      nowPlayingDismissedRef.current = false;
+      void startBuiltInNowPlaying(finishedKey ? { exclude: finishedKey } : undefined);
+    };
+    window.addEventListener("dengta:chat-music-ended", onChatMusicEnded);
+    return () => window.removeEventListener("dengta:chat-music-ended", onChatMusicEnded);
+  }, [activeView, startBuiltInNowPlaying, visualPreview]);
   const [deviceActivityFeedback, setDeviceActivityFeedback] = useState({
     status: "idle",
     message: "默认关闭。开启后只提供最近使用过的 App 名称和粗略时长。",

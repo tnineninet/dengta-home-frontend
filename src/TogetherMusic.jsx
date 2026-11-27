@@ -106,6 +106,7 @@ export default function TogetherMusic({ visualPreview = false, session, busy = f
   const [loadedPlaylists, setLoadedPlaylists] = useState({});
   const [playlist, setPlaylist] = useState(null);
   const [localIndex, setLocalIndex] = useState(0);
+  const localAutoPlayRef = useRef(false);
   const [favorites, setFavorites] = useState([]);
   const [queue, setQueue] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -440,6 +441,7 @@ export default function TogetherMusic({ visualPreview = false, session, busy = f
       const target = momentTargetRef.current;
       if (cancelled || !mountedRef.current || target?.mediaGeneration !== mediaGeneration || !musicScope.current(target.token) || audio !== audioRef.current) return;
       if (!target.internalPlayback) {
+        localAutoPlayRef.current = false;
         audio.pause();
         audio.removeAttribute("src");
         audio.load();
@@ -454,9 +456,17 @@ export default function TogetherMusic({ visualPreview = false, session, busy = f
       setPosition(0);
       setDuration(target.durationSeconds);
       lastReportRef.current = 0;
+      if (!target.activeSessionId && localAutoPlayRef.current) {
+        localAutoPlayRef.current = false;
+        const owner = localPlayback("pending");
+        void audio.play().catch(() => {
+          localPlayback("error", owner);
+          setStatus("下一首已准备好，请点击播放。");
+        });
+      }
     });
     return () => { cancelled = true; };
-  }, [mediaGeneration, musicScope]);
+  }, [mediaGeneration, musicScope, localPlayback]);
 
   useEffect(() => {
     if (!resumeIntent) return;
@@ -1224,7 +1234,20 @@ export default function TogetherMusic({ visualPreview = false, session, busy = f
       onPlaying={(event) => { if (!event.currentTarget.paused && report(event, true)) { localPlayback("playing"); setPlaying(true); } }}
       onPause={(event) => { if (currentAudioTarget(event.currentTarget, false) && event.currentTarget.paused) { localPlayback("paused"); setPlaying(false); if (!event.currentTarget.ended) report(event, true); } }}
       onSeeked={(event) => report(event, true)}
-      onEnded={(event) => { if (currentAudioTarget(event.currentTarget) && event.currentTarget.ended) { localPlayback("ended"); setPlaying(false); void advance(false); } }}
+      onEnded={(event) => {
+        if (currentAudioTarget(event.currentTarget) && event.currentTarget.ended) {
+          localPlayback("ended");
+          setPlaying(false);
+          if (active) {
+            void advance(false);
+          } else if (playlist?.items?.length > 1) {
+            const nextIndex = (localIndex + 1) % playlist.items.length;
+            localAutoPlayRef.current = true;
+            setLocalIndex(nextIndex);
+            setStatus(`已自动切到下一首：${playlist.items[nextIndex]?.title || "下一首"}`);
+          }
+        }
+      }}
       onError={(event) => { if (currentAudioTarget(event.currentTarget, false)) { localPlayback("error"); setPlaying(false); setError(ERROR_MESSAGE); } }}
       aria-label="一起听歌音频播放器"
     />

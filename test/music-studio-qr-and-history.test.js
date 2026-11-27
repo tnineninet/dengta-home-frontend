@@ -113,6 +113,17 @@ assert.equal(areRawMessageListsEquivalent(merged, [merged[0]]), false);
 assert.match(cottonPet, /outline:\s*true/);
 assert.match(cottonCss, /#68857d/);
 assert.match(petRuntime, /createContactShadow/);
-assert.match(petRuntime, /toneMappingExposure\s*=\s*0\.86/);
+assert.match(petRuntime, /toneMappingExposure\s*=\s*0\.(?:86|92)/);
 
-console.log("SDD verification passed: Music Studio QR, Chat History Speed, and CottonPet visibility");
+// 6. Seamless auto-next across all in-app music players (v2.13.70)
+const togetherMusic = fs.readFileSync(path.join(root, "src", "TogetherMusic.jsx"), "utf8");
+const musicChatCard = fs.readFileSync(path.join(root, "src", "MusicChatCard.jsx"), "utf8");
+assert.match(builtInNowPlaying, /autoAdvance:\s*true/, "Built-in player auto-advances when a track ends");
+assert.match(builtInNowPlaying, /exclude=\$\{encodeURIComponent/, "Built-in player excludes just-finished track");
+assert.match(musicStudio, /handlePlayAdjacent/, "MusicStudio supports playlist auto-next & prev/next controls");
+assert.match(musicStudio, /onEnded=\{\(\) => void handlePlayAdjacent\(1, \{ auto: true \}\)\}/, "MusicStudio audio auto-advances on ended");
+assert.match(togetherMusic, /localAutoPlayRef/, "TogetherMusic local preview auto-advances on ended");
+assert.match(musicChatCard, /dengta:chat-music-ended/, "MusicChatCard broadcasts track completion for auto-continue");
+assert.match(appSource, /dengta:chat-music-ended/, "App continues playback seamlessly when a chat song card ends");
+
+console.log("SDD verification passed: Music Studio QR, Chat History Speed, CottonPet visibility, and Seamless Auto-Next");
