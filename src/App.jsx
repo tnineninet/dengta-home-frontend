@@ -1561,8 +1561,24 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [currentAppName, setCurrentAppName] = useState("");
   const [sidebarSessionsOpen, setSidebarSessionsOpen] = useState(true);
   const [chatPerceptionSlot, setChatPerceptionSlot] = useState(null);
+  const [composerStarPerceptionSlot, setComposerStarPerceptionSlot] = useState(null);
+  const [livePerceptionActiveCount, setLivePerceptionActiveCount] = useState(0);
+  const [isComposerInputFocused, setIsComposerInputFocused] = useState(false);
+  const [cottonDockEnabled, setCottonDockEnabled] = useState(false);
+  const pendingWakeWordTriggeredRef = useRef(false);
   const livePerceptionControllerRef = useRef(null);
   const livePerceptionSnapshotRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.addEventListener !== "function") return undefined;
+    const onDockState = (event) => {
+      if (typeof event?.detail?.enabled === "boolean") {
+        setCottonDockEnabled(event.detail.enabled);
+      }
+    };
+    window.addEventListener("dengta:cotton-dock-state", onDockState);
+    return () => window.removeEventListener("dengta:cotton-dock-state", onDockState);
+  }, []);
   const [screenGlanceState, setScreenGlanceState] = useState(() =>
     normalizeScreenGlanceState({}),
   );
@@ -6237,19 +6253,26 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     }
     setSendPreparationStage("");
     let livePerceptionCapturedSources = [];
+    let livePerceptionEvidenceForTurn = [];
     let livePerceptionForTurn = livePerceptionSnapshotRef.current;
     let effectiveAttachmentStorageMode = attachmentStorageMode;
+    const wakeWordTriggeredForTurn = pendingWakeWordTriggeredRef.current === true;
+    pendingWakeWordTriggeredRef.current = false;
     if (!preserveComposer && livePerceptionControllerRef.current?.collectTurnVisuals) {
       const remainingSlots = Math.max(0, 4 - attachmentsToSend.length);
       try {
         const liveVisuals = await Promise.race([
           livePerceptionControllerRef.current.collectTurnVisuals({
             maxExtra: Math.min(2, remainingSlots),
+            wakeWordTriggered: wakeWordTriggeredForTurn,
           }),
           new Promise((resolve) => window.setTimeout(() => resolve(null), 2200)),
         ]);
         if (liveVisuals?.livePerception) {
           livePerceptionForTurn = liveVisuals.livePerception;
+        }
+        if (Array.isArray(liveVisuals?.evidence) && liveVisuals.evidence.length > 0) {
+          livePerceptionEvidenceForTurn = liveVisuals.evidence;
         }
         if (Array.isArray(liveVisuals?.files) && liveVisuals.files.length > 0) {
           const hadManualFiles = attachmentsToSend.length > 0;
@@ -6264,6 +6287,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       } catch {
         // Live visual capture is optional and must never block normal chat send.
       }
+    }
+    if (wakeWordTriggeredForTurn && livePerceptionForTurn) {
+      livePerceptionForTurn = { ...livePerceptionForTurn, wake_word_triggered: true };
     }
     request.attachments = attachmentsToSend;
     request.attachmentsReleased = false;
@@ -6435,6 +6461,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           retryAvailable: false,
           thinkingStatuses: appendThinkingStatus([], "preparing_request"),
           visibleMonologue: beginVisibleMonologueStream(),
+          ...(livePerceptionEvidenceForTurn.length > 0
+            ? { tool_calls: { perception_evidence: livePerceptionEvidenceForTurn } }
+            : {}),
         };
         const assistantIndex = next.findIndex(
           (item) => item.id === localAssistantId,
@@ -8704,6 +8733,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               onOpenHouse={() => changeView("cotton")}
               desktopPetEnabled={cottonDesktopPetEnabled}
               onToggleDesktopPet={toggleCottonDesktopPet}
+              hideBarWhenIdle
             />
           </Suspense>
           {isComposerMenuOpen && (
@@ -8756,6 +8786,17 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               </div>
               <button
                 type="button"
+                className="composer-ref-followup"
+                title="快速针对这句追问"
+                onClick={() => {
+                  setMessage((prev) => (prev.trim() ? prev : "关于你刚才说的这句，能再展开说说吗？"));
+                  window.requestAnimationFrame(() => messageInputRef.current?.focus());
+                }}
+              >
+                追问
+              </button>
+              <button
+                type="button"
                 aria-label="取消引用"
                 title="取消引用"
                 onClick={() => setMessageReference(null)}
@@ -8804,6 +8845,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               value={message}
               onChange={(event) => setMessage(event.target.value)}
               onFocus={() => {
+                setIsComposerInputFocused(true);
                 const next = transitionComposerOverlays(
                   {
                     statusExpanded: isStatusPanelExpanded,
@@ -8814,6 +8856,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 setIsComposerMenuOpen(next.composerMenuOpen);
                 requestStatusPanelClose();
               }}
+              onBlur={() => setIsComposerInputFocused(false)}
               onKeyDown={(event) => {
                 if (shouldSubmitComposerKeyDown(event)) {
                   event.preventDefault();
@@ -8881,9 +8924,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               />
               <button
                 ref={composerMenuTriggerRef}
-                className={`chat-attach-button${isComposerMenuOpen ? " active" : ""}`}
+                className={`chat-attach-button${isComposerMenuOpen ? " active" : ""}${livePerceptionActiveCount > 0 ? " has-live-senses" : ""}`}
                 type="button"
-                title={isComposerMenuOpen ? "关闭更多功能" : "更多功能"}
+                title={isComposerMenuOpen ? "关闭更多功能与实时感知" : "打开更多功能与实时感知（屏幕/应用/摄像头/语音呼唤）"}
                 aria-label={
                   isComposerMenuOpen ? "关闭更多功能" : "打开更多功能"
                 }
@@ -8897,42 +8940,49 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                 onClick={toggleComposerMenu}
               >
                 <RainbowAgentMark />
+                {livePerceptionActiveCount > 0 && (
+                  <span className="star-sense-badge" aria-label={`已开启 ${livePerceptionActiveCount} 项实时感知`}>
+                    {livePerceptionActiveCount}
+                  </span>
+                )}
               </button>
-              <button
-                className="composer-voice-button"
-                type="button"
-                aria-label={voiceServiceAvailable ? "长按说话，松开发送" : "语音服务暂不可用"}
-                title={voiceServiceAvailable ? "按住说话" : "语音服务暂不可用"}
-                aria-pressed={voiceState === VOICE_STATES.recording}
-                disabled={
-                  !voiceServiceAvailable ||
-                  isSending ||
-                  isCompanionResponding ||
-                  [VOICE_STATES.uploading, VOICE_STATES.thinking].includes(voiceState)
-                }
-                onPointerDown={beginVoiceCapture}
-                onPointerUp={endVoiceCapture}
-                onPointerCancel={cancelVoicePointer}
-                onContextMenu={(event) => event.preventDefault()}
-                onKeyDown={handleVoiceKeyDown}
-                onKeyUp={handleVoiceKeyUp}
-              >
-                <Mic2 size={18} aria-hidden="true" />
-              </button>
-              <button
-                className="composer-reply-options-button"
-                type="button"
-                aria-label="让 TA 帮你想更多回复"
-                title="让 TA 帮你想更多回复"
-                disabled={isSending || isCompanionResponding || isVoiceInputBusy || !activeSessionId}
-                onClick={() => {
-                  setIsComposerMenuOpen(false);
-                  void openReplyOptions({ fresh: true });
-                }}
-              >
-                <Sparkles size={13} aria-hidden="true" />
-                <span>更多回复</span>
-              </button>
+              <span className="composer-slot-actions">
+                <button
+                  className="composer-voice-button"
+                  type="button"
+                  aria-label={voiceServiceAvailable ? "长按说话，松开发送" : "语音服务暂不可用"}
+                  title={voiceServiceAvailable ? "按住说话" : "语音服务暂不可用"}
+                  aria-pressed={voiceState === VOICE_STATES.recording}
+                  disabled={
+                    !voiceServiceAvailable ||
+                    isSending ||
+                    isCompanionResponding ||
+                    [VOICE_STATES.uploading, VOICE_STATES.thinking].includes(voiceState)
+                  }
+                  onPointerDown={beginVoiceCapture}
+                  onPointerUp={endVoiceCapture}
+                  onPointerCancel={cancelVoicePointer}
+                  onContextMenu={(event) => event.preventDefault()}
+                  onKeyDown={handleVoiceKeyDown}
+                  onKeyUp={handleVoiceKeyUp}
+                >
+                  <Mic2 size={18} aria-hidden="true" />
+                </button>
+                <button
+                  className="composer-reply-options-button"
+                  type="button"
+                  aria-label="让 TA 帮你想更多回复"
+                  title="让 TA 帮你想更多回复"
+                  disabled={isSending || isCompanionResponding || isVoiceInputBusy || !activeSessionId}
+                  onClick={() => {
+                    setIsComposerMenuOpen(false);
+                    void openReplyOptions({ fresh: true });
+                  }}
+                >
+                  <Sparkles size={13} aria-hidden="true" />
+                  <span>更多回复</span>
+                </button>
+              </span>
               <button
                 className="send-button"
                 type="button"
@@ -8962,28 +9012,33 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           </div>
           {isComposerMenuOpen && (
             <section className="composer-tool-menu" aria-label="更多输入功能">
-              <SunGlassTimeDeck
-                snapshot={celestialSnapshot}
-                previewMinute={previewMinute}
-                onPreviewMinute={setPreviewMinute}
-                onNow={() => setPreviewMinute(null)}
-                weather={ambientWeather}
-                weatherMode={weatherPreviewMode}
-                onWeatherMode={setWeatherPreviewMode}
-                glassLevel={themePreferences.cardOpacity * 100}
-                onGlassLevel={(value) =>
-                  updateTheme({ cardOpacity: Number(value) / 100 })
-                }
-                backgroundMode={themePreferences.background}
-                onBackgroundMode={(background) =>
-                  updateTheme({ background, appearance: "auto" })
-                }
-                ambientLive={ambientLive}
-                onSyncLocation={handleSyncLocation}
-                onRefreshWeather={handleRefreshWeather}
-                onEstimateLocationByIp={handleEstimateLocationByIp}
-                onSelectLocation={handleSelectLocation}
-              />
+              <div ref={setComposerStarPerceptionSlot} className="star-perception-portal-slot" />
+              <div className="composer-star-pet-row" aria-label="小棉花与桌宠陪伴">
+                <button
+                  type="button"
+                  className={cottonDockEnabled ? "is-active" : ""}
+                  onClick={() => {
+                    if (typeof window !== "undefined" && typeof CustomEvent === "function") {
+                      window.dispatchEvent(new CustomEvent("dengta:cotton-dock-toggle", { detail: { enabled: !cottonDockEnabled } }));
+                    }
+                    setIsComposerMenuOpen(false);
+                  }}
+                >
+                  <span aria-hidden="true">✿</span>
+                  <strong>{cottonDockEnabled ? "收起陪聊小棉花" : "请小棉花来陪聊"}</strong>
+                </button>
+                <button
+                  type="button"
+                  className={cottonDesktopPetEnabled ? "is-active" : ""}
+                  onClick={() => {
+                    toggleCottonDesktopPet(!cottonDesktopPetEnabled);
+                    setIsComposerMenuOpen(false);
+                  }}
+                >
+                  <span aria-hidden="true">🐾</span>
+                  <strong>{cottonDesktopPetEnabled ? "收起悬浮桌宠" : "召唤悬浮桌宠"}</strong>
+                </button>
+              </div>
               <div className="composer-tool-grid">
                 <button
                   type="button"
@@ -9058,6 +9113,28 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
                   <small>上传音频并直接播放</small>
                 </button>
               </div>
+              <SunGlassTimeDeck
+                snapshot={celestialSnapshot}
+                previewMinute={previewMinute}
+                onPreviewMinute={setPreviewMinute}
+                onNow={() => setPreviewMinute(null)}
+                weather={ambientWeather}
+                weatherMode={weatherPreviewMode}
+                onWeatherMode={setWeatherPreviewMode}
+                glassLevel={themePreferences.cardOpacity * 100}
+                onGlassLevel={(value) =>
+                  updateTheme({ cardOpacity: Number(value) / 100 })
+                }
+                backgroundMode={themePreferences.background}
+                onBackgroundMode={(background) =>
+                  updateTheme({ background, appearance: "auto" })
+                }
+                ambientLive={ambientLive}
+                onSyncLocation={handleSyncLocation}
+                onRefreshWeather={handleRefreshWeather}
+                onEstimateLocationByIp={handleEstimateLocationByIp}
+                onSelectLocation={handleSelectLocation}
+              />
               <ChatActivities key={JSON.stringify([accountStorageScope, companionScope, activeSessionId])} disabled={isVoiceInputBusy}
                 onChoose={(text) => {
                   setMessage((current) => appendActivityDraft(current, text));
@@ -12162,8 +12239,11 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             scope={privateMediaScope}
             accountScope={accountStorageScope}
             companionScope={companionScope}
+            aiName={effectiveAiName}
             activeView={activeView}
             chatPortalTarget={chatPerceptionSlot}
+            starDrawerPortalTarget={composerStarPerceptionSlot}
+            keyboardOpen={isComposerInputFocused}
             screenGlanceState={screenGlanceState}
             deviceActivityState={deviceActivityState}
             currentAppName={currentAppName}
@@ -12175,6 +12255,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             }}
             onBackToChat={() => changeView("chat")}
             onStartNativeScreen={() => startScreenGlanceSession()}
+            onPauseNativeScreen={(paused) => setScreenGlancePaused(paused)}
             onStopNativeScreen={() => stopScreenGlanceSession()}
             onEnableNativeActivity={(next) => setDeviceActivityEnabled(next)}
             onOpenActivityPermission={() => openDeviceActivityPermission()}
@@ -12183,9 +12264,21 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               await addChatAttachmentFiles([file]);
               setNotice("已抓拍此刻画面并加入附件，发消息即可让伴侣看到。");
             }}
-            onTranscript={(spoken, { autoSend } = {}) => {
+            onCameraAskChat={async (file) => {
+              setIsComposerMenuOpen(false);
+              if (file) {
+                await addChatAttachmentFiles([file]);
+              }
+              void sendMessage({
+                text: `看看摄像头里现在的画面，主动跟我聊聊你看到了什么吧`,
+              });
+            }}
+            onTranscript={(spoken, { autoSend, wakeWordTriggered } = {}) => {
               const chunk = String(spoken || "").trim();
               if (!chunk) return;
+              if (wakeWordTriggered) {
+                pendingWakeWordTriggeredRef.current = true;
+              }
               if (autoSend) {
                 const combined = message ? `${message.trim()} ${chunk}` : chunk;
                 void sendMessage({ text: combined });
@@ -12199,6 +12292,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
             onNotice={setNotice}
             onSensorsChange={(snapshot) => {
               livePerceptionSnapshotRef.current = snapshot;
+              const activeCount = [
+                snapshot?.screen_active,
+                snapshot?.activity_active,
+                snapshot?.camera_active,
+                snapshot?.mic_active,
+              ].filter(Boolean).length;
+              setLivePerceptionActiveCount(activeCount);
               environmentContextRef.current = mergeLivePerceptionContext(
                 environmentContextRef.current,
                 snapshot,
@@ -12426,6 +12526,7 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           companionScope={companionScope}
           enabled={cottonDesktopPetEnabled}
           suppressed={activeView === "cotton" || isSettingsOpen || Boolean(imageViewer)}
+          hideLauncher={activeView === "chat"}
           onSetEnabled={toggleCottonDesktopPet}
           onOpenHouse={() => changeView("cotton")}
           onShareToChat={(text) => {

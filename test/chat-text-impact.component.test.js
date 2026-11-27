@@ -163,3 +163,35 @@ test("unmount removes the avatar animation it owns", async () => {
   tree = null;
   assert.equal(state.avatar.classList.contains("text-impact-avatar-burst"), false);
 });
+
+test("hidden avatar on phone seamlessly falls back to animating message bubble text", async () => {
+  const bubbleClasses = new Set();
+  const bubbleNode = {
+    classList: {
+      add(...names) { names.forEach(n => bubbleClasses.add(n)); },
+      remove(...names) { names.forEach(n => bubbleClasses.delete(n)); },
+      contains(n) { return bubbleClasses.has(n); },
+    },
+    offsetWidth: 1,
+    textContent: "早安呀，今天也要开心",
+  };
+  state.avatar.getBoundingClientRect = () => ({ width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0 });
+  await mount({
+    rowRef: {
+      current: {
+        querySelector: (selector) => {
+          if (selector === ".message-avatar") return state.avatar;
+          if (selector === ".message-content") return bubbleNode;
+          return null;
+        },
+      },
+    },
+  });
+  await open();
+  assert.ok(targetButton(2), "third target button 消息文字 must be exposed");
+  await clickTarget(0);
+  await clickMode("burst");
+  assert.equal(bubbleNode.classList.contains("text-impact-bubble-burst"), true);
+  assert.equal(state.hits.length, 1);
+  assert.equal(state.hits[0].target, "bubble");
+});

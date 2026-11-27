@@ -570,8 +570,21 @@ public final class DeviceActivityPlugin extends Plugin {
         String cover = "";
         try {
             Bitmap artwork = metadata == null ? null : metadata.getBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART);
+            if (artwork == null && metadata != null) artwork = metadata.getBitmap(MediaMetadata.METADATA_KEY_ART);
             if (artwork == null && metadata != null) artwork = metadata.getBitmap(MediaMetadata.METADATA_KEY_DISPLAY_ICON);
-            if (artwork != null) cover = bitmapToDataUrl(artwork);
+            if (artwork != null) {
+                cover = bitmapToDataUrl(artwork);
+            } else if (metadata != null) {
+                String artUri = metadata.getString(MediaMetadata.METADATA_KEY_ALBUM_ART_URI);
+                if (artUri == null || artUri.isEmpty()) artUri = metadata.getString(MediaMetadata.METADATA_KEY_ART_URI);
+                if (artUri == null || artUri.isEmpty()) artUri = metadata.getString(MediaMetadata.METADATA_KEY_DISPLAY_ICON_URI);
+                if (artUri != null && (artUri.startsWith("https://") || artUri.startsWith("http://"))) {
+                    if (artUri.startsWith("http://") && (artUri.contains(".music.126.net/") || artUri.contains(".music.163.com/"))) {
+                        artUri = "https://" + artUri.substring("http://".length());
+                    }
+                    if (artUri.startsWith("https://")) cover = artUri;
+                }
+            }
         } catch (Exception ignored) { }
         song.put("cover", cover);
         result.put("nowPlaying", song);

@@ -1,4 +1,4 @@
-import { Capacitor } from "@capacitor/core";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import {
   ScreenGlance,
   screenCaptureMatchesIdentity,
@@ -6,6 +6,8 @@ import {
   screenGlancePluginAvailable,
 } from "./screen-glance.js";
 import { selectRecorderMimeType } from "./voice.js";
+
+const MediaPermissions = registerPlugin("MediaPermissions");
 
 export const LIVE_PERCEPTION_STORAGE_PREFIX = "dengta:live-perception:v1:";
 export const ACTIVITY_LIVE_POLL_MS = 25_000;
@@ -17,11 +19,13 @@ export const VAD_MAX_CLIP_MS = 25_000;
 
 export const DEFAULT_LIVE_PERCEPTION_PREFS = Object.freeze({
   screenAlwaysOn: false,
+  screenChangeWatch: true,
   activityAlwaysOn: false,
   cameraAlwaysOn: false,
   cameraFacing: "user",
   micAlwaysOn: false,
-  micAutoSend: false,
+  micAutoSend: true,
+  micWakeWord: true,
   micMode: "auto",
 });
 
@@ -33,11 +37,14 @@ export function normalizeLivePerceptionPrefs(raw = {}) {
       : "auto";
   return Object.freeze({
     screenAlwaysOn: source.screenAlwaysOn === true,
+    screenChangeWatch: source.screenChangeWatch !== false,
     activityAlwaysOn: source.activityAlwaysOn === true,
     cameraAlwaysOn: source.cameraAlwaysOn === true,
     cameraFacing: source.cameraFacing === "environment" ? "environment" : "user",
     micAlwaysOn: source.micAlwaysOn === true,
-    micAutoSend: source.micAutoSend === true,
+    micAutoSend:
+      source.micAutoSend === undefined ? true : source.micAutoSend === true,
+    micWakeWord: source.micWakeWord !== false,
     micMode,
   });
 }
@@ -78,7 +85,39 @@ export function writeLivePerceptionPrefs(
   return normalized;
 }
 
-export async function queryMediaPermissionState(name, env = globalThis) {
+export async function checkNativeMediaPermissions(capacitor = Capacitor) {
+  if (!capacitor?.isNativePlatform?.()) return null;
+  try {
+    return await MediaPermissions.getStatus();
+  } catch {
+    return null;
+  }
+}
+
+export async function requestNativeMediaPermissions(
+  { camera = false, microphone = false } = {},
+  capacitor = Capacitor,
+) {
+  if (!capacitor?.isNativePlatform?.()) return null;
+  try {
+    return await MediaPermissions.requestMedia({ camera, microphone });
+  } catch {
+    return null;
+  }
+}
+
+export async function queryMediaPermissionState(
+  name,
+  env = globalThis,
+  capacitor = Capacitor,
+) {
+  if (capacitor?.isNativePlatform?.()) {
+    const nativeStatus = await checkNativeMediaPermissions(capacitor);
+    if (nativeStatus) {
+      if (name === "camera" && nativeStatus.camera) return nativeStatus.camera;
+      if (name === "microphone" && nativeStatus.microphone) return nativeStatus.microphone;
+    }
+  }
   if (!env?.navigator?.permissions?.query) return "unknown";
   try {
     const result = await env.navigator.permissions.query({ name });
@@ -372,6 +411,8 @@ export function buildLivePerceptionEnvironmentPayload({
   micActive = false,
   activityActive = false,
   capturedSources = [],
+  screenEvidence = [],
+  wakeWordTriggered = false,
   platform = Capacitor.isNativePlatform() ? "android" : "web",
 } = {}) {
   const safeSources = Array.isArray(capturedSources)
@@ -379,8 +420,27 @@ export function buildLivePerceptionEnvironmentPayload({
         .map((item) => String(item || "").trim())
         .filter((item) => ["screen", "camera"].includes(item))
     : [];
+  const safeEvidence = Array.isArray(screenEvidence)
+    ? screenEvidence
+        .filter((item) => item && typeof item === "object")
+        .slice(0, 3)
+        .map((item) => ({
+          id: String(item.id || "").slice(0, 64),
+          kind: item.kind === "camera" ? "camera" : "screen",
+          captured_at: String(item.captured_at || "").slice(0, 64),
+          time_label: String(item.time_label || "").slice(0, 16),
+          app_name: String(item.app_name || "").slice(0, 40),
+          trigger_reason: String(item.trigger_reason || "").slice(0, 40),
+          change_score: Math.max(0, Math.min(100, Math.round(Number(item.change_score) || 0))),
+        }))
+    : [];
   const anyActive = Boolean(
-    screenActive || cameraActive || micActive || activityActive || safeSources.length,
+    screenActive ||
+      cameraActive ||
+      micActive ||
+      activityActive ||
+      safeSources.length ||
+      safeEvidence.length,
   );
   if (!anyActive) return null;
   return {
@@ -390,6 +450,8 @@ export function buildLivePerceptionEnvironmentPayload({
     mic_active: micActive === true,
     activity_active: activityActive === true,
     captured_sources: safeSources,
+    ...(safeEvidence.length > 0 ? { screen_evidence: safeEvidence } : {}),
+    ...(wakeWordTriggered === true ? { wake_word_triggered: true } : {}),
     platform: platform === "android" ? "android" : "web",
   };
 }

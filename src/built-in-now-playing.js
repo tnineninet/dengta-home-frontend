@@ -16,12 +16,23 @@ export function compactPlaybackFeedback(backendMessage, fallback) {
   return text && text.length <= 80 ? text : String(fallback || "");
 }
 
-function upgradeNeteaseCdnHttps(value) {
+export function upgradeNeteaseCdnHttps(value) {
   const raw = String(value || "").trim();
   if (/^http:\/\/[^/]*\.(?:music\.126\.net|music\.163\.com)\//i.test(raw)) {
     return raw.replace(/^http:\/\//i, "https://");
   }
   return raw;
+}
+
+export function normalizeNowPlayingCoverUrl(raw) {
+  let url = String(raw || "").trim();
+  if (!url) return "";
+  if (url.startsWith("//")) url = `https:${url}`;
+  url = upgradeNeteaseCdnHttps(url);
+  if (/^data:image\//i.test(url) || /^blob:/i.test(url) || /^https:\/\//i.test(url)) {
+    return url;
+  }
+  return "";
 }
 
 export function createBuiltInNowPlaying({ scope, request, createAudio = url => new Audio(url), onSong, onBusy, onFeedback, onStartupFeedback }) {
@@ -49,7 +60,8 @@ export function createBuiltInNowPlaying({ scope, request, createAudio = url => n
     const url = validateDirectMediaUrl(upgradeNeteaseCdnHttps(song?.url));
     if (!url.ok || !song?.title) throw new Error("music_random_unavailable");
     const entry = { audio: createAudio(url.url), owner, listeners: [], wantsPlayback: false, song: {
-      title: song.title, artist: song.artist || "", cover: song.cover || song.cover_url || "", source: "dengta",
+      title: song.title, artist: song.artist || "", album: song.album || "", songId: song.song_id || song.provider_track_id || "",
+      cover: upgradeNeteaseCdnHttps(song.cover || song.cover_url || ""), source: "dengta",
       playbackId: `dengta-${++sequence}`, playbackStateKnown: true,
     } };
     for (const name of ["play", "pause"]) {

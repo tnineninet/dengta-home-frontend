@@ -21,6 +21,7 @@ import ChatErrorLog from "./ChatErrorLog";
 import { readChatDisplayContent } from "./chat-display-content.js";
 import ChatTextImpact from "./ChatTextImpact.jsx";
 import { extractMedicalCitationBadges, parseMedicalRagMessage } from "./medical-chat-card.js";
+import { getScreenEvidenceById } from "./screen-change-monitor.js";
 
 const messageTimeFormatter = new Intl.DateTimeFormat("zh-CN", {
   hour: "2-digit",
@@ -254,9 +255,36 @@ function ChatMessage({
   const quotedDisplayName =
     quotedMessage?.role === "user" ? userName : aiName;
 
+  const perceptionEvidenceList = useMemo(() => {
+    const raw = item.tool_calls?.perception_evidence;
+    if (!Array.isArray(raw) || raw.length === 0) return [];
+    return raw.filter((ev) => ev && typeof ev === "object").slice(0, 3);
+  }, [item.tool_calls?.perception_evidence]);
+
+  const jumpToQuotedMessage = useCallback(() => {
+    const targetId = String(quotedMessage?.message_id || "").trim();
+    if (!targetId || typeof document === "undefined") return;
+    const escaped = typeof CSS !== "undefined" && typeof CSS.escape === "function"
+      ? CSS.escape(targetId)
+      : targetId.replace(/["\\]/g, "\\$&");
+    const targetNode = document.querySelector(`[data-message-id="${escaped}"]`);
+    if (!targetNode) return;
+    targetNode.scrollIntoView({
+      behavior: reduceMotion ? "auto" : "smooth",
+      block: "center",
+    });
+    targetNode.classList.remove("is-quote-highlighted");
+    void targetNode.offsetWidth;
+    targetNode.classList.add("is-quote-highlighted");
+    window.setTimeout(() => {
+      targetNode.classList.remove("is-quote-highlighted");
+    }, 1650);
+  }, [quotedMessage?.message_id, reduceMotion]);
+
   return (
     <article
       ref={rowRef}
+      data-message-id={item.id || undefined}
       data-text-impact-scope={textImpactScope}
       className={`message-row ${isUser ? "user" : "assistant"}${
         canReference ? " can-reference" : ""
@@ -328,8 +356,27 @@ function ChatMessage({
             </div>
           )}
           {quotedMessage && (
-            <div className="message-reference-block">
-              <strong>引用 {quotedDisplayName}</strong>
+            <div
+              className={`message-reference-block${quotedMessage.message_id ? " is-jumpable" : ""}`}
+              role={quotedMessage.message_id ? "button" : undefined}
+              tabIndex={quotedMessage.message_id ? 0 : undefined}
+              title={quotedMessage.message_id ? "点击跳转到被引用的原消息" : undefined}
+              onClick={quotedMessage.message_id ? jumpToQuotedMessage : undefined}
+              onKeyDown={
+                quotedMessage.message_id
+                  ? (event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        jumpToQuotedMessage();
+                      }
+                    }
+                  : undefined
+              }
+            >
+              <strong>
+                引用 {quotedDisplayName}
+                {quotedMessage.message_id && <em className="message-reference-jump-cue">↗ 定位</em>}
+              </strong>
               <span>
                 {quotedMessage.text ||
                   `${quotedMessage.attachment_summary?.count || 0} 个附件`}
@@ -470,6 +517,46 @@ function ChatMessage({
                 本轮附件已作为系统指令
               </div>
             )}
+          {!isUser && perceptionEvidenceList.length > 0 && (
+            <div className="message-perception-evidence" role="region" aria-label="实时感知截屏与画面依据">
+              {perceptionEvidenceList.map((ev, idx) => {
+                const localRecord = ev.id ? getScreenEvidenceById(ev.id) : null;
+                const thumb = localRecord?.thumbnail_data_url || localRecord?.thumbnailDataUrl || "";
+                const isCamera = ev.kind === "camera";
+                const timeText = ev.time_label || formatMessageTime(ev.captured_at);
+                const appText = ev.app_name || (isCamera ? "实时摄像头" : "当前屏幕");
+                const detailText = [
+                  ev.trigger_reason || (isCamera ? "镜头实景捕捉" : "屏幕画面捕捉"),
+                  Number(ev.change_score) > 0 ? `变化 ${Math.round(Number(ev.change_score))}%` : "",
+                ].filter(Boolean).join(" · ");
+                return (
+                  <div key={ev.id || `${ev.kind || "screen"}-${idx}`} className={`mpe-card${isCamera ? " is-camera" : " is-screen"}`}>
+                    {thumb ? (
+                      <button
+                        type="button"
+                        className="mpe-thumb-btn"
+                        aria-label={`放大查看 ${timeText} ${appText} 的截屏依据`}
+                        onClick={() => onPreview?.(thumb, `${timeText} · ${appText}（${detailText}）`)}
+                      >
+                        <img src={thumb} alt={`${appText} 画面依据`} />
+                      </button>
+                    ) : (
+                      <span className="mpe-icon-badge" aria-hidden="true">
+                        {isCamera ? "📷" : "🖥️"}
+                      </span>
+                    )}
+                    <div className="mpe-meta">
+                      <strong>
+                        {isCamera ? "摄像头实景依据" : "截屏依据"} · {timeText}
+                        {appText ? ` · ${appText}` : ""}
+                      </strong>
+                      <span>{detailText}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           {!isUser && (
             <>
               <DeviceActionReceipts actions={item.tool_calls?.mcp_actions} />

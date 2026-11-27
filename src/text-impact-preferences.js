@@ -6,7 +6,7 @@ const listeners = new Set();
 function normalize(value = {}) {
   return Object.freeze({ auto: value.auto === true,
     mode: value.mode === "burst" ? "burst" : "scatter",
-    target: value.target === "avatar" ? "avatar" : "composer",
+    target: value.target === "avatar" ? "avatar" : value.target === "bubble" ? "bubble" : "composer",
     enabled: value.enabled !== false });
 }
 

@@ -155,3 +155,87 @@ test("live-perception VAD RMS calculator and permission query behave determinist
   assert.equal(granted, "granted");
   assert.equal(await queryMediaPermissionState("camera", {}), "unknown");
 });
+
+test("SPEC-PERCEPTION-UX-AND-DANZI: Siri wake-word parser, screen diff detector, Star Drawer consolidation, and Dynamic Island CD cover", async () => {
+  const { parseWakeWordTranscript } = await import("../src/voice-wake-word.js");
+  const {
+    computeLumaChangePercent,
+    shouldTriggerAutoScreenCapture,
+    registerScreenEvidence,
+    getScreenEvidenceById,
+    serializeEvidenceForPayload,
+  } = await import("../src/screen-change-monitor.js");
+  const { normalizeNowPlayingCoverUrl } = await import("../src/built-in-now-playing.js");
+
+  // Siri wake word matching (one-breath, wake-only, custom aiName, non-wake)
+  const cmd = parseWakeWordTranscript("嗨灯塔 帮我看看今天穿什么", { aiName: "小小灯" });
+  assert.equal(cmd.matched, true);
+  assert.equal(cmd.command, "帮我看看今天穿什么");
+
+  const wakeOnly = parseWakeWordTranscript("Hey DengTa", { aiName: "小小灯" });
+  assert.equal(wakeOnly.matched, true);
+  assert.equal(wakeOnly.command, "");
+
+  const customName = parseWakeWordTranscript("小小灯，几点啦", { aiName: "小小灯" });
+  assert.equal(customName.matched, true);
+  assert.equal(customName.command, "几点啦");
+
+  const ignored = parseWakeWordTranscript("今天天气真不错", { aiName: "小小灯" });
+  assert.equal(ignored.matched, false);
+
+  // Smart screen change detection + cooldown + evidence registry
+  const sigA = new Uint8Array(64).fill(30);
+  const sigB = new Uint8Array(64).fill(210);
+  const delta = computeLumaChangePercent(sigA, sigB);
+  assert.ok(delta > 60, `Expected significant visual change, got ${delta}`);
+
+  assert.equal(
+    shouldTriggerAutoScreenCapture({ appChanged: true, changeScore: 4, elapsedMs: 5000 }),
+    true,
+  );
+  assert.equal(
+    shouldTriggerAutoScreenCapture({ appChanged: false, changeScore: 50, elapsedMs: 2000 }),
+    false,
+  );
+  assert.equal(
+    shouldTriggerAutoScreenCapture({ appChanged: false, changeScore: 30, elapsedMs: 15000 }),
+    true,
+  );
+
+  const ev = registerScreenEvidence({
+    id: "ev-screen-test-1",
+    kind: "screen",
+    app_name: "哔哩哔哩",
+    trigger_reason: "屏幕显著变化",
+    change_score: 34,
+    thumbnail_data_url: "data:image/jpeg;base64,/9j/4AAQ",
+  });
+  assert.equal(getScreenEvidenceById(ev.id)?.app_name, "哔哩哔哩");
+  assert.equal(getScreenEvidenceById(ev.id)?.thumbnail_data_url, "data:image/jpeg;base64,/9j/4AAQ");
+  const serialized = serializeEvidenceForPayload(ev);
+  assert.equal(serialized.app_name, "哔哩哔哩");
+  assert.equal(serialized.change_score, 34);
+  assert.equal("thumbnail_data_url" in serialized, false, "Thumbnails must stay local-only and never bloat backend payload");
+
+  // Native persistent media permission plugin + Star Drawer wiring + Dynamic Island cover HTTPS
+  const mainActivity = fs.readFileSync(
+    path.join(ROOT, "android", "app", "src", "main", "java", "home", "dengta", "app", "MainActivity.java"),
+    "utf8",
+  );
+  assert.match(mainActivity, /registerPlugin\(MediaPermissionsPlugin\.class\)/);
+
+  const appSource = fs.readFileSync(path.join(ROOT, "src", "App.jsx"), "utf8");
+  assert.match(appSource, /starDrawerPortalTarget=\{composerStarPerceptionSlot\}/);
+  assert.match(appSource, /hideBarWhenIdle/);
+  assert.match(appSource, /hideLauncher=\{activeView === "chat"\}/);
+
+  const chatMsgSource = fs.readFileSync(path.join(ROOT, "src", "ChatMessage.jsx"), "utf8");
+  assert.match(chatMsgSource, /message-perception-evidence/);
+  assert.match(chatMsgSource, /is-jumpable/);
+
+  assert.equal(
+    normalizeNowPlayingCoverUrl("http://p1.music.126.net/abc/123.jpg"),
+    "https://p1.music.126.net/abc/123.jpg",
+  );
+  assert.equal(normalizeNowPlayingCoverUrl("javascript:alert(1)"), "");
+});

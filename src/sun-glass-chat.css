@@ -1082,6 +1082,45 @@
     background: rgb(255 255 255 / var(--dengta-glass-control-alpha));
   }
 
+  .main-panel.view-chat .composer-slot-actions {
+    grid-row: 1;
+    grid-column: 3;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    height: 44px;
+    align-self: center;
+    justify-self: center;
+  }
+
+  .main-panel.view-chat .composer-slot-actions .composer-voice-button {
+    display: inline-grid;
+    place-items: center;
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    min-height: 36px;
+    padding: 0;
+    border: 1px solid rgb(255 255 255 / 0.42);
+    border-radius: 50%;
+    color: var(--theme-ink);
+    background: rgb(255 255 255 / var(--dengta-glass-control-alpha));
+  }
+
+  .main-panel.view-chat .composer-slot-actions .composer-reply-options-button {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    min-height: 36px;
+    padding: 0;
+    border-radius: 50%;
+    justify-content: center;
+  }
+
+  .main-panel.view-chat .composer-slot-actions .composer-reply-options-button span {
+    display: none;
+  }
+
   .main-panel.view-chat .send-button-label {
     display: none;
   }
@@ -2896,39 +2935,90 @@
   }
 }
 
-/* ---------- 现在播放（CD 机胶囊） ---------- */
+/* ---------- 现在播放（CD 机胶囊 · 苹果灵动岛三栏防裁切布局） ---------- */
+.main-panel.view-chat .sun-glass-liquid-action-stage[data-dynamic-island="playing"] {
+  width: min(344px, calc(100vw - 20px));
+  height: 70px;
+}
+
 .main-panel.view-chat .sun-glass-liquid-capsule-toggle.has-now-playing {
-  width: 246px;
-  overflow: visible;
-  /* Keep the rainbow capsule visible behind the song; only the controls need
-     their own glass hit targets. The old opaque card covered the capsule and
-     made the rainbow feel like a separate floating layer. */
-  background: transparent !important;
-  box-shadow: none !important;
+  width: 100%;
+  height: 62px;
+  min-height: 62px;
+  padding: 5px 10px 5px 7px;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.66);
+  border-radius: 32px;
+  background: rgb(var(--theme-card-rgb, 255 253 248) / 0.78) !important;
+  backdrop-filter: blur(18px) saturate(1.45);
+  -webkit-backdrop-filter: blur(18px) saturate(1.45);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.72),
+    0 10px 26px rgb(18 24 40 / 0.16) !important;
   cursor: pointer;
 }
+
+:root[data-dengta-appearance="night"] .main-panel.view-chat .sun-glass-liquid-capsule-toggle.has-now-playing {
+  border-color: rgb(255 255 255 / 0.24);
+  background: rgb(22 27 42 / 0.82) !important;
+}
+
 .main-panel.view-chat .sun-glass-liquid-capsule-toggle.has-now-playing .sun-glass-now-playing {
   pointer-events: none;
 }
+
 .main-panel.view-chat .sun-glass-liquid-capsule-toggle.has-now-playing .sun-glass-now-playing-meta,
 .main-panel.view-chat .sun-glass-liquid-capsule-toggle.has-now-playing .sun-glass-now-playing-title,
 .main-panel.view-chat .sun-glass-liquid-capsule-toggle.has-now-playing .sun-glass-now-playing-controls {
   pointer-events: auto;
 }
+
 .main-panel.view-chat .sun-glass-liquid-capsule-toggle.has-now-playing .sun-glass-now-playing-controls button {
-  width: 30px !important;
-  height: 30px !important;
-  border: 1px solid rgb(255 255 255 / 0.48) !important;
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  min-height: 28px !important;
+  padding: 0 !important;
+  border: 1px solid rgb(255 255 255 / 0.52) !important;
   color: var(--theme-ink) !important;
-  background: rgb(255 255 255 / 0.2) !important;
-  backdrop-filter: blur(3px) !important;
-  -webkit-backdrop-filter: blur(3px) !important;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.52), 0 2px 8px rgb(20 24 36 / 0.18) !important;
+  background: rgb(255 255 255 / 0.36) !important;
+  backdrop-filter: blur(4px) !important;
+  -webkit-backdrop-filter: blur(4px) !important;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.6), 0 2px 8px rgb(20 24 36 / 0.14) !important;
 }
+
+.main-panel.view-chat .sun-glass-liquid-capsule-toggle.has-now-playing .sun-glass-now-playing-controls button.is-dismiss {
+  width: 24px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+  min-height: 24px !important;
+  opacity: 0.78;
+}
+
+:root[data-dengta-appearance="night"] .main-panel.view-chat .sun-glass-liquid-capsule-toggle.has-now-playing .sun-glass-now-playing-controls button {
+  border-color: rgb(255 255 255 / 0.22) !important;
+  background: rgb(255 255 255 / 0.14) !important;
+  color: #f4f7ff !important;
+}
+
 .main-panel.view-chat .sun-glass-liquid-capsule-toggle.has-now-playing .sun-glass-now-playing-controls button:active {
-  transform: scale3d(0.94, 0.94, 1) !important;
+  transform: scale3d(0.92, 0.92, 1) !important;
 }
+
 .main-panel.view-chat .sun-glass-liquid-capsule-toggle.has-now-playing .sun-glass-now-playing-title {
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  min-height: 0 !important;
+  min-width: 0 !important;
+  height: auto !important;
+  max-width: 100%;
+  background: transparent !important;
+  box-shadow: none !important;
+  display: inline-flex;
+  align-items: center;
+  text-align: left;
+  overflow: hidden;
   cursor: pointer;
 }
 
@@ -2936,113 +3026,135 @@
   position: relative;
   z-index: 3;
   display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
+  grid-template-columns: 48px minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: 9px;
   width: 100%;
   height: 100%;
-  padding: 4px 10px 4px 4px;
-  overflow: visible;
+  padding: 0;
+  overflow: hidden;
   pointer-events: none;
 }
 
 .sun-glass-now-playing-cover {
   position: relative;
-  width: 58px;
-  height: 58px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
-  background-color: #2b2f3a;
-  background-size: cover;
-  background-position: center;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 32% 28%, #5b6987, #1c2230 74%);
   box-shadow:
-    inset 0 0 0 2px rgb(255 255 255 / 0.22),
-    0 4px 14px rgb(18 24 40 / 0.4);
+    inset 0 0 0 2px rgb(255 255 255 / 0.56),
+    0 4px 12px rgb(18 24 40 / 0.34);
   animation: sun-glass-cd-enter 480ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
 }
 
-.sun-glass-now-playing-cover.is-spinning .sun-glass-now-playing-disc {
-  animation: sun-glass-cd-spin 3.6s linear infinite;
+.sun-glass-now-playing-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+
+.sun-glass-now-playing-fallback-icon {
+  position: relative;
+  z-index: 1;
+  color: rgb(255 255 255 / 0.78);
+  display: inline-grid;
+  place-items: center;
+}
+
+.sun-glass-now-playing-cover.is-spinning .sun-glass-now-playing-art,
+.sun-glass-now-playing-cover.is-spinning .sun-glass-now-playing-disc,
+.sun-glass-now-playing-cover.is-spinning .sun-glass-now-playing-fallback-icon {
+  animation: sun-glass-cd-spin 11s linear infinite;
 }
 
 .sun-glass-now-playing-disc {
   position: absolute;
-  inset: 3px;
+  inset: 1px;
   border-radius: 50%;
   background:
     conic-gradient(
       from 0deg,
-      #14161c 0deg 20deg,
-      #3a3f4d 20deg 40deg,
-      #14161c 40deg 60deg,
-      #3a3f4d 60deg 80deg,
-      #14161c 80deg 100deg,
-      #3a3f4d 100deg 120deg,
-      #14161c 120deg 140deg,
-      #3a3f4d 140deg 160deg,
-      #14161c 160deg 180deg,
-      #3a3f4d 180deg 200deg,
-      #14161c 200deg 220deg,
-      #3a3f4d 220deg 240deg,
-      #14161c 240deg 260deg,
-      #3a3f4d 260deg 280deg,
-      #14161c 280deg 300deg,
-      #3a3f4d 300deg 320deg,
-      #14161c 320deg 340deg,
-      #3a3f4d 340deg 360deg
+      rgba(255, 255, 255, 0.04) 0deg 35deg,
+      rgba(255, 255, 255, 0.24) 50deg 72deg,
+      rgba(255, 255, 255, 0.03) 90deg 215deg,
+      rgba(255, 255, 255, 0.2) 230deg 252deg,
+      rgba(255, 255, 255, 0.04) 270deg 360deg
     );
-  -webkit-mask-image: radial-gradient(circle, transparent 0 26%, #000 27% 100%);
-          mask-image: radial-gradient(circle, transparent 0 26%, #000 27% 100%);
-  opacity: 0.92;
+  -webkit-mask-image: radial-gradient(circle, transparent 0 22%, #000 24% 100%);
+          mask-image: radial-gradient(circle, transparent 0 22%, #000 24% 100%);
+  opacity: 0.72;
   pointer-events: none;
+  z-index: 2;
+}
+
+.sun-glass-now-playing-cover.has-art .sun-glass-now-playing-disc {
+  opacity: 0.42;
 }
 
 .sun-glass-now-playing-cover:not(.is-spinning) .sun-glass-now-playing-disc {
-  opacity: 0.4;
+  opacity: 0.28;
 }
 
 .sun-glass-now-playing-hole {
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 12px;
-  height: 12px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
-  background: radial-gradient(circle at 38% 36%, #6a7080, #1b1e26 70%);
+  border: 1.5px solid rgb(255 255 255 / 0.65);
+  background: radial-gradient(circle at 38% 36%, #565d70, #161922 72%);
   transform: translate(-50%, -50%);
-  box-shadow: inset 0 1px 2px rgb(255 255 255 / 0.25);
+  box-shadow: 0 0 4px rgb(0 0 0 / 0.35);
   pointer-events: none;
+  z-index: 3;
 }
 
 .sun-glass-now-playing-meta {
-  display: grid;
-  gap: 1px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
   min-width: 0;
   text-align: left;
   pointer-events: auto;
 }
 
 .sun-glass-now-playing-meta strong {
+  display: block;
   overflow: hidden;
-  font-size: 13px;
-  font-weight: 680;
+  font-size: 13.5px;
+  line-height: 1.3;
+  font-weight: 700;
   color: var(--theme-ink);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .sun-glass-now-playing-meta small {
+  display: block;
   overflow: hidden;
   font-size: 11px;
-  color: rgb(var(--theme-ink-rgb) / 0.62);
+  line-height: 1.28;
+  color: rgb(var(--theme-ink-rgb) / 0.74);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .sun-glass-now-playing-controls {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 2px;
+  gap: 5px;
+  margin-top: 0;
+  flex-shrink: 0;
 }
 
 .sun-glass-now-playing-controls button {
@@ -3065,8 +3177,8 @@
 }
 
 .sun-glass-now-playing-controls button svg {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
   fill: none;
   stroke: currentColor;
   stroke-width: 2;
@@ -3540,71 +3652,71 @@
   pointer-events: none !important;
 }
 
-/* Compact now-playing capsule for phones. The generic 58px CD + 3 rows of
-   controls exceed the 62px capsule and get clipped by the 68px stage. */
+/* Compact 3-column horizontal now-playing capsule for phones. */
 @media (pointer: coarse), (max-width: 820px) {
   .main-panel.view-chat .sun-glass-liquid-action-stage {
     transform: none;
   }
 
+  .main-panel.view-chat .sun-glass-liquid-action-stage[data-dynamic-island="playing"] {
+    width: min(338px, calc(100vw - 20px));
+    height: 68px;
+  }
+
   .main-panel.view-chat .sun-glass-liquid-capsule-toggle.has-now-playing {
     place-items: stretch;
-    padding: 3px 6px;
-    background: rgb(var(--theme-card-rgb) / 0.92);
+    height: 60px;
+    min-height: 60px;
+    padding: 5px 8px 5px 6px;
   }
 
   .main-panel.view-chat .sun-glass-now-playing {
     height: 100%;
     min-height: 0;
-    grid-template-columns: 44px minmax(0, 1fr);
-    gap: 6px;
+    grid-template-columns: 46px minmax(0, 1fr) auto;
+    gap: 8px;
     overflow: hidden;
   }
 
   .main-panel.view-chat .sun-glass-now-playing-cover {
-    width: 44px;
-    height: 44px;
+    width: 46px;
+    height: 46px;
   }
 
   .main-panel.view-chat .sun-glass-now-playing-meta {
     min-height: 0;
-    gap: 0;
+    gap: 2px;
     overflow: hidden;
   }
 
   .main-panel.view-chat .sun-glass-now-playing-meta strong {
-    font-size: 12px;
-    line-height: 1.2;
+    font-size: 13px;
+    line-height: 1.28;
   }
 
   .main-panel.view-chat .sun-glass-now-playing-meta small {
-    font-size: 9px;
-    line-height: 1.2;
+    font-size: 10.5px;
+    line-height: 1.25;
   }
 
   .main-panel.view-chat .sun-glass-now-playing-controls {
-    gap: 4px;
-    margin-top: 1px;
+    gap: 5px;
+    margin-top: 0;
   }
 
-  .main-panel.view-chat .sun-glass-now-playing-controls button {
-    width: 22px;
-    height: 22px;
-  }
-
-  .main-panel.view-chat .sun-glass-now-playing-controls button svg {
-    width: 12px;
-    height: 12px;
-  }
-
-  /* Keep the visual size compact while giving each control a 44px hit box. */
   .main-panel.view-chat .sun-glass-now-playing-controls button {
     position: relative;
   }
 
+  .main-panel.view-chat .sun-glass-now-playing-controls button svg {
+    width: 13px;
+    height: 13px;
+  }
+
+  /* Keep the visual size compact while giving each control a generous touch hit box. */
   .main-panel.view-chat .sun-glass-now-playing-controls button::before {
     position: absolute;
-    inset: -11px;
+    inset: -8px;
     content: "";
   }
 }
@@ -3679,56 +3791,49 @@
   }
 }
 
-/* Desktop Now Playing: keep the same compact geometry as mobile so the
-   3-row card cannot overflow the 62px capsule / cover the status ribbon. */
+/* Desktop Now Playing: match the crisp 3-column horizontal Dynamic Island capsule. */
 .main-panel.view-chat .sun-glass-liquid-capsule-toggle.has-now-playing {
   place-items: stretch;
-  padding: 3px 6px;
-  background: rgb(var(--theme-card-rgb) / 0.62);
+  padding: 5px 10px 5px 7px;
 }
 
 .main-panel.view-chat .sun-glass-now-playing {
   height: 100%;
   min-height: 0;
-  grid-template-columns: 44px minmax(0, 1fr);
-  gap: 6px;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  gap: 9px;
   overflow: hidden;
 }
 
 .main-panel.view-chat .sun-glass-now-playing-cover {
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
 }
 
 .main-panel.view-chat .sun-glass-now-playing-meta {
   min-height: 0;
-  gap: 0;
+  gap: 2px;
   overflow: hidden;
 }
 
 .main-panel.view-chat .sun-glass-now-playing-meta strong {
-  font-size: 12px;
-  line-height: 1.2;
+  font-size: 13.5px;
+  line-height: 1.3;
 }
 
 .main-panel.view-chat .sun-glass-now-playing-meta small {
-  font-size: 9px;
-  line-height: 1.2;
+  font-size: 11px;
+  line-height: 1.28;
 }
 
 .main-panel.view-chat .sun-glass-now-playing-controls {
-  gap: 4px;
-  margin-top: 1px;
-}
-
-.main-panel.view-chat .sun-glass-now-playing-controls button {
-  width: 22px;
-  height: 22px;
+  gap: 5px;
+  margin-top: 0;
 }
 
 .main-panel.view-chat .sun-glass-now-playing-controls button svg {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
 }
 
 .chat-history-earlier {

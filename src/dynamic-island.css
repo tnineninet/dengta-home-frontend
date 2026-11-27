@@ -56,6 +56,30 @@
   z-index: 6;
 }
 
+@media (max-width: 820px) {
+  .main-panel.view-chat .di-live-satellites {
+    flex-wrap: nowrap;
+    max-width: calc(100vw - 24px);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    justify-content: safe center;
+    padding: 0 4px 2px;
+  }
+
+  .main-panel.view-chat .di-live-satellites::-webkit-scrollbar {
+    display: none;
+  }
+
+  .main-panel.view-chat .di-satellite-pill {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    min-height: 24px;
+    padding: 2px 8px;
+    font-size: 10.5px;
+  }
+}
+
 @media (min-width: 821px) {
   .main-panel.view-chat .sun-glass-floating-status-shell .di-live-satellites {
     position: absolute;
@@ -66,6 +90,16 @@
     flex-wrap: nowrap;
     white-space: nowrap;
   }
+
+  .main-panel.view-chat .sun-glass-floating-status-shell:has([data-dynamic-island="playing"]) .di-live-satellites {
+    left: calc(50% + 184px);
+  }
+}
+
+:root[data-dengta-reduced-motion="true"] .sun-glass-now-playing-cover.is-spinning .sun-glass-now-playing-art,
+:root[data-dengta-reduced-motion="true"] .sun-glass-now-playing-cover.is-spinning .sun-glass-now-playing-disc,
+:root[data-dengta-reduced-motion="true"] .sun-glass-now-playing-cover.is-spinning .sun-glass-now-playing-fallback-icon {
+  animation: none !important;
 }
 
 .di-satellite-pill {

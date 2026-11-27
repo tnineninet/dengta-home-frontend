@@ -7,8 +7,9 @@ import { fileURLToPath } from "node:url";
 import { createDefaultCompanionStatus } from "../src/companion-status.js";
 
 test("Dynamic Island renders live NetEase spectrum, satellite pills and control deck actions", async () => {
-  const previous = { window: globalThis.window, document: globalThis.document, act: globalThis.IS_REACT_ACT_ENVIRONMENT };
+  const previous = { window: globalThis.window, document: globalThis.document, act: globalThis.IS_REACT_ACT_ENVIRONMENT, fetch: globalThis.fetch };
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ configured: false }) });
   globalThis.window = {
     matchMedia: () => ({ matches: true, addEventListener() {}, removeEventListener() {} }),
     requestAnimationFrame: () => 1,
@@ -24,7 +25,7 @@ test("Dynamic Island renders live NetEase spectrum, satellite pills and control 
     root: fileURLToPath(new URL("..", import.meta.url)),
     appType: "custom",
     logLevel: "silent",
-    server: { middlewareMode: true },
+    server: { middlewareMode: true, watch: null },
     plugins: [{
       name: "di-portal-stub",
       enforce: "pre",
@@ -80,7 +81,7 @@ test("Dynamic Island renders live NetEase spectrum, satellite pills and control 
     assert.match(textContent, /网易云随心听/);
     assert.match(textContent, /外卖选餐中/);
     assert.match(textContent, /2 条诊断/);
-    assert.match(textContent, /Dynamic Island/);
+    assert.match(textContent, /灵动岛|Dynamic Island/);
     assert.match(textContent, /药箱与知识/);
 
     // Trigger satellite pills
@@ -106,6 +107,8 @@ test("Dynamic Island renders live NetEase spectrum, satellite pills and control 
           nowPlaying: {
             title: "晴天",
             artist: "周杰伦",
+            album: "叶惠美",
+            cover: "http://p1.music.126.net/test/qingtian.jpg",
             isPlaying: true,
             canControl: true,
             availableActions: ["play", "pause", "next"],
@@ -118,11 +121,14 @@ test("Dynamic Island renders live NetEase spectrum, satellite pills and control 
     const playingJson = JSON.stringify(tree.toJSON());
     assert.match(playingJson, /di-audio-spectrum is-playing/);
     assert.match(playingJson, /晴天/);
+    assert.match(playingJson, /sun-glass-now-playing-art/);
+    assert.match(playingJson, /https:\/\/p1\.music\.126\.net\/test\/qingtian\.jpg/);
   } finally {
     if (tree) await act(async () => tree.unmount());
     await vite.close();
     globalThis.window = previous.window;
     globalThis.document = previous.document;
     globalThis.IS_REACT_ACT_ENVIRONMENT = previous.act;
+    globalThis.fetch = previous.fetch;
   }
 });

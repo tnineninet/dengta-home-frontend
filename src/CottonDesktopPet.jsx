@@ -77,6 +77,7 @@ export default function CottonDesktopPet({
   companionScope = '',
   enabled = false,
   suppressed = false,
+  hideLauncher = false,
   onSetEnabled,
   onOpenHouse,
   onShareToChat,
@@ -368,6 +369,7 @@ export default function CottonDesktopPet({
   if (suppressed) return null;
 
   if (!enabled) {
+    if (hideLauncher) return null;
     return (
       <div className="cotton-float-launcher-wrap">
         <button
