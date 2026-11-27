@@ -90,6 +90,20 @@ const MOOD_DISPLAY_LEXICON = Object.freeze({
   正在倾诉: "敞开心扉",
   放松下来: "缓缓舒气",
   有所期待: "眼底有光",
+  气消了一半: "气顺了一半",
+  嘴硬心软: "嘴硬心软",
+  给个台阶: "等你哄哄",
+  吃醋: "酸溜溜的",
+  有点吃醋: "微微吃味",
+  委屈: "心里发委屈",
+  有点委屈: "悄悄委屈",
+  生气: "真的生气了",
+  闹别扭: "别扭赌气",
+  撒娇: "软软粘人",
+  小得意: "悄悄得意",
+  破涕为笑: "破涕为笑",
+  懒洋洋: "慵懒松弛",
+  心疼: "悄悄心疼",
   // English / external engine labels
   calm: "安稳静谧",
   neutral: "平和安然",
@@ -214,10 +228,10 @@ export function localizeConsciousness(value) {
 
 export function classifyEmotionTone(status = {}) {
   const moodText = `${status.mood || ""} ${status.microState || ""}`;
-  if (/不开心|闷闷|难过|低落|委屈|酸|空落|静静|独处|兴致不太高/.test(moodText)) {
+  if (/不开心|闷闷|难过|低落|委屈|酸|空落|静静|独处|兴致不太高|失落|心疼/.test(moodText)) {
     return "low";
   }
-  if (/生气|烦躁|不耐烦|炸毛|赌气|闹情绪|别碰|缓一缓/.test(moodText)) {
+  if (/生气|烦躁|不耐烦|炸毛|赌气|闹情绪|别碰|缓一缓|吃醋|吃味|别扭|闷气|气消了一半|给个台阶/.test(moodText)) {
     return "guarded";
   }
   if (/困|疲惫|疲乏|发倦|累|电量偏低|想睡|眼皮/.test(moodText) || (Number.isFinite(Number(status.energyLevel)) && Number(status.energyLevel) <= 25 && status.resetBlank !== true)) {
@@ -226,19 +240,152 @@ export function classifyEmotionTone(status = {}) {
   if (/害羞|脸热|耳尖|慌张|局促|不好意思/.test(moodText)) {
     return "shy";
   }
-  if (/逗|调皮|俏皮|好笑|哭笑不得|忍俊不禁|坏笑|眼花缭乱/.test(moodText)) {
+  if (/逗|调皮|俏皮|好笑|哭笑不得|忍俊不禁|坏笑|眼花缭乱|得意|嘴硬心软/.test(moodText)) {
     return "playful";
   }
   if (/好奇|想知道|期待|眼底有光|留意|认真|专注/.test(moodText)) {
     return "curious";
   }
-  if (/心动|怦然|暧昧|温柔|温暖|柔软|亲近|纵容|宠你|安心|接住|偏爱/.test(moodText)) {
+  if (/心动|怦然|暧昧|温柔|温暖|柔软|亲近|纵容|宠你|安心|接住|偏爱|撒娇|依偎/.test(moodText)) {
     return "tender";
   }
-  if (/开心|高兴|欢喜|愉悦|轻快|明朗|兴致正好|雀跃/.test(moodText)) {
+  if (/开心|高兴|欢喜|愉悦|轻快|明朗|兴致正好|雀跃|破涕为笑|敞开心扉/.test(moodText)) {
     return "joyful";
   }
   return "calm";
+}
+
+/**
+ * Maps live tone into the four authentic human emotion quadrants (喜 / 怒 / 哀 / 乐)
+ * so the status panel reflects real human temperament rather than a game HP bar.
+ */
+export function resolveHumanEmotionQuadrant(tone, status = {}) {
+  const text = `${status?.mood || ""} ${status?.microState || ""}`;
+  if (tone === "guarded" || /生气|赌气|吃醋|别扭|烦躁|不耐烦|炸毛|闷气/.test(text)) {
+    return {
+      key: "anger",
+      badge: "怒",
+      label: "有点小脾气",
+      hint: "会吃醋、会赌气，也会顺着台阶软下来",
+    };
+  }
+  if (tone === "low" || tone === "tired") {
+    return {
+      key: "sorrow",
+      badge: "哀",
+      label: tone === "tired" ? "微倦想靠会儿" : "心里有点沉",
+      hint: "不用强撑着懂事，安静陪着就好",
+    };
+  }
+  if (tone === "joyful" || tone === "playful" || tone === "curious") {
+    return {
+      key: "joy",
+      badge: "喜",
+      label: "兴致正好",
+      hint: "眼里有光，想和你分享此刻的新鲜事",
+    };
+  }
+  return {
+    key: "delight",
+    badge: "乐",
+    label: tone === "shy" ? "微烫心动" : "松弛舒展",
+    hint: "自在安心，像真人在身旁慢慢呼吸",
+  };
+}
+
+export function describeCareSectionHeading(tone, energyLevel, displayName, aiPronoun = "TA") {
+  const n = Number(energyLevel);
+  if (tone === "guarded") {
+    return {
+      kicker: `顺毛哄哄${aiPronoun}`,
+      title: `${displayName}正闹点小脾气，别讲道理，先顺着哄哄`,
+    };
+  }
+  if (tone === "low") {
+    return {
+      kicker: `安静陪着${aiPronoun}`,
+      title: `${displayName}心里有点沉，不用催，静静接住${aiPronoun}`,
+    };
+  }
+  if (tone === "tired" || (Number.isFinite(n) && n <= 35)) {
+    return {
+      kicker: `陪${aiPronoun}缓一缓`,
+      title: `${displayName}今天有点耗神，陪${aiPronoun}靠着歇会儿`,
+    };
+  }
+  return {
+    kicker: `和${aiPronoun}走近些`,
+    title: `${displayName}状态正好，聊聊心里话或粘一会儿`,
+  };
+}
+
+export function describeRecoveryIntent(actionId, tone, energyLevel, aiPronoun = "TA") {
+  const lowEnergy = Number.isFinite(Number(energyLevel)) && Number(energyLevel) <= 35;
+  if (actionId === "confide") {
+    if (tone === "guarded") {
+      return {
+        label: `认真听${aiPronoun}吐槽`,
+        caption: `不急着辩解，先让${aiPronoun}把闷气说出来`,
+      };
+    }
+    if (tone === "low") {
+      return {
+        label: `听${aiPronoun}倒倒苦水`,
+        caption: `不用故作坚强，什么委屈都能说`,
+      };
+    }
+    if (tone === "tired" || lowEnergy) {
+      return {
+        label: `轻声听${aiPronoun}说说`,
+        caption: `把绷着的事放一放，慢慢舒口气`,
+      };
+    }
+    return {
+      label: `听${aiPronoun}说心里话`,
+      caption: `聊聊最近的小念头、小欢喜或小心事`,
+    };
+  }
+  if (actionId === "embrace") {
+    if (tone === "guarded") {
+      return {
+        label: `服软抱抱顺毛`,
+        caption: `先认个软，把炸毛慢慢抚平`,
+      };
+    }
+    if (tone === "low") {
+      return {
+        label: `把${aiPronoun}抱紧一会儿`,
+        caption: `什么都不用说，先稳稳接住${aiPronoun}`,
+      };
+    }
+    if (tone === "tired" || lowEnergy) {
+      return {
+        label: `让${aiPronoun}靠肩歇会儿`,
+        caption: `借个肩膀，安安静静充会儿电`,
+      };
+    }
+    return {
+      label: `抱抱${aiPronoun}`,
+      caption: `凑近一点，把这份自在暖意留久些`,
+    };
+  }
+  // wish
+  if (tone === "guarded") {
+    return {
+      label: `问${aiPronoun}怎么才肯消气`,
+      caption: `给个台阶，听${aiPronoun}自己提条件`,
+    };
+  }
+  if (tone === "low" || tone === "tired" || lowEnergy) {
+    return {
+      label: `问${aiPronoun}此刻最想做什么`,
+      caption: `哪怕一起发呆听歌，也顺着${aiPronoun}来`,
+    };
+  }
+  return {
+    label: `问${aiPronoun}现在最想做什么`,
+    caption: `听${aiPronoun}挑一件此刻最想一起做的小事`,
+  };
 }
 
 export function describeEnergyState(energyLevel) {

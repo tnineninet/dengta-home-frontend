@@ -16,7 +16,7 @@ stub('MutationObserver', class { constructor(cb) { this.cb = cb; } observe() { o
 stub('matchMedia', () => ({ matches: true }));
 stub('localStorage', { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value) });
 stub('IS_REACT_ACT_ENVIRONMENT', true);
-const vite = await createServer({ root: fileURLToPath(new URL('..', import.meta.url)), appType: 'custom', logLevel: 'silent', server: { middlewareMode: true }, plugins: [{
+const vite = await createServer({ root: fileURLToPath(new URL('..', import.meta.url)), appType: 'custom', logLevel: 'silent', server: { middlewareMode: true, watch: null }, plugins: [{
   name: 'cotton-dock-component-test', enforce: 'pre',
   transform(code, id) {
     const file = id.replaceAll('\\', '/');

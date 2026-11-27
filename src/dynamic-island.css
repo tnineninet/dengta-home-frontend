@@ -44,6 +44,103 @@
   min-width: 0;
 }
 
+/* Top horizontal row: Rainbow Capsule + Compact SVG Weather Pill right beside it */
+.di-top-capsule-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  max-width: calc(100vw - 16px);
+  margin: 0 auto;
+  pointer-events: none;
+}
+
+.di-top-capsule-row > .sun-glass-liquid-action-stage {
+  margin: 4px 0 0 !important;
+  flex: 0 1 auto;
+  pointer-events: auto;
+}
+
+.di-top-capsule-row.is-playing > .sun-glass-liquid-action-stage[data-dynamic-island="playing"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 316px;
+}
+
+.di-weather-capsule-btn {
+  pointer-events: auto;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 36px;
+  margin-top: 4px;
+  padding: 0 11px;
+  border-radius: 999px;
+  border: 1px solid rgb(255 255 255 / 0.64);
+  background: rgb(var(--theme-card-rgb, 255 253 248) / 0.78);
+  color: var(--theme-ink);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.7),
+    0 6px 18px rgb(16 24 44 / 0.14);
+  backdrop-filter: blur(14px) saturate(1.4);
+  -webkit-backdrop-filter: blur(14px) saturate(1.4);
+  cursor: pointer;
+  transition: transform 180ms ease, background 180ms ease, box-shadow 180ms ease;
+}
+
+.di-weather-capsule-btn:hover {
+  transform: translateY(-1px) scale(1.03);
+}
+
+.di-weather-capsule-btn:active {
+  transform: scale(0.95);
+}
+
+.di-weather-capsule-btn .di-weather-svg {
+  width: 15px;
+  height: 15px;
+  flex-shrink: 0;
+  stroke-width: 2.2;
+}
+
+.di-weather-capsule-btn.is-clear .di-weather-svg { color: #f59e0b; }
+.di-weather-capsule-btn.is-cloudy .di-weather-svg { color: #38bdf8; }
+.di-weather-capsule-btn.is-rain .di-weather-svg { color: #3b82f6; }
+.di-weather-capsule-btn.is-storm .di-weather-svg { color: #8b5cf6; }
+.di-weather-capsule-btn.is-snow .di-weather-svg { color: #06b6d4; }
+
+:root[data-dengta-appearance="night"] .di-weather-capsule-btn {
+  border-color: rgb(255 255 255 / 0.24);
+  background: rgb(22 27 42 / 0.8);
+  color: #f4f7ff;
+}
+
+@media (max-width: 420px) {
+  .di-top-capsule-row {
+    gap: 6px;
+  }
+
+  .di-top-capsule-row.is-playing .di-weather-capsule-btn {
+    height: 32px;
+    padding: 0 8px;
+    font-size: 11px;
+    gap: 4px;
+  }
+
+  .di-top-capsule-row.is-playing .di-weather-capsule-btn .di-weather-svg {
+    width: 13px;
+    height: 13px;
+  }
+}
+
 /* Dynamic Island Live Activity Satellite Pills around the Rainbow Capsule */
 .di-live-satellites {
   display: flex;
@@ -636,11 +733,128 @@
 }
 
 /* The floating status sheet uses a deep dark obsidian surface in both day and night themes;
-   ensure every Dynamic Island control card inside it stays crisp and legible. */
+   ensure every Dynamic Island control card stays opaque, crisp, and free of WebGL orb bleed
+   or button text clipping on Android WebView. */
+.di-panel-tabs {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 4px;
+  margin-bottom: 12px;
+  border-radius: 15px;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  background: #12151f;
+}
+
+.di-panel-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0 !important;
+  min-height: 36px !important;
+  height: 36px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: rgb(226 232 240 / 0.72);
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.di-panel-tabs button.is-active {
+  background: linear-gradient(135deg, rgb(255 255 255 / 0.16), rgb(255 255 255 / 0.1));
+  color: #ffffff;
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.22);
+}
+
+.di-tab-badge {
+  display: inline-grid;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  place-items: center;
+  border-radius: 999px;
+  background: #dc2626;
+  color: #ffffff;
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.di-tab-pane.is-hidden {
+  display: none !important;
+}
+
+.di-companion-hero-card {
+  position: relative;
+  z-index: 2;
+  isolation: isolate;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  background: #131620;
+}
+
+.di-companion-hero-card .sun-glass-status-note {
+  margin: 0 0 12px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #f4f6fb;
+}
+
+.di-companion-hero-card .sun-glass-wish-row {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 13px;
+  background: rgb(255 255 255 / 0.06);
+  font-size: 13px;
+}
+
+.companion-quadrant-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px 2px 3px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  background: rgb(255 255 255 / 0.09);
+  color: #f4f6fb;
+}
+
+.companion-quadrant-chip em {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 50%;
+  font-style: normal;
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.companion-quadrant-chip.is-joy em { background: #e5963e; }
+.companion-quadrant-chip.is-anger em { background: #d9644a; }
+.companion-quadrant-chip.is-sorrow em { background: #64789c; }
+.companion-quadrant-chip.is-delight em { background: #4ba384; }
+
 .sun-glass-floating-status-panel .di-control-deck {
-  border-color: rgb(255 255 255 / 0.16);
-  background: linear-gradient(145deg, rgb(255 255 255 / 0.08), rgb(255 255 255 / 0.03));
+  position: relative;
+  z-index: 2;
+  isolation: isolate;
+  border-color: rgb(255 255 255 / 0.12);
+  background: #12151f;
   color: #f3f4f6;
+  box-shadow: none;
 }
 
 .sun-glass-floating-status-panel .di-deck-badge {
@@ -655,8 +869,18 @@
 }
 
 .sun-glass-floating-status-panel .di-weather-card {
-  border-color: rgb(125 211 252 / 0.3);
-  background: linear-gradient(125deg, rgb(56 189 248 / 0.16), rgb(99 102 241 / 0.12));
+  position: relative;
+  z-index: 2;
+  isolation: isolate;
+  border-color: rgb(125 211 252 / 0.24);
+  background: #161d2c;
+}
+
+.sun-glass-floating-status-panel .di-weather-city-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sun-glass-floating-status-panel .di-weather-copy strong,
@@ -668,6 +892,65 @@
 
 .sun-glass-floating-status-panel .di-weather-clock {
   color: #7dd3fc;
+  flex-shrink: 0;
+}
+
+.sun-glass-floating-status-panel .di-weather-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-top: 2px;
+}
+
+.sun-glass-floating-status-panel .di-weather-actions button {
+  position: relative;
+  isolation: isolate;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: 100%;
+  min-height: 36px !important;
+  height: auto !important;
+  padding: 6px 12px !important;
+  border-radius: 11px !important;
+  white-space: nowrap !important;
+  overflow: hidden;
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  box-sizing: border-box;
+}
+
+.sun-glass-floating-status-panel .di-weather-actions button.is-icon-only {
+  width: 36px !important;
+  min-width: 36px !important;
+  padding: 0 !important;
+}
+
+.sun-glass-floating-status-panel .di-weather-actions button svg {
+  flex-shrink: 0;
+}
+
+.sun-glass-floating-status-panel .di-music-card {
+  position: relative;
+  z-index: 2;
+  isolation: isolate;
+  border-color: rgb(232 67 98 / 0.24);
+  background: #1c1824;
+}
+
+.sun-glass-floating-status-panel .di-music-actions button {
+  width: auto !important;
+  min-width: 0 !important;
+  min-height: 36px !important;
+  padding: 6px 12px !important;
+  border-radius: 11px !important;
+  white-space: nowrap !important;
 }
 
 .sun-glass-floating-status-panel .di-quick-tile,
@@ -675,14 +958,64 @@
 .sun-glass-floating-status-panel .di-weather-actions button:not(.is-primary),
 .sun-glass-floating-status-panel .di-city-chips button,
 .sun-glass-floating-status-panel .di-city-results button {
-  border-color: rgb(255 255 255 / 0.18);
-  background: rgb(255 255 255 / 0.08);
+  border-color: rgb(255 255 255 / 0.15);
+  background: #1d2332;
   color: #f1f5f9;
 }
 
+.sun-glass-floating-status-panel .di-city-chips button {
+  width: auto !important;
+  min-width: 0 !important;
+  min-height: 34px !important;
+  padding: 5px 11px !important;
+  border-radius: 10px !important;
+}
+
 .sun-glass-floating-status-panel .di-quick-tile:hover {
-  background: rgb(255 255 255 / 0.14);
-  border-color: rgb(255 255 255 / 0.3);
+  background: #252c3f;
+  border-color: rgb(255 255 255 / 0.28);
+}
+
+.sun-glass-floating-status-panel .companion-live-state {
+  position: relative;
+  z-index: 2;
+  isolation: isolate;
+  margin: 14px 0 0;
+  background: #131620;
+}
+
+.sun-glass-floating-status-panel .sun-glass-desire-actions button,
+.sun-glass-floating-status-panel .sun-glass-interaction-grid button,
+.sun-glass-floating-status-panel .sun-glass-recovery-grid button,
+.sun-glass-floating-status-panel .sun-glass-vitals-inline {
+  background: #161925;
+  border: 1px solid rgb(255 255 255 / 0.09);
+}
+
+.sun-glass-floating-status-panel .sun-glass-recovery-grid small {
+  color: rgb(226 232 240 / 0.68);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+@media (max-width: 820px) {
+  .main-panel.view-chat:has(.di-live-satellites) .message-list {
+    padding-top: calc(var(--dengta-mobile-capsule-top, 34px) + 106px) !important;
+    clip-path: inset(calc(var(--dengta-mobile-capsule-top, 34px) + 96px) 0 0 0) !important;
+  }
+
+  .main-panel.view-chat .di-live-satellites {
+    margin-top: 4px;
+    gap: 6px;
+  }
+
+  .main-panel.view-chat .di-live-satellites .di-satellite-pill {
+    min-height: 24px !important;
+    min-width: 0 !important;
+    height: 24px;
+    padding: 0 9px;
+    font-size: 10.5px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

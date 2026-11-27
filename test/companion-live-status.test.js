@@ -39,15 +39,16 @@ test("generated state survives storage and revision merge without fabricating mi
 });
 
 test("capsule retains generated feelings through touch, renders pending/failure and then actual new state", async () => {
-  const previous = { window: globalThis.window, document: globalThis.document, act: globalThis.IS_REACT_ACT_ENVIRONMENT };
+  const previous = { window: globalThis.window, document: globalThis.document, act: globalThis.IS_REACT_ACT_ENVIRONMENT, fetch: globalThis.fetch };
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ configured: false }) });
   globalThis.window = { matchMedia: () => ({ matches: true, addEventListener() {}, removeEventListener() {} }), requestAnimationFrame: () => 1, cancelAnimationFrame() {}, setTimeout: (fn, ms) => setTimeout(fn, ms), clearTimeout, setInterval: () => 1, clearInterval() {} };
   globalThis.document = { addEventListener() {}, removeEventListener() {} };
   const vite = await createServer({
     root: fileURLToPath(new URL("..", import.meta.url)),
     appType: "custom",
     logLevel: "silent",
-    server: { middlewareMode: true },
+    server: { middlewareMode: true, watch: null },
     plugins: [{
       name: "live-status-portal-stub",
       enforce: "pre",
@@ -85,5 +86,6 @@ test("capsule retains generated feelings through touch, renders pending/failure 
     await vite.close();
     globalThis.window = previous.window; globalThis.document = previous.document;
     globalThis.IS_REACT_ACT_ENVIRONMENT = previous.act;
+    globalThis.fetch = previous.fetch;
   }
 });

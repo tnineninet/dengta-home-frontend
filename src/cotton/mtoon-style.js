@@ -20,17 +20,18 @@ export function createMToonGradientTexture() {
   return texture;
 }
 
-export function createMToonMaterials(gradientMap) {
+export function createMToonMaterials(gradientMap, { furMap = null } = {}) {
   const fur = new THREE.MeshToonMaterial({
-    color: 0xfbf7f2,
+    color: 0xfffaf3,
     vertexColors: true,
+    ...(furMap ? { map: furMap } : {}),
     gradientMap,
   });
   const eye = new THREE.MeshPhysicalMaterial({
     vertexColors: true,
-    roughness: 0.1,
+    roughness: 0.08,
     clearcoat: 1,
-    clearcoatRoughness: 0.06,
+    clearcoatRoughness: 0.05,
   });
   const nose = new THREE.MeshToonMaterial({
     vertexColors: true,
@@ -145,26 +146,36 @@ export class DanceSparkles {
     scene.add(this.points);
   }
 
-  update(dt, active = false) {
+  update(dt, active = false, { theme = 'sparkle', originX = 0, originZ = 0 } = {}) {
     if (!Number.isFinite(dt) || dt < 0) return;
     const target = active ? 1 : 0;
     this.intensity += (target - this.intensity) * (1 - Math.exp(-6 * Math.min(dt, 0.1)));
     this.points.visible = this.intensity > 0.02;
     if (!this.points.visible) return;
+    const palette = {
+      sparkle: 0xffdf88,
+      hearts: 0xff8ea8,
+      water: 0x76e0ff,
+      crumbs: 0xf9b86c,
+      fluff: 0xfff0c2,
+    };
+    this.points.material.color.setHex(palette[theme] || palette.sparkle);
     this.time += Math.min(dt, 0.1);
     const attr = this.points.geometry.attributes.position;
     for (let i = 0; i < this.count; i++) {
-      const phase = this.phases[i] + this.time * 2.2;
+      const phase = this.phases[i] + this.time * (theme === 'water' ? 3.8 : 2.5);
       const bx = this.basePositions[i * 3];
       const by = this.basePositions[i * 3 + 1];
       const bz = this.basePositions[i * 3 + 2];
-      const cos = Math.cos(this.time * 0.7);
-      const sin = Math.sin(this.time * 0.7);
-      this.positions[i * 3] = bx * cos - bz * sin;
-      this.positions[i * 3 + 1] = by + Math.sin(phase) * 0.045;
-      this.positions[i * 3 + 2] = bx * sin + bz * cos;
+      const cos = Math.cos(this.time * 0.85);
+      const sin = Math.sin(this.time * 0.85);
+      const rise = theme === 'hearts' || theme === 'fluff' ? ((this.time * 0.18 + i * 0.07) % 0.28) : 0;
+      const splash = theme === 'water' ? Math.abs(Math.sin(phase)) * 0.09 : Math.sin(phase) * 0.045;
+      this.positions[i * 3] = originX + (bx * cos - bz * sin) * (theme === 'water' ? 0.55 : 1);
+      this.positions[i * 3 + 1] = (theme === 'water' ? 0.06 : by) + splash + rise;
+      this.positions[i * 3 + 2] = originZ + (bx * sin + bz * cos) * (theme === 'water' ? 0.55 : 1);
     }
     attr.needsUpdate = true;
-    this.points.material.opacity = this.intensity * (0.65 + 0.3 * Math.sin(this.time * 5));
+    this.points.material.opacity = this.intensity * (0.68 + 0.28 * Math.sin(this.time * 5.5));
   }
 }

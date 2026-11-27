@@ -33,13 +33,27 @@ export class InteractionController{
  diagnostics(){return{active:{...this.active},age:this.age,envelope:this.envelope,stats:{...this.stats}};}
 }
 
-// Small toy in authoring metres: stable substeps, gravity and finite rebounds.
+// Interactive bouncy toy ball with real 3D gravity, wall/floor bounce,
+// manual flick-throw momentum, and mobile gyroscope tilt acceleration!
 export class BallPhysics{
- constructor({gravity=2.8,bounds={x:[-.34,.34],z:[.23,.48]}}={}){this.radius=.027;this.gravity=gravity;this.bounds=bounds;this.reset();}
- reset(){this.position={x:.25,y:.027,z:.27};this.velocity={x:0,y:0,z:0};this.held=false;}
- impulse(x= -.55,y=.55,z=0){this.velocity={x,y,z};}
- update(dt){if(this.held||!Number.isFinite(dt)||dt<0)return;let left=Math.min(dt,.1);while(left>0){const d=Math.min(left,1/120);left-=d;this.velocity.y-=this.gravity*d;for(const k of ['x','y','z'])this.position[k]+=this.velocity[k]*d;
-   if(this.position.y<this.radius){this.position.y=this.radius;this.velocity.y=Math.abs(this.velocity.y)>.09?-this.velocity.y*.55:0;this.velocity.x*=Math.exp(-2.3*d);this.velocity.z*=Math.exp(-2.3*d);}
-   for(const k of ['x','z']){if(!this.bounds?.[k])continue;const [low,high]=this.bounds[k];if(this.position[k]<low||this.position[k]>high){this.position[k]=Math.min(high,Math.max(low,this.position[k]));this.velocity[k]*=-.62;}}
+ constructor({gravity=2.6,bounds={x:[-.52,.52],z:[-.28,.56]}}={}){this.radius=.042;this.gravity=gravity;this.bounds=bounds;this.tilt={x:0,z:0};this.reset();}
+ reset(){this.position={x:.24,y:this.radius,z:.28};this.velocity={x:0,y:0,z:0};this.held=false;}
+ impulse(x=-.55,y=.68,z=.12){this.velocity={x:Math.max(-3.6,Math.min(3.6,x)),y:Math.max(-2.5,Math.min(3.2,y)),z:Math.max(-3.6,Math.min(3.6,z))};}
+ setTiltGravity(gx=0,gz=0){this.tilt={x:Math.max(-3,Math.min(3,Number(gx)||0)),z:Math.max(-3,Math.min(3,Number(gz)||0))};}
+ update(dt){if(this.held||!Number.isFinite(dt)||dt<0)return;let left=Math.min(dt,.1);while(left>0){const d=Math.min(left,1/120);left-=d;
+   this.velocity.y-=this.gravity*d;
+   this.velocity.x+=this.tilt.x*d;
+   this.velocity.z+=this.tilt.z*d;
+   for(const k of ['x','y','z'])this.position[k]+=this.velocity[k]*d;
+   if(this.position.y<this.radius){
+     this.position.y=this.radius;
+     this.velocity.y=Math.abs(this.velocity.y)>.11?-this.velocity.y*.72:0;
+     this.velocity.x*=Math.exp(-1.15*d);
+     this.velocity.z*=Math.exp(-1.15*d);
+   } else {
+     this.velocity.x*=Math.exp(-.22*d);
+     this.velocity.z*=Math.exp(-.22*d);
+   }
+   for(const k of ['x','z']){if(!this.bounds?.[k])continue;const [low,high]=this.bounds[k];if(this.position[k]<low||this.position[k]>high){this.position[k]=Math.min(high,Math.max(low,this.position[k]));this.velocity[k]*=-.76;}}
   }}
 }

@@ -143,7 +143,9 @@ const LivePerceptionSettingsCard = lazy(() =>
 );
 import {
   formatLivePerceptionTurnHint,
+  getSpeechRecognitionCtor,
   mergeLivePerceptionContext,
+  requestNativeMediaPermissions,
 } from "./live-perception.js";
 import {
   computeNextChronosHeartbeatDelayMs,
@@ -256,11 +258,11 @@ import {
 } from "./companion-interaction";
 import { readTextImpactPreference } from "./text-impact-preferences.js";
 import {
+  DEFAULT_HUMAN_ENERGY,
+  ENERGY_DECAY_INTERVAL_MS,
   companionStatusForRequest,
   createDefaultCompanionInteractionStats,
   createResetCompanionStatus,
-  decayCompanionEnergy,
-  ENERGY_DECAY_INTERVAL_MS,
   mergeCompanionStatus,
   normalizeCompanionInteractionStats,
   normalizeCompanionStatus,
@@ -269,6 +271,7 @@ import {
   recordCompanionInteraction,
   saveCompanionInteractionStats,
   saveCompanionStatus,
+  settleAmbientCompanionEnergy,
 } from "./companion-status";
 import {
   PROMPT_FIELD_LIMITS,
@@ -1219,7 +1222,7 @@ function hydrateSessionChatHistory(messages, sessionId, { persist = true } = {})
 const HISTORY_FIRST_PAGE_SIZE = 40;
 
 function App({ accountControl = null, accountScope = "", userName = "" }) {
-  const VOICE_LONG_PRESS_MS = 300;
+  const VOICE_LONG_PRESS_MS = 450;
   const visualPreview = arguments[0]?.visualPreview === true;
   const companionScope = String(arguments[0]?.companionScope || "").trim();
   const accountStorageScope = String(accountScope || "").trim();
@@ -1565,6 +1568,9 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
   const [livePerceptionActiveCount, setLivePerceptionActiveCount] = useState(0);
   const [isComposerInputFocused, setIsComposerInputFocused] = useState(false);
   const [cottonDockEnabled, setCottonDockEnabled] = useState(false);
+  const [localSpeechListening, setLocalSpeechListening] = useState(false);
+  const localSpeechRecRef = useRef(null);
+  const voicePointerDownAtRef = useRef(0);
   const pendingWakeWordTriggeredRef = useRef(false);
   const livePerceptionControllerRef = useRef(null);
   const livePerceptionSnapshotRef = useRef(null);
@@ -2070,13 +2076,12 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     const timer = window.setInterval(() => {
       const now = Date.now();
       const elapsed = now - energyDecayAnchorRef.current;
-      const points = Math.floor(elapsed / ENERGY_DECAY_INTERVAL_MS);
-      if (points < 1) return;
-      energyDecayAnchorRef.current += points * ENERGY_DECAY_INTERVAL_MS;
+      if (elapsed < ENERGY_DECAY_INTERVAL_MS) return;
+      energyDecayAnchorRef.current = now;
       setCompanionStatus((current) =>
-        decayCompanionEnergy(current, now, { points }),
+        settleAmbientCompanionEnergy(current, now),
       );
-    }, 15_000);
+    }, 60_000);
     return () => window.clearInterval(timer);
   }, [activeSessionId]);
   const companionInteractionHandlerRef = useRef(null);
@@ -3119,10 +3124,22 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       );
       const nextSessions = sessionsData.sessions || [];
       const serverRuntimeState = runtimeData?.state || {};
-      const nextCompanionStatus = normalizeCompanionStatus(
+      const rawHydratedStatus = normalizeCompanionStatus(
         serverRuntimeState.status ||
           readCompanionStatus(privateMediaScope),
       );
+      const nextCompanionStatus =
+        !rawHydratedStatus.resetBlank &&
+        Number(rawHydratedStatus.energyLevel) <= 5 &&
+        rawHydratedStatus.statusSource !== "model" &&
+        !/崩溃|虚脱|昏睡|精疲力竭/.test(
+          `${rawHydratedStatus.mood || ""} ${rawHydratedStatus.microState || ""}`,
+        )
+          ? normalizeCompanionStatus({
+              ...rawHydratedStatus,
+              energyLevel: DEFAULT_HUMAN_ENERGY,
+            })
+          : rawHydratedStatus;
       const nextCompanionInteractionStats =
         normalizeCompanionInteractionStats(
           serverRuntimeState.interaction_stats ||
@@ -4807,6 +4824,92 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     });
   }
 
+  function stopLocalSpeechFallback() {
+    const rec = localSpeechRecRef.current;
+    localSpeechRecRef.current = null;
+    if (rec) {
+      try {
+        rec.onresult = null;
+        rec.onerror = null;
+        rec.onend = null;
+        rec.stop();
+      } catch {
+        // Ignore already stopped recognition.
+      }
+    }
+    setLocalSpeechListening(false);
+  }
+
+  async function toggleLocalSpeechFallback() {
+    if (localSpeechRecRef.current) {
+      stopLocalSpeechFallback();
+      setNotice("已结束语音听写。");
+      return;
+    }
+    const SpeechRec = getSpeechRecognitionCtor();
+    if (!SpeechRec) {
+      setVoiceFailure(
+        voiceService.message ||
+          "当前设备暂未开启云端语音或本地语音听写，请检查麦克风权限后重试。",
+      );
+      return;
+    }
+    if (Capacitor.isNativePlatform()) {
+      const granted = await requestNativeMediaPermissions({ audio: true }).catch(() => null);
+      if (granted && granted.audio === false) {
+        setVoiceFailure("麦克风权限未允许，请在手机系统应用权限中开启麦克风。");
+        return;
+      }
+    }
+    try {
+      const rec = new SpeechRec();
+      rec.lang = "zh-CN";
+      rec.continuous = false;
+      rec.interimResults = true;
+      let latestTranscript = "";
+      rec.onresult = (resEvent) => {
+        let finalChunk = "";
+        let interimChunk = "";
+        for (let i = resEvent.resultIndex; i < resEvent.results.length; i += 1) {
+          const item = resEvent.results[i];
+          const text = String(item?.[0]?.transcript || "").trim();
+          if (!text) continue;
+          if (item.isFinal) finalChunk += text;
+          else interimChunk += text;
+        }
+        latestTranscript = (finalChunk || interimChunk).trim();
+        if (finalChunk) {
+          setMessage((prev) => (prev ? `${prev.trimEnd()} ${finalChunk}` : finalChunk));
+          setNotice("语音已转成文字，点发送即可。");
+        } else if (interimChunk) {
+          setNotice(`🎙 正在听写：${interimChunk}`);
+        }
+      };
+      rec.onerror = (errEvent) => {
+        stopLocalSpeechFallback();
+        if (errEvent?.error === "not-allowed" || errEvent?.error === "service-not-allowed") {
+          setVoiceFailure("麦克风权限被拒绝，请在系统设置中允许灯塔使用麦克风。");
+        } else if (errEvent?.error !== "no-speech" && errEvent?.error !== "aborted") {
+          setNotice("语音听写暂不可用，请重试或直接打字。");
+        }
+      };
+      rec.onend = () => {
+        if (localSpeechRecRef.current === rec) {
+          localSpeechRecRef.current = null;
+          setLocalSpeechListening(false);
+          if (!latestTranscript) setNotice("未检测到语音内容，请再试一次。");
+        }
+      };
+      localSpeechRecRef.current = rec;
+      setLocalSpeechListening(true);
+      setNotice("🎙 正在语音听写… 说完自动填入输入框（再点一次结束）");
+      rec.start();
+    } catch {
+      stopLocalSpeechFallback();
+      setVoiceFailure("无法启动麦克风语音听写，请检查系统麦克风权限。");
+    }
+  }
+
   async function beginVoiceCapture(event) {
     lastVoiceAttemptRef.current = null;
     setVoiceRetryAvailable(false);
@@ -4814,12 +4917,22 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     event.preventDefault();
 
-    // 如果已经在录音中（长按门控后的正常录音），松开即发送 → 这不发生；
-    // 保留安全分支：如果录音中且已松手，finishVoiceCapture 已在 endVoiceCapture 处理。
-    // 此处仅负责门控触发：长按达到阈值后才开始录音。
+    // 若已在 Tap-to-Talk 录音中，再次点击即刻结束并发送语音！
+    if (voiceStateRef.current === VOICE_STATES.recording) {
+      voicePointerHeldRef.current = false;
+      voicePointerIdRef.current = null;
+      setVoiceTapToSendMode(false);
+      void finishVoiceCapture({ send: true });
+      return;
+    }
 
-    if (!voiceServiceAvailable) {
-      setVoiceFailure(voiceService.message);
+    if (voiceStateRef.current === VOICE_STATES.requesting) {
+      return;
+    }
+
+    // 若云端语音暂不可用或环境不支持 MediaRecorder，自动优雅降级为本机语音听写，绝不「点了没反应」
+    if (!voiceServiceAvailable || !voiceRecordingSupported()) {
+      void toggleLocalSpeechFallback();
       return;
     }
 
@@ -4840,19 +4953,13 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       return;
     }
 
-    if (!voiceRecordingSupported()) {
-      setVoiceFailure(
-        "当前浏览器或 App 不支持录音。请安装最新版 DengTa home Android App。",
-      );
-      return;
-    }
-
     // 清除之前的计时器
     if (voiceLongPressTimerRef.current) {
       window.clearTimeout(voiceLongPressTimerRef.current);
       voiceLongPressTimerRef.current = null;
     }
-    voiceLongPressArmedRef.current = false;
+    voicePointerDownAtRef.current = Date.now();
+    voiceLongPressArmedRef.current = true;
     voicePointerHeldRef.current = true;
     voicePointerIdRef.current = event.pointerId;
 
@@ -4862,87 +4969,81 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
       // 某些 WebView 不支持显式指针捕获，pointerup 仍会正常工作。
     }
 
-    // 保留 captureRun 递增，用于权限/超时后校验是否仍是本次操作
     const captureRun = voiceCaptureRunRef.current + 1;
     voiceCaptureRunRef.current = captureRun;
 
-    // 长按门控计时器：达到阈值后才真正开始录音
-    voiceLongPressTimerRef.current = window.setTimeout(async () => {
-      voiceLongPressTimerRef.current = null;
-      voiceLongPressArmedRef.current = true;
+    setVoiceError("");
+    setNotice("🎙 正在启动麦克风…");
+    setLastVoiceAnalysis(null);
+    setVoiceElapsedMs(0);
 
-      if (!voicePointerHeldRef.current || voiceCaptureRunRef.current !== captureRun) return;
+    if (voiceStateRef.current === VOICE_STATES.speaking) {
+      await stopVoicePlayback();
+    }
+    if (voiceCaptureRunRef.current !== captureRun) return;
 
-      setVoiceError("");
-      setNotice("");
-      setLastVoiceAnalysis(null);
-      setVoiceElapsedMs(0);
-
-      if (voiceStateRef.current === VOICE_STATES.speaking) {
-        await stopVoicePlayback();
+    setVoiceMode(VOICE_STATES.requesting);
+    try {
+      if (Capacitor.isNativePlatform()) {
+        const perm = await requestNativeMediaPermissions({ audio: true }).catch(() => null);
+        if (perm && perm.audio === false) {
+          throw new Error("麦克风权限未允许，请在手机系统设置中为灯塔开启麦克风权限。");
+        }
       }
-      if (!voicePointerHeldRef.current) return;
-
-      setVoiceMode(VOICE_STATES.requesting);
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-          video: false,
-        });
-        if (voiceCaptureRunRef.current !== captureRun) {
-          releaseVoiceStream(stream);
-          return;
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+        video: false,
+      });
+      if (voiceCaptureRunRef.current !== captureRun) {
+        releaseVoiceStream(stream);
+        return;
+      }
+      voicePermissionReadyRef.current = true;
+      voiceStreamRef.current = stream;
+      voiceChunksRef.current = [];
+      const mimeType = selectRecorderMimeType(MediaRecorder);
+      const recorder = new MediaRecorder(
+        stream,
+        mimeType ? { mimeType } : undefined,
+      );
+      voiceRecorderRef.current = recorder;
+      recorder.addEventListener("dataavailable", (chunkEvent) => {
+        if (chunkEvent.data?.size > 0) {
+          voiceChunksRef.current.push(chunkEvent.data);
         }
-        if (voiceShouldAbortAfterPermission(voicePointerHeldRef.current)) {
-          releaseVoiceStream(stream);
-          voiceCaptureRunRef.current += 1;
-          setVoiceMode(VOICE_STATES.idle);
-          setVoiceTapToSendMode(false);
-          setNotice("麦克风已开启，请重新按住说话。");
-          return;
-        }
-        voicePermissionReadyRef.current = true;
-        // 长按门控后进入录音，不启用 tapToSend
-        voiceStreamRef.current = stream;
-        voiceChunksRef.current = [];
-        const mimeType = selectRecorderMimeType(MediaRecorder);
-        const recorder = new MediaRecorder(
-          stream,
-          mimeType ? { mimeType } : undefined,
-        );
-        voiceRecorderRef.current = recorder;
-        recorder.addEventListener("dataavailable", (chunkEvent) => {
-          if (chunkEvent.data?.size > 0) {
-            voiceChunksRef.current.push(chunkEvent.data);
-          }
-        });
-        recorder.addEventListener("error", (recorderEvent) => {
-          cancelVoiceCapture({ updateState: false });
-          setVoiceFailure(recorderEvent.error || recorderEvent);
-        });
-        recorder.start(250);
-
-        voiceStartedAtRef.current = Date.now();
-        setVoiceTapToSendMode(false);
-        setVoiceMode(VOICE_STATES.recording);
-        voiceElapsedTimerRef.current = window.setInterval(() => {
-          setVoiceElapsedMs(Date.now() - voiceStartedAtRef.current);
-        }, 200);
-        voiceMaxTimerRef.current = window.setTimeout(() => {
-          voicePointerHeldRef.current = false;
-          void finishVoiceCapture({ send: true });
-        }, VOICE_MAX_DURATION_MS);
-        navigator.vibrate?.(18);
-      } catch (error) {
-        if (voiceCaptureRunRef.current !== captureRun) return;
+      });
+      recorder.addEventListener("error", (recorderEvent) => {
         cancelVoiceCapture({ updateState: false });
-        setVoiceFailure(error);
-      }
-    }, VOICE_LONG_PRESS_MS);
+        setVoiceFailure(recorderEvent.error || recorderEvent);
+      });
+      recorder.start(250);
+
+      voiceStartedAtRef.current = Date.now();
+      const alreadyReleased = voiceShouldAbortAfterPermission(voicePointerHeldRef.current);
+      setVoiceTapToSendMode(alreadyReleased);
+      setVoiceMode(VOICE_STATES.recording);
+      setNotice(
+        alreadyReleased
+          ? "🎙 正在录音… 说完再点一次麦克风发送"
+          : "🎙 正在听你说话… 松手发送，或轻点后说完再点发送",
+      );
+      voiceElapsedTimerRef.current = window.setInterval(() => {
+        setVoiceElapsedMs(Date.now() - voiceStartedAtRef.current);
+      }, 200);
+      voiceMaxTimerRef.current = window.setTimeout(() => {
+        voicePointerHeldRef.current = false;
+        void finishVoiceCapture({ send: true });
+      }, VOICE_MAX_DURATION_MS);
+      navigator.vibrate?.(18);
+    } catch (error) {
+      if (voiceCaptureRunRef.current !== captureRun) return;
+      cancelVoiceCapture({ updateState: false });
+      setVoiceFailure(error);
+    }
   }
 
   function endVoiceCapture(event) {
@@ -4960,25 +5061,22 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
     } catch {
       // 指针已经被 WebView 释放时无需再处理。
     }
-    // 未达到长按阈值就松手：取消门控计时器，不录音、不提示。
-    if (!voiceLongPressArmedRef.current) {
-      if (voiceLongPressTimerRef.current) {
-        window.clearTimeout(voiceLongPressTimerRef.current);
-        voiceLongPressTimerRef.current = null;
-      }
-      voiceCaptureRunRef.current += 1;
-      return;
-    }
+    const heldMs = Date.now() - (voicePointerDownAtRef.current || 0);
     if (voiceStateRef.current === VOICE_STATES.recording) {
-      setVoiceTapToSendMode(false);
-      void finishVoiceCapture({ send: true });
+      if (heldMs >= VOICE_LONG_PRESS_MS) {
+        // 长按说话，松手即发送
+        setVoiceTapToSendMode(false);
+        void finishVoiceCapture({ send: true });
+      } else {
+        // 单击模式：保持录音，说完再点一次发送（绝不再“点了没反应”！）
+        setVoiceTapToSendMode(true);
+        setNotice("🎙 正在录音… 说完再点一次麦克风发送");
+      }
       return;
     }
     if (voiceStateRef.current === VOICE_STATES.requesting) {
-      voiceCaptureRunRef.current += 1;
-      setVoiceMode(VOICE_STATES.idle);
-      setVoiceTapToSendMode(false);
-      setNotice("麦克风权限确认后请重新按住说话。");
+      // 权限开启中用户已经松手：转为单击录音模式，拿到流后直接开始录
+      setVoiceTapToSendMode(true);
     }
   }
 
@@ -8948,13 +9046,20 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
               </button>
               <span className="composer-slot-actions">
                 <button
-                  className="composer-voice-button"
+                  className={`composer-voice-button${voiceState === VOICE_STATES.recording || localSpeechListening ? " is-recording" : ""}`}
                   type="button"
-                  aria-label={voiceServiceAvailable ? "长按说话，松开发送" : "语音服务暂不可用"}
-                  title={voiceServiceAvailable ? "按住说话" : "语音服务暂不可用"}
-                  aria-pressed={voiceState === VOICE_STATES.recording}
+                  aria-label={
+                    voiceState === VOICE_STATES.recording || localSpeechListening
+                      ? "正在说话，点击发送"
+                      : "单击或长按说话"
+                  }
+                  title={
+                    voiceState === VOICE_STATES.recording || localSpeechListening
+                      ? "点击发送语音"
+                      : "单击开始录音（再点发送），或长按说话松手发送"
+                  }
+                  aria-pressed={voiceState === VOICE_STATES.recording || localSpeechListening}
                   disabled={
-                    !voiceServiceAvailable ||
                     isSending ||
                     isCompanionResponding ||
                     [VOICE_STATES.uploading, VOICE_STATES.thinking].includes(voiceState)

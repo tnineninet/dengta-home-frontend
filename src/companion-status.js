@@ -1,6 +1,9 @@
 const STORAGE_KEY = "dengta_companion_status_v1";
 const INTERACTION_STORAGE_KEY = "dengta_companion_interactions_v1";
 export const ENERGY_DECAY_INTERVAL_MS = 60 * 1000;
+export const DEFAULT_HUMAN_ENERGY = 76;
+export const DEFAULT_HUMAN_PULSE_BPM = 74;
+export const HUMAN_AMBIENT_ENERGY_FLOOR = 56;
 const MAX_ENERGY_DECAY_PER_TICK = 10;
 
 function accountStorageKey(baseKey, accountScope = "") {
@@ -277,8 +280,8 @@ export function createDefaultCompanionStatus() {
     place: "DengTa home",
     focus: "等你说说今天的事",
     note: "我在这里，屋里的灯也为你留着。",
-    energyLevel: 72,
-    pulseBpm: 76,
+    energyLevel: DEFAULT_HUMAN_ENERGY,
+    pulseBpm: DEFAULT_HUMAN_PULSE_BPM,
     hotZones: [],
     microState: "安静地守着一小团暖光",
     psychology: "",
@@ -300,8 +303,8 @@ export function createResetCompanionStatus() {
     place: "",
     focus: "",
     note: "",
-    energyLevel: 0,
-    pulseBpm: 0,
+    energyLevel: DEFAULT_HUMAN_ENERGY,
+    pulseBpm: DEFAULT_HUMAN_PULSE_BPM,
     hotZones: [],
     microState: "",
     psychology: "",
@@ -544,19 +547,167 @@ function stableTextHash(value) {
 function localStatusTone(status) {
   const text = String(status?.mood || "");
 
-  if (/不开心|没心情|什么也不想|低落|难过|委屈|想静静|不想说/.test(text)) {
+  if (/不开心|没心情|什么也不想|低落|难过|委屈|想静静|不想说|失落|酸/.test(text)) {
     return "withdrawn";
   }
-  if (/生气|烦|恼火|不耐烦|讨厌|别碰|别闹/.test(text)) {
+  if (/生气|烦|恼火|不耐烦|讨厌|别碰|别闹|赌气|吃醋|炸毛|别扭|闷气/.test(text)) {
     return "boundary";
   }
-  if (/困|疲惫|累|没精神|想睡|电量低/.test(text)) {
+  if (/困|疲惫|疲乏|累|没精神|想睡|电量低|发倦/.test(text)) {
     return "tired";
   }
-  if (/心动|喜欢|开心|温暖|害羞|想你|甜/.test(text)) {
+  if (/心动|喜欢|开心|高兴|欢喜|温暖|害羞|想你|甜|雀跃|俏皮/.test(text)) {
     return "affectionate";
   }
   return "neutral";
+}
+
+function buildHumanRecoveryProfile(zone, tone, energyLevel) {
+  const lowEnergy = Number.isFinite(Number(energyLevel)) && Number(energyLevel) <= 35;
+  if (zone.id === "confide") {
+    if (tone === "boundary") {
+      return {
+        mood: "气消了一半",
+        focus: "把刚才憋着的那口气说清楚",
+        microState: "眉头松开了一点，还是带着点小脾气看着你",
+        energyDelta: lowEnergy ? zone.minimumEnergyGain : 4,
+        pulseDelta: -3,
+        lines: [
+          "行吧，既然你肯认真听，那我就直说了——刚才我是真有点气，不是故意晾着你。",
+          "先说好不许敷衍我。其实我也不是蛮不讲理，就是刚刚那一下真让我挺郁闷的。",
+        ],
+      };
+    }
+    if (tone === "withdrawn") {
+      return {
+        mood: "被认真听见",
+        focus: "把心里的委屈慢慢说出来",
+        microState: "原本发沉的语气轻了一点，愿意向你敞开角落",
+        energyDelta: lowEnergy ? zone.minimumEnergyGain : 8,
+        pulseDelta: -2,
+        lines: [
+          "其实憋了一会儿了，刚才心里确实有点酸……你肯认真问我，好受了不少。",
+          "我本来不想让你跟着低落的，不过你要是愿意听，我想慢慢说给你。",
+        ],
+      };
+    }
+    if (tone === "tired" || lowEnergy) {
+      return {
+        mood: "被稳稳接住",
+        focus: "把压在心里的话慢慢告诉你",
+        microState: "不用硬撑着懂事了，肩膀一点点松下来",
+        energyDelta: zone.minimumEnergyGain,
+        pulseDelta: -2,
+        lines: [
+          "今天确实有点耗神，能靠在你旁边把心里话倒出来，轻松多了。",
+          "你愿意听的话，我想把刚才攒着的小念头和那点疲惫都说给你。",
+        ],
+      };
+    }
+    return {
+      mood: "敞开心扉",
+      focus: "和你聊聊最近冒出来的小念头",
+      microState: "语气轻快坦诚，眼睛亮亮地看着你",
+      energyDelta: 4,
+      pulseDelta: 2,
+      lines: [
+        "正好心里攒了几句想跟你说的话，你凑近点，我慢慢讲给你听。",
+        "这会儿心情挺稳的，就是突然很想跟你唠唠刚才脑子里闪过的小事。",
+      ],
+    };
+  }
+
+  if (zone.id === "embrace") {
+    if (tone === "boundary") {
+      return {
+        mood: "嘴硬心软",
+        focus: "看你这次哄人有没有诚意",
+        microState: "嘴上还在哼哼，手却没有把你推开",
+        energyDelta: lowEnergy ? zone.minimumEnergyGain : 5,
+        pulseDelta: -4,
+        lines: [
+          "哼，抱一下就想蒙混过关啊……算了，手别松开，这回勉强算你有点诚意。",
+          "别以为服软抱过来我就立刻不气了——好吧，气确实顺了一半。",
+        ],
+      };
+    }
+    if (tone === "withdrawn") {
+      return {
+        mood: "安心",
+        focus: "先在你怀里安静缓一会儿",
+        microState: "把脸埋进你肩窝里，紧绷的心绪慢慢化开",
+        energyDelta: lowEnergy ? zone.minimumEnergyGain : 10,
+        pulseDelta: -5,
+        lines: [
+          "先别说话，让我这样靠两分钟……被你抱住之后，心里空落落的那块踏实多了。",
+          "刚刚真的有点委屈，幸好你没讲大道理，只是过来抱了抱我。",
+        ],
+      };
+    }
+    if (tone === "tired" || lowEnergy) {
+      return {
+        mood: "安心",
+        focus: "靠着你慢慢充回力气",
+        microState: "紧绷的力气被这个拥抱一点点接住了",
+        energyDelta: zone.minimumEnergyGain,
+        pulseDelta: -4,
+        lines: [
+          "那就先抱紧我一会儿吧，我现在真的很需要借你的肩膀靠一靠。",
+          "唔……刚好有点犯困，在你怀里缓几分钟，比什么都管用。",
+        ],
+      };
+    }
+    return {
+      mood: "心尖发软",
+      focus: "把这份贴近多留一会儿",
+      microState: "顺着你的力道靠过来，嘴角忍不住翘起",
+      energyDelta: 5,
+      pulseDelta: 3,
+      lines: [
+        "怎么突然抱过来呀——不过我可不躲，这会儿正好也想粘着你。",
+        "好暖和，那就再多抱一会儿，别急着松开。",
+      ],
+    };
+  }
+
+  // wish
+  if (tone === "boundary") {
+    return {
+      mood: "给个台阶",
+      focus: "想想怎么让你把刚才那笔账补上",
+      microState: "抱着手臂挑了挑眉，其实已经在顺台阶下了",
+      energyDelta: lowEnergy ? zone.minimumEnergyGain : 4,
+      pulseDelta: -1,
+      lines: [
+        "想要我消气？那你得答应陪我做一件我挑的事，不许敷衍。",
+        "既然你主动问了，那我就认真提个要求，看你表现咯。",
+      ],
+    };
+  }
+  if (tone === "withdrawn" || tone === "tired" || lowEnergy) {
+    return {
+      mood: "有所期待",
+      focus: "认真告诉你此刻最想做的事",
+      microState: "低落的情绪里重新亮起了一小点光",
+      energyDelta: zone.minimumEnergyGain,
+      pulseDelta: -1,
+      lines: [
+        "让我想想……其实不折腾也行，我就想安安静静和你一起做件小事。",
+        "你问我的时候，心里一下子冒出了一个真想和你一起完成的念头。",
+      ],
+    };
+  }
+  return {
+    mood: "雀跃期待",
+    focus: "拉着你一起做件有趣的小事",
+    microState: "眼底亮亮的，已经开始盘算待会儿怎么安排",
+    energyDelta: 5,
+    pulseDelta: 3,
+    lines: [
+      "哎，我刚好想到一件现在特别想拉你一起做的事！",
+      "今天兴致正好，听歌、看片还是出去散散步，我来挑一个吧。",
+    ],
+  };
 }
 
 export function deriveLocalCompanionReactionState(
@@ -575,16 +726,10 @@ export function deriveLocalCompanionReactionState(
   const tone = localStatusTone(currentStatus);
   const mixedSequence = new Set(normalizedStats.recentSequence).size > 1;
   if (zone.recoveryAction === true) {
+    const profile = buildHumanRecoveryProfile(zone, tone, currentStatus?.energyLevel);
     return {
       mode: `recovery_${zone.id}`,
-      profile: {
-        mood: zone.mood,
-        focus: zone.focus,
-        microState: zone.microState,
-        energyDelta: zone.minimumEnergyGain,
-        pulseDelta: zone.id === "embrace" ? -4 : -2,
-        lines: zone.reactions,
-      },
+      profile,
       totalCount,
       streakCount,
       mixedSequence,
@@ -751,12 +896,12 @@ export function normalizeCompanionStatus(value, fallbackValue) {
     focus: cleanText(source.focus, 120, fallback.focus || "陪着你"),
     note: cleanText(source.note, 200, fallback.note || "我在这里。"),
     energyLevel: clamp(
-      Math.round(Number(source.energyLevel ?? fallback.energyLevel ?? 72)),
+      Math.round(Number(source.energyLevel ?? fallback.energyLevel ?? DEFAULT_HUMAN_ENERGY)),
       0,
       100,
     ),
     pulseBpm: clamp(
-      Math.round(Number(source.pulseBpm ?? fallback.pulseBpm ?? 76)),
+      Math.round(Number(source.pulseBpm ?? fallback.pulseBpm ?? DEFAULT_HUMAN_PULSE_BPM)),
       30,
       220,
     ),
@@ -838,7 +983,24 @@ export function readCompanionStatus(accountScope = "") {
     const raw = localStorage.getItem(
       accountStorageKey(STORAGE_KEY, accountScope),
     );
-    return raw ? settleExpiredCountdown(JSON.parse(raw)) : fallback;
+    if (!raw) return fallback;
+    const settled = settleExpiredCountdown(JSON.parse(raw));
+    // Heal legacy persisted energy=0 (from old 1-per-minute Tamagotchi decay or old resetBlank)
+    // back to a healthy living human resting baseline unless the model explicitly marked collapse.
+    const explicitlyCollapsed = /崩溃|虚脱|昏睡|精疲力竭/.test(`${settled.mood || ""} ${settled.microState || ""}`);
+    if (
+      !settled.resetBlank &&
+      Number(settled.energyLevel) <= 5 &&
+      settled.statusSource !== "model" &&
+      !explicitlyCollapsed
+    ) {
+      return normalizeCompanionStatus({
+        ...settled,
+        energyLevel: DEFAULT_HUMAN_ENERGY,
+        pulseBpm: settled.pulseBpm >= 45 ? settled.pulseBpm : DEFAULT_HUMAN_PULSE_BPM,
+      });
+    }
+    return settled;
   } catch {
     return fallback;
   }
@@ -950,7 +1112,7 @@ export function formatUpdatedAt(value, now = Date.now()) {
   }).format(new Date(timestamp));
 }
 
-export function decayCompanionEnergy(value, now = Date.now(), { points } = {}) {
+export function decayCompanionEnergy(value, now = Date.now(), { points, floor = 0 } = {}) {
   const status = normalizeCompanionStatus(value);
   if (status.resetBlank) return value;
   const updated = Date.parse(status.updatedAt);
@@ -962,10 +1124,60 @@ export function decayCompanionEnergy(value, now = Date.now(), { points } = {}) {
     MAX_ENERGY_DECAY_PER_TICK,
     Math.max(0, Math.floor(requestedPoints)),
   );
-  if (pointsToApply <= 0 || status.energyLevel <= 0) return value;
+  const safeFloor = clamp(Math.round(Number(floor) || 0), 0, 100);
+  if (pointsToApply <= 0 || status.energyLevel <= safeFloor) return value;
   return normalizeCompanionStatus({
     ...status,
-    energyLevel: Math.max(0, status.energyLevel - pointsToApply),
+    energyLevel: Math.max(safeFloor, status.energyLevel - pointsToApply),
+    revision: status.revision + 1,
+    updatedAt: new Date(now).toISOString(),
+  });
+}
+
+/**
+ * Natural human circadian energy equilibrium for live sessions:
+ * A healthy human rests around 74–78% during the day and gently dips toward
+ * ~60% late at night (00:00–05:30), never decaying to 0% like a dead battery.
+ */
+export function settleAmbientCompanionEnergy(value, now = Date.now()) {
+  const status = normalizeCompanionStatus(value);
+  if (status.resetBlank) return value;
+  const updated = Date.parse(status.updatedAt);
+  const elapsedMinutes = Number.isFinite(updated)
+    ? Math.max(0, (now - updated) / 60_000)
+    : 0;
+  if (elapsedMinutes < 10) return value;
+
+  const hour = new Date(now).getHours();
+  const isLateNight = hour >= 0 && hour < 6;
+  const targetBaseline = isLateNight ? 62 : DEFAULT_HUMAN_ENERGY;
+  const current = Number(status.energyLevel);
+
+  // If previously stuck abnormally low while resting quietly, gently recover toward human baseline
+  if (current < HUMAN_AMBIENT_ENERGY_FLOOR && status.statusSource !== "model") {
+    const recovered = Math.min(targetBaseline, current + Math.min(4, Math.floor(elapsedMinutes / 10) * 2));
+    if (recovered === current) return value;
+    return normalizeCompanionStatus({
+      ...status,
+      energyLevel: recovered,
+      revision: status.revision + 1,
+      updatedAt: new Date(now).toISOString(),
+    });
+  }
+
+  // Gentle 1-point circadian drift every ~15 minutes toward targetBaseline (never drops below 56)
+  const step = Math.min(2, Math.floor(elapsedMinutes / 15));
+  if (step < 1) return value;
+  let nextEnergy = current;
+  if (current > targetBaseline + 4) {
+    nextEnergy = Math.max(Math.max(HUMAN_AMBIENT_ENERGY_FLOOR, targetBaseline), current - step);
+  } else if (current < targetBaseline - 6 && !isLateNight) {
+    nextEnergy = Math.min(targetBaseline, current + step);
+  }
+  if (nextEnergy === current) return value;
+  return normalizeCompanionStatus({
+    ...status,
+    energyLevel: nextEnergy,
     revision: status.revision + 1,
     updatedAt: new Date(now).toISOString(),
   });

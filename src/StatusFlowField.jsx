@@ -123,9 +123,20 @@ export default function StatusFlowField({ active }) {
         return;
       }
       resizePending = false;
+      runEngine(() => {
+        engine.clear();
+        engine.render();
+      });
       field.classList.remove("status-flow-field--fallback");
       field.classList.add("status-flow-field--ready");
     };
+
+    const isInteractiveTarget = (target) =>
+      Boolean(
+        target &&
+          typeof target.closest === "function" &&
+          target.closest("button, a, input, select, textarea, summary, label, [role='tab']"),
+      );
 
     const localPoint = (clientX, clientY) => {
       const rect = panel.getBoundingClientRect();
@@ -140,10 +151,10 @@ export default function StatusFlowField({ active }) {
     const colorFor = (x, y, offset = 0) => {
       const color = hsvToRgb(
         hueSeed + x * 0.36 + y * 0.14 + offset * 0.043,
-        0.97,
+        0.88,
         1,
       );
-      return color.map((channel) => channel * 0.72);
+      return color.map((channel) => channel * 0.38);
     };
 
     const draw = (now, generation) => {
@@ -262,6 +273,7 @@ export default function StatusFlowField({ active }) {
 
     const startPointerFlow = (event) => {
       if (event.pointerType === "mouse" && event.button !== 0) return;
+      if (isInteractiveTarget(event.target)) return;
       lastPointerEventAt = performance.now();
       pointerState.pointerId = event.pointerId;
       startTrail(event.clientX, event.clientY, lastPointerEventAt);
@@ -281,6 +293,7 @@ export default function StatusFlowField({ active }) {
 
     const startTouchFlow = (event) => {
       if (performance.now() - lastPointerEventAt < 600) return;
+      if (isInteractiveTarget(event.target)) return;
       const touch = event.changedTouches[0];
       if (!touch) return;
       pointerState.touchId = touch.identifier;

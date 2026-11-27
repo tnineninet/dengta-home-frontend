@@ -19,7 +19,7 @@ class Events {
 let tree, state, props, strict = false, serial = 0, doc, view, trigger;
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 const vite = await createServer({ root: fileURLToPath(new URL("..", import.meta.url)), configFile: false, envDir: false,
-  appType: "custom", logLevel: "silent", server: { middlewareMode: true }, plugins: [{ name: "text-impact-fixture-boundaries", enforce: "pre",
+  appType: "custom", logLevel: "silent", server: { middlewareMode: true, watch: null }, plugins: [{ name: "text-impact-fixture-boundaries", enforce: "pre",
     load(id) {
       if (id.replaceAll("\\", "/").endsWith("/src/text-impact-player.js")) {
         return "export async function playTextImpact(source, options) { return globalThis.__textImpactFixture.play(source, options); }";

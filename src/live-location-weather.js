@@ -8,8 +8,63 @@ const OPEN_METEO_GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search
 const BIGDATACLOUD_REVERSE_URL = "https://api.bigdatacloud.net/data/reverse-geocode-client";
 const IPWHO_URL = "https://ipwho.is/?fields=success,city,region,country,latitude,longitude,timezone";
 
+const TRADITIONAL_PLACE_CHAR_MAP = Object.freeze({
+  區: "区",
+  縣: "县",
+  臺: "台",
+  灣: "湾",
+  門: "门",
+  陽: "阳",
+  東: "东",
+  廣: "广",
+  蘇: "苏",
+  寧: "宁",
+  華: "华",
+  慶: "庆",
+  漢: "汉",
+  長: "长",
+  寶: "宝",
+  龍: "龙",
+  鳳: "凤",
+  黃: "黄",
+  國: "国",
+  嶺: "岭",
+  島: "岛",
+  鎮: "镇",
+  鄉: "乡",
+  開: "开",
+  關: "关",
+  雲: "云",
+  電: "电",
+  樂: "乐",
+  興: "兴",
+  義: "义",
+  豐: "丰",
+  衛: "卫",
+  溫: "温",
+  濟: "济",
+  瀋: "沈",
+  鄭: "郑",
+  閩: "闽",
+  陝: "陕",
+  蘭: "兰",
+  銀: "银",
+  烏: "乌",
+  魯: "鲁",
+  齊: "齐",
+  薩: "萨",
+  澳門: "澳门",
+});
+
+export function normalizeSimplifiedPlaceName(value) {
+  return String(value || "").replace(
+    /[區縣臺灣門陽東廣蘇寧華慶漢長寶龍鳳黃國嶺島鎮鄉開關雲電樂興義豐衛溫濟瀋鄭閩陝蘭銀烏魯齊薩]/g,
+    (ch) => TRADITIONAL_PLACE_CHAR_MAP[ch] || ch,
+  );
+}
+
 function sanitizePlaceText(value, maxLength = 32) {
-  return String(value || "")
+  return normalizeSimplifiedPlaceName(String(value || ""))
     .replace(/[<>{}`\r\n]/g, "")
     .replace(/\s+/g, " ")
     .trim()
@@ -102,7 +157,7 @@ export async function reverseGeocodeCity({
   const url = new URL(BIGDATACLOUD_REVERSE_URL);
   url.searchParams.set("latitude", coords.latitude.toFixed(2));
   url.searchParams.set("longitude", coords.longitude.toFixed(2));
-  url.searchParams.set("localityLanguage", "zh");
+  url.searchParams.set("localityLanguage", "zh-CN");
 
   const guard = withTimeout(signal, timeoutMs);
   try {

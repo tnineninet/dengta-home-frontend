@@ -3897,3 +3897,57 @@
     line-height: 22px !important;
   }
 }
+
+/* Zero-flicker Rainbow Capsule open/close on Android WebView:
+   avoid scale3d overshoot & WebGL first-frame flash, keep ambient flow subtle
+   behind solid obsidian cards so orbs never bleed over controls. */
+.main-panel.view-chat .sun-glass-floating-status-panel {
+  background: #090b10 !important;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  contain: layout style paint;
+  transform: translate3d(0, -6px, 0) !important;
+  transition:
+    opacity 150ms ease-out,
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 180ms !important;
+}
+
+.main-panel.view-chat .sun-glass-floating-status-panel.is-open {
+  visibility: visible;
+  opacity: 1;
+  transform: translate3d(0, 0, 0) !important;
+  pointer-events: auto;
+  transition:
+    opacity 150ms ease-out,
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 0s !important;
+}
+
+.main-panel.view-chat .sun-glass-floating-status-panel .status-flow-field {
+  opacity: 0.42;
+  background: #090b10;
+}
+
+.main-panel.view-chat .sun-glass-floating-status-panel .status-flow-canvas {
+  background: #090b10;
+  transform: translateZ(0);
+  transition: opacity 140ms ease-out;
+}
+
+.main-panel.view-chat .sun-glass-floating-status-header {
+  min-height: 76px;
+  padding: 14px 16px 10px;
+  background: #0d1018;
+  border-bottom: 1px solid rgb(255 255 255 / 0.08);
+}
+
+.main-panel.view-chat .sun-glass-status-drag-title h2 {
+  font-size: 22px;
+}
+
+.main-panel.view-chat .sun-glass-floating-status-panel .di-weather-capsule-btn,
+.di-top-capsule-row .di-weather-capsule-btn {
+  min-height: 34px !important;
+  min-width: 0 !important;
+}
