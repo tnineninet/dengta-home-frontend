@@ -1922,6 +1922,374 @@ body {
   border-radius: 8px;
 }
 
+.nursery-utterance-tag {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #7b495d;
+  background: rgba(192, 113, 138, 0.16);
+  vertical-align: 1px;
+}
+
+.nursery-thought-line {
+  margin-top: 6px !important;
+  font-size: 12.5px;
+  color: #6b5f69;
+  font-style: italic;
+}
+
+.nursery-lang-journey {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid rgba(120, 99, 110, 0.16);
+  border-radius: 12px;
+  background: rgba(255, 250, 247, 0.78);
+}
+
+.nursery-lang-journey-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px 12px;
+}
+
+.nursery-lang-journey-head strong {
+  font-size: 13px;
+  color: #4b3943;
+}
+
+.nursery-lang-journey-head small {
+  font-size: 11.5px;
+  color: #776972;
+}
+
+.nursery-stage-track {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nursery-stage-track li {
+  display: grid;
+  gap: 2px;
+  padding: 6px 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(120, 99, 110, 0.14);
+  background: rgba(255, 255, 255, 0.45);
+  text-align: center;
+  opacity: 0.62;
+}
+
+.nursery-stage-track li.is-unlocked {
+  opacity: 0.92;
+  border-color: rgba(166, 97, 119, 0.28);
+}
+
+.nursery-stage-track li.is-current {
+  opacity: 1;
+  border-color: rgba(166, 97, 119, 0.65);
+  background: rgba(252, 236, 241, 0.9);
+  box-shadow: 0 2px 8px rgba(130, 74, 96, 0.12);
+}
+
+.nursery-stage-track li span {
+  font-size: 12px;
+  font-weight: 700;
+  color: #4a3742;
+}
+
+.nursery-stage-track li small {
+  font-size: 10.5px;
+  color: #75656f;
+}
+
+.nursery-eavesdrop-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid rgba(120, 99, 110, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 251, 248, 0.84);
+}
+
+.nursery-eavesdrop-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.nursery-eavesdrop-head h3 {
+  margin: 0 0 3px;
+  font-size: 15px;
+  color: #42333b;
+}
+
+.nursery-eavesdrop-head small {
+  display: block;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #74676f;
+}
+
+.nursery-eavesdrop-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #54434c;
+  cursor: pointer;
+}
+
+.nursery-eavesdrop-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+  margin: 0;
+  accent-color: #9e5c73;
+}
+
+.nursery-eavesdrop-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.nursery-eavesdrop-actions button {
+  min-height: 42px;
+  padding: 0 12px;
+  border-radius: 9px;
+  border: 1px solid rgba(124, 82, 98, 0.28);
+  background: rgba(255, 255, 255, 0.78);
+  color: #593b47;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.nursery-eavesdrop-actions button.is-think {
+  border-color: rgba(88, 126, 112, 0.34);
+  background: rgba(235, 247, 242, 0.85);
+  color: #2f5c4d;
+}
+
+.nursery-eavesdrop-notice {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #3a5d4f;
+  background: rgba(226, 244, 236, 0.82);
+}
+
+.nursery-eavesdrop-empty {
+  margin: 0;
+  font-size: 12px;
+  color: #7a6d75;
+  line-height: 1.5;
+}
+
+.nursery-chunk-section,
+.nursery-overheard-list {
+  display: grid;
+  gap: 6px;
+}
+
+.nursery-chunk-section > small,
+.nursery-overheard-list > small {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #6d5f68;
+}
+
+.nursery-chunk-cloud {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.nursery-chunk-cloud span {
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: #55454e;
+  background: rgba(112, 93, 103, 0.1);
+}
+
+.nursery-chunk-cloud span.is-overheard {
+  color: #7c3f56;
+  background: rgba(214, 127, 156, 0.18);
+  border: 1px solid rgba(192, 113, 138, 0.28);
+}
+
+.nursery-overheard-list ul,
+.nursery-utterance-log ul {
+  display: grid;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.nursery-overheard-list li,
+.nursery-utterance-log li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.56);
+  font-size: 12.5px;
+}
+
+.nursery-overheard-list li span,
+.nursery-utterance-log li span {
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #5b4954;
+  background: rgba(120, 99, 110, 0.12);
+  white-space: nowrap;
+}
+
+.nursery-overheard-list li span.is-companion {
+  color: #345c50;
+  background: rgba(102, 156, 138, 0.18);
+}
+
+.nursery-overheard-list li strong,
+.nursery-utterance-log li strong {
+  font-weight: 500;
+  color: #3c2f36;
+  overflow-wrap: anywhere;
+}
+
+.nursery-overheard-list li time,
+.nursery-utterance-log li time {
+  font-size: 11px;
+  color: #847880;
+  white-space: nowrap;
+}
+
+.nursery-utterance-log {
+  display: grid;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(112, 90, 102, 0.18);
+}
+
+.nursery-utterance-log > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 40px;
+  padding: 0;
+  background: transparent;
+  color: #54454d;
+  font-size: 13px;
+}
+
+:root[data-dengta-appearance="night"] .nursery-lang-journey,
+:root[data-dengta-appearance="night"] .nursery-eavesdrop-card {
+  background: rgba(var(--theme-card-rgb, 28, 30, 38), 0.78);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+:root[data-dengta-appearance="night"] .nursery-lang-journey-head strong,
+:root[data-dengta-appearance="night"] .nursery-eavesdrop-head h3,
+:root[data-dengta-appearance="night"] .nursery-eavesdrop-toggle,
+:root[data-dengta-appearance="night"] .nursery-stage-track li span,
+:root[data-dengta-appearance="night"] .nursery-overheard-list li strong,
+:root[data-dengta-appearance="night"] .nursery-utterance-log li strong,
+:root[data-dengta-appearance="night"] .nursery-utterance-log > button {
+  color: rgba(var(--theme-ink-rgb, 240, 236, 242), 0.94);
+}
+
+:root[data-dengta-appearance="night"] .nursery-thought-line,
+:root[data-dengta-appearance="night"] .nursery-lang-journey-head small,
+:root[data-dengta-appearance="night"] .nursery-eavesdrop-head small,
+:root[data-dengta-appearance="night"] .nursery-stage-track li small,
+:root[data-dengta-appearance="night"] .nursery-eavesdrop-empty,
+:root[data-dengta-appearance="night"] .nursery-chunk-section > small,
+:root[data-dengta-appearance="night"] .nursery-overheard-list > small,
+:root[data-dengta-appearance="night"] .nursery-overheard-list li time,
+:root[data-dengta-appearance="night"] .nursery-utterance-log li time {
+  color: rgba(var(--theme-ink-rgb, 240, 236, 242), 0.68);
+}
+
+:root[data-dengta-appearance="night"] .nursery-stage-track li,
+:root[data-dengta-appearance="night"] .nursery-overheard-list li,
+:root[data-dengta-appearance="night"] .nursery-utterance-log li {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+:root[data-dengta-appearance="night"] .nursery-stage-track li.is-current {
+  background: rgba(208, 122, 152, 0.24);
+  border-color: rgba(235, 160, 186, 0.58);
+}
+
+:root[data-dengta-appearance="night"] .nursery-eavesdrop-actions button {
+  background: rgba(255, 255, 255, 0.09);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: rgba(246, 238, 244, 0.95);
+}
+
+:root[data-dengta-appearance="night"] .nursery-eavesdrop-actions button.is-think {
+  background: rgba(96, 174, 146, 0.2);
+  border-color: rgba(132, 212, 184, 0.36);
+  color: #bcebd9;
+}
+
+:root[data-dengta-appearance="night"] .nursery-chunk-cloud span {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(242, 236, 244, 0.9);
+}
+
+:root[data-dengta-appearance="night"] .nursery-chunk-cloud span.is-overheard {
+  background: rgba(214, 127, 156, 0.24);
+  border-color: rgba(235, 158, 184, 0.42);
+  color: #ffd8e5;
+}
+
+:root[data-dengta-appearance="night"] .nursery-eavesdrop-notice {
+  background: rgba(82, 154, 128, 0.22);
+  color: #c5efe0;
+}
+
+@media (max-width: 640px) {
+  .nursery-stage-track {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .nursery-eavesdrop-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .nursery-overheard-list li,
+  .nursery-utterance-log li {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .nursery-overheard-list li time,
+  .nursery-utterance-log li time {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (max-width: 640px) {
   .nursery-page {
     gap: 11px;

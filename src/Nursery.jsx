@@ -74,9 +74,47 @@ function assertNurseryPortrait(data) {
   }
 }
 
+const OVERHEAR_STORAGE_PREFIX = "dengta_nursery_overhear_enabled:";
+
+const TRIGGER_LABELS = {
+  overhear: "偷学开口",
+  reflect: "自己想的",
+  talk: "回你一句",
+  teach: "学着念",
+  feed: "吃饱哼哼",
+  event: "半夜醒来",
+};
+
+function readOverhearEnabled(scopeKey) {
+  try {
+    const specific = globalThis.localStorage?.getItem(`${OVERHEAR_STORAGE_PREFIX}${scopeKey}`);
+    if (specific === "0") return false;
+    if (specific === "1") return true;
+    const globalFlag = globalThis.localStorage?.getItem("dengta_nursery_overhear_enabled");
+    if (globalFlag === "0") return false;
+  } catch { /* 忽略本地存储读取异常 */ }
+  return true;
+}
+
+function writeOverhearEnabled(scopeKey, enabled) {
+  const val = enabled ? "1" : "0";
+  try {
+    globalThis.localStorage?.setItem(`${OVERHEAR_STORAGE_PREFIX}${scopeKey}`, val);
+    globalThis.localStorage?.setItem("dengta_nursery_overhear_enabled", val);
+  } catch { /* 忽略本地存储写入异常 */ }
+}
+
 function assertNurseryReceipt(data, { label, actionKind, candidates }) {
   if (label === "birth") {
     if (typeof data.created !== "boolean") throw invalidNurseryResponse();
+    return;
+  }
+  if (label === "overhear") {
+    if (!Array.isArray(data.overheard)) throw invalidNurseryResponse();
+    return;
+  }
+  if (label === "reflect") {
+    if (typeof data.reflected !== "boolean") throw invalidNurseryResponse();
     return;
   }
   if (typeof data.idempotent !== "boolean") throw invalidNurseryResponse();
@@ -148,8 +186,54 @@ function createPreviewNurserySnapshot(aiName = "伴侣") {
     ],
     actions: [],
     utterances: [
-      { id: "preview-u-1", text: `灯灯暖暖的，想和你们一起听歌呀～` },
+      {
+        id: "preview-u-1",
+        trigger: "overhear",
+        stage: "child",
+        text: `晚霞灯灯暖暖的，你们刚聊听歌我也要听呀～`,
+        generation_parameters: {
+          thought: `刚才偷听你们聊起「一起听歌」，心里觉得好新奇，想插一句嘴。`,
+          overheard_snippet: "待会儿日出照到窗台，一起听歌",
+        },
+        created_at: "2026-11-26T08:45:00+08:00",
+      },
+      {
+        id: "preview-u-2",
+        trigger: "talk",
+        stage: "toddler",
+        text: `抱抱…晚安灯灯`,
+        created_at: "2026-11-25T21:10:00+08:00",
+      },
     ],
+    overheard_corpus: [
+      { id: 1, speaker: "companion", text: "待会儿日出照到窗台，你得陪着我看", created_at: "2026-11-26T07:14:00+08:00" },
+      { id: 2, speaker: "user", text: "再让我赖三分钟嘛", created_at: "2026-11-26T07:08:00+08:00" },
+    ],
+    learned_chunks: [
+      { text: "灯塔", count: 5, overheard: true },
+      { text: "晚安", count: 4, overheard: false },
+      { text: "抱抱", count: 4, overheard: false },
+      { text: "窗台", count: 2, overheard: true },
+      { text: "三分钟", count: 2, overheard: true },
+    ],
+    language_profile: {
+      current_stage_id: "child",
+      current_summary: "萌芽思考期 · 会自己琢磨说短句，偶尔语出惊人",
+      can_think: true,
+      max_length: 36,
+      thought: "刚才偷听你们聊起「窗台」和「三分钟」，小脑袋里冒出好奇，想自己琢磨着插一句嘴。",
+      overheard_count: 2,
+      corpus_count: 14,
+      psyche_axes: { curiosity: 68, independence: 42, warmth: 81 },
+      next_stage: { id: "teen", label: "青春期", starts_at_day: 24, days_remaining: 11.5, summary: "独立主见期 · 会自己思考，表达更长且有小脾气" },
+      stages: [
+        { id: "infant", label: "婴儿期", starts_at_day: 0, unlocked: true, current: false, can_think: false },
+        { id: "toddler", label: "幼儿期", starts_at_day: 4, unlocked: true, current: false, can_think: false },
+        { id: "child", label: "童年期", starts_at_day: 12, unlocked: true, current: true, can_think: true },
+        { id: "teen", label: "青春期", starts_at_day: 24, unlocked: false, current: false, can_think: true },
+        { id: "adult", label: "成年期", starts_at_day: 36, unlocked: false, current: false, can_think: true },
+      ],
+    },
     milestones: [
       {
         id: "preview-m-1",
@@ -182,6 +266,9 @@ export default function Nursery({ aiName = "伴侣", onNotice, visualPreview = f
   const [portrait, setPortrait] = useState(null);
   const [portraitOpen, setPortraitOpen] = useState(false);
   const [scope] = useState(() => settingsSaveScope(authSession.getSnapshot()));
+  const [overhearEnabled, setOverhearEnabled] = useState(() => readOverhearEnabled(scope));
+  const [eavesdropNotice, setEavesdropNotice] = useState("");
+  const [historyOpen, setHistoryOpen] = useState(false);
   const lifecycleRef = useRef(null);
   const busyRef = useRef(false);
   const recheckRef = useRef(false);
@@ -266,6 +353,11 @@ export default function Nursery({ aiName = "伴侣", onNotice, visualPreview = f
 
   const child = snapshot?.child || null;
   const latestUtterance = snapshot?.utterances?.[0] || null;
+  const overheardCorpus = Array.isArray(snapshot?.overheard_corpus) ? snapshot.overheard_corpus : [];
+  const learnedChunks = Array.isArray(snapshot?.learned_chunks) ? snapshot.learned_chunks : [];
+  const languageProfile = snapshot?.language_profile || null;
+  const latestThought = latestUtterance?.generation_parameters?.thought || languageProfile?.thought || "";
+  const latestTriggerTag = TRIGGER_LABELS[latestUtterance?.trigger] || "";
   const bonds = useMemo(
     () =>
       Object.fromEntries(
@@ -433,6 +525,75 @@ export default function Nursery({ aiName = "伴侣", onNotice, visualPreview = f
     if (result) setNameDraft((current) => current === submitted ? "" : current);
   }
 
+  async function triggerOverhear() {
+    if (!child) return;
+    if (visualPreview) {
+      setEavesdropNotice("预览模式：她悄悄记住了你们刚聊的“窗台看日出”～");
+      return;
+    }
+    setEavesdropNotice("");
+    const result = await perform("overhear", (options) =>
+      apiRequest(`/api/v2/nursery/children/${child.id}/overhear`, {
+        ...options,
+        method: "POST",
+        body: JSON.stringify({
+          client_action_id: clientActionId("overhear"),
+        }),
+      }),
+    );
+    if (result) {
+      if (result.overheard?.length) {
+        setEavesdropNotice(`刚刚偷偷从你们的聊天里学会了：“${result.overheard[0].text}”`);
+      } else if (result.message) {
+        setEavesdropNotice(result.message);
+      }
+    }
+  }
+
+  async function triggerReflect() {
+    if (!child) return;
+    if (visualPreview) {
+      setSnapshot((current) => current ? {
+        ...current,
+        utterances: [
+          {
+            id: `preview-r-${Date.now()}`,
+            trigger: "reflect",
+            stage: "child",
+            text: "我刚在想，明天早上窗台亮起来的时候，我也可以赖三分钟吗？",
+            generation_parameters: { thought: "听你们聊三分钟和日出，自己也想撒个娇试试。" },
+            created_at: new Date().toISOString(),
+          },
+          ...(current.utterances || []),
+        ],
+      } : current);
+      return;
+    }
+    setEavesdropNotice("");
+    const result = await perform("reflect", (options) =>
+      apiRequest(`/api/v2/nursery/children/${child.id}/reflect`, {
+        ...options,
+        method: "POST",
+        body: JSON.stringify({
+          client_action_id: clientActionId("reflect"),
+        }),
+      }),
+    );
+    if (result?.thought) {
+      setEavesdropNotice(result.provider_used ? "她结合偷学来的话自己想了想，开口说出了一句新话。" : "");
+    }
+  }
+
+  function toggleAutoOverhear(nextChecked) {
+    setOverhearEnabled(nextChecked);
+    writeOverhearEnabled(scope, nextChecked);
+    setEavesdropNotice(
+      nextChecked
+        ? `已开启自动偷听：平时你和${aiName}聊天时，她会随机悄悄偷学几个字或短句。`
+        : "已暂停自动偷听，仍可随时点下方按钮让她听一次。",
+    );
+  }
+
   async function togglePortrait() {
     if (visualPreview) {
       setPortraitOpen((open) => !open);
@@ -521,15 +682,40 @@ export default function Nursery({ aiName = "伴侣", onNotice, visualPreview = f
           <p>
             {latestUtterance ? (
               <>
+                {latestTriggerTag && <span className="nursery-utterance-tag">{latestTriggerTag}</span>}
                 “<TypewriterText text={latestUtterance.text} stepMs={24} />”
               </>
             ) : (
               "“咿呀……”"
             )}
           </p>
+          {latestThought && (
+            <p className="nursery-thought-line">内心小想法：{latestThought}</p>
+          )}
         </div>
-        <span className="nursery-local-badge">LOCAL</span>
+        <span className="nursery-local-badge">{languageProfile?.can_think ? "成长思考" : "LOCAL"}</span>
       </header>
+
+      {languageProfile?.stages?.length > 0 && (
+        <section className="nursery-lang-journey" aria-label="语言发育阶段">
+          <div className="nursery-lang-journey-head">
+            <strong>{languageProfile.current_summary}</strong>
+            {languageProfile.next_stage ? (
+              <small>再过 {languageProfile.next_stage.days_remaining} 天进入{languageProfile.next_stage.label}</small>
+            ) : (
+              <small>已解锁全部语言阶段</small>
+            )}
+          </div>
+          <ol className="nursery-stage-track">
+            {languageProfile.stages.map((st) => (
+              <li key={st.id} className={`${st.unlocked ? "is-unlocked" : ""}${st.current ? " is-current" : ""}`}>
+                <span>{st.label}</span>
+                <small>{st.can_think ? "会思考" : st.id === "infant" ? "复读叠词" : "拼词学语"}</small>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
 
       {!child.name && (
         <form className="nursery-name-form" onSubmit={chooseName}>
@@ -608,6 +794,105 @@ export default function Nursery({ aiName = "伴侣", onNotice, visualPreview = f
         <span>{aiName.slice(0, 1)}</span>
         <strong>{busy === "companion" ? `${aiName}正在陪她` : `让${aiName}陪她一会`}</strong>
       </button>
+
+      <section className="nursery-eavesdrop-card" aria-labelledby="nursery-eavesdrop-title">
+        <header className="nursery-eavesdrop-head">
+          <div>
+            <h3 id="nursery-eavesdrop-title">偷学小本本 · 聊天语料</h3>
+            <small>
+              平时你和{aiName}聊天时，她会随机悄悄偷学几个字或几句话；小时候只会咿呀重复，长大后结合偷学词自己思考说更多。
+            </small>
+          </div>
+          <label className="nursery-eavesdrop-toggle">
+            <input
+              type="checkbox"
+              checked={overhearEnabled}
+              onChange={(event) => toggleAutoOverhear(event.target.checked)}
+            />
+            <span>自动偷听</span>
+          </label>
+        </header>
+
+        <div className="nursery-eavesdrop-actions">
+          <button
+            type="button"
+            disabled={Boolean(busy) || needsRecheck}
+            onClick={() => void triggerOverhear()}
+          >
+            {busy === "overhear" ? "正竖起耳朵偷听…" : "让她偷听刚聊的话"}
+          </button>
+          <button
+            type="button"
+            className="is-think"
+            disabled={Boolean(busy) || needsRecheck}
+            onClick={() => void triggerReflect()}
+          >
+            {busy === "reflect"
+              ? "正在小脑袋里琢磨…"
+              : languageProfile?.can_think
+                ? "听她自己想想说句话"
+                : "听她咿呀学一句"}
+          </button>
+        </div>
+
+        {eavesdropNotice && (
+          <p className="nursery-eavesdrop-notice" role="status">{eavesdropNotice}</p>
+        )}
+
+        {learnedChunks.length > 0 && (
+          <div className="nursery-chunk-section">
+            <small>脑海里记住的高频小词库</small>
+            <div className="nursery-chunk-cloud">
+              {learnedChunks.slice(0, 12).map((chunk) => (
+                <span key={chunk.text} className={chunk.overheard ? "is-overheard" : ""}>
+                  {chunk.text}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {overheardCorpus.length > 0 ? (
+          <div className="nursery-overheard-list">
+            <small>最近偷听到的词句（{overheardCorpus.length}）</small>
+            <ul>
+              {overheardCorpus.slice(0, 6).map((item) => (
+                <li key={item.id || `${item.speaker}-${item.text}`}>
+                  <span className={`is-${item.speaker === "companion" ? "companion" : "user"}`}>
+                    {item.speaker === "companion" ? `偷听${aiName}` : "偷听你"}
+                  </span>
+                  <strong>“{item.text}”</strong>
+                  <time>{formatTime(item.created_at)}</time>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <p className="nursery-eavesdrop-empty">
+            还没有偷听到你和{aiName}的聊天词句。点「让她偷听刚聊的话」或去聊两句，她就会悄悄竖起耳朵记下来。
+          </p>
+        )}
+      </section>
+
+      {snapshot.utterances?.length > 1 && (
+        <section className="nursery-utterance-log">
+          <button type="button" onClick={() => setHistoryOpen((open) => !open)}>
+            <span>最近开口记录（{snapshot.utterances.length}）</span>
+            <strong>{historyOpen ? "收起" : "展开"}</strong>
+          </button>
+          {historyOpen && (
+            <ul>
+              {snapshot.utterances.slice(0, 6).map((item) => (
+                <li key={item.id || item.text}>
+                  <span>{TRIGGER_LABELS[item.trigger] || "开口"}</span>
+                  <strong>“{item.text}”</strong>
+                  <time>{formatTime(item.created_at)}</time>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       <section className="nursery-bonds">
         {[

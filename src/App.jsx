@@ -6722,6 +6722,16 @@ function App({ accountControl = null, accountScope = "", userName = "" }) {
           turn_context: effectiveTurnContext,
           message_reference: messageReferenceAtRequest,
           public_reasoning_summary: publicReasoningSummaryAtRequest,
+          nursery_overhear_paused: (() => {
+            try {
+              const scoped = window.localStorage.getItem(`dengta_nursery_overhear_enabled:${accountStorageScope || "guest"}`);
+              if (scoped === "0") return true;
+              if (scoped === "1") return false;
+              return window.localStorage.getItem("dengta_nursery_overhear_enabled") === "0";
+            } catch {
+              return false;
+            }
+          })(),
           files: attachmentsToSend,
           client_message_id: request.clientMessageId,
         },
